@@ -766,7 +766,7 @@ var CONTRACTS = {
     supportsPromptMode: true,
     promptModeFlag: "-p",
     buildLaunchArgs(model, extraFlags = []) {
-      const args = ["--yolo"];
+      const args = ["--approval-mode", "yolo", "-i"];
       if (model) args.push("--model", model);
       return [...args, ...extraFlags];
     },

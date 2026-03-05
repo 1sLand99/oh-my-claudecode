@@ -8,8 +8,10 @@ describe('mcp-team-bridge spawn args', () => {
         expect(source).toContain('"--dangerously-bypass-approvals-and-sandbox"');
         expect(source).toContain('"--skip-git-repo-check"');
     });
-    it('keeps Gemini bridge spawn args with --yolo', () => {
-        expect(source).toContain('"--yolo"');
+    it('keeps Gemini bridge spawn args with --approval-mode yolo -i', () => {
+        expect(source).toContain('"--approval-mode"');
+        expect(source).toContain('"yolo"');
+        expect(source).toContain('"-i"');
         expect(source).toMatch(/cmd = "gemini";/);
     });
 });

@@ -1328,7 +1328,7 @@ function spawnCliProcess(provider, prompt, model, cwd, timeoutMs) {
     ];
   } else {
     cmd = "gemini";
-    args = ["--yolo"];
+    args = ["--approval-mode", "yolo", "-i"];
     if (model) args.push("--model", model);
   }
   const child = (0, import_child_process2.spawn)(cmd, args, {

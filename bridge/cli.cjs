@@ -20821,7 +20821,7 @@ var init_model_contract = __esm({
         supportsPromptMode: true,
         promptModeFlag: "-p",
         buildLaunchArgs(model, extraFlags = []) {
-          const args = ["--yolo"];
+          const args = ["--approval-mode", "yolo", "-i"];
           if (model) args.push("--model", model);
           return [...args, ...extraFlags];
         },
@@ -57637,9 +57637,6 @@ var allCustomTools = [
 // src/index.ts
 init_auto_update();
 
-// src/hooks/keyword-detector/index.ts
-init_auto_update();
-
 // src/hooks/task-size-detector/index.ts
 var DEFAULT_THRESHOLDS = {
   smallWordLimit: 50,
@@ -57784,7 +57781,10 @@ var KEYWORD_PATTERNS = {
   ralph: /\b(ralph)\b(?!-)/i,
   autopilot: /\b(autopilot|auto[\s-]?pilot|fullsend|full\s+auto)\b/i,
   ultrawork: /\b(ultrawork|ulw)\b/i,
-  team: /(?<!\b(?:my|the|our|a|his|her|their|its)\s)\bteam\b|\bcoordinated\s+team\b/i,
+  // Team keyword detection disabled — team mode is now explicit-only via /team skill.
+  // This prevents infinite spawning when Claude workers receive prompts containing "team".
+  team: /(?!x)x/,
+  // never-match placeholder (type system requires the key)
   ralplan: /\b(ralplan)\b/i,
   tdd: /\b(tdd)\b|\btest\s+first\b/i,
   ultrathink: /\b(ultrathink)\b/i,
@@ -57833,7 +57833,7 @@ function detectKeywordsWithType(text, _agentName) {
   const detected = [];
   const cleanedText = sanitizeForKeywordDetection(text);
   for (const type of KEYWORD_PRIORITY) {
-    if (type === "team" && !isTeamEnabled()) {
+    if (type === "team") {
       continue;
     }
     const pattern = KEYWORD_PATTERNS[type];
@@ -58819,6 +58819,9 @@ function getPromptText(input) {
   return "";
 }
 async function processKeywordDetector(input) {
+  if (process.env.OMC_TEAM_WORKER) {
+    return { continue: true };
+  }
   const promptText = getPromptText(input);
   if (!promptText) {
     return { continue: true };
@@ -58931,7 +58934,6 @@ Running directly without heavy agent stacking. Prefix with \`quick:\`, \`simple:
       // These are handled by UserPromptSubmit hook for skill invocation
       case "cancel":
       case "autopilot":
-      case "team":
       case "ralplan":
       case "tdd":
         messages.push(

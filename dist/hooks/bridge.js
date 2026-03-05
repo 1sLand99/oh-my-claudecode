@@ -159,6 +159,11 @@ function getPromptText(input) {
  * Also activates persistent state for modes that require it (ralph, ultrawork)
  */
 async function processKeywordDetector(input) {
+    // Team worker guard: prevent keyword detection inside team workers to avoid
+    // infinite spawning loops (worker detects "team" -> invokes team skill -> spawns more workers)
+    if (process.env.OMC_TEAM_WORKER) {
+        return { continue: true };
+    }
     const promptText = getPromptText(input);
     if (!promptText) {
         return { continue: true };
@@ -292,7 +297,6 @@ async function processKeywordDetector(input) {
             // These are handled by UserPromptSubmit hook for skill invocation
             case "cancel":
             case "autopilot":
-            case "team":
             case "ralplan":
             case "tdd":
                 messages.push(`[MODE: ${keywordType.toUpperCase()}] Skill invocation handled by UserPromptSubmit hook.`);
