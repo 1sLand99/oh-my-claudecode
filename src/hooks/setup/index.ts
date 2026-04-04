@@ -7,8 +7,9 @@
  * - maintenance: Prune old state files, cleanup orphaned state, vacuum SQLite
  */
 
-import { existsSync, mkdirSync, readdirSync, statSync, unlinkSync, readFileSync, writeFileSync, appendFileSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, statSync, unlinkSync, readFileSync, writeFileSync, appendFileSync, symlinkSync } from 'fs';
 import { join } from 'path';
+import os from 'os';
 
 import { registerBeadsContext } from '../beads-context/index.js';
 
@@ -180,6 +181,34 @@ export function patchHooksJsonForWindows(pluginRoot: string): void {
 }
 
 /**
+ * Ensure ~/.claude/hooks/lib/stdin.mjs symlink points to the current plugin version.
+ *
+ * This fixes a silent breakage that occurs when OMC upgrades to a new version:
+ * the symlink stays pointing at the old version's cache dir, so hooks that
+ * import stdin.mjs fail with ERR_MODULE_NOT_FOUND.  Rebuilding the symlink on
+ * every init keeps it in sync automatically.
+ */
+export function ensureStdinSymlink(pluginRoot: string): void {
+  const libDstDir = join(os.homedir(), '.claude/hooks/lib');
+  const libSrc = join(pluginRoot, 'templates/hooks/lib');
+  const stdinSrc = join(libSrc, 'stdin.mjs');
+  const stdinDst = join(libDstDir, 'stdin.mjs');
+
+  if (!existsSync(libDstDir)) {
+    mkdirSync(libDstDir, { recursive: true });
+  }
+
+  // Always recreate so upgrade always heals the symlink
+  try { unlinkSync(stdinDst); } catch { /* ignore if didn't exist */ }
+
+  try {
+    symlinkSync(stdinSrc, stdinDst);
+  } catch {
+    // Non-fatal: older setups may have copied the file instead
+  }
+}
+
+/**
  * Process setup init trigger
  */
 export async function processSetupInit(input: SetupInput): Promise<HookOutput> {
@@ -194,11 +223,16 @@ export async function processSetupInit(input: SetupInput): Promise<HookOutput> {
   // The sh->find-node.sh->node chain triggers Claude Code UI bug #17088 on
   // MSYS2/Git Bash, mislabeling every successful hook as an error (issue #899).
   // find-node.sh is only needed on Unix for nvm/fnm PATH discovery.
+  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
   if (process.platform === 'win32') {
-    const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
     if (pluginRoot) {
       patchHooksJsonForWindows(pluginRoot);
     }
+  }
+
+  // Always heal the stdin.mjs symlink so upgrades don't break hooks
+  if (pluginRoot) {
+    ensureStdinSymlink(pluginRoot);
   }
 
   try {
