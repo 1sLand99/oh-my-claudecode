@@ -145,8 +145,38 @@ export function getProjectIdentifier(worktreeRoot?: string): string {
     source = root;
   }
 
+  // For linked worktrees (created via `git worktree add`), resolve to the
+  // primary repository root so all worktrees of the same repo produce the
+  // same project identifier. Without this, sibling worktrees like
+  // `repo.feature-x/` and `repo.feature-y/` would create separate state
+  // directories despite sharing the same remote URL hash.
+  let primaryRoot = root;
+  try {
+    const commonDir = execSync('git rev-parse --path-format=absolute --git-common-dir', {
+      cwd: root,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 5000,
+    }).trim();
+    // Only resolve when --git-common-dir points to a .git directory.
+    // - Linked worktrees: returns <primary>/.git → dirname gives primary root ✓
+    // - Submodules: returns <super>/.git/modules/<name> → skip (wrong parent)
+    // - Bare repos: returns the repo root itself (no .git suffix) → skip
+    //   (dirname would go up to the parent folder, colliding sibling repos)
+    const isGitDir = basename(commonDir) === '.git';
+    const isSubmodule = commonDir.includes(`${sep}.git${sep}modules`);
+    if (isGitDir && !isSubmodule) {
+      const resolved = dirname(commonDir);
+      if (resolved && resolved !== root) {
+        primaryRoot = resolved;
+      }
+    }
+  } catch {
+    // Not a git repo or command failed — fall back to worktree root
+  }
+
   const hash = createHash('sha256').update(source).digest('hex').slice(0, 16);
-  const dirName = basename(root).replace(/[^a-zA-Z0-9_-]/g, '_');
+  const dirName = basename(primaryRoot).replace(/[^a-zA-Z0-9_-]/g, '_');
   return `${dirName}-${hash}`;
 }
 
