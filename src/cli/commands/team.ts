@@ -88,6 +88,10 @@ const TEAM_API_OPERATION_REQUIRED_FIELDS: Record<TeamApiOperation, string[]> = {
   'write-worker-inbox': ['team_name', 'worker', 'content'],
   'write-worker-identity': ['team_name', 'worker', 'index', 'role'],
   'append-event': ['team_name', 'type', 'worker'],
+  'read-events': ['team_name'],
+  'await-event': ['team_name'],
+  'read-idle-state': ['team_name'],
+  'read-stall-state': ['team_name'],
   'get-summary': ['team_name'],
   'cleanup': ['team_name'],
   'orphan-cleanup': ['team_name'],
@@ -109,6 +113,8 @@ const TEAM_API_OPERATION_OPTIONAL_FIELDS: Partial<Record<TeamApiOperation, strin
     'worktree_repo_root', 'worktree_path', 'worktree_branch', 'worktree_detached', 'worktree_created', 'team_state_root',
   ],
   'append-event': ['task_id', 'message_id', 'reason'],
+  'read-events': ['after_event_id', 'wakeable_only', 'type', 'worker', 'task_id'],
+  'await-event': ['after_event_id', 'timeout_ms', 'poll_ms', 'wakeable_only', 'type', 'worker', 'task_id'],
   'write-task-approval': ['required'],
 };
 
@@ -116,6 +122,10 @@ const TEAM_API_OPERATION_NOTES: Partial<Record<TeamApiOperation, string>> = {
   'update-task': 'Only non-lifecycle task metadata can be updated.',
   'release-task-claim': 'Use this only for rollback/requeue to pending (not for completion).',
   'transition-task-status': 'Lifecycle flow is claim-safe and typically transitions in_progress -> completed|failed.',
+  'read-events': 'Returns canonical event log entries with optional filters and cursor.',
+  'await-event': 'Polls until a matching event is available or timeout_ms elapses.',
+  'read-idle-state': 'Builds a structured idle summary from monitor snapshot, summary, and events.',
+  'read-stall-state': 'Builds a structured stall summary from summary, dispatch, and events.',
 };
 
 // ---------------------------------------------------------------------------

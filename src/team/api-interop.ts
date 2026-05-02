@@ -42,6 +42,7 @@ import {
   teamWriteTaskApproval,
   type TeamMonitorSnapshotState,
 } from './team-ops.js';
+import { readTeamEvents } from './events.js';
 import { queueBroadcastMailboxMessage, queueDirectMailboxMessage, type DispatchOutcome } from './mcp-comm.js';
 import { injectToLeaderPane, sendToWorker } from './tmux-session.js';
 import { listDispatchRequests, markDispatchRequestDelivered, markDispatchRequestNotified } from './dispatch-queue.js';
@@ -107,6 +108,10 @@ export const TEAM_API_OPERATIONS = [
   'write-worker-inbox',
   'write-worker-identity',
   'append-event',
+  'read-events',
+  'await-event',
+  'read-idle-state',
+  'read-stall-state',
   'get-summary',
   'cleanup',
   'write-shutdown-request',
@@ -126,6 +131,162 @@ export type TeamApiEnvelope =
 
 function isFiniteInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && Number.isFinite(value);
+}
+
+
+function parseOptionalNonNegativeInteger(value: unknown, fieldName: string): number | null {
+  if (value === undefined) return null;
+  if (!isFiniteInteger(value) || value < 0) {
+    throw new Error(`${fieldName} must be a non-negative integer when provided`);
+  }
+  return value;
+}
+
+function parseOptionalBoolean(value: unknown, fieldName: string): boolean | null {
+  if (value === undefined) return null;
+  if (typeof value !== 'boolean') throw new Error(`${fieldName} must be a boolean when provided`);
+  return value;
+}
+
+function parseOptionalEventType(value: unknown): TeamEventType | null {
+  if (value === undefined) return null;
+  if (typeof value !== 'string') throw new Error('type must be a string when provided');
+  const normalized = value.trim();
+  if (!normalized) throw new Error('type cannot be empty when provided');
+  if (!TEAM_EVENT_TYPES.includes(normalized as TeamEventType)) {
+    throw new Error(`type must be one of: ${TEAM_EVENT_TYPES.join(', ')}`);
+  }
+  return normalized as TeamEventType;
+}
+
+function eventSequenceValue(eventId: string): bigint | null {
+  if (/^\d+$/.test(eventId)) return BigInt(eventId);
+  return null;
+}
+
+function isEventAfterCursor(event: { event_id: string }, cursor: string): boolean {
+  if (!cursor) return true;
+  const left = eventSequenceValue(event.event_id);
+  const right = eventSequenceValue(cursor);
+  if (left !== null && right !== null) return left > right;
+  return event.event_id !== cursor;
+}
+
+const WAKEABLE_TEAM_EVENT_TYPES = new Set<TeamEventType>([
+  'task_completed',
+  'task_failed',
+  'worker_idle',
+  'worker_stopped',
+  'message_received',
+  'shutdown_ack',
+  'shutdown_gate',
+  'shutdown_gate_forced',
+  'approval_decision',
+  'team_leader_nudge',
+]);
+
+function filterTeamEvents(
+  events: Awaited<ReturnType<typeof readTeamEvents>>,
+  opts: { afterEventId?: string; wakeableOnly?: boolean | null; type?: TeamEventType | null; worker?: string; taskId?: string },
+): Awaited<ReturnType<typeof readTeamEvents>> {
+  const afterEventId = opts.afterEventId?.trim() ?? '';
+  return events.filter((event) => {
+    if (!isEventAfterCursor(event, afterEventId)) return false;
+    if (opts.wakeableOnly === true && !WAKEABLE_TEAM_EVENT_TYPES.has(event.type as TeamEventType)) return false;
+    if (opts.type && event.type !== opts.type) return false;
+    if (opts.worker && event.worker !== opts.worker) return false;
+    if (opts.taskId && event.task_id !== opts.taskId) return false;
+    return true;
+  });
+}
+
+function summarizeEvent(event: Awaited<ReturnType<typeof readTeamEvents>>[number] | null): Record<string, unknown> | null {
+  if (!event) return null;
+  return {
+    event_id: event.event_id,
+    type: event.type,
+    worker: event.worker,
+    task_id: event.task_id ?? null,
+    message_id: event.message_id ?? null,
+    created_at: event.created_at,
+    reason: event.reason ?? null,
+  };
+}
+
+function buildIdleState(
+  teamName: string,
+  summary: Awaited<ReturnType<typeof teamGetSummary>>,
+  snapshot: Awaited<ReturnType<typeof teamReadMonitorSnapshot>>,
+  recentEvents: Awaited<ReturnType<typeof readTeamEvents>>,
+): Record<string, unknown> {
+  const workerNames = new Set<string>();
+  for (const worker of summary?.workers ?? []) workerNames.add(worker.name);
+  for (const worker of Object.keys(snapshot?.workerStateByName ?? {})) workerNames.add(worker);
+  const names = [...workerNames].sort();
+  const idleWorkers = names.filter((worker) => snapshot?.workerStateByName?.[worker] === 'idle');
+  const latestIdleByWorker = Object.fromEntries(names.map((worker) => {
+    const latest = [...recentEvents].reverse().find((event) => event.worker === worker && event.type === 'worker_idle') ?? null;
+    return [worker, summarizeEvent(latest)];
+  }));
+
+  return {
+    team_name: teamName,
+    worker_count: summary?.workerCount ?? names.length,
+    idle_worker_count: idleWorkers.length,
+    idle_workers: idleWorkers,
+    non_idle_workers: names.filter((worker) => !idleWorkers.includes(worker)),
+    all_workers_idle: names.length > 0 && idleWorkers.length === names.length,
+    last_idle_transition_by_worker: latestIdleByWorker,
+    source: {
+      summary_available: summary !== null,
+      snapshot_available: snapshot !== null,
+      recent_event_count: recentEvents.length,
+    },
+  };
+}
+
+function buildStallState(
+  teamName: string,
+  summary: Awaited<ReturnType<typeof teamGetSummary>>,
+  snapshot: Awaited<ReturnType<typeof teamReadMonitorSnapshot>>,
+  recentEvents: Awaited<ReturnType<typeof readTeamEvents>>,
+  pendingLeaderDispatchCount: number,
+): Record<string, unknown> {
+  const idleState = buildIdleState(teamName, summary, snapshot, recentEvents);
+  const workerNames = (summary?.workers ?? []).map((worker) => worker.name).sort();
+  const deadWorkers = (summary?.workers ?? []).filter((worker) => worker.alive === false).map((worker) => worker.name).sort();
+  const stalledWorkers = [...(summary?.nonReportingWorkers ?? [])].sort();
+  const pendingTaskCount = (summary?.tasks.pending ?? 0) + (summary?.tasks.blocked ?? 0) + (summary?.tasks.in_progress ?? 0);
+  const liveWorkers = workerNames.filter((worker) => !deadWorkers.includes(worker));
+  const leaderAttentionPending = pendingLeaderDispatchCount > 0;
+  const teamStalled = stalledWorkers.length > 0 || leaderAttentionPending || (deadWorkers.length > 0 && pendingTaskCount > 0);
+  const reasons: string[] = [];
+  if (stalledWorkers.length > 0) reasons.push(`workers_non_reporting:${stalledWorkers.join(',')}`);
+  if (deadWorkers.length > 0 && pendingTaskCount > 0) reasons.push(`dead_workers_with_pending_work:${deadWorkers.join(',')}`);
+  if (pendingLeaderDispatchCount > 0) reasons.push('leader_attention_pending:leader_dispatch_pending');
+
+  return {
+    team_name: teamName,
+    team_stalled: teamStalled,
+    leader_stale: false,
+    leader_attention_pending: leaderAttentionPending,
+    leader_decision_state: pendingTaskCount === 0 && idleState.all_workers_idle === true ? 'done_waiting_on_leader' : 'still_actionable',
+    stalled_workers: stalledWorkers,
+    dead_workers: deadWorkers,
+    live_workers: liveWorkers,
+    pending_task_count: pendingTaskCount,
+    unread_leader_message_count: 0,
+    pending_leader_dispatch_count: pendingLeaderDispatchCount,
+    all_workers_idle: idleState.all_workers_idle,
+    idle_workers: idleState.idle_workers,
+    reasons,
+    last_team_leader_nudge_event: summarizeEvent([...recentEvents].reverse().find((event) => event.type === 'team_leader_nudge') ?? null),
+    source: {
+      summary_available: summary !== null,
+      snapshot_available: snapshot !== null,
+      recent_event_count: recentEvents.length,
+    },
+  };
 }
 
 function parseValidatedTaskIdArray(value: unknown, fieldName: string): string[] {
@@ -949,6 +1110,64 @@ export async function executeTeamApiOperation(
           reason: args.reason as string | undefined,
         }, cwd);
         return { ok: true, operation, data: { event } };
+      }
+      case 'read-events': {
+        const teamName = String(args.team_name || '').trim();
+        if (!teamName) return { ok: false, operation, error: { code: 'invalid_input', message: 'team_name is required' } };
+        const wakeableOnly = parseOptionalBoolean(args.wakeable_only, 'wakeable_only');
+        const type = parseOptionalEventType(args.type);
+        const worker = typeof args.worker === 'string' ? args.worker.trim() : '';
+        const taskId = typeof args.task_id === 'string' ? args.task_id.trim() : '';
+        const afterEventId = typeof args.after_event_id === 'string' ? args.after_event_id.trim() : '';
+        const events = filterTeamEvents(await readTeamEvents(teamName, cwd), { afterEventId, wakeableOnly, type, worker, taskId });
+        return { ok: true, operation, data: { count: events.length, cursor: events.at(-1)?.event_id ?? afterEventId, events } };
+      }
+      case 'await-event': {
+        const teamName = String(args.team_name || '').trim();
+        if (!teamName) return { ok: false, operation, error: { code: 'invalid_input', message: 'team_name is required' } };
+        const timeoutMs = parseOptionalNonNegativeInteger(args.timeout_ms, 'timeout_ms') ?? 30_000;
+        const pollMs = parseOptionalNonNegativeInteger(args.poll_ms, 'poll_ms') ?? 250;
+        const wakeableOnly = parseOptionalBoolean(args.wakeable_only, 'wakeable_only');
+        const type = parseOptionalEventType(args.type);
+        const worker = typeof args.worker === 'string' ? args.worker.trim() : '';
+        const taskId = typeof args.task_id === 'string' ? args.task_id.trim() : '';
+        const afterEventId = typeof args.after_event_id === 'string' ? args.after_event_id.trim() : '';
+        const deadline = Date.now() + timeoutMs;
+        let cursor = afterEventId;
+        while (true) {
+          const events = filterTeamEvents(await readTeamEvents(teamName, cwd), { afterEventId: cursor, wakeableOnly, type, worker, taskId });
+          if (events.length > 0) {
+            const event = events[0]!;
+            return { ok: true, operation, data: { status: 'event', cursor: event.event_id, event } };
+          }
+          if (Date.now() >= deadline) {
+            return { ok: true, operation, data: { status: 'timeout', cursor, event: null } };
+          }
+          await new Promise((resolve) => setTimeout(resolve, Math.min(pollMs, Math.max(0, deadline - Date.now()))));
+        }
+      }
+      case 'read-idle-state': {
+        const teamName = String(args.team_name || '').trim();
+        if (!teamName) return { ok: false, operation, error: { code: 'invalid_input', message: 'team_name is required' } };
+        const [summary, snapshot, events] = await Promise.all([
+          teamGetSummary(teamName, cwd),
+          teamReadMonitorSnapshot(teamName, cwd),
+          readTeamEvents(teamName, cwd),
+        ]);
+        const recentEvents = events.slice(Math.max(0, events.length - 50));
+        return { ok: true, operation, data: buildIdleState(teamName, summary, snapshot, recentEvents) };
+      }
+      case 'read-stall-state': {
+        const teamName = String(args.team_name || '').trim();
+        if (!teamName) return { ok: false, operation, error: { code: 'invalid_input', message: 'team_name is required' } };
+        const [summary, snapshot, events, pendingLeaderDispatch] = await Promise.all([
+          teamGetSummary(teamName, cwd),
+          teamReadMonitorSnapshot(teamName, cwd),
+          readTeamEvents(teamName, cwd),
+          listDispatchRequests(teamName, cwd, { status: 'pending', to_worker: 'leader-fixed' }),
+        ]);
+        const recentEvents = events.slice(Math.max(0, events.length - 50));
+        return { ok: true, operation, data: buildStallState(teamName, summary, snapshot, recentEvents, pendingLeaderDispatch.length) };
       }
       case 'get-summary': {
         const teamName = String(args.team_name || '').trim();

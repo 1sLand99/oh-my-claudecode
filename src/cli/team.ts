@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { readFile, rm } from 'fs/promises';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { executeTeamApiOperation as executeCanonicalTeamApiOperation, resolveTeamApiOperation } from '../team/api-interop.js';
+import { TEAM_API_OPERATIONS, executeTeamApiOperation as executeCanonicalTeamApiOperation, resolveTeamApiOperation, type TeamApiOperation } from '../team/api-interop.js';
 import { cleanupTeamWorktrees } from '../team/git-worktree.js';
 import { killWorkerPanes, killTeamSession, getWorkerLiveness } from '../team/tmux-session.js';
 import { validateTeamName } from '../team/team-name.js';
@@ -18,37 +18,14 @@ const JOB_ID_PATTERN = /^omc-[a-z0-9]{1,16}$/;
 const VALID_CLI_AGENT_TYPES = new Set(['claude', 'codex', 'gemini', 'cursor']);
 const SUBCOMMANDS = new Set(['start', 'status', 'wait', 'cleanup', 'resume', 'shutdown', 'api', 'help', '--help', '-h']);
 
-const SUPPORTED_API_OPERATIONS = new Set([
-  'send-message',
-  'broadcast',
-  'mailbox-list',
-  'mailbox-mark-delivered',
-  'mailbox-mark-notified',
-  'list-tasks',
-  'read-task',
-  'read-config',
-  'get-summary',
-  'orphan-cleanup',
-] as const);
+const SUPPORTED_API_OPERATIONS = new Set<TeamApiOperation>(TEAM_API_OPERATIONS);
 const TEAM_API_USAGE = `
 Usage:
   omc team api <operation> --input '<json>' [--json] [--cwd DIR]
 
 Supported operations:
-  ${Array.from(SUPPORTED_API_OPERATIONS).join(', ')}
+  ${TEAM_API_OPERATIONS.join('\n  ')}
 `.trim();
-
-type SupportedApiOperation =
-  | 'send-message'
-  | 'broadcast'
-  | 'mailbox-list'
-  | 'mailbox-mark-delivered'
-  | 'mailbox-mark-notified'
-  | 'list-tasks'
-  | 'read-task'
-  | 'read-config'
-  | 'get-summary'
-  | 'orphan-cleanup';
 
 interface TeamApiEnvelope {
   ok: boolean;
@@ -722,7 +699,7 @@ export async function executeTeamApiOperation(
   cwd = process.cwd(),
 ): Promise<TeamApiEnvelope> {
   const canonicalOperation = resolveTeamApiOperation(operation);
-  if (!canonicalOperation || !SUPPORTED_API_OPERATIONS.has(canonicalOperation as SupportedApiOperation)) {
+  if (!canonicalOperation || !SUPPORTED_API_OPERATIONS.has(canonicalOperation)) {
     return {
       ok: false,
       operation,
