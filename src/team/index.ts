@@ -187,6 +187,13 @@ export type {
 } from './state-root.js';
 
 export {
+  TEAM_REMINDER_INTENTS,
+  isTeamReminderIntent,
+  resolveLeaderNudgeIntent,
+} from './reminder-intents.js';
+export type { TeamReminderDirective, TeamReminderIntent } from './reminder-intents.js';
+
+export {
   checkSentinelReadiness,
   waitForSentinelReadiness,
 } from './sentinel-gate.js';

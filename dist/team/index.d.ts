@@ -41,6 +41,8 @@ export type { WorkerPermissions } from './permissions.js';
 export { TeamPaths, absPath, teamStateRoot } from './state-paths.js';
 export { resolveCanonicalTeamStateRoot, resolveWorkerTeamStateRoot, resolveWorkerNotifyTeamStateRoot, resolveWorkerTeamStateRootPath, resolveWorkerNotifyTeamStateRootPath, } from './state-root.js';
 export type { TeamWorkerIdentityRef, WorkerTeamStateRootResolution, WorkerTeamStateRootSource, } from './state-root.js';
+export { TEAM_REMINDER_INTENTS, isTeamReminderIntent, resolveLeaderNudgeIntent, } from './reminder-intents.js';
+export type { TeamReminderDirective, TeamReminderIntent } from './reminder-intents.js';
 export { checkSentinelReadiness, waitForSentinelReadiness, } from './sentinel-gate.js';
 export type { SentinelReadinessOptions, SentinelGateResult, SentinelWaitOptions, SentinelWaitResult, } from './sentinel-gate.js';
 export type { CliAgentType, CliAgentContract, WorkerLaunchConfig } from './model-contract.js';
