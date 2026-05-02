@@ -2,7 +2,7 @@ import { spawnSync } from 'child_process';
 import { isAbsolute, normalize, win32 as win32Path } from 'path';
 import { validateTeamName } from './team-name.js';
 import { normalizeToCcAlias } from '../features/delegation-enforcer.js';
-import { isBedrock, isVertexAI, isProviderSpecificModelId } from '../config/models.js';
+import { getDefaultModelHigh, getDefaultModelLow, getDefaultModelMedium, isBedrock, isVertexAI, isProviderSpecificModelId } from '../config/models.js';
 import { isExternalLLMDisabled } from '../lib/security-config.js';
 
 export type CliAgentType = 'claude' | 'codex' | 'gemini' | 'cursor';
@@ -17,6 +17,23 @@ export interface CliAgentContract {
   supportsPromptMode?: boolean;
   /** CLI flag for prompt mode (e.g., '-p' for gemini) */
   promptModeFlag?: string;
+}
+
+export type TeamReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
+
+export interface ParsedTeamWorkerLaunchArgs {
+  passthrough: string[];
+  wantsBypass: boolean;
+  reasoningOverride: string | null;
+  modelProviderOverride: string | null;
+  modelOverride: string | null;
+}
+
+export interface ResolveTeamWorkerLaunchArgsOptions {
+  existingRaw?: string;
+  inheritedArgs?: string[];
+  fallbackModel?: string;
+  preferredReasoning?: TeamReasoningEffort;
 }
 
 export interface WorkerLaunchConfig {
@@ -156,6 +173,233 @@ export const _testInternals = {
   UNTRUSTED_PATH_PATTERNS,
   getTrustedPrefixes,
 };
+
+const CODEX_BYPASS_FLAG = '--dangerously-bypass-approvals-and-sandbox';
+const MADMAX_FLAG = '--madmax';
+const MODEL_FLAG = '--model';
+const CONFIG_FLAG = '-c';
+const REASONING_KEY = 'model_reasoning_effort';
+const MODEL_PROVIDER_KEY = 'model_provider';
+
+const LOW_COMPLEXITY_AGENT_TYPES = new Set(['explore', 'style-reviewer']);
+
+const ROLE_REASONING_DEFAULTS: Record<string, TeamReasoningEffort> = {
+  explore: 'low',
+  writer: 'low',
+  executor: 'medium',
+  debugger: 'medium',
+  'test-engineer': 'medium',
+  verifier: 'medium',
+  designer: 'medium',
+  'security-reviewer': 'medium',
+  architect: 'high',
+  planner: 'high',
+  analyst: 'high',
+  critic: 'high',
+  'code-reviewer': 'high',
+  'code-simplifier': 'high',
+};
+
+const ROLE_MODEL_DEFAULTS: Record<string, () => string> = {
+  explore: getDefaultModelLow,
+  writer: getDefaultModelLow,
+  executor: getDefaultModelMedium,
+  debugger: getDefaultModelMedium,
+  'test-engineer': getDefaultModelMedium,
+  verifier: getDefaultModelMedium,
+  designer: getDefaultModelMedium,
+  'security-reviewer': getDefaultModelMedium,
+  'document-specialist': getDefaultModelMedium,
+  architect: getDefaultModelHigh,
+  planner: getDefaultModelHigh,
+  analyst: getDefaultModelHigh,
+  critic: getDefaultModelHigh,
+  'code-reviewer': getDefaultModelHigh,
+  'code-simplifier': getDefaultModelHigh,
+  orchestrator: getDefaultModelHigh,
+};
+
+function isConfigOverrideForKey(value: string, key: string): boolean {
+  return new RegExp(`^${key}\\s*=`).test(value.trim());
+}
+
+function isReasoningOverride(value: string): boolean {
+  return isConfigOverrideForKey(value, REASONING_KEY);
+}
+
+function isModelProviderOverride(value: string): boolean {
+  return isConfigOverrideForKey(value, MODEL_PROVIDER_KEY);
+}
+
+function isValidModelValue(value: string): boolean {
+  return value.trim().length > 0 && !value.startsWith('-');
+}
+
+function normalizeOptionalModel(model?: string | null): string | undefined {
+  if (typeof model !== 'string') return undefined;
+  const trimmed = model.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function normalizeOptionalReasoning(reasoning?: TeamReasoningEffort | string | null): TeamReasoningEffort | undefined {
+  if (typeof reasoning !== 'string') return undefined;
+  const normalized = reasoning.trim().toLowerCase();
+  if (normalized === 'low' || normalized === 'medium' || normalized === 'high' || normalized === 'xhigh') {
+    return normalized;
+  }
+  return undefined;
+}
+
+function normalizeRoleName(agentType?: string): string | undefined {
+  const normalized = agentType?.trim().toLowerCase();
+  return normalized ? normalized : undefined;
+}
+
+export function splitWorkerLaunchArgs(raw: string | undefined): string[] {
+  if (!raw || raw.trim() === '') return [];
+  return raw.split(/\s+/).map((part) => part.trim()).filter(Boolean);
+}
+
+export function parseTeamWorkerLaunchArgs(args: string[]): ParsedTeamWorkerLaunchArgs {
+  const passthrough: string[] = [];
+  let wantsBypass = false;
+  let reasoningOverride: string | null = null;
+  let modelProviderOverride: string | null = null;
+  let modelOverride: string | null = null;
+
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === CODEX_BYPASS_FLAG || arg === MADMAX_FLAG) {
+      wantsBypass = true;
+      continue;
+    }
+
+    if (arg === MODEL_FLAG) {
+      const maybeValue = args[i + 1];
+      if (typeof maybeValue === 'string' && isValidModelValue(maybeValue)) {
+        modelOverride = maybeValue.trim();
+        i += 1;
+      }
+      continue;
+    }
+
+    if (arg.startsWith(`${MODEL_FLAG}=`)) {
+      const inlineValue = arg.slice(`${MODEL_FLAG}=`.length).trim();
+      if (isValidModelValue(inlineValue)) modelOverride = inlineValue;
+      continue;
+    }
+
+    if (arg === CONFIG_FLAG) {
+      const maybeValue = args[i + 1];
+      if (typeof maybeValue === 'string' && isReasoningOverride(maybeValue)) {
+        reasoningOverride = maybeValue;
+        i += 1;
+        continue;
+      }
+      if (typeof maybeValue === 'string' && isModelProviderOverride(maybeValue)) {
+        modelProviderOverride = maybeValue;
+        i += 1;
+        continue;
+      }
+    }
+
+    passthrough.push(arg);
+  }
+
+  return { passthrough, wantsBypass, reasoningOverride, modelProviderOverride, modelOverride };
+}
+
+export function collectInheritableTeamWorkerArgs(workerArgs: string[]): string[] {
+  const parsed = parseTeamWorkerLaunchArgs(workerArgs);
+  const inherited: string[] = [];
+  if (parsed.wantsBypass) inherited.push(CODEX_BYPASS_FLAG);
+  if (parsed.modelProviderOverride) inherited.push(CONFIG_FLAG, parsed.modelProviderOverride);
+  if (parsed.reasoningOverride) inherited.push(CONFIG_FLAG, parsed.reasoningOverride);
+  if (parsed.modelOverride) inherited.push(MODEL_FLAG, parsed.modelOverride);
+  return inherited;
+}
+
+export function normalizeTeamWorkerLaunchArgs(
+  args: string[],
+  preferredModel?: string,
+  preferredReasoning?: TeamReasoningEffort,
+  preferredModelProviderOverride?: string,
+): string[] {
+  const parsed = parseTeamWorkerLaunchArgs(args);
+  const normalized = [...parsed.passthrough];
+  if (parsed.wantsBypass) normalized.push(CODEX_BYPASS_FLAG);
+
+  const selectedReasoning = parsed.reasoningOverride
+    ?? (normalizeOptionalReasoning(preferredReasoning) ? `${REASONING_KEY}="${normalizeOptionalReasoning(preferredReasoning)}"` : null);
+  const selectedModelProvider = preferredModelProviderOverride ?? parsed.modelProviderOverride;
+  if (selectedModelProvider) normalized.push(CONFIG_FLAG, selectedModelProvider);
+  if (selectedReasoning) normalized.push(CONFIG_FLAG, selectedReasoning);
+
+  const selectedModel = normalizeOptionalModel(preferredModel) ?? normalizeOptionalModel(parsed.modelOverride);
+  if (selectedModel) normalized.push(MODEL_FLAG, selectedModel);
+  return normalized;
+}
+
+export function resolveTeamWorkerLaunchArgs(options: ResolveTeamWorkerLaunchArgsOptions): string[] {
+  const envArgs = splitWorkerLaunchArgs(options.existingRaw);
+  const inheritedArgs = options.inheritedArgs ?? [];
+  const allArgs = [...envArgs, ...inheritedArgs];
+  const envParsed = parseTeamWorkerLaunchArgs(envArgs);
+  const inheritedParsed = parseTeamWorkerLaunchArgs(inheritedArgs);
+  const selectedModel = normalizeOptionalModel(envParsed.modelOverride)
+    ?? normalizeOptionalModel(inheritedParsed.modelOverride)
+    ?? normalizeOptionalModel(options.fallbackModel);
+  const selectedModelProvider = envParsed.modelProviderOverride ?? inheritedParsed.modelProviderOverride ?? undefined;
+  return normalizeTeamWorkerLaunchArgs(allArgs, selectedModel, options.preferredReasoning, selectedModelProvider);
+}
+
+export function isLowComplexityAgentType(agentType?: string): boolean {
+  const normalized = normalizeRoleName(agentType);
+  if (!normalized) return false;
+  if (normalized.endsWith('-low')) return true;
+  return LOW_COMPLEXITY_AGENT_TYPES.has(normalized);
+}
+
+export function resolveAgentReasoningEffort(agentType?: string): TeamReasoningEffort | undefined {
+  const normalized = normalizeRoleName(agentType);
+  if (!normalized) return undefined;
+  return ROLE_REASONING_DEFAULTS[normalized];
+}
+
+export function resolveAgentDefaultModel(agentType?: string): string | undefined {
+  const normalized = normalizeRoleName(agentType);
+  if (!normalized) return undefined;
+  if (normalized.endsWith('-low')) return getDefaultModelLow();
+  return ROLE_MODEL_DEFAULTS[normalized]?.();
+}
+
+function contractExtraFlags(
+  agentType: CliAgentType,
+  extraFlags: string[] | undefined,
+  model?: string,
+): { model?: string; extraFlags: string[] } {
+  const parsed = parseTeamWorkerLaunchArgs(extraFlags ?? []);
+  const selectedModel = normalizeOptionalModel(parsed.modelOverride) ?? normalizeOptionalModel(model);
+  const passthrough = [...parsed.passthrough];
+  if (agentType === 'codex' && parsed.modelProviderOverride) passthrough.push(CONFIG_FLAG, parsed.modelProviderOverride);
+  if (agentType === 'codex' && parsed.reasoningOverride) passthrough.push(CONFIG_FLAG, parsed.reasoningOverride);
+  if (parsed.wantsBypass && agentType !== 'codex') passthrough.push(CODEX_BYPASS_FLAG);
+  return { model: selectedModel, extraFlags: passthrough };
+}
+
+export function resolveWorkerLaunchExtraFlags(
+  env: NodeJS.ProcessEnv = process.env,
+  inheritedArgs: string[] = [],
+  fallbackModel?: string,
+  preferredReasoning?: TeamReasoningEffort,
+): string[] {
+  return resolveTeamWorkerLaunchArgs({
+    existingRaw: env.OMC_TEAM_WORKER_LAUNCH_ARGS,
+    inheritedArgs,
+    fallbackModel,
+    preferredReasoning,
+  });
+}
 
 /**
  * Detect parent launch env for Claude Code API-key auth.
@@ -336,7 +580,8 @@ export function resolveValidatedBinaryPath(agentType: CliAgentType): string {
 }
 
 export function buildLaunchArgs(agentType: CliAgentType, config: WorkerLaunchConfig): string[] {
-  return getContract(agentType).buildLaunchArgs(config.model, config.extraFlags);
+  const prepared = contractExtraFlags(agentType, config.extraFlags, config.model);
+  return getContract(agentType).buildLaunchArgs(prepared.model, prepared.extraFlags);
 }
 
 export function buildWorkerArgv(agentType: CliAgentType, config: WorkerLaunchConfig): string[] {

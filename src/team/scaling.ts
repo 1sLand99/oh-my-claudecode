@@ -16,7 +16,9 @@ import { tmuxExec, tmuxSpawn } from '../cli/tmux-utils.js';
 import {
   buildWorkerArgv,
   getWorkerEnv as getModelWorkerEnv,
+  resolveAgentReasoningEffort,
   resolveClaudeWorkerModel,
+  resolveWorkerLaunchExtraFlags,
   type CliAgentType,
 } from './model-contract.js';
 import { CANONICAL_TEAM_ROLES } from '../shared/types.js';
@@ -289,11 +291,18 @@ export async function scaleUp(
         agentType: CliAgentType,
         model: string | undefined,
       ): { launchBinary: string; launchArgs: string[] } => {
+        const workerExtraFlags = resolveWorkerLaunchExtraFlags(
+          env,
+          [],
+          model,
+          agentType === 'codex' ? resolveAgentReasoningEffort(canonical ?? undefined) : undefined,
+        );
         const [launchBinary, ...launchArgs] = buildWorkerArgv(agentType, {
           teamName: sanitized,
           workerName,
           cwd: workerCwd,
           ...(model ? { model } : {}),
+          extraFlags: workerExtraFlags,
         });
         return { launchBinary, launchArgs };
       };

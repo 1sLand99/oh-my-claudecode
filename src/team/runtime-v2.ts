@@ -59,7 +59,7 @@ import type { CliAgentType } from './model-contract.js';
 import {
   buildWorkerArgv, getContract, resolveValidatedBinaryPath,
   getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs,
-  resolveClaudeWorkerModel,
+  resolveAgentReasoningEffort, resolveClaudeWorkerModel, resolveWorkerLaunchExtraFlags,
 } from './model-contract.js';
 import {
   createTeamSession, spawnWorkerInPane, sendToWorker, killTeamSession,
@@ -682,12 +682,20 @@ async function spawnV2Worker(opts: SpawnV2WorkerOptions): Promise<SpawnV2WorkerR
     return resolveClaudeWorkerModel();
   })();
 
+  const workerExtraFlags = resolveWorkerLaunchExtraFlags(
+    process.env,
+    [],
+    modelForAgent,
+    opts.agentType === 'codex' ? resolveAgentReasoningEffort(opts.role ?? undefined) : undefined,
+  );
+
   const [launchBinary, ...launchArgs] = buildWorkerArgv(opts.agentType, {
     teamName: opts.teamName,
     workerName: opts.workerName,
     cwd: opts.workerCwd ?? opts.cwd,
     resolvedBinaryPath,
     model: modelForAgent,
+    extraFlags: workerExtraFlags,
   });
 
   // For prompt-mode agents (currently gemini), keep the full instruction in

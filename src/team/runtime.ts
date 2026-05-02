@@ -3,7 +3,7 @@ import { join } from 'path';
 import { existsSync } from 'fs';
 import { tmuxExecAsync } from '../cli/tmux-utils.js';
 import type { CliAgentType } from './model-contract.js';
-import { buildWorkerArgv, resolveValidatedBinaryPath, getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs, resolveClaudeWorkerModel } from './model-contract.js';
+import { buildWorkerArgv, resolveValidatedBinaryPath, getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs, resolveClaudeWorkerModel, resolveWorkerLaunchExtraFlags } from './model-contract.js';
 import { validateTeamName } from './team-name.js';
 import {
   createTeamSession, spawnWorkerInPane, sendToWorker,
@@ -739,12 +739,15 @@ export async function spawnWorkerForTask(
     return resolveClaudeWorkerModel();
   })();
 
+  const workerExtraFlags = resolveWorkerLaunchExtraFlags(process.env, [], modelForAgent);
+
   const [launchBinary, ...launchArgs] = buildWorkerArgv(agentType, {
     teamName: runtime.teamName,
     workerName: workerNameValue,
     cwd: runtime.cwd,
     resolvedBinaryPath,
     model: modelForAgent,
+    extraFlags: workerExtraFlags,
   });
 
   // For prompt-mode agents (e.g. Gemini Ink TUI), pass instruction via CLI
