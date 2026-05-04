@@ -1,15 +1,4 @@
 export type TeamMultiplexerContext = 'tmux' | 'cmux' | 'none';
-export type TeamWorkerCli = 'codex' | 'claude' | 'gemini';
-export interface WorkerProcessLaunchSpec {
-    workerCli: TeamWorkerCli;
-    command: string;
-    args: string[];
-    env: Record<string, string>;
-}
-export declare function resolveTeamWorkerCli(launchArgs?: string[], env?: NodeJS.ProcessEnv): TeamWorkerCli;
-export declare function resolveTeamWorkerCliPlan(workerCount: number, launchArgs?: string[], env?: NodeJS.ProcessEnv): TeamWorkerCli[];
-export declare function translateWorkerLaunchArgsForCli(workerCli: TeamWorkerCli, args: string[], initialPrompt?: string): string[];
-export declare function buildWorkerProcessLaunchSpec(teamName: string, workerIndex: number, launchArgs?: string[], cwd?: string, extraEnv?: Record<string, string>, workerCliOverride?: TeamWorkerCli, initialPrompt?: string): WorkerProcessLaunchSpec;
 export declare function detectTeamMultiplexerContext(env?: NodeJS.ProcessEnv): TeamMultiplexerContext;
 /**
  * True when running on Windows under MSYS2/Git Bash.

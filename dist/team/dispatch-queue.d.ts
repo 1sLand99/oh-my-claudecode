@@ -1,4 +1,14 @@
-import type { TeamReminderIntent } from './reminder-intents.js';
+/**
+ * Dispatch Queue - Low-level file-based dispatch request operations.
+ *
+ * Manages dispatch/requests.json with atomic read/write, dedup, and
+ * directory-based locking (O_EXCL mkdir) with stale lock detection.
+ *
+ * State file: .omc/state/team/{name}/dispatch/requests.json
+ * Lock path:  .omc/state/team/{name}/dispatch/.lock/
+ *
+ * Mirrors OMX src/team/state/dispatch.ts behavior exactly.
+ */
 export type TeamDispatchRequestKind = 'inbox' | 'mailbox' | 'nudge';
 export type TeamDispatchRequestStatus = 'pending' | 'notified' | 'delivered' | 'failed';
 export type TeamDispatchTransportPreference = 'hook_preferred_with_fallback' | 'transport_direct' | 'prompt_stdin';
@@ -22,7 +32,6 @@ export interface TeamDispatchRequest {
     delivered_at?: string;
     failed_at?: string;
     last_reason?: string;
-    intent?: TeamReminderIntent;
 }
 export interface TeamDispatchRequestInput {
     kind: TeamDispatchRequestKind;
@@ -35,7 +44,6 @@ export interface TeamDispatchRequestInput {
     transport_preference?: TeamDispatchTransportPreference;
     fallback_allowed?: boolean;
     last_reason?: string;
-    intent?: TeamReminderIntent;
 }
 export declare function resolveDispatchLockTimeoutMs(env?: NodeJS.ProcessEnv): number;
 export declare function normalizeDispatchRequest(teamName: string, raw: Partial<TeamDispatchRequest>, nowIso?: string): TeamDispatchRequest | null;

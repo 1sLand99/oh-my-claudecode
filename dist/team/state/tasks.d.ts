@@ -4,16 +4,13 @@ interface TaskReadDeps {
     readTask: (teamName: string, taskId: string, cwd: string) => Promise<TeamTask | null>;
 }
 export declare function computeTaskReadiness(teamName: string, taskId: string, cwd: string, deps: TaskReadDeps): Promise<TaskReadiness>;
-interface ScopedWorkerInfo {
-    name: string;
-    assigned_tasks?: string[];
-    task_scope?: string[];
-}
 interface ClaimTaskDeps extends TaskReadDeps {
     teamName: string;
     cwd: string;
     readTeamConfig: (teamName: string, cwd: string) => Promise<{
-        workers: ScopedWorkerInfo[];
+        workers: Array<{
+            name: string;
+        }>;
     } | null>;
     withTaskClaimLock: <T>(teamName: string, taskId: string, cwd: string, fn: () => Promise<T>) => Promise<{
         ok: true;
@@ -39,12 +36,9 @@ interface TransitionDeps extends ClaimTaskDeps {
     readMonitorSnapshot: (teamName: string, cwd: string) => Promise<TeamMonitorSnapshotState | null>;
     writeMonitorSnapshot: (teamName: string, snapshot: TeamMonitorSnapshotState, cwd: string) => Promise<void>;
 }
-export declare function transitionTaskStatus(taskId: string, from: TeamTaskStatus, to: TeamTaskStatus, claimToken: string, terminalData: {
-    result?: string;
-    error?: string;
-} | undefined, deps: TransitionDeps): Promise<TransitionTaskResult>;
+export declare function transitionTaskStatus(taskId: string, from: TeamTaskStatus, to: TeamTaskStatus, claimToken: string, deps: TransitionDeps): Promise<TransitionTaskResult>;
 type ReleaseDeps = ClaimTaskDeps;
-export declare function releaseTaskClaim(taskId: string, claimToken: string, workerName: string, deps: ReleaseDeps): Promise<ReleaseTaskClaimResult>;
+export declare function releaseTaskClaim(taskId: string, claimToken: string, _workerName: string, deps: ReleaseDeps): Promise<ReleaseTaskClaimResult>;
 export declare function listTasks(teamName: string, cwd: string, deps: {
     teamDir: (teamName: string, cwd: string) => string;
     isTeamTask: (value: unknown) => value is TeamTask;

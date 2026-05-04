@@ -10,20 +10,6 @@ export interface CliAgentContract {
     /** CLI flag for prompt mode (e.g., '-p' for gemini) */
     promptModeFlag?: string;
 }
-export type TeamReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
-export interface ParsedTeamWorkerLaunchArgs {
-    passthrough: string[];
-    wantsBypass: boolean;
-    reasoningOverride: string | null;
-    modelProviderOverride: string | null;
-    modelOverride: string | null;
-}
-export interface ResolveTeamWorkerLaunchArgsOptions {
-    existingRaw?: string;
-    inheritedArgs?: string[];
-    fallbackModel?: string;
-    preferredReasoning?: TeamReasoningEffort;
-}
 export interface WorkerLaunchConfig {
     teamName: string;
     workerName: string;
@@ -62,23 +48,6 @@ export declare const _testInternals: {
     UNTRUSTED_PATH_PATTERNS: RegExp[];
     getTrustedPrefixes: typeof getTrustedPrefixes;
 };
-export declare function splitWorkerLaunchArgs(raw: string | undefined): string[];
-export declare function parseTeamWorkerLaunchArgs(args: string[]): ParsedTeamWorkerLaunchArgs;
-export declare function collectInheritableTeamWorkerArgs(workerArgs: string[]): string[];
-export declare function normalizeTeamWorkerLaunchArgs(args: string[], preferredModel?: string, preferredReasoning?: TeamReasoningEffort | string | null, preferredModelProviderOverride?: string): string[];
-export declare function resolveTeamWorkerLaunchArgs(options: ResolveTeamWorkerLaunchArgsOptions): string[];
-export declare function isLowComplexityAgentType(agentType?: string): boolean;
-export declare function resolveAgentReasoningEffort(agentType?: string): TeamReasoningEffort | undefined;
-export declare function resolveAgentDefaultModel(agentType?: string): string | undefined;
-export declare function resolveWorkerLaunchExtraFlags(env?: NodeJS.ProcessEnv, inheritedArgs?: string[], fallbackModel?: string, preferredReasoning?: TeamReasoningEffort): string[];
-/**
- * Detect parent launch env for Claude Code API-key auth.
- *
- * Claude Code's `--dangerously-skip-permissions` only bypasses permission
- * prompts. When an API key is present, `--bare` is needed to avoid the
- * interactive OAuth/session login path for team worker panes.
- */
-export declare function shouldUseClaudeBareMode(env?: NodeJS.ProcessEnv): boolean;
 export declare function getContract(agentType: CliAgentType): CliAgentContract;
 export declare function isCliAvailable(agentType: CliAgentType): boolean;
 export declare function validateCliAvailable(agentType: CliAgentType): void;
@@ -86,14 +55,7 @@ export declare function resolveValidatedBinaryPath(agentType: CliAgentType): str
 export declare function buildLaunchArgs(agentType: CliAgentType, config: WorkerLaunchConfig): string[];
 export declare function buildWorkerArgv(agentType: CliAgentType, config: WorkerLaunchConfig): string[];
 export declare function buildWorkerCommand(agentType: CliAgentType, config: WorkerLaunchConfig): string;
-export interface WorkerEnvIsolationOptions {
-    leaderCwd?: string;
-    workerCwd?: string;
-    teamStateRoot?: string;
-    teamRoot?: string;
-    taskScope?: readonly string[];
-}
-export declare function getWorkerEnv(teamName: string, workerName: string, agentType: CliAgentType, env?: NodeJS.ProcessEnv, options?: WorkerEnvIsolationOptions): Record<string, string>;
+export declare function getWorkerEnv(teamName: string, workerName: string, agentType: CliAgentType, env?: NodeJS.ProcessEnv): Record<string, string>;
 export declare function parseCliOutput(agentType: CliAgentType, rawOutput: string): string;
 /**
  * Check if an agent type supports prompt/headless mode (bypasses TUI).

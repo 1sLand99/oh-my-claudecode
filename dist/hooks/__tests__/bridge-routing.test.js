@@ -867,7 +867,6 @@ $ ultrawork search the codebase`,
                     ppid: 999999,
                     boot_id: 'definitely-not-the-current-boot-id',
                 }));
-                process.env.OMC_TEST_LINUX_BOOT_ID = 'current-test-boot-id';
                 const missionStatePath = join(tempDir, '.omc', 'state', 'mission-state.json');
                 const legacyRalphStatePath = join(tempDir, '.omc', 'state', 'ralph-state.json');
                 const otherLegacyAutopilotStatePath = join(tempDir, '.omc', 'state', 'autopilot-state.json');

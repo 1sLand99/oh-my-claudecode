@@ -347,7 +347,6 @@ describe("team.roleRouting (Option E)", () => {
         const config = loadConfig();
         expect(config.team).toBeDefined();
         expect(config.team?.roleRouting).toEqual({});
-        expect(config.team?.workerOverrides).toEqual({});
         expect(config.team?.ops).toEqual({});
     });
     it("merges per-role file overrides into team.roleRouting", () => {
@@ -372,79 +371,6 @@ describe("team.roleRouting (Option E)", () => {
             expect(config.team?.roleRouting?.["code-reviewer"]).toEqual({
                 provider: "gemini",
             });
-        }
-        finally {
-            rmSync(tempDir, { recursive: true, force: true });
-        }
-    });
-    it("merges per-worker file overrides into team.workerOverrides", () => {
-        const tempDir = mkdtempSync(join(tmpdir(), "omc-team-worker-overrides-"));
-        try {
-            const claudeDir = join(tempDir, ".claude");
-            require("node:fs").mkdirSync(claudeDir, { recursive: true });
-            writeFileSync(join(claudeDir, "omc.jsonc"), JSON.stringify({
-                team: {
-                    workerOverrides: {
-                        "worker-1": { provider: "codex", model: "gpt-5.5", role: "executor", extraFlags: ["--profile"], reasoning: "high" },
-                    },
-                },
-            }));
-            process.chdir(tempDir);
-            const config = loadConfig();
-            expect(config.team?.workerOverrides?.["worker-1"]).toEqual({
-                provider: "codex",
-                model: "gpt-5.5",
-                role: "executor",
-                extraFlags: ["--profile"],
-                reasoning: "high",
-            });
-        }
-        finally {
-            rmSync(tempDir, { recursive: true, force: true });
-        }
-    });
-    it("rejects invalid per-worker override provider with descriptive error", () => {
-        const tempDir = mkdtempSync(join(tmpdir(), "omc-team-worker-bad-provider-"));
-        try {
-            const claudeDir = join(tempDir, ".claude");
-            require("node:fs").mkdirSync(claudeDir, { recursive: true });
-            writeFileSync(join(claudeDir, "omc.jsonc"), JSON.stringify({
-                team: { workerOverrides: { "worker-1": { provider: "openai" } } },
-            }));
-            process.chdir(tempDir);
-            expect(() => loadConfig()).toThrow(/team\.workerOverrides\.worker-1\.provider/);
-        }
-        finally {
-            rmSync(tempDir, { recursive: true, force: true });
-        }
-    });
-    it("accepts canonical role aliases for per-worker override agent", () => {
-        const tempDir = mkdtempSync(join(tmpdir(), "omc-team-worker-agent-role-"));
-        try {
-            const claudeDir = join(tempDir, ".claude");
-            require("node:fs").mkdirSync(claudeDir, { recursive: true });
-            writeFileSync(join(claudeDir, "omc.jsonc"), JSON.stringify({
-                team: { workerOverrides: { "worker-1": { agent: "code-reviewer" }, "2": { agent: "codeReviewer" } } },
-            }));
-            process.chdir(tempDir);
-            const config = loadConfig();
-            expect(config.team?.workerOverrides?.["worker-1"]?.agent).toBe("code-reviewer");
-            expect(config.team?.workerOverrides?.["2"]?.agent).toBe("codeReviewer");
-        }
-        finally {
-            rmSync(tempDir, { recursive: true, force: true });
-        }
-    });
-    it("rejects tier names for per-worker explicit model overrides", () => {
-        const tempDir = mkdtempSync(join(tmpdir(), "omc-team-worker-tier-model-"));
-        try {
-            const claudeDir = join(tempDir, ".claude");
-            require("node:fs").mkdirSync(claudeDir, { recursive: true });
-            writeFileSync(join(claudeDir, "omc.jsonc"), JSON.stringify({
-                team: { workerOverrides: { "worker-1": { model: "HIGH" } } },
-            }));
-            process.chdir(tempDir);
-            expect(() => loadConfig()).toThrow(/tier names are not supported/);
         }
         finally {
             rmSync(tempDir, { recursive: true, force: true });

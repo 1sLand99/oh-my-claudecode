@@ -7,7 +7,6 @@
  *   omc team shutdown <team-name> [--force] Shutdown team
  *   omc team api <operation> --input '...'  Worker CLI API
  */
-import type { TeamTaskDelegationPlan } from '../../team/types.js';
 export type DecompositionStrategy = 'numbered' | 'bulleted' | 'conjunction' | 'atomic';
 export interface DecompositionPlan {
     strategy: DecompositionStrategy;
@@ -58,7 +57,6 @@ export declare function buildStartupTasks(parsed: ParsedTeamArgs): Array<{
     subject: string;
     description: string;
     owner?: string;
-    delegation?: TeamTaskDelegationPlan;
 }>;
 /**
  * Main team subcommand handler.

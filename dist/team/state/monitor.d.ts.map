@@ -1,1 +1,0 @@
-{"version":3,"file":"monitor.d.ts","sourceRoot":"","sources":["../../../src/team/state/monitor.ts"],"names":[],"mappings":"AAAA,YAAY,EAAE,WAAW,EAAE,sBAAsB,EAAE,wBAAwB,EAAE,cAAc,EAAE,MAAM,aAAa,CAAC;AACjH,OAAO,EACL,cAAc,EACd,mBAAmB,EACnB,oBAAoB,EACpB,aAAa,EACb,cAAc,GACf,MAAM,aAAa,CAAC;AACrB,wBAAsB,mBAAmB,kBAAmB;AAC5D,wBAAsB,oBAAoB,kBAAK"}

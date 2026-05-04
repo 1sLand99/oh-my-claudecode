@@ -423,45 +423,8 @@ describe("planning/artifacts", () => {
       expect(result!.task).toBe("implement auth");
       expect(result!.workerCount).toBe(3);
       expect(result!.agentType).toBe("claude");
-      expect(result!.autoMerge).toBeUndefined();
       expect(result!.linkedRalph).toBe(false);
       expect(result!.sourcePath).toContain("prd-feature.md");
-    });
-
-    it("keeps auto-merge default-off unless the approved launch hint opts in", () => {
-      writeFileSync(
-        join(plansDir, "prd-feature.md"),
-        [
-          "# PRD",
-          "",
-          "## Acceptance criteria",
-          "- done",
-          "",
-          "## Requirement coverage map",
-          "- req -> impl",
-          "",
-          'omc team 3:codex "implement gated merge" --auto-merge',
-          "",
-        ].join("\n"),
-      );
-      writeFileSync(
-        join(plansDir, "test-spec-feature.md"),
-        [
-          "# Test Spec",
-          "",
-          "## Unit coverage",
-          "- unit",
-          "",
-          "## Verification mapping",
-          "- verify",
-          "",
-        ].join("\n"),
-      );
-
-      const result = readApprovedExecutionLaunchHint(testDir, "team");
-
-      expect(result).not.toBeNull();
-      expect(result!.autoMerge).toBe(true);
     });
 
     it("marks launch hints incomplete when planning-complete validation is required", () => {

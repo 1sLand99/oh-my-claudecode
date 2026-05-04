@@ -12,8 +12,6 @@ const tmuxUtilsMocks = vi.hoisted(() => ({
 const modelContractMocks = vi.hoisted(() => ({
   buildWorkerArgv: vi.fn(),
   getWorkerEnv: vi.fn(),
-  resolveWorkerLaunchExtraFlags: vi.fn(() => []),
-  resolveAgentReasoningEffort: vi.fn(),
 }));
 
 const teamOpsMocks = vi.hoisted(() => ({
@@ -55,8 +53,6 @@ vi.mock('../../cli/tmux-utils.js', () => ({
 vi.mock('../model-contract.js', () => ({
   buildWorkerArgv: modelContractMocks.buildWorkerArgv,
   getWorkerEnv: modelContractMocks.getWorkerEnv,
-  resolveWorkerLaunchExtraFlags: modelContractMocks.resolveWorkerLaunchExtraFlags,
-  resolveAgentReasoningEffort: modelContractMocks.resolveAgentReasoningEffort,
 }));
 
 vi.mock('../team-ops.js', () => ({
@@ -122,26 +118,10 @@ describe('scaleUp launch config', () => {
       resize_hook_name: null,
       resize_hook_target: null,
     });
-    modelContractMocks.resolveWorkerLaunchExtraFlags.mockReturnValue([]);
-    modelContractMocks.resolveAgentReasoningEffort.mockReturnValue(undefined);
-    modelContractMocks.getWorkerEnv.mockImplementation((
-      teamName: string,
-      workerName: string,
-      agentType: string,
-      _env?: NodeJS.ProcessEnv,
-      options?: { leaderCwd?: string; workerCwd?: string; teamStateRoot?: string; teamRoot?: string; taskScope?: string[] },
-    ) => ({
+    modelContractMocks.getWorkerEnv.mockImplementation((teamName: string, workerName: string, agentType: string) => ({
       OMC_TEAM_WORKER: `${teamName}/${workerName}`,
-      OMX_TEAM_WORKER: `${teamName}/${workerName}`,
       OMC_TEAM_NAME: teamName,
-      OMX_TEAM_NAME: teamName,
       OMC_WORKER_AGENT_TYPE: agentType,
-      OMX_WORKER_AGENT_TYPE: agentType,
-      ...(options?.leaderCwd ? { OMC_TEAM_LEADER_CWD: options.leaderCwd, OMX_TEAM_LEADER_CWD: options.leaderCwd } : {}),
-      ...(options?.workerCwd ? { OMC_TEAM_WORKER_CWD: options.workerCwd, OMX_TEAM_WORKER_CWD: options.workerCwd } : {}),
-      ...(options?.teamStateRoot ? { OMC_TEAM_STATE_ROOT: options.teamStateRoot, OMX_TEAM_STATE_ROOT: options.teamStateRoot } : {}),
-      ...(options?.teamRoot ? { OMC_TEAM_ROOT: options.teamRoot, OMX_TEAM_ROOT: options.teamRoot } : {}),
-      ...(options?.taskScope?.length ? { OMC_TEAM_TASK_SCOPE: options.taskScope.join(','), OMX_TEAM_TASK_SCOPE: options.taskScope.join(',') } : {}),
     }));
     tmuxUtilsMocks.tmuxSpawn.mockImplementation((args: string[]) => {
       if (args[0] === 'split-window') {
@@ -192,7 +172,6 @@ describe('scaleUp launch config', () => {
       teamName: 'demo-team',
       workerName: 'worker-1',
       cwd: resolve(cwd),
-      extraFlags: [],
     });
     expect(tmuxSessionMocks.buildWorkerStartCommand).toHaveBeenCalledWith(expect.objectContaining({
       teamName: 'demo-team',
@@ -208,58 +187,6 @@ describe('scaleUp launch config', () => {
         OMC_TEAM_LEADER_CWD: resolve(cwd),
       }),
     }));
-  });
-
-
-  it('routes scale-up worker launch config from explicit worker override agent aliases', async () => {
-    modelContractMocks.buildWorkerArgv.mockReturnValue(['/usr/bin/codex', 'exec']);
-    teamOpsMocks.teamReadConfig.mockResolvedValueOnce({
-      name: 'demo-team',
-      task: 'demo',
-      agent_type: 'claude',
-      worker_launch_mode: 'interactive',
-      worker_count: 0,
-      max_workers: 20,
-      workers: [],
-      created_at: new Date().toISOString(),
-      tmux_session: 'demo-session:0',
-      next_task_id: 2,
-      next_worker_index: 1,
-      leader_pane_id: '%0',
-      hud_pane_id: null,
-      resize_hook_name: null,
-      resize_hook_target: null,
-      worker_overrides: {
-        'worker-1': { agent: 'codeReviewer' },
-      },
-      resolved_routing: {
-        'code-reviewer': {
-          primary: { provider: 'codex', model: 'gpt-5.5' },
-          fallback: { provider: 'claude', model: 'claude-sonnet-4-5' },
-        },
-      },
-    });
-
-    const result = await scaleUp(
-      'demo-team',
-      1,
-      'claude',
-      [{ subject: 'demo', description: 'demo task' }],
-      cwd,
-      { OMC_TEAM_SCALING_ENABLED: '1' } as NodeJS.ProcessEnv,
-    );
-
-    expect(result).toMatchObject({ ok: true, newWorkerCount: 1, nextWorkerIndex: 2 });
-    expect(modelContractMocks.buildWorkerArgv).toHaveBeenCalledWith('codex', {
-      teamName: 'demo-team',
-      workerName: 'worker-1',
-      cwd: resolve(cwd),
-      model: 'gpt-5.5',
-      extraFlags: [],
-    });
-    expect(monitorMocks.saveTeamConfig).toHaveBeenCalledWith(expect.objectContaining({
-      workers: [expect.objectContaining({ name: 'worker-1', role: 'code-reviewer' })],
-    }), resolve(cwd));
   });
 
   it('rolls back a pending worktree when scale-up fails before worker config is saved', async () => {

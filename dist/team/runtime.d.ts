@@ -1,5 +1,4 @@
 import type { CliAgentType } from './model-contract.js';
-import type { TeamWorkerIntegrationState } from './types.js';
 export interface TeamConfig {
     teamName: string;
     workerCount: number;
@@ -52,7 +51,6 @@ export interface TeamSnapshot {
         failed: number;
     };
     deadWorkers: string[];
-    integrationByWorker?: Record<string, TeamWorkerIntegrationState>;
     monitorPerformance: {
         listTasksMs: number;
         workerScanMs: number;
@@ -73,7 +71,7 @@ export declare function startTeam(config: TeamConfig): Promise<TeamRuntime>;
 /**
  * Monitor team: poll worker health, detect stalls, return snapshot.
  */
-export declare function monitorTeam(teamName: string, cwd: string, workerPaneIds?: string[]): Promise<TeamSnapshot>;
+export declare function monitorTeam(teamName: string, cwd: string, workerPaneIds: string[]): Promise<TeamSnapshot>;
 /**
  * Runtime-owned worker watchdog/orchestrator loop.
  * Handles done.json completion, dead pane failures, and next-task spawning.

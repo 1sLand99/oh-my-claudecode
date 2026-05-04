@@ -1,4 +1,3 @@
-import type { TeamReminderIntent } from './reminder-intents.js';
 /**
  * Dispatch Queue - Low-level file-based dispatch request operations.
  *
@@ -8,7 +7,7 @@ import type { TeamReminderIntent } from './reminder-intents.js';
  * State file: .omc/state/team/{name}/dispatch/requests.json
  * Lock path:  .omc/state/team/{name}/dispatch/.lock/
  *
- * OMX-derived behavior adapted to OMC .omc state-root contracts.
+ * Mirrors OMX src/team/state/dispatch.ts behavior exactly.
  */
 
 import { randomUUID } from 'crypto';
@@ -45,7 +44,6 @@ export interface TeamDispatchRequest {
   delivered_at?: string;
   failed_at?: string;
   last_reason?: string;
-  intent?: TeamReminderIntent;
 }
 
 export interface TeamDispatchRequestInput {
@@ -59,7 +57,6 @@ export interface TeamDispatchRequestInput {
   transport_preference?: TeamDispatchTransportPreference;
   fallback_allowed?: boolean;
   last_reason?: string;
-  intent?: TeamReminderIntent;
 }
 
 // ── Lock constants ─────────────────────────────────────────────────────────
@@ -222,7 +219,6 @@ export function normalizeDispatchRequest(
     delivered_at: typeof raw.delivered_at === 'string' && raw.delivered_at !== '' ? raw.delivered_at : undefined,
     failed_at: typeof raw.failed_at === 'string' && raw.failed_at !== '' ? raw.failed_at : undefined,
     last_reason: typeof raw.last_reason === 'string' && raw.last_reason !== '' ? raw.last_reason : undefined,
-    intent: typeof raw.intent === 'string' ? raw.intent : undefined,
   };
 }
 

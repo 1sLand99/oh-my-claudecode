@@ -1,1 +1,0 @@
-{"version":3,"file":"mailbox.d.ts","sourceRoot":"","sources":["../../../src/team/state/mailbox.ts"],"names":[],"mappings":"AAAA,YAAY,EAAE,kBAAkB,EAAE,WAAW,EAAE,MAAM,aAAa,CAAC;AACnE,OAAO,EAAE,iBAAiB,EAAE,gBAAgB,EAAE,oBAAoB,EAAE,mBAAmB,EAAE,mBAAmB,EAAE,MAAM,aAAa,CAAC;AAClI,wBAAgB,6BAA6B,CAAC,CAAC,EAAE,MAAM,EAAE,CAAC,GAAG,CAAC,CAAmB"}

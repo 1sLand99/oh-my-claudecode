@@ -1,27 +1,26 @@
-export interface AllocationTaskInput {
-  id?: string;
+// src/team/allocation-policy.ts
+
+/**
+ * Task allocation policy for team worker assignment.
+ *
+ * Handles two distribution strategies:
+ * - Uniform role pool: round-robin by current load (avoids piling on worker-1)
+ * - Mixed roles: score by role match + load balancing
+ */
+
+export interface TaskAllocationInput {
+  id: string;
   subject: string;
   description: string;
+  /** Desired role hint (from role-router or explicit assignment) */
   role?: string;
-  blocked_by?: string[];
-  filePaths?: string[];
-  domains?: string[];
 }
 
-export interface AllocationWorkerInput {
+export interface WorkerAllocationInput {
   name: string;
-  role?: string;
-  currentLoad?: number;
+  role: string;
+  currentLoad: number;
 }
-
-export interface AllocationDecision {
-  owner: string;
-  reason: string;
-}
-
-// Backward-compatible aliases retained for OMC callers/tests.
-export type TaskAllocationInput = AllocationTaskInput & { id: string };
-export type WorkerAllocationInput = AllocationWorkerInput & { role: string; currentLoad: number };
 
 export interface AllocationResult {
   taskId: string;
@@ -29,191 +28,112 @@ export interface AllocationResult {
   reason: string;
 }
 
-type AssignmentHint = {
-  owner: string;
-  role?: string;
-  subject?: string;
-  description?: string;
-  filePaths?: string[];
-  domains?: string[];
-};
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
 
-interface WorkerAllocationState extends AllocationWorkerInput {
-  assignedCount: number;
-  primaryRole?: string;
-  scopeHints: Set<string>;
-}
-
-const FILE_PATH_PATTERN = /(?:^|[\s("'])((?:src|scripts|docs|prompts|skills|templates|native|crates)\/[A-Za-z0-9._/-]+)/g;
-const DOMAIN_STOP_WORDS = new Set([
-  'a', 'an', 'and', 'the', 'for', 'with', 'into', 'from', 'then', 'than', 'that', 'this', 'those', 'these',
-  'work', 'task', 'tasks', 'implement', 'implementation', 'continue', 'additional', 'update', 'fix', 'lane',
-  'runtime', 'tests', 'test', 'worker', 'workers', 'leader', 'team', 'plan', 'approved', 'supporting',
-  'needed', 'focus', 'prefer', 'plus', 'related', 'files', 'file', 'code', 'notify', 'description',
-  'src', 'scripts', 'docs', 'prompts', 'skills', 'templates', 'native', 'crates', 'team', 'index', 'test', 'spec',
-]);
-
-function normalizeHint(value: string): string | null {
-  const normalized = value.trim().toLowerCase();
-  return normalized.length >= 3 ? normalized : null;
-}
-
-function collectPathHints(pathValue: string, target: Set<string>): void {
-  const normalizedPath = normalizeHint(pathValue.replace(/^[./]+/, ''));
-  if (!normalizedPath) return;
-  target.add(`path:${normalizedPath}`);
-
-  const basename = normalizedPath.split('/').pop() ?? normalizedPath;
-  const basenameStem = basename.replace(/\.[^.]+$/, '');
-  const normalizedStem = normalizeHint(basenameStem);
-  if (normalizedStem) target.add(`domain:${normalizedStem}`);
-}
-
-function collectDomainHints(value: string, target: Set<string>): void {
-  const words = value.toLowerCase().match(/[a-z][a-z0-9_-]{2,}/g) ?? [];
-  for (const word of words) {
-    if (!DOMAIN_STOP_WORDS.has(word)) target.add(`domain:${word}`);
-  }
-}
-
-function extractTaskHints(task: AllocationTaskInput): Set<string> {
-  const hints = new Set<string>();
-
-  for (const pathValue of task.filePaths ?? []) collectPathHints(pathValue, hints);
-  for (const domain of task.domains ?? []) collectDomainHints(domain, hints);
-
-  const text = `${task.subject}\n${task.description}`;
-  for (const match of text.matchAll(FILE_PATH_PATTERN)) {
-    if (match[1]) collectPathHints(match[1], hints);
-  }
-  collectDomainHints(text, hints);
-
-  return hints;
-}
-
-function countHintOverlap(taskHints: Set<string>, workerHints: Set<string>): number {
-  let overlap = 0;
-  for (const hint of taskHints) {
-    if (workerHints.has(hint)) overlap += hint.startsWith('path:') ? 3 : 1;
-  }
-  return overlap;
-}
-
-function scoreWorker(
-  task: AllocationTaskInput,
-  worker: WorkerAllocationState,
-  taskHints: Set<string>,
-  uniformRolePool = false,
-): number {
-  let score = 0;
-  const taskRole = task.role?.trim();
-  const workerRole = worker.role?.trim();
-
-  if (!uniformRolePool) {
-    if (taskRole && worker.primaryRole === taskRole) score += 18;
-    if (taskRole && workerRole === taskRole) score += 12;
-    if (taskRole && !worker.primaryRole && worker.assignedCount === 0) score += 9;
-  }
-
-  const overlap = countHintOverlap(taskHints, worker.scopeHints);
-  if (overlap > 0) score += overlap * 4;
-  if (taskHints.size > 0 && overlap === 0 && worker.scopeHints.size > 0) score -= 3;
-
-  score -= worker.assignedCount * 4;
-
-  if ((task.blocked_by?.length ?? 0) > 0) {
-    score -= worker.assignedCount;
-  }
-
-  return score;
-}
-
-export function chooseTaskOwner(
-  task: AllocationTaskInput,
-  workers: AllocationWorkerInput[],
-  currentAssignments: AssignmentHint[],
-): AllocationDecision {
-  if (workers.length === 0) {
-    throw new Error('at least one worker is required for allocation');
-  }
-
-  const taskHints = extractTaskHints(task);
-  const workerState = workers.map<WorkerAllocationState>((worker) => {
-    const assigned = currentAssignments.filter((item) => item.owner === worker.name);
-    const primaryRole = assigned.find((item) => item.role)?.role;
-    const scopeHints = new Set<string>();
-    for (const item of assigned) {
-      const itemHints = extractTaskHints({
-        subject: item.subject ?? '',
-        description: item.description ?? '',
-        role: item.role,
-        filePaths: item.filePaths,
-        domains: item.domains,
-      });
-      for (const hint of itemHints) scopeHints.add(hint);
-    }
-    return {
-      ...worker,
-      assignedCount: (worker.currentLoad ?? 0) + assigned.length,
-      primaryRole,
-      scopeHints,
-    };
-  });
-
-  const uniformRolePool = Boolean(task.role?.trim())
-    && workerState.length > 0
-    && workerState.every((worker) => worker.role?.trim() === task.role?.trim());
-
-  const ranked = workerState
-    .map((worker, index) => ({
-      worker,
-      index,
-      score: scoreWorker(task, worker, taskHints, uniformRolePool),
-      overlap: countHintOverlap(taskHints, worker.scopeHints),
-    }))
-    .sort((left, right) => {
-      if (right.score !== left.score) return right.score - left.score;
-      if (right.overlap !== left.overlap) return right.overlap - left.overlap;
-      if (left.worker.assignedCount !== right.worker.assignedCount) {
-        return left.worker.assignedCount - right.worker.assignedCount;
-      }
-      return left.index - right.index;
-    });
-
-  const selected = ranked[0]?.worker ?? workerState[0];
-  const selectedOverlap = ranked[0]?.overlap ?? 0;
-  const reasons: string[] = [];
-  if (task.role && selected.primaryRole === task.role) reasons.push(`keeps ${task.role} work grouped`);
-  else if (task.role && selected.role === task.role) reasons.push(`matches worker role ${selected.role}`);
-  else reasons.push('balances current load');
-
-  if (selectedOverlap > 0) reasons.push('preserves low-overlap file/domain ownership');
-  if ((task.blocked_by?.length ?? 0) > 0) reasons.push('keeps blocked work on a lighter lane');
-
-  return {
-    owner: selected.name,
-    reason: reasons.join('; '),
-  };
-}
-
-export function allocateTasksToWorkers<T extends AllocationTaskInput>(
-  tasks: T[],
-  workers: AllocationWorkerInput[],
-): Array<T & { owner: string; allocation_reason: string; taskId: string; workerName: string; reason: string }> {
+/**
+ * Allocate tasks to workers using role-aware load balancing.
+ *
+ * When all workers share the same role (uniform pool), tasks are distributed
+ * round-robin ordered by current load so no single worker is overloaded.
+ *
+ * When the pool is mixed, tasks are scored by role match + load penalty.
+ */
+export function allocateTasksToWorkers(
+  tasks: TaskAllocationInput[],
+  workers: WorkerAllocationInput[]
+): AllocationResult[] {
   if (tasks.length === 0 || workers.length === 0) return [];
 
-  const assignments: Array<T & { owner: string; allocation_reason: string; taskId: string; workerName: string; reason: string }> = [];
-  for (const task of tasks) {
-    const decision = chooseTaskOwner(task, workers, assignments);
-    const taskId = task.id ?? '';
-    assignments.push({
-      ...task,
-      owner: decision.owner,
-      allocation_reason: decision.reason,
-      taskId,
-      workerName: decision.owner,
-      reason: decision.reason,
-    });
+  const uniformRolePool = isUniformRolePool(workers);
+  const results: AllocationResult[] = [];
+  // Track in-flight assignments to keep load estimates current
+  const loadMap = new Map<string, number>(workers.map(w => [w.name, w.currentLoad]));
+
+  if (uniformRolePool) {
+    for (const task of tasks) {
+      const target = pickLeastLoaded(workers, loadMap);
+      results.push({
+        taskId: task.id,
+        workerName: target.name,
+        reason: `uniform pool round-robin (role=${target.role}, load=${loadMap.get(target.name)})`,
+      });
+      loadMap.set(target.name, (loadMap.get(target.name) ?? 0) + 1);
+    }
+  } else {
+    for (const task of tasks) {
+      const target = pickBestWorker(task, workers, loadMap);
+      results.push({
+        taskId: task.id,
+        workerName: target.name,
+        reason: `role match (task.role=${task.role ?? 'any'}, worker.role=${target.role}, load=${loadMap.get(target.name)})`,
+      });
+      loadMap.set(target.name, (loadMap.get(target.name) ?? 0) + 1);
+    }
   }
-  return assignments;
+
+  return results;
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true when all workers share the same role.
+ */
+function isUniformRolePool(workers: WorkerAllocationInput[]): boolean {
+  if (workers.length === 0) return true;
+  const firstRole = workers[0].role;
+  return workers.every(w => w.role === firstRole);
+}
+
+/**
+ * Pick the worker with the lowest current load (ties broken by array order).
+ */
+function pickLeastLoaded(
+  workers: WorkerAllocationInput[],
+  loadMap: Map<string, number>
+): WorkerAllocationInput {
+  let best = workers[0];
+  let bestLoad = loadMap.get(best.name) ?? 0;
+
+  for (const w of workers) {
+    const load = loadMap.get(w.name) ?? 0;
+    if (load < bestLoad) {
+      best = w;
+      bestLoad = load;
+    }
+  }
+
+  return best;
+}
+
+/**
+ * Score each worker by role match + load penalty, pick the best.
+ *
+ * Scoring:
+ * - Role exact match: +1.0
+ * - No role hint on task (any worker acceptable): +0.5 base
+ * - Load penalty: -0.2 per unit of current load
+ */
+function pickBestWorker(
+  task: TaskAllocationInput,
+  workers: WorkerAllocationInput[],
+  loadMap: Map<string, number>
+): WorkerAllocationInput {
+  const scored = workers.map(w => {
+    const load = loadMap.get(w.name) ?? 0;
+    const roleScore = task.role
+      ? w.role === task.role ? 1.0 : 0.0
+      : 0.5; // no role hint — neutral
+    const score = roleScore - load * 0.2;
+    return { worker: w, score };
+  });
+
+  // Sort descending; stable tie-break by original array order (already stable in V8)
+  scored.sort((a, b) => b.score - a.score);
+
+  return scored[0].worker;
 }

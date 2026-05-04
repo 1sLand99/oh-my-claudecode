@@ -10,16 +10,14 @@
  */
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { appendFile, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { TeamPaths, absPath } from './state-paths.js';
 import { normalizeTeamManifest } from './governance.js';
 import { normalizeTeamGovernance } from './governance.js';
 import { isTerminalTeamTaskStatus, canTransitionTeamTaskStatus, } from './contracts.js';
-import { claimTask as claimTaskImpl, computeTaskReadiness as computeTaskReadinessImpl, transitionTaskStatus as transitionTaskStatusImpl, releaseTaskClaim as releaseTaskClaimImpl, listTasks as listTasksImpl, } from './state/tasks.js';
+import { claimTask as claimTaskImpl, transitionTaskStatus as transitionTaskStatusImpl, releaseTaskClaim as releaseTaskClaimImpl, listTasks as listTasksImpl, } from './state/tasks.js';
 import { canonicalizeTeamConfigWorkers } from './worker-canonicalization.js';
-export const DEFAULT_MAX_WORKERS = 20;
-export const ABSOLUTE_MAX_WORKERS = 20;
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
@@ -73,7 +71,6 @@ function isTeamTask(value) {
 // Simple file-based lock (best-effort, non-blocking)
 async function withLock(lockDir, fn) {
     const STALE_MS = 30_000;
-    await mkdir(dirname(lockDir), { recursive: true });
     try {
         await mkdir(lockDir, { recursive: false });
     }
@@ -174,18 +171,6 @@ function mergeTeamConfigSources(config, manifest) {
         max_workers: Math.max(config.max_workers ?? 0, 20),
     });
 }
-export async function teamInit(config, cwd) {
-    await teamSaveConfig(config, cwd);
-    await mkdir(absPath(cwd, TeamPaths.tasks(config.name)), { recursive: true });
-    await mkdir(absPath(cwd, TeamPaths.workers(config.name)), { recursive: true });
-    await mkdir(absPath(cwd, join(TeamPaths.root(config.name), 'claims')), { recursive: true });
-    await mkdir(absPath(cwd, join(TeamPaths.root(config.name), 'mailbox')), { recursive: true });
-    await mkdir(absPath(cwd, join(TeamPaths.root(config.name), 'events')), { recursive: true });
-    await Promise.all(config.workers.map((worker) => mkdir(absPath(cwd, TeamPaths.workerDir(config.name, worker.name)), { recursive: true })));
-}
-export async function teamSaveConfig(config, cwd) {
-    await writeAtomic(absPath(cwd, TeamPaths.config(config.name)), JSON.stringify(config, null, 2));
-}
 export async function teamReadConfig(teamName, cwd) {
     const [manifest, config] = await Promise.all([
         teamReadManifest(teamName, cwd),
@@ -198,22 +183,6 @@ export async function teamReadManifest(teamName, cwd) {
     const manifest = await readJsonSafe(manifestPath);
     return manifest ? normalizeTeamManifest(manifest) : null;
 }
-export async function teamWriteManifest(manifest, cwd) {
-    await writeAtomic(absPath(cwd, TeamPaths.manifest(manifest.name)), JSON.stringify(manifest, null, 2));
-}
-export async function teamMigrateV1ToV2(teamName, cwd) {
-    return teamReadManifest(teamName, cwd);
-}
-export function teamNormalizePolicy(policy) {
-    return {
-        display_mode: policy?.display_mode ?? 'split_pane',
-        worker_launch_mode: policy?.worker_launch_mode ?? 'prompt',
-        dispatch_mode: policy?.dispatch_mode ?? 'hook_preferred_with_fallback',
-        dispatch_ack_timeout_ms: policy?.dispatch_ack_timeout_ms ?? 15_000,
-        ...normalizeTeamGovernance(undefined, policy),
-    };
-}
-export { normalizeTeamGovernance as teamNormalizeGovernance };
 export async function teamCleanup(teamName, cwd) {
     await rm(teamDir(teamName, cwd), { recursive: true, force: true });
 }
@@ -346,14 +315,8 @@ export async function teamClaimTask(teamName, taskId, workerName, expectedVersio
         writeAtomic,
     });
 }
-export async function teamComputeTaskReadiness(teamName, taskId, cwd) {
-    return computeTaskReadinessImpl(teamName, taskId, cwd, { readTask: teamReadTask });
-}
-export async function teamReclaimExpiredTaskClaim() {
-    return { ok: false, error: 'not_supported' };
-}
-export async function teamTransitionTaskStatus(teamName, taskId, from, to, claimToken, cwd, terminalData) {
-    return transitionTaskStatusImpl(taskId, from, to, claimToken, terminalData, {
+export async function teamTransitionTaskStatus(teamName, taskId, from, to, claimToken, cwd) {
+    return transitionTaskStatusImpl(taskId, from, to, claimToken, {
         teamName,
         cwd,
         readTask: teamReadTask,
@@ -459,12 +422,6 @@ async function writeMailbox(teamName, workerName, mailbox, cwd) {
 export async function teamSendMessage(teamName, fromWorker, toWorker, body, cwd) {
     return withMailboxLock(teamName, toWorker, cwd, async () => {
         const mailbox = await readMailbox(teamName, toWorker, cwd);
-        const existing = mailbox.messages.find((candidate) => candidate.from_worker === fromWorker
-            && candidate.to_worker === toWorker
-            && candidate.body === body
-            && !candidate.delivered_at);
-        if (existing)
-            return existing;
         const message = {
             message_id: randomUUID(),
             from_worker: fromWorker,
@@ -520,63 +477,6 @@ export async function teamMarkMessageNotified(teamName, workerName, messageId, c
         await writeMailbox(teamName, workerName, mailbox, cwd);
         return true;
     });
-}
-export async function teamEnqueueDispatchRequest(teamName, input, cwd) {
-    const request = {
-        request_id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        kind: input.kind,
-        team_name: teamName,
-        to_worker: input.to_worker,
-        worker_index: input.worker_index,
-        pane_id: input.pane_id,
-        trigger_message: input.trigger_message,
-        message_id: input.message_id,
-        inbox_correlation_key: input.inbox_correlation_key,
-        transport_preference: input.transport_preference ?? 'hook_preferred_with_fallback',
-        fallback_allowed: input.fallback_allowed ?? true,
-        status: 'pending',
-        attempt_count: 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        last_reason: input.last_reason,
-        intent: input.intent,
-    };
-    const p = absPath(cwd, join(TeamPaths.root(teamName), 'dispatch', `${request.request_id}.json`));
-    await writeAtomic(p, JSON.stringify(request, null, 2));
-    return request;
-}
-export async function teamListDispatchRequests(teamName, cwd) {
-    const dir = absPath(cwd, join(TeamPaths.root(teamName), 'dispatch'));
-    try {
-        const entries = (await readdir(dir)).filter((file) => file.endsWith('.json'));
-        const requests = await Promise.all(entries.map((file) => readJsonSafe(join(dir, file))));
-        return requests.filter((request) => Boolean(request));
-    }
-    catch {
-        return [];
-    }
-}
-export async function teamReadDispatchRequest(teamName, requestId, cwd) {
-    return readJsonSafe(absPath(cwd, join(TeamPaths.root(teamName), 'dispatch', `${requestId}.json`)));
-}
-export async function teamTransitionDispatchRequest(teamName, requestId, status, patch, cwd) {
-    const current = await teamReadDispatchRequest(teamName, requestId, cwd);
-    if (!current)
-        return null;
-    const updated = { ...current, ...patch, status, updated_at: new Date().toISOString() };
-    await writeAtomic(absPath(cwd, join(TeamPaths.root(teamName), 'dispatch', `${requestId}.json`)), JSON.stringify(updated, null, 2));
-    return updated;
-}
-export async function teamMarkDispatchRequestNotified(teamName, requestId, cwd) {
-    return teamTransitionDispatchRequest(teamName, requestId, 'notified', { notified_at: new Date().toISOString() }, cwd);
-}
-export async function teamMarkDispatchRequestDelivered(teamName, requestId, cwd) {
-    return teamTransitionDispatchRequest(teamName, requestId, 'delivered', { delivered_at: new Date().toISOString() }, cwd);
-}
-export function resolveDispatchLockTimeoutMs(env = process.env) {
-    const raw = env.OMC_TEAM_DISPATCH_LOCK_TIMEOUT_MS ?? env.OMX_TEAM_DISPATCH_LOCK_TIMEOUT_MS;
-    const parsed = raw ? Number(raw) : Number.NaN;
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 5_000;
 }
 // ---------------------------------------------------------------------------
 // Events
@@ -711,22 +611,6 @@ export async function teamReadMonitorSnapshot(teamName, cwd) {
 export async function teamWriteMonitorSnapshot(teamName, snapshot, cwd) {
     const p = absPath(cwd, TeamPaths.monitorSnapshot(teamName));
     await writeAtomic(p, JSON.stringify(snapshot, null, 2));
-}
-export async function teamReadPhase(teamName, cwd) {
-    return readJsonSafe(absPath(cwd, TeamPaths.phaseState(teamName)));
-}
-export async function teamWritePhase(teamName, phase, cwd) {
-    await writeAtomic(absPath(cwd, TeamPaths.phaseState(teamName)), JSON.stringify(phase, null, 2));
-}
-export async function teamReadLeaderAttention() { return null; }
-export async function teamWriteLeaderAttention() { }
-export async function teamMarkLeaderSessionStopped() { }
-export async function teamMarkOwnedTeamsLeaderSessionStopped() { }
-export async function teamWriteWorkerStatus(teamName, workerName, status, cwd) {
-    await writeAtomic(absPath(cwd, TeamPaths.workerStatus(teamName, workerName)), JSON.stringify(status, null, 2));
-}
-export async function teamWithScalingLock(_teamName, _cwd, fn) {
-    return fn();
 }
 // Atomic write re-export for other modules
 export { writeAtomic };

@@ -21,12 +21,7 @@ function workerPriority(worker: WorkerInfo): number {
   return 0;
 }
 
-function mergeUniqueStrings(primary: string[] | undefined, secondary: string[] | undefined): string[] {
-  return mergeUniqueStringsOptional(primary, secondary) ?? [];
-}
-
-function mergeUniqueStringsOptional(primary: string[] | undefined, secondary: string[] | undefined): string[] | undefined {
-  if (!Array.isArray(primary) && !Array.isArray(secondary)) return undefined;
+function mergeAssignedTasks(primary: string[] | undefined, secondary: string[] | undefined): string[] {
   const merged: string[] = [];
   for (const taskId of [...(primary ?? []), ...(secondary ?? [])]) {
     if (typeof taskId !== 'string' || taskId.trim() === '' || merged.includes(taskId)) continue;
@@ -83,7 +78,7 @@ export function canonicalizeWorkers(workers: WorkerInfo[]): WorkerCanonicalizati
     byName.set(name, {
       ...winner,
       name,
-      assigned_tasks: mergeUniqueStrings(winner.assigned_tasks, loser.assigned_tasks),
+      assigned_tasks: mergeAssignedTasks(winner.assigned_tasks, loser.assigned_tasks),
       pane_id: backfillText(winner.pane_id, loser.pane_id),
       pid: backfillNumber(winner.pid, loser.pid),
       index: backfillNumber(winner.index, loser.index, (value) => value > 0) ?? 0,
@@ -96,8 +91,6 @@ export function canonicalizeWorkers(workers: WorkerInfo[]): WorkerCanonicalizati
       worktree_detached: backfillBoolean(winner.worktree_detached, loser.worktree_detached),
       worktree_created: backfillBoolean(winner.worktree_created, loser.worktree_created),
       team_state_root: backfillText(winner.team_state_root, loser.team_state_root),
-      team_root: backfillText(winner.team_root, loser.team_root),
-      task_scope: mergeUniqueStringsOptional(winner.task_scope, loser.task_scope),
     });
   }
 

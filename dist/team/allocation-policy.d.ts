@@ -1,48 +1,34 @@
-export interface AllocationTaskInput {
-    id?: string;
+/**
+ * Task allocation policy for team worker assignment.
+ *
+ * Handles two distribution strategies:
+ * - Uniform role pool: round-robin by current load (avoids piling on worker-1)
+ * - Mixed roles: score by role match + load balancing
+ */
+export interface TaskAllocationInput {
+    id: string;
     subject: string;
     description: string;
+    /** Desired role hint (from role-router or explicit assignment) */
     role?: string;
-    blocked_by?: string[];
-    filePaths?: string[];
-    domains?: string[];
 }
-export interface AllocationWorkerInput {
+export interface WorkerAllocationInput {
     name: string;
-    role?: string;
-    currentLoad?: number;
-}
-export interface AllocationDecision {
-    owner: string;
-    reason: string;
-}
-export type TaskAllocationInput = AllocationTaskInput & {
-    id: string;
-};
-export type WorkerAllocationInput = AllocationWorkerInput & {
     role: string;
     currentLoad: number;
-};
+}
 export interface AllocationResult {
     taskId: string;
     workerName: string;
     reason: string;
 }
-type AssignmentHint = {
-    owner: string;
-    role?: string;
-    subject?: string;
-    description?: string;
-    filePaths?: string[];
-    domains?: string[];
-};
-export declare function chooseTaskOwner(task: AllocationTaskInput, workers: AllocationWorkerInput[], currentAssignments: AssignmentHint[]): AllocationDecision;
-export declare function allocateTasksToWorkers<T extends AllocationTaskInput>(tasks: T[], workers: AllocationWorkerInput[]): Array<T & {
-    owner: string;
-    allocation_reason: string;
-    taskId: string;
-    workerName: string;
-    reason: string;
-}>;
-export {};
+/**
+ * Allocate tasks to workers using role-aware load balancing.
+ *
+ * When all workers share the same role (uniform pool), tasks are distributed
+ * round-robin ordered by current load so no single worker is overloaded.
+ *
+ * When the pool is mixed, tasks are scored by role match + load penalty.
+ */
+export declare function allocateTasksToWorkers(tasks: TaskAllocationInput[], workers: WorkerAllocationInput[]): AllocationResult[];
 //# sourceMappingURL=allocation-policy.d.ts.map

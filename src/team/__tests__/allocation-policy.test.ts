@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { allocateTasksToWorkers, chooseTaskOwner } from '../allocation-policy.js';
+import { allocateTasksToWorkers } from '../allocation-policy.js';
 import type { TaskAllocationInput, WorkerAllocationInput } from '../allocation-policy.js';
 
 function makeTask(id: string, role?: string): TaskAllocationInput {
@@ -145,51 +145,5 @@ describe('allocation-policy', () => {
         expect(r.reason.length).toBeGreaterThan(0);
       }
     });
-  it('chooses matching worker role through the OMX chooseTaskOwner API', () => {
-    const decision = chooseTaskOwner(
-      { subject: 'write docs', description: 'document the feature', role: 'writer' },
-      [
-        { name: 'worker-1', role: 'executor' },
-        { name: 'worker-2', role: 'writer' },
-      ],
-      [],
-    );
-
-    expect(decision.owner).toBe('worker-2');
-    expect(decision.reason).toMatch(/matches worker role writer/);
-  });
-
-  it('clusters related file-path work on the same worker to reduce overlap', () => {
-    const assignments = allocateTasksToWorkers(
-      [
-        {
-          subject: 'Runtime integration lane',
-          description: 'Implement incremental integration in src/team/runtime.ts and src/team/mcp-comm.ts',
-          role: 'executor',
-        },
-        {
-          subject: 'Runtime follow-up lane',
-          description: 'Add more runtime coverage for src/team/runtime.ts conflict handling',
-          role: 'executor',
-        },
-        {
-          subject: 'Allocation lane',
-          description: 'Adjust heuristics in src/team/allocation-policy.ts',
-          role: 'executor',
-        },
-      ],
-      [
-        { name: 'worker-1', role: 'executor' },
-        { name: 'worker-2', role: 'executor' },
-        { name: 'worker-3', role: 'executor' },
-      ],
-    );
-
-    expect(assignments[0].owner).toBe('worker-1');
-    expect(assignments[1].owner).toBe('worker-1');
-    expect(assignments[2].owner).toBe('worker-2');
-    expect(assignments[1].allocation_reason).toMatch(/low-overlap file\/domain ownership/);
-  });
-
   });
 });

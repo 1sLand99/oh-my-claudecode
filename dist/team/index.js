@@ -24,20 +24,6 @@ export { checkMergeConflicts, mergeWorkerBranch, mergeAllWorkerBranches, } from 
 export { generateTeamReport, saveTeamReport } from './summary-report.js';
 export { isPathAllowed, isCommandAllowed, formatPermissionInstructions, getDefaultPermissions, } from './permissions.js';
 export { TeamPaths, absPath, teamStateRoot } from './state-paths.js';
-export { resolveCanonicalTeamStateRoot, resolveWorkerTeamStateRoot, resolveWorkerNotifyTeamStateRoot, resolveWorkerTeamStateRootPath, resolveWorkerNotifyTeamStateRootPath, } from './state-root.js';
-export { TEAM_REMINDER_INTENTS, isTeamReminderIntent, resolveLeaderNudgeIntent, } from './reminder-intents.js';
-export { parseTeamDagHandoff, readTeamDagHandoffForLatestPlan, } from './dag-schema.js';
-export { appendTeamDeliveryLog, appendTeamDeliveryLogForCwd, teamDeliveryLogPath, } from './delivery-log.js';
-export { buildRebalanceDecisions } from './rebalance-policy.js';
-export { synthesizeDelegationPlan } from './delegation-policy.js';
-export { assertCurrentTaskBranchAvailable, findActiveCurrentTaskByBranch, listActiveCurrentTasks, readCurrentTaskBaseline, upsertCurrentTaskBaseline, } from './current-task-baseline.js';
-export { isLeaderRuntimeStale, leaderRuntimeActivityPath, readBranchGitActivityMsForPath, readLatestLeaderActivityMsFromStateDir, readLeaderRuntimeSignalStatuses, recordLeaderRuntimeActivity, } from './leader-activity.js';
-export { readLatestTeamProgressEvidenceMs } from './progress-evidence.js';
-export { appendTeamCommitHygieneEntries, buildTeamCommitHygieneContext, readTeamCommitHygieneLedger, renderTeamCommitHygieneMarkdown, resolveTeamCommitHygieneArtifactCwd, resolveTeamCommitHygieneArtifactPaths, TEAM_OPERATIONAL_COMMIT_KINDS, TEAM_OPERATIONAL_COMMIT_STATUSES, writeTeamCommitHygieneContext, } from './commit-hygiene.js';
-export { buildRepoAwareTeamExecutionPlan, remapRepoAwareDecompositionMetadataToCreatedTasks, } from './repo-aware-decomposition.js';
-export { assertCleanLeaderWorkspaceForWorkerWorktrees, ensureWorktree, isGitRepository, isWorktreeDirty, parseWorktreeMode, planWorktreeTarget, readWorkspaceStatusLines, removeWorktreeForce, rollbackProvisionedWorktrees, } from './worktree.js';
-export { canResumeTeamState, createTeamState, getPhaseAgents, getPhaseInstructions, isTerminalPhase as isTerminalTeamOrchestratorPhase, isValidTransition, transitionPhase as transitionTeamOrchestratorPhase, } from './orchestrator.js';
-export { readTeamPaneStatus } from './pane-status.js';
 export { checkSentinelReadiness, waitForSentinelReadiness, } from './sentinel-gate.js';
 export { getContract, isCliAvailable as isCliAvailableForAgent, validateCliAvailable as validateCliAvailableForAgent, buildLaunchArgs, buildWorkerCommand, parseCliOutput, 
 // Deprecated backward-compat exports kept for downstream consumers.

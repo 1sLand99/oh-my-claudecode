@@ -18,7 +18,6 @@ export declare function resolveInheritedModelFromEnv(): string | undefined;
 export declare function hasTierModelEnvOverrides(): boolean;
 export declare function getDefaultModelHigh(): string;
 export declare function getDefaultModelMedium(): string;
-export declare function getTeamChildModel(): string;
 export declare function getDefaultModelLow(): string;
 /**
  * Get all default tier models as a record.

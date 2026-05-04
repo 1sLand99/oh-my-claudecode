@@ -27,7 +27,7 @@ import { appendTeamEvent, emitMonitorDerivedEvents } from './events.js';
 import { DEFAULT_TEAM_GOVERNANCE, DEFAULT_TEAM_TRANSPORT_POLICY, getConfigGovernance, } from './governance.js';
 import { inferPhase } from './phase-controller.js';
 import { validateTeamName } from './team-name.js';
-import { buildWorkerArgv, getContract, resolveValidatedBinaryPath, getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs, resolveAgentReasoningEffort, resolveClaudeWorkerModel, resolveWorkerLaunchExtraFlags, } from './model-contract.js';
+import { buildWorkerArgv, getContract, resolveValidatedBinaryPath, getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs, resolveClaudeWorkerModel, } from './model-contract.js';
 import { createTeamSession, spawnWorkerInPane, sendToWorker, killTeamSession, waitForPaneReady, paneHasActiveTask, paneLooksReady, applyMainVerticalLayout, getWorkerLiveness, } from './tmux-session.js';
 import { composeInitialInbox, ensureWorkerStateDir, writeWorkerOverlay, generateTriggerMessage, generatePromptModeStartupPrompt, } from './worker-bootstrap.js';
 import { queueInboxInstruction } from './mcp-comm.js';
@@ -154,63 +154,6 @@ function resolveTaskAssignment(task, resolvedRouting, roleRoutingConfig, resolve
         role: canonical,
     };
 }
-function isCliAgentType(value) {
-    return value === 'claude' || value === 'codex' || value === 'gemini' || value === 'cursor';
-}
-function normalizeCanonicalWorkerRole(role) {
-    if (!role)
-        return null;
-    const knownAgentRoleAliases = {
-        codeReviewer: 'code-reviewer',
-        securityReviewer: 'security-reviewer',
-        testEngineer: 'test-engineer',
-        codeSimplifier: 'code-simplifier',
-        documentSpecialist: 'document-specialist',
-    };
-    const normalized = knownAgentRoleAliases[role] ?? normalizeDelegationRole(role);
-    return CANONICAL_TEAM_ROLES.includes(normalized)
-        ? normalized
-        : null;
-}
-function getWorkerOverride(overrides, workerName, workerIndex) {
-    if (!overrides)
-        return undefined;
-    return overrides[workerName] ?? overrides[String(workerIndex + 1)];
-}
-function applyWorkerOverride(base, override, resolvedRouting, resolvedBinaryPaths) {
-    if (!override)
-        return { ...base, extraFlags: [] };
-    const overrideRole = normalizeCanonicalWorkerRole(override.role ?? override.agent);
-    const routedPair = overrideRole ? resolvedRouting[overrideRole] : undefined;
-    let next = { ...base, ...(overrideRole ? { role: overrideRole } : {}) };
-    if (override.provider) {
-        if (!isCliAgentType(override.provider)) {
-            throw new Error(`Unsupported team.workerOverrides provider: ${override.provider}`);
-        }
-        next = { ...next, agentType: override.provider };
-    }
-    else if (routedPair) {
-        const primaryProvider = routedPair.primary.provider;
-        const chosen = isCliAgentType(primaryProvider) && resolvedBinaryPaths[primaryProvider]
-            ? routedPair.primary
-            : routedPair.fallback;
-        if (isCliAgentType(chosen.provider)) {
-            next = { ...next, agentType: chosen.provider, model: chosen.model };
-        }
-    }
-    if (override.model && override.model.trim().length > 0) {
-        next = { ...next, model: override.model.trim() };
-    }
-    const extraFlags = Array.isArray(override.extraFlags)
-        ? override.extraFlags.filter((flag) => typeof flag === 'string' && flag.trim().length > 0)
-        : [];
-    const reasoning = override.reasoning;
-    return {
-        ...next,
-        extraFlags,
-        ...(reasoning ? { reasoning } : {}),
-    };
-}
 function sanitizeTeamName(name) {
     const sanitized = name.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 30);
     if (!sanitized)
@@ -277,29 +220,6 @@ function getTaskDependencyIds(task) {
 function getMissingDependencyIds(task, taskById) {
     return getTaskDependencyIds(task).filter((dependencyId) => !taskById.has(dependencyId));
 }
-async function reclaimExpiredInProgressTasks(teamName, cwd, tasks) {
-    const now = Date.now();
-    const recommendations = [];
-    const updatedTasks = [];
-    for (const task of tasks) {
-        const leaseUntil = task.claim?.leased_until;
-        if (task.status !== 'in_progress' || !leaseUntil || Number.isNaN(Date.parse(leaseUntil)) || Date.parse(leaseUntil) > now) {
-            updatedTasks.push(task);
-            continue;
-        }
-        const reopened = {
-            ...task,
-            status: 'pending',
-            owner: undefined,
-            claim: undefined,
-            version: (task.version ?? 1) + 1,
-        };
-        await writeFile(absPath(cwd, TeamPaths.taskFile(teamName, task.id)), JSON.stringify(reopened, null, 2));
-        recommendations.push(`Reclaimed expired claim for task-${task.id}; returned task to pending`);
-        updatedTasks.push(reopened);
-    }
-    return { tasks: updatedTasks, recommendations };
-}
 // ---------------------------------------------------------------------------
 // V2 task instruction builder — CLI API lifecycle, NO done.json
 // ---------------------------------------------------------------------------
@@ -309,7 +229,7 @@ async function reclaimExpiredInProgressTasks(teamName, cwd, tasks) {
  */
 function buildV2TaskInstruction(teamName, workerName, task, taskId, cliOutputContract) {
     const claimTaskCommand = formatOmcCliInvocation(`team api claim-task --input '${JSON.stringify({ team_name: teamName, task_id: taskId, worker: workerName })}' --json`, {});
-    const completeTaskCommand = formatOmcCliInvocation(`team api transition-task-status --input '${JSON.stringify({ team_name: teamName, task_id: taskId, from: 'in_progress', to: 'completed', claim_token: '<claim_token>', result: 'Summary: <what changed>\\nVerification: <tests/checks run>\\nSubagent skip reason: worker protocol forbids nested subagents; completed focused probe in-session' })}' --json`);
+    const completeTaskCommand = formatOmcCliInvocation(`team api transition-task-status --input '${JSON.stringify({ team_name: teamName, task_id: taskId, from: 'in_progress', to: 'completed', claim_token: '<claim_token>' })}' --json`);
     const failTaskCommand = formatOmcCliInvocation(`team api transition-task-status --input '${JSON.stringify({ team_name: teamName, task_id: taskId, from: 'in_progress', to: 'failed', claim_token: '<claim_token>' })}' --json`);
     return [
         `## REQUIRED: Task Lifecycle Commands`,
@@ -321,7 +241,6 @@ function buildV2TaskInstruction(teamName, workerName, task, taskId, cliOutputCon
         `2. Do the work described below.`,
         `3. On completion (use claim_token from step 1):`,
         `   ${completeTaskCommand}`,
-        `   The result field is required for completion evidence. For broad delegated tasks, include either "Subagent skip reason: <why no nested worker was needed/allowed>" or, only when explicitly allowed by the leader, "Subagent spawn evidence: <child task names/thread ids and integrated findings>".`,
         `4. On failure (use claim_token from step 1):`,
         `   ${failTaskCommand}`,
         `5. ACK/progress replies are not a stop signal. Keep executing your assigned or next feasible work until the task is actually complete or failed, then transition and exit.`,
@@ -429,27 +348,12 @@ async function spawnV2Worker(opts) {
         await composeInitialInbox(opts.teamName, opts.workerName, instruction, opts.cwd, cliOutputContract);
     }
     // Build env and launch command
-    const serializedTaskScope = (opts.taskScope ?? [])
-        .map((taskId) => taskId.trim())
-        .filter((taskId, index, all) => taskId.length > 0 && all.indexOf(taskId) === index)
-        .join(',');
     const envVars = {
-        ...getModelWorkerEnv(opts.teamName, opts.workerName, opts.agentType, process.env, {
-            leaderCwd: opts.cwd,
-            workerCwd: opts.workerCwd ?? opts.cwd,
-            teamStateRoot: teamStateRoot(opts.cwd, opts.teamName),
-            teamRoot: opts.teamRoot ?? opts.cwd,
-            taskScope: opts.taskScope,
-        }),
+        ...getModelWorkerEnv(opts.teamName, opts.workerName, opts.agentType),
         OMC_TEAM_STATE_ROOT: teamStateRoot(opts.cwd, opts.teamName),
-        OMX_TEAM_STATE_ROOT: teamStateRoot(opts.cwd, opts.teamName),
         OMC_TEAM_LEADER_CWD: opts.cwd,
-        OMX_TEAM_LEADER_CWD: opts.cwd,
-        OMC_TEAM_ROOT: opts.teamRoot ?? opts.cwd,
-        OMX_TEAM_ROOT: opts.teamRoot ?? opts.cwd,
-        ...(serializedTaskScope ? { OMC_TEAM_TASK_SCOPE: serializedTaskScope, OMX_TEAM_TASK_SCOPE: serializedTaskScope } : {}),
-        ...(opts.worktreePath ? { OMC_TEAM_WORKTREE_PATH: opts.worktreePath, OMX_TEAM_WORKTREE_PATH: opts.worktreePath } : {}),
-        ...(opts.workerCwd ? { OMC_TEAM_WORKER_CWD: opts.workerCwd, OMX_TEAM_WORKER_CWD: opts.workerCwd } : {}),
+        ...(opts.worktreePath ? { OMC_TEAM_WORKTREE_PATH: opts.worktreePath } : {}),
+        ...(opts.workerCwd ? { OMC_TEAM_WORKER_CWD: opts.workerCwd } : {}),
     };
     const resolvedBinaryPath = opts.resolvedBinaryPaths[opts.agentType]
         ?? resolveValidatedBinaryPath(opts.agentType);
@@ -472,14 +376,12 @@ async function spawnV2Worker(opts) {
         // Claude agents: resolve Bedrock/Vertex model when on those providers
         return resolveClaudeWorkerModel();
     })();
-    const workerExtraFlags = resolveWorkerLaunchExtraFlags(process.env, opts.launchExtraFlags ?? [], modelForAgent, opts.agentType === 'codex' ? (opts.reasoning ?? resolveAgentReasoningEffort(opts.role ?? undefined)) : undefined);
     const [launchBinary, ...launchArgs] = buildWorkerArgv(opts.agentType, {
         teamName: opts.teamName,
         workerName: opts.workerName,
         cwd: opts.workerCwd ?? opts.cwd,
         resolvedBinaryPath,
         model: modelForAgent,
-        extraFlags: workerExtraFlags,
     });
     // For prompt-mode agents (currently gemini), keep the full instruction in
     // inbox.md and pass only a short file-pointer prompt via CLI args. This
@@ -734,7 +636,6 @@ export async function startTeamV2(config) {
             status: 'pending',
             owner: null,
             result: null,
-            ...(config.tasks[i].delegation ? { delegation: config.tasks[i].delegation } : {}),
             created_at: new Date().toISOString(),
         }, null, 2), 'utf-8');
     }
@@ -786,17 +687,6 @@ export async function startTeamV2(config) {
             startupAllocations.push({ workerName: r.workerName, taskIndex: Number(r.taskId) });
         }
     }
-    const startupTaskScopes = new Map();
-    for (const name of workerNames)
-        startupTaskScopes.set(name, []);
-    for (const allocation of startupAllocations) {
-        const scope = startupTaskScopes.get(allocation.workerName);
-        if (!scope)
-            continue;
-        const taskId = String(allocation.taskIndex + 1);
-        if (!scope.includes(taskId))
-            scope.push(taskId);
-    }
     // Set up worker state dirs and overlays (with v2 CLI API instructions)
     try {
         for (let i = 0; i < workerNames.length; i++) {
@@ -847,7 +737,6 @@ export async function startTeamV2(config) {
             role: config.workerRoles?.[i]
                 ?? (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? 'claude'),
             assigned_tasks: [],
-            task_scope: startupTaskScopes.get(wName) ?? [],
             working_dir: worktree?.path ?? leaderCwd,
             team_state_root: teamStateRoot(leaderCwd, sanitized),
             ...(worktree ? {
@@ -881,10 +770,8 @@ export async function startTeamV2(config) {
         resize_hook_name: null,
         resize_hook_target: null,
         resolved_routing: resolvedRouting,
-        ...(pluginCfg.team?.workerOverrides ? { worker_overrides: pluginCfg.team.workerOverrides } : {}),
         workspace_mode: workspaceMode,
         worktree_mode: worktreeMode,
-        auto_merge: Boolean(config.autoMerge),
     };
     try {
         await saveTeamConfig(teamConfig, leaderCwd);
@@ -932,7 +819,6 @@ export async function startTeamV2(config) {
         resize_hook_name: null,
         resize_hook_target: null,
         next_worker_index: teamConfig.next_worker_index,
-        ...(teamConfig.worker_overrides ? { worker_overrides: teamConfig.worker_overrides } : {}),
     };
     try {
         await writeFile(absPath(leaderCwd, TeamPaths.manifest(sanitized)), JSON.stringify(teamManifest, null, 2), 'utf-8');
@@ -972,9 +858,7 @@ export async function startTeamV2(config) {
             // Falls back to the round-robin agentType when the inferred role is
             // outside the canonical vocabulary (preserves pre-patch behavior).
             const fallbackAgent = (agentTypes[workerIndex % agentTypes.length] ?? agentTypes[0] ?? 'claude');
-            const baseAssignment = resolveTaskAssignment(task, resolvedRouting, pluginCfg.team?.roleRouting, resolvedBinaryPaths, fallbackAgent);
-            const workerOverride = getWorkerOverride(teamConfig.worker_overrides, wName, workerIndex);
-            const assignment = applyWorkerOverride(baseAssignment, workerOverride, resolvedRouting, resolvedBinaryPaths);
+            const assignment = resolveTaskAssignment(task, resolvedRouting, pluginCfg.team?.roleRouting, resolvedBinaryPaths, fallbackAgent);
             const workerLaunch = await spawnV2Worker({
                 sessionName,
                 leaderPaneId,
@@ -988,14 +872,10 @@ export async function startTeamV2(config) {
                 cwd: leaderCwd,
                 workerCwd: workersInfo[workerIndex]?.working_dir ?? leaderCwd,
                 worktreePath: workersInfo[workerIndex]?.worktree_path,
-                teamRoot: leaderCwd,
-                taskScope: workersInfo[workerIndex]?.task_scope ?? [],
                 autoMerge: Boolean(config.autoMerge),
                 resolvedBinaryPaths,
                 ...(assignment.model ? { model: assignment.model } : {}),
                 ...(assignment.role ? { role: assignment.role } : {}),
-                ...(assignment.extraFlags.length > 0 ? { launchExtraFlags: assignment.extraFlags } : {}),
-                ...(assignment.reasoning ? { reasoning: assignment.reasoning } : {}),
             });
             if (workerLaunch.paneId) {
                 workerPaneIds.push(workerLaunch.paneId);
@@ -1004,8 +884,6 @@ export async function startTeamV2(config) {
                     workerInfo.pane_id = workerLaunch.paneId;
                     workerInfo.assigned_tasks = workerLaunch.startupAssigned ? [taskId] : [];
                     workerInfo.worker_cli = assignment.agentType;
-                    if (workerOverride && assignment.role)
-                        workerInfo.role = assignment.role;
                     if (workerLaunch.outputFile) {
                         workerInfo.output_file = workerLaunch.outputFile;
                     }
@@ -1401,9 +1279,7 @@ export async function monitorTeamV2(teamName, cwd) {
     const previousSnapshot = await readMonitorSnapshot(sanitized, cwd);
     // Load all tasks
     const listTasksStartMs = performance.now();
-    let allTasks = await listTasksFromFiles(sanitized, cwd);
-    const reclaimResult = await reclaimExpiredInProgressTasks(sanitized, cwd, allTasks);
-    allTasks = reclaimResult.tasks;
+    const allTasks = await listTasksFromFiles(sanitized, cwd);
     const listTasksMs = performance.now() - listTasksStartMs;
     const taskById = new Map(allTasks.map((task) => [task.id, task]));
     const inProgressByOwner = new Map();
@@ -1418,7 +1294,7 @@ export async function monitorTeamV2(teamName, cwd) {
     const workers = [];
     const deadWorkers = [];
     const nonReportingWorkers = [];
-    const recommendations = [...reclaimResult.recommendations];
+    const recommendations = [];
     const workerScanStartMs = performance.now();
     const workerSignals = await Promise.all(config.workers.map(async (worker) => {
         const liveness = await getWorkerPaneLiveness(worker.pane_id);

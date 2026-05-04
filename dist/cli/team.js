@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { readFile, rm } from 'fs/promises';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { TEAM_API_OPERATIONS, executeTeamApiOperation as executeCanonicalTeamApiOperation, resolveTeamApiOperation } from '../team/api-interop.js';
+import { executeTeamApiOperation as executeCanonicalTeamApiOperation, resolveTeamApiOperation } from '../team/api-interop.js';
 import { cleanupTeamWorktrees } from '../team/git-worktree.js';
 import { killWorkerPanes, killTeamSession, getWorkerLiveness } from '../team/tmux-session.js';
 import { validateTeamName } from '../team/team-name.js';
@@ -12,17 +12,27 @@ import { monitorTeam, resumeTeam, shutdownTeam } from '../team/runtime.js';
 import { readTeamConfig } from '../team/monitor.js';
 import { isProcessAlive } from '../platform/index.js';
 import { getGlobalOmcStatePath } from '../utils/paths.js';
-import { readApprovedExecutionLaunchHintOutcome } from '../planning/artifacts.js';
 const JOB_ID_PATTERN = /^omc-[a-z0-9]{1,16}$/;
 const VALID_CLI_AGENT_TYPES = new Set(['claude', 'codex', 'gemini', 'cursor']);
 const SUBCOMMANDS = new Set(['start', 'status', 'wait', 'cleanup', 'resume', 'shutdown', 'api', 'help', '--help', '-h']);
-const SUPPORTED_API_OPERATIONS = new Set(TEAM_API_OPERATIONS);
+const SUPPORTED_API_OPERATIONS = new Set([
+    'send-message',
+    'broadcast',
+    'mailbox-list',
+    'mailbox-mark-delivered',
+    'mailbox-mark-notified',
+    'list-tasks',
+    'read-task',
+    'read-config',
+    'get-summary',
+    'orphan-cleanup',
+]);
 const TEAM_API_USAGE = `
 Usage:
   omc team api <operation> --input '<json>' [--json] [--cwd DIR]
 
 Supported operations:
-  ${TEAM_API_OPERATIONS.join('\n  ')}
+  ${Array.from(SUPPORTED_API_OPERATIONS).join(', ')}
 `.trim();
 function getTeamWorkerIdentityFromEnv(env = process.env) {
     const omc = typeof env.OMC_TEAM_WORKER === 'string' ? env.OMC_TEAM_WORKER.trim() : '';
@@ -955,10 +965,10 @@ function parseLegacyStartAlias(args) {
     const match = spec.match(/^(\d+):([a-zA-Z0-9_-]+)(?::([a-zA-Z0-9_-]+))?$/);
     if (!match)
         return null;
-    let workerCount = toInt(match[1], 'worker-count');
+    const workerCount = toInt(match[1], 'worker-count');
     if (workerCount < 1)
         throw new Error('worker-count must be >= 1');
-    let agentType = normalizeAgentType(match[2]);
+    const agentType = normalizeAgentType(match[2]);
     const role = match[3] || undefined;
     index += 1;
     let json = false;
@@ -994,40 +1004,9 @@ function parseLegacyStartAlias(args) {
         }
         taskParts.push(token);
     }
-    let task = taskParts.join(' ').trim();
+    const task = taskParts.join(' ').trim();
     if (!task)
         throw new Error('Legacy start alias requires a task string');
-    const shortFollowup = ['team', '/team', 'team please', 'run team', 'start team'].includes(task.toLowerCase());
-    if (shortFollowup) {
-        const approvedHintOutcome = readApprovedExecutionLaunchHintOutcome(cwd, 'team', {
-            requirePlanningComplete: true,
-        });
-        if (approvedHintOutcome.status === 'ambiguous') {
-            throw new Error('approved_execution_hint_ambiguous:team');
-        }
-        if (approvedHintOutcome.status === 'incomplete') {
-            throw new Error('approved_execution_hint_incomplete:team');
-        }
-        if (approvedHintOutcome.status === 'resolved') {
-            task = approvedHintOutcome.hint.task;
-            workerCount = approvedHintOutcome.hint.workerCount ?? workerCount;
-            agentType = approvedHintOutcome.hint.agentType
-                ? normalizeAgentType(approvedHintOutcome.hint.agentType)
-                : agentType;
-            autoMerge = approvedHintOutcome.hint.autoMerge === true ? true : autoMerge;
-            ralph = approvedHintOutcome.hint.linkedRalph === true ? true : ralph;
-        }
-    }
-    else {
-        const command = `omc team ${ralph ? 'ralph ' : ''}${spec} ${JSON.stringify(task)}`;
-        const approvedHintOutcome = readApprovedExecutionLaunchHintOutcome(cwd, 'team', {
-            task,
-            command,
-        });
-        if (approvedHintOutcome.status === 'ambiguous') {
-            throw new Error('approved_execution_hint_ambiguous:team');
-        }
-    }
     return {
         workerCount,
         agentType,

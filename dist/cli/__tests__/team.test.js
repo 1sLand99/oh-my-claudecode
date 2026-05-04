@@ -60,16 +60,7 @@ vi.mock('../../team/git-worktree.js', async (importOriginal) => {
 });
 describe('team cli', () => {
     let jobsDir;
-    let savedTeamWorkerEnv;
     beforeEach(() => {
-        savedTeamWorkerEnv = {
-            OMC_TEAM_WORKER: process.env.OMC_TEAM_WORKER,
-            OMX_TEAM_WORKER: process.env.OMX_TEAM_WORKER,
-            OMC_TEAMS_AUTO_MERGE: process.env.OMC_TEAMS_AUTO_MERGE,
-        };
-        delete process.env.OMC_TEAM_WORKER;
-        delete process.env.OMX_TEAM_WORKER;
-        delete process.env.OMC_TEAMS_AUTO_MERGE;
         jobsDir = mkdtempSync(join(tmpdir(), 'omc-team-cli-jobs-'));
         process.env.OMC_JOBS_DIR = jobsDir;
         process.env.OMC_RUNTIME_CLI_PATH = '/tmp/runtime-cli.cjs';
@@ -93,24 +84,6 @@ describe('team cli', () => {
     afterEach(() => {
         delete process.env.OMC_JOBS_DIR;
         delete process.env.OMC_RUNTIME_CLI_PATH;
-        if (savedTeamWorkerEnv.OMC_TEAM_WORKER === undefined) {
-            delete process.env.OMC_TEAM_WORKER;
-        }
-        else {
-            process.env.OMC_TEAM_WORKER = savedTeamWorkerEnv.OMC_TEAM_WORKER;
-        }
-        if (savedTeamWorkerEnv.OMX_TEAM_WORKER === undefined) {
-            delete process.env.OMX_TEAM_WORKER;
-        }
-        else {
-            process.env.OMX_TEAM_WORKER = savedTeamWorkerEnv.OMX_TEAM_WORKER;
-        }
-        if (savedTeamWorkerEnv.OMC_TEAMS_AUTO_MERGE === undefined) {
-            delete process.env.OMC_TEAMS_AUTO_MERGE;
-        }
-        else {
-            process.env.OMC_TEAMS_AUTO_MERGE = savedTeamWorkerEnv.OMC_TEAMS_AUTO_MERGE;
-        }
         rmSync(jobsDir, { recursive: true, force: true });
     });
     it('startTeamJob starts runtime-cli and persists running job', async () => {
@@ -164,29 +137,12 @@ describe('team cli', () => {
         expect(stdinPayload.tasks).toHaveLength(1);
         expect(stdinPayload.tasks[0].description).toBe('review auth flow');
         expect(stdinPayload.newWindow).toBeUndefined();
-        expect(stdinPayload.autoMerge).toBeUndefined();
         // Verify --json causes structured JSON output
         expect(logSpy).toHaveBeenCalledTimes(1);
         const output = JSON.parse(logSpy.mock.calls[0][0]);
         expect(output.jobId).toMatch(/^omc-[a-z0-9]{1,16}$/);
         expect(output.status).toBe('running');
         expect(output.pid).toBe(7777);
-        logSpy.mockRestore();
-    });
-    it('teamCommand start forwards explicit --auto-merge only when requested', async () => {
-        const write = vi.fn();
-        const end = vi.fn();
-        const unref = vi.fn();
-        const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-        mocks.spawn.mockReturnValue({
-            pid: 7778,
-            stdin: { write, end },
-            unref,
-        });
-        const { teamCommand } = await import('../team.js');
-        await teamCommand(['start', '--agent', 'codex', '--task', 'review auth flow', '--auto-merge', '--json']);
-        const stdinPayload = JSON.parse(write.mock.calls[0][0]);
-        expect(stdinPayload.autoMerge).toBe(true);
         logSpy.mockRestore();
     });
     it('teamCommand start forwards --new-window to runtime-cli payload', async () => {
@@ -228,150 +184,6 @@ describe('team cli', () => {
         const output = JSON.parse(logSpy.mock.calls[0][0]);
         expect(output.status).toBe('running');
         logSpy.mockRestore();
-    });
-    it('legacy team alias reuses an approved short follow-up launch hint', async () => {
-        const write = vi.fn();
-        const end = vi.fn();
-        const unref = vi.fn();
-        const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-        const cwd = mkdtempSync(join(tmpdir(), 'omc-team-cli-approved-followup-'));
-        const plansDir = join(cwd, '.omc', 'plans');
-        mkdirSync(plansDir, { recursive: true });
-        writeFileSync(join(plansDir, 'prd-feature.md'), [
-            '# PRD',
-            '',
-            '## Acceptance criteria',
-            '- done',
-            '',
-            '## Requirement coverage map',
-            '- req -> impl',
-            '',
-            'omc team 4:codex "execute approved plan"',
-            '',
-        ].join('\n'));
-        writeFileSync(join(plansDir, 'test-spec-feature.md'), [
-            '# Test Spec',
-            '',
-            '## Unit coverage',
-            '- unit',
-            '',
-            '## Verification mapping',
-            '- verify',
-            '',
-        ].join('\n'));
-        mocks.spawn.mockReturnValue({
-            pid: 8889,
-            stdin: { write, end },
-            unref,
-        });
-        const { teamCommand } = await import('../team.js');
-        await teamCommand(['3:claude', 'team', '--cwd', cwd, '--json']);
-        const stdinPayload = JSON.parse(write.mock.calls[0][0]);
-        expect(stdinPayload.workerCount).toBe(4);
-        expect(stdinPayload.agentTypes).toEqual(['codex', 'codex', 'codex', 'codex']);
-        expect(stdinPayload.tasks).toHaveLength(4);
-        expect(stdinPayload.tasks.every((task) => task.description === 'execute approved plan')).toBe(true);
-        rmSync(cwd, { recursive: true, force: true });
-        logSpy.mockRestore();
-    });
-    it('legacy team alias forwards approved --auto-merge launch hint as explicit opt-in', async () => {
-        const write = vi.fn();
-        const end = vi.fn();
-        const unref = vi.fn();
-        const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-        const cwd = mkdtempSync(join(tmpdir(), 'omc-team-cli-approved-auto-merge-'));
-        const plansDir = join(cwd, '.omc', 'plans');
-        mkdirSync(plansDir, { recursive: true });
-        writeFileSync(join(plansDir, 'prd-feature.md'), [
-            '# PRD',
-            '',
-            '## Acceptance criteria',
-            '- done',
-            '',
-            '## Requirement coverage map',
-            '- req -> impl',
-            '',
-            'omc team 2:codex "execute approved merge plan" --auto-merge',
-            '',
-        ].join('\n'));
-        writeFileSync(join(plansDir, 'test-spec-feature.md'), [
-            '# Test Spec',
-            '',
-            '## Unit coverage',
-            '- unit',
-            '',
-            '## Verification mapping',
-            '- verify',
-            '',
-        ].join('\n'));
-        mocks.spawn.mockReturnValue({
-            pid: 8890,
-            stdin: { write, end },
-            unref,
-        });
-        const { teamCommand } = await import('../team.js');
-        await teamCommand(['3:claude', 'team', '--cwd', cwd, '--json']);
-        const stdinPayload = JSON.parse(write.mock.calls[0][0]);
-        expect(stdinPayload.autoMerge).toBe(true);
-        expect(stdinPayload.workerCount).toBe(2);
-        expect(stdinPayload.agentTypes).toEqual(['codex', 'codex']);
-        rmSync(cwd, { recursive: true, force: true });
-        logSpy.mockRestore();
-    });
-    it('legacy team alias fails closed for incomplete approved short follow-up hints', async () => {
-        const cwd = mkdtempSync(join(tmpdir(), 'omc-team-cli-approved-incomplete-'));
-        const plansDir = join(cwd, '.omc', 'plans');
-        mkdirSync(plansDir, { recursive: true });
-        writeFileSync(join(plansDir, 'prd-feature.md'), [
-            '# PRD',
-            '',
-            '## Acceptance criteria',
-            '- done',
-            '',
-            '## Requirement coverage map',
-            '- req -> impl',
-            '',
-            'omc team 4:codex "execute draft plan"',
-            '',
-        ].join('\n'));
-        const { teamCommand } = await import('../team.js');
-        await expect(teamCommand(['3:claude', 'team', '--cwd', cwd, '--json']))
-            .rejects.toThrow('approved_execution_hint_incomplete:team');
-        expect(mocks.spawn).not.toHaveBeenCalled();
-        rmSync(cwd, { recursive: true, force: true });
-    });
-    it('legacy team alias fails closed for ambiguous approved short follow-up hints', async () => {
-        const cwd = mkdtempSync(join(tmpdir(), 'omc-team-cli-approved-ambiguous-'));
-        const plansDir = join(cwd, '.omc', 'plans');
-        mkdirSync(plansDir, { recursive: true });
-        writeFileSync(join(plansDir, 'prd-feature.md'), [
-            '# PRD',
-            '',
-            '## Acceptance criteria',
-            '- done',
-            '',
-            '## Requirement coverage map',
-            '- req -> impl',
-            '',
-            'omc team 2:claude "execute alpha"',
-            'omc team 4:codex "execute beta"',
-            '',
-        ].join('\n'));
-        writeFileSync(join(plansDir, 'test-spec-feature.md'), [
-            '# Test Spec',
-            '',
-            '## Unit coverage',
-            '- unit',
-            '',
-            '## Verification mapping',
-            '- verify',
-            '',
-        ].join('\n'));
-        const { teamCommand } = await import('../team.js');
-        await expect(teamCommand(['3:claude', 'team', '--cwd', cwd, '--json']))
-            .rejects.toThrow('approved_execution_hint_ambiguous:team');
-        expect(mocks.spawn).not.toHaveBeenCalled();
-        rmSync(cwd, { recursive: true, force: true });
     });
     it('teamCommand start without --json outputs non-JSON', async () => {
         const write = vi.fn();

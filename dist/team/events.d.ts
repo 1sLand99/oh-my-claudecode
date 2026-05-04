@@ -10,22 +10,6 @@
 import type { TeamEventType } from './contracts.js';
 import type { TeamEvent } from './types.js';
 import type { WorkerPaneLiveness } from './tmux-session.js';
-export interface TeamEventReadOptions {
-    afterEventId?: string;
-    wakeableOnly?: boolean;
-    type?: TeamEventType | 'worker_idle';
-    worker?: string;
-    taskId?: string;
-}
-export interface TeamEventWaitOptions extends TeamEventReadOptions {
-    timeoutMs?: number;
-    pollMs?: number;
-}
-export interface TeamEventWaitResult {
-    status: 'event' | 'timeout';
-    cursor: string;
-    event?: TeamEvent;
-}
 /**
  * Append a team event to the JSONL event log.
  * Thread-safe via atomic append (O_WRONLY|O_APPEND|O_CREAT).
@@ -35,8 +19,7 @@ export declare function appendTeamEvent(teamName: string, event: Omit<TeamEvent,
  * Read all events for a team from the JSONL log.
  * Returns empty array if no events exist.
  */
-export declare function readTeamEvents(teamName: string, cwd: string, options?: TeamEventReadOptions): Promise<TeamEvent[]>;
-export declare function waitForTeamEvent(teamName: string, cwd: string, options?: TeamEventWaitOptions): Promise<TeamEventWaitResult>;
+export declare function readTeamEvents(teamName: string, cwd: string): Promise<TeamEvent[]>;
 /**
  * Read events of a specific type for a team.
  */

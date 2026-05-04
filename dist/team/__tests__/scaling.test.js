@@ -1,54 +1,30 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'fs/promises';
+import { execFileSync } from 'child_process';
 import { join } from 'path';
 import { tmpdir } from 'os';
-const tmuxMocks = vi.hoisted(() => ({
-    tmuxExec: vi.fn(),
-    tmuxSpawn: vi.fn(),
-}));
-vi.mock('../../cli/tmux-utils.js', async (importOriginal) => {
-    const actual = await importOriginal();
-    return {
-        ...actual,
-        tmuxExec: tmuxMocks.tmuxExec,
-        tmuxSpawn: tmuxMocks.tmuxSpawn,
-    };
-});
 import { scaleUp } from '../scaling.js';
+function killTmuxSession(sessionName) {
+    try {
+        execFileSync('tmux', ['kill-session', '-t', sessionName], { stdio: 'pipe' });
+    }
+    catch { /* session may not exist */ }
+}
 describe('scaleUp duplicate worker guard', () => {
     let cwd;
-    beforeEach(() => {
-        tmuxMocks.tmuxExec.mockReset();
-        tmuxMocks.tmuxSpawn.mockReset();
-        tmuxMocks.tmuxSpawn.mockImplementation((args) => {
-            if (args[0] === 'split-window') {
-                return {
-                    status: 1,
-                    stdout: '',
-                    stderr: 'mocked tmux unavailable',
-                };
-            }
-            if (args[0] === 'display-message') {
-                return {
-                    status: 0,
-                    stdout: '1234\n',
-                    stderr: '',
-                };
-            }
-            return {
-                status: 0,
-                stdout: '',
-                stderr: '',
-            };
-        });
-    });
+    const tmuxSessions = [];
     afterEach(async () => {
+        for (const session of tmuxSessions) {
+            killTmuxSession(session);
+        }
+        tmuxSessions.length = 0;
         if (cwd)
             await rm(cwd, { recursive: true, force: true });
     });
     it('skips past colliding worker names when next_worker_index is stale', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-scaling-duplicate-'));
         const teamName = 'demo-team';
+        tmuxSessions.push('demo-session');
         const root = join(cwd, '.omc', 'state', 'team', teamName);
         await mkdir(root, { recursive: true });
         await writeFile(join(root, 'config.json'), JSON.stringify({
@@ -75,7 +51,6 @@ describe('scaleUp duplicate worker guard', () => {
         if (!result.ok) {
             expect(result.error).not.toContain('refusing to spawn duplicate worker identity');
         }
-        expect(tmuxMocks.tmuxSpawn).toHaveBeenCalledWith(expect.arrayContaining(['split-window']));
         const config = JSON.parse(await readFile(join(root, 'config.json'), 'utf-8'));
         // next_worker_index must have advanced past the collision
         expect(config.next_worker_index).toBeGreaterThan(1);
@@ -83,6 +58,7 @@ describe('scaleUp duplicate worker guard', () => {
     it('self-heals across multiple collisions', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-scaling-skip-'));
         const teamName = 'skip-team';
+        tmuxSessions.push('skip-session');
         const root = join(cwd, '.omc', 'state', 'team', teamName);
         await mkdir(root, { recursive: true });
         await writeFile(join(root, 'config.json'), JSON.stringify({

@@ -376,7 +376,6 @@ export async function startMergeOrchestrator(
   const workers = new Map<string, WorkerEntry>();
   const pausedWorkers = new Set<string>(); // workers mid-rebase (cadence paused)
   const mutex = createMutex();
-  const pollMutex = createMutex();
   let stopped = false;
 
   function persistState(): void {
@@ -599,70 +598,68 @@ export async function startMergeOrchestrator(
   }
 
   async function runPollOnce(): Promise<void> {
-    await pollMutex(async () => {
-      if (stopped) return;
-      for (const entry of workers.values()) {
-        // Apply per-worker exponential backoff: skip ticks based on consecutiveFailures.
-        // Cap so we never fully starve a worker.
-        const skipModulo = Math.min(30, Math.pow(2, entry.consecutiveFailures));
-        if (skipModulo > 1 && pollTickCount % skipModulo !== 0) {
+    if (stopped) return;
+    for (const entry of workers.values()) {
+      // Apply per-worker exponential backoff: skip ticks based on consecutiveFailures.
+      // Cap so we never fully starve a worker.
+      const skipModulo = Math.min(30, Math.pow(2, entry.consecutiveFailures));
+      if (skipModulo > 1 && pollTickCount % skipModulo !== 0) {
+        continue;
+      }
+
+      // Rebase resolution check (M4): if the worker is paused and the
+      // git rebase state has gone away, audit & resume.
+      if (pausedWorkers.has(entry.workerName)) {
+        if (!isRebaseInProgress(entry.workerWorktreePath)) {
+          // Resolved (--continue or --abort).
+          await handleRebaseResolution(entry);
+          // Fall through — also check for new commits.
+        } else {
+          // Still mid-rebase; don't try to merge this worker's branch yet.
           continue;
         }
+      }
 
-        // Rebase resolution check (M4): if the worker is paused and the
-        // git rebase state has gone away, audit & resume.
-        if (pausedWorkers.has(entry.workerName)) {
-          if (!isRebaseInProgress(entry.workerWorktreePath)) {
-            // Resolved (--continue or --abort).
-            await handleRebaseResolution(entry);
-            // Fall through — also check for new commits.
-          } else {
-            // Still mid-rebase; don't try to merge this worker's branch yet.
-            continue;
-          }
-        }
+      let currentSha: string;
+      try {
+        currentSha = gitRevParseHead(config.repoRoot, entry.workerBranch);
+      } catch (err) {
+        entry.consecutiveFailures += 1;
+        const reason = err instanceof Error ? err.message : String(err);
+        await appendEvent(config.repoRoot, config.teamName, {
+          type: 'commit_observed',
+          worker: entry.workerName,
+          reason: `rev_parse_failed:${reason}`,
+        });
+        continue;
+      }
 
-        let currentSha: string;
+      if (currentSha && currentSha !== entry.lastObservedSha) {
+        // SHA advanced → record + persist + try to merge.
+        entry.lastObservedSha = currentSha;
         try {
-          currentSha = gitRevParseHead(config.repoRoot, entry.workerBranch);
+          persistState();
+        } catch {
+          // best-effort persistence
+        }
+        await appendEvent(config.repoRoot, config.teamName, {
+          type: 'commit_observed',
+          worker: entry.workerName,
+          data: { sha: currentSha },
+        });
+        try {
+          await attemptMergeForWorker(entry);
         } catch (err) {
           entry.consecutiveFailures += 1;
           const reason = err instanceof Error ? err.message : String(err);
           await appendEvent(config.repoRoot, config.teamName, {
-            type: 'commit_observed',
+            type: 'merge_conflict',
             worker: entry.workerName,
-            reason: `rev_parse_failed:${reason}`,
+            reason: `merge_threw:${reason}`,
           });
-          continue;
-        }
-
-        if (currentSha && currentSha !== entry.lastObservedSha) {
-          // SHA advanced → record + persist + try to merge.
-          entry.lastObservedSha = currentSha;
-          try {
-            persistState();
-          } catch {
-            // best-effort persistence
-          }
-          await appendEvent(config.repoRoot, config.teamName, {
-            type: 'commit_observed',
-            worker: entry.workerName,
-            data: { sha: currentSha },
-          });
-          try {
-            await attemptMergeForWorker(entry);
-          } catch (err) {
-            entry.consecutiveFailures += 1;
-            const reason = err instanceof Error ? err.message : String(err);
-            await appendEvent(config.repoRoot, config.teamName, {
-              type: 'merge_conflict',
-              worker: entry.workerName,
-              reason: `merge_threw:${reason}`,
-            });
-          }
         }
       }
-    });
+    }
   }
 
   async function handleRebaseResolution(entry: WorkerEntry): Promise<void> {

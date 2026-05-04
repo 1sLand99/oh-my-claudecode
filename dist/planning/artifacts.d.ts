@@ -2,37 +2,15 @@ export interface PlanningArtifacts {
     prdPaths: string[];
     testSpecPaths: string[];
 }
-export interface ApprovedRepositoryContextSummary {
-    sourcePath: string;
-    content: string;
-    truncated: boolean;
-}
 export interface ApprovedExecutionLaunchHint {
     mode: "team" | "ralph";
     command: string;
     task: string;
     workerCount?: number;
     agentType?: string;
-    autoMerge?: boolean;
     linkedRalph?: boolean;
     sourcePath: string;
 }
-interface ApprovedExecutionLaunchHintReadOptions {
-    prdPath?: string;
-    task?: string;
-    command?: string;
-    requirePlanningComplete?: boolean;
-}
-export type ApprovedExecutionLaunchHintOutcome = {
-    status: "absent";
-} | {
-    status: "ambiguous";
-} | {
-    status: "incomplete";
-} | {
-    status: "resolved";
-    hint: ApprovedExecutionLaunchHint;
-};
 /**
  * Read planning artifacts from .omc/.omx plans directories.
  * Returns paths to all PRD and test-spec files found.
@@ -47,7 +25,5 @@ export declare function isPlanningComplete(artifacts: PlanningArtifacts): boolea
  * Read the latest PRD file and extract an embedded launch hint for the given mode.
  * Returns null when no hint is found.
  */
-export declare function readApprovedExecutionLaunchHint(cwd: string, mode: "team" | "ralph", options?: ApprovedExecutionLaunchHintReadOptions): ApprovedExecutionLaunchHint | null;
-export declare function readApprovedExecutionLaunchHintOutcome(cwd: string, mode: "team" | "ralph", options?: ApprovedExecutionLaunchHintReadOptions): ApprovedExecutionLaunchHintOutcome;
-export {};
+export declare function readApprovedExecutionLaunchHint(cwd: string, mode: "team" | "ralph"): ApprovedExecutionLaunchHint | null;
 //# sourceMappingURL=artifacts.d.ts.map

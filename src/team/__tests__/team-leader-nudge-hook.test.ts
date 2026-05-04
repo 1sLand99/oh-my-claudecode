@@ -104,37 +104,4 @@ describe('team leader nudge hook', () => {
     expect(result.reason).toContain('all_tasks_terminal');
     expect(sent[0]).toContain('shutdown');
   });
-
-  it('uses canonical manifest.json when config.json is absent', async () => {
-    const teamRoot = '.omc/state/team/demo-team';
-    await writeJson(`${teamRoot}/manifest.json`, {
-      workers: [{ name: 'worker-1' }],
-      leader_pane_id: '%1',
-    });
-    await writeJson(`${teamRoot}/workers/worker-1/status.json`, {
-      state: 'idle',
-      updated_at: new Date().toISOString(),
-    });
-    await writeJson(`${teamRoot}/workers/worker-1/heartbeat.json`, {
-      alive: true,
-      last_turn_at: new Date().toISOString(),
-    });
-    await writeJson(`${teamRoot}/tasks/task-1.json`, { status: 'pending' });
-
-    const sent: string[] = [];
-    const result = await maybeNudgeLeader({
-      cwd,
-      stateDir: join(cwd, '.omc', 'state'),
-      teamName: 'demo-team',
-      tmux: {
-        async sendKeys(_target, text) {
-          sent.push(text);
-        },
-      },
-    });
-
-    expect(result.nudged).toBe(true);
-    expect(sent[0]).toContain('reuse-current-team');
-  });
-
 });

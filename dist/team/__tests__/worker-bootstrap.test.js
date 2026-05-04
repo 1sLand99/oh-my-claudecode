@@ -145,12 +145,6 @@ describe('worker-bootstrap', () => {
             expect(overlay).toContain('team api transition-task-status');
             expect(overlay).toContain('team api release-task-claim --input');
             expect(overlay).toContain('claim_token');
-            expect(overlay).toContain('Delegation compliance evidence');
-            expect(overlay).toContain('\\"result\\":');
-            expect(overlay).toContain('worker protocol forbids nested subagents');
-            expect(overlay).toContain('Subagent spawn evidence:');
-            expect(overlay).toContain('Subagent skip reason:');
-            expect(overlay).toContain('missing_delegation_compliance_evidence');
             expect(overlay).not.toContain('Read your task file at');
         });
         it('renders plugin-safe CLI lifecycle examples when omc is unavailable in plugin installs', () => {

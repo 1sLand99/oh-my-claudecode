@@ -6,7 +6,6 @@ export type ClaudeModelFamily = 'HAIKU' | 'SONNET' | 'OPUS';
 const DIRECT_MODEL_ENV_KEYS = ['CLAUDE_MODEL', 'ANTHROPIC_MODEL'] as const;
 const INHERIT_TIER_PRIORITY: readonly ModelTier[] = ['MEDIUM', 'HIGH', 'LOW'];
 const CLAUDE_TIER_ALIASES = new Set(['sonnet', 'opus', 'haiku']);
-const TEAM_CHILD_MODEL_ENV_KEYS = ['OMC_TEAM_CHILD_MODEL', 'OMX_TEAM_CHILD_MODEL'] as const;
 
 const TIER_ENV_KEYS: Record<ModelTier, readonly string[]> = {
   LOW: [
@@ -162,15 +161,6 @@ export function getDefaultModelHigh(): string {
 
 export function getDefaultModelMedium(): string {
   return resolveTierModelFromEnv('MEDIUM') || BUILTIN_TIER_MODEL_DEFAULTS.MEDIUM;
-}
-
-
-export function getTeamChildModel(): string {
-  for (const key of TEAM_CHILD_MODEL_ENV_KEYS) {
-    const value = readEnvValue(key);
-    if (value) return value;
-  }
-  return getDefaultModelMedium();
 }
 
 export function getDefaultModelLow(): string {

@@ -4,7 +4,7 @@
 // Uses real git via git-fixture helper.
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import {
@@ -35,7 +35,6 @@ afterEach(() => {
 describe('worktree runtime e2e: 3 workers × 10 commits', () => {
   let fixture: GitFixture;
   let handle: OrchestratorHandle;
-  const WAIT_FOR_MERGE_TIMEOUT_MS = 15000;
 
   beforeEach(async () => {
     fixture = await createGitFixture({
@@ -101,7 +100,7 @@ describe('worktree runtime e2e: 3 workers × 10 commits', () => {
           eventType: 'merge_succeeded',
           worker,
           count: mergeCountPerWorker[worker],
-          timeoutMs: WAIT_FOR_MERGE_TIMEOUT_MS,
+          timeoutMs: 5000,
         });
         // Re-read current count in case rebase-induced merges arrived
         const currentEvents = readEventLog(eventLog);
@@ -140,7 +139,7 @@ describe('worktree runtime e2e: 3 workers × 10 commits', () => {
           eventType: 'merge_succeeded',
           worker,
           count: mergeCountPerWorker[worker],
-          timeoutMs: WAIT_FOR_MERGE_TIMEOUT_MS,
+          timeoutMs: 5000,
         });
         // Update count to include any rebase-induced merges
         const currentEvents = readEventLog(eventLog);

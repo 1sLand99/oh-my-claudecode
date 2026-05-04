@@ -2,7 +2,7 @@
  * MCP Communication Layer - High-level dispatch functions.
  *
  * Coordinates inbox writes, mailbox messages, and dispatch requests
- * with notification callbacks. OMX-derived behavior is adapted to OMC contracts.
+ * with notification callbacks. Mirrors OMX src/team/mcp-comm.ts exactly.
  *
  * Functions:
  * - queueInboxInstruction: write inbox + enqueue dispatch + notify
@@ -19,15 +19,6 @@ import {
   type TeamDispatchRequest,
   type TeamDispatchRequestInput,
 } from './dispatch-queue.js';
-import type { TeamMailboxMessage } from './types.js';
-import {
-  broadcastMessage as defaultBroadcastMessage,
-  listMailboxMessages as defaultListMailboxMessages,
-  markMessageNotified as defaultMarkMessageNotified,
-  sendDirectMessage as defaultSendDirectMessage,
-  writeWorkerInbox as defaultWriteWorkerInbox,
-} from './state.js';
-import type { TeamReminderIntent } from './reminder-intents.js';
 import { createSwallowedErrorLogger } from '../lib/swallowed-error.js';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -62,8 +53,8 @@ export interface InboxWriter {
 
 /** Dependency interface for mailbox message operations */
 export interface MailboxSender {
-  sendDirectMessage(teamName: string, fromWorker: string, toWorker: string, body: string, cwd: string): Promise<TeamMailboxMessage>;
-  broadcastMessage(teamName: string, fromWorker: string, body: string, cwd: string): Promise<TeamMailboxMessage[]>;
+  sendDirectMessage(teamName: string, fromWorker: string, toWorker: string, body: string, cwd: string): Promise<{ message_id: string; to_worker: string }>;
+  broadcastMessage(teamName: string, fromWorker: string, body: string, cwd: string): Promise<Array<{ message_id: string; to_worker: string }>>;
   markMessageNotified(teamName: string, workerName: string, messageId: string, cwd: string): Promise<void>;
 }
 
@@ -168,8 +159,7 @@ export interface QueueInboxParams {
   fallbackAllowed?: boolean;
   inboxCorrelationKey?: string;
   notify: TeamNotifier;
-  intent?: TeamReminderIntent;
-  deps?: InboxWriter;
+  deps: InboxWriter;
 }
 
 export async function queueInboxInstruction(params: QueueInboxParams): Promise<DispatchOutcome> {
@@ -181,7 +171,6 @@ export async function queueInboxInstruction(params: QueueInboxParams): Promise<D
       worker_index: params.workerIndex,
       pane_id: params.paneId,
       trigger_message: params.triggerMessage,
-      intent: params.intent,
       transport_preference: params.transportPreference,
       fallback_allowed: params.fallbackAllowed,
       inbox_correlation_key: params.inboxCorrelationKey,
@@ -199,7 +188,7 @@ export async function queueInboxInstruction(params: QueueInboxParams): Promise<D
   }
 
   try {
-    await (params.deps?.writeWorkerInbox ?? defaultWriteWorkerInbox)(params.teamName, params.workerName, params.inbox, params.cwd);
+    await params.deps.writeWorkerInbox(params.teamName, params.workerName, params.inbox, params.cwd);
   } catch (error) {
     await markImmediateDispatchFailure({
       teamName: params.teamName,
@@ -252,38 +241,11 @@ export interface QueueDirectMessageParams {
   transportPreference?: TeamDispatchRequestInput['transport_preference'];
   fallbackAllowed?: boolean;
   notify: TeamNotifier;
-  intent?: TeamReminderIntent;
-  deps?: MailboxSender;
+  deps: MailboxSender;
 }
 
 export async function queueDirectMailboxMessage(params: QueueDirectMessageParams): Promise<DispatchOutcome> {
-  const existingMessage = (await defaultListMailboxMessages(params.teamName, params.toWorker, params.cwd))
-    .find((candidate) => candidate.from_worker === params.fromWorker
-      && candidate.to_worker === params.toWorker
-      && candidate.body === params.body
-      && candidate.notified_at
-      && !candidate.delivered_at);
-  if (existingMessage) {
-    return {
-      ok: true,
-      transport: params.toWorker === 'leader-fixed' ? 'mailbox' : fallbackTransportForPreference(params.transportPreference),
-      reason: 'existing_message_already_notified',
-      message_id: existingMessage.message_id,
-      to_worker: params.toWorker,
-    };
-  }
-
-  const message = await (params.deps?.sendDirectMessage ?? defaultSendDirectMessage)(params.teamName, params.fromWorker, params.toWorker, params.body, params.cwd);
-  if (message.notified_at && !message.delivered_at) {
-    return {
-      ok: true,
-      transport: params.toWorker === 'leader-fixed' ? 'mailbox' : fallbackTransportForPreference(params.transportPreference),
-      reason: 'existing_message_already_notified',
-      message_id: message.message_id,
-      to_worker: params.toWorker,
-    };
-  }
-
+  const message = await params.deps.sendDirectMessage(params.teamName, params.fromWorker, params.toWorker, params.body, params.cwd);
   const queued = await enqueueDispatchRequest(
     params.teamName,
     {
@@ -292,7 +254,6 @@ export async function queueDirectMailboxMessage(params: QueueDirectMessageParams
       worker_index: params.toWorkerIndex,
       pane_id: params.toPaneId,
       trigger_message: params.triggerMessage,
-      intent: params.intent,
       message_id: message.message_id,
       transport_preference: params.transportPreference,
       fallback_allowed: params.fallbackAllowed,
@@ -335,7 +296,7 @@ export async function queueDirectMailboxMessage(params: QueueDirectMessageParams
     return outcome;
   }
   if (isConfirmedNotification(outcome)) {
-    await (params.deps?.markMessageNotified ?? defaultMarkMessageNotified)(params.teamName, params.toWorker, message.message_id, params.cwd);
+    await params.deps.markMessageNotified(params.teamName, params.toWorker, message.message_id, params.cwd);
     await markDispatchRequestNotified(
       params.teamName,
       queued.request.request_id,
@@ -361,16 +322,14 @@ export interface QueueBroadcastParams {
   body: string;
   cwd: string;
   triggerFor: (workerName: string) => string;
-  intentFor?: (workerName: string) => TeamReminderIntent;
   transportPreference?: TeamDispatchRequestInput['transport_preference'];
   fallbackAllowed?: boolean;
   notify: TeamNotifier;
-  intent?: TeamReminderIntent;
-  deps?: MailboxSender;
+  deps: MailboxSender;
 }
 
 export async function queueBroadcastMailboxMessage(params: QueueBroadcastParams): Promise<DispatchOutcome[]> {
-  const messages = await (params.deps?.broadcastMessage ?? defaultBroadcastMessage)(params.teamName, params.fromWorker, params.body, params.cwd);
+  const messages = await params.deps.broadcastMessage(params.teamName, params.fromWorker, params.body, params.cwd);
   const recipientByName = new Map(params.recipients.map((r) => [r.workerName, r]));
   const outcomes: DispatchOutcome[] = [];
 
@@ -386,7 +345,6 @@ export async function queueBroadcastMailboxMessage(params: QueueBroadcastParams)
         worker_index: recipient.workerIndex,
         pane_id: recipient.paneId,
         trigger_message: params.triggerFor(recipient.workerName),
-        intent: params.intentFor?.(recipient.workerName),
         message_id: message.message_id,
         transport_preference: params.transportPreference,
         fallback_allowed: params.fallbackAllowed,
@@ -425,7 +383,7 @@ export async function queueBroadcastMailboxMessage(params: QueueBroadcastParams)
     outcomes.push(outcome);
 
     if (isConfirmedNotification(outcome)) {
-      await (params.deps?.markMessageNotified ?? defaultMarkMessageNotified)(params.teamName, recipient.workerName, message.message_id, params.cwd);
+      await params.deps.markMessageNotified(params.teamName, recipient.workerName, message.message_id, params.cwd);
       await markDispatchRequestNotified(
         params.teamName,
         queued.request.request_id,

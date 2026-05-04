@@ -11,7 +11,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { appendFile, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import { TeamPaths, absPath } from './state-paths.js';
@@ -34,11 +34,7 @@ import type {
   TeamEvent,
   TeamMailboxMessage,
   TeamMailbox,
-  TeamPolicy,
   TaskApprovalRecord,
-  TeamDispatchRequest,
-  TeamDispatchRequestInput,
-  TeamDispatchRequestStatus,
   ClaimTaskResult,
   TransitionTaskResult,
   ReleaseTaskClaimResult,
@@ -47,20 +43,15 @@ import type {
   TeamSummaryPerformance,
   ShutdownAck,
   TeamMonitorSnapshotState,
-  TeamPhaseState,
 } from './types.js';
 
 import {
   claimTask as claimTaskImpl,
-  computeTaskReadiness as computeTaskReadinessImpl,
   transitionTaskStatus as transitionTaskStatusImpl,
   releaseTaskClaim as releaseTaskClaimImpl,
   listTasks as listTasksImpl,
 } from './state/tasks.js';
 import { canonicalizeTeamConfigWorkers } from './worker-canonicalization.js';
-
-export const DEFAULT_MAX_WORKERS = 20;
-export const ABSOLUTE_MAX_WORKERS = 20;
 
 // Re-export types for consumers
 export type {
@@ -75,11 +66,7 @@ export type {
   TeamEvent,
   TeamMailboxMessage,
   TeamMailbox,
-  TeamPolicy,
   TaskApprovalRecord,
-  TeamDispatchRequest,
-  TeamDispatchRequestInput,
-  TeamDispatchRequestStatus,
   ClaimTaskResult,
   TransitionTaskResult,
   ReleaseTaskClaimResult,
@@ -87,7 +74,6 @@ export type {
   TeamSummary,
   ShutdownAck,
   TeamMonitorSnapshotState,
-  TeamPhaseState,
 };
 
 // ---------------------------------------------------------------------------
@@ -150,7 +136,6 @@ function isTeamTask(value: unknown): value is TeamTask {
 // Simple file-based lock (best-effort, non-blocking)
 async function withLock<T>(lockDir: string, fn: () => Promise<T>): Promise<{ ok: true; value: T } | { ok: false }> {
   const STALE_MS = 30_000;
-  await mkdir(dirname(lockDir), { recursive: true });
   try {
     await mkdir(lockDir, { recursive: false });
   } catch (err) {
@@ -247,21 +232,6 @@ function mergeTeamConfigSources(config: TeamConfig | null, manifest: TeamManifes
   });
 }
 
-export async function teamInit(config: TeamConfig, cwd: string): Promise<void> {
-  await teamSaveConfig(config, cwd);
-  await mkdir(absPath(cwd, TeamPaths.tasks(config.name)), { recursive: true });
-  await mkdir(absPath(cwd, TeamPaths.workers(config.name)), { recursive: true });
-  await mkdir(absPath(cwd, join(TeamPaths.root(config.name), 'claims')), { recursive: true });
-  await mkdir(absPath(cwd, join(TeamPaths.root(config.name), 'mailbox')), { recursive: true });
-  await mkdir(absPath(cwd, join(TeamPaths.root(config.name), 'events')), { recursive: true });
-  await Promise.all(config.workers.map((worker) =>
-    mkdir(absPath(cwd, TeamPaths.workerDir(config.name, worker.name)), { recursive: true })));
-}
-
-export async function teamSaveConfig(config: TeamConfig, cwd: string): Promise<void> {
-  await writeAtomic(absPath(cwd, TeamPaths.config(config.name)), JSON.stringify(config, null, 2));
-}
-
 export async function teamReadConfig(teamName: string, cwd: string): Promise<TeamConfig | null> {
   const [manifest, config] = await Promise.all([
     teamReadManifest(teamName, cwd),
@@ -275,26 +245,6 @@ export async function teamReadManifest(teamName: string, cwd: string): Promise<T
   const manifest = await readJsonSafe<TeamManifestV2>(manifestPath);
   return manifest ? normalizeTeamManifest(manifest) : null;
 }
-
-export async function teamWriteManifest(manifest: TeamManifestV2, cwd: string): Promise<void> {
-  await writeAtomic(absPath(cwd, TeamPaths.manifest(manifest.name)), JSON.stringify(manifest, null, 2));
-}
-
-export async function teamMigrateV1ToV2(teamName: string, cwd: string): Promise<TeamManifestV2 | null> {
-  return teamReadManifest(teamName, cwd);
-}
-
-export function teamNormalizePolicy(policy?: Partial<TeamPolicy> | null): TeamPolicy {
-  return {
-    display_mode: policy?.display_mode ?? 'split_pane',
-    worker_launch_mode: policy?.worker_launch_mode ?? 'prompt',
-    dispatch_mode: policy?.dispatch_mode ?? 'hook_preferred_with_fallback',
-    dispatch_ack_timeout_ms: policy?.dispatch_ack_timeout_ms ?? 15_000,
-    ...normalizeTeamGovernance(undefined, policy),
-  };
-}
-
-export { normalizeTeamGovernance as teamNormalizeGovernance };
 
 export async function teamCleanup(teamName: string, cwd: string): Promise<void> {
   await rm(teamDir(teamName, cwd), { recursive: true, force: true });
@@ -485,14 +435,6 @@ export async function teamClaimTask(
   });
 }
 
-export async function teamComputeTaskReadiness(teamName: string, taskId: string, cwd: string): Promise<TaskReadiness> {
-  return computeTaskReadinessImpl(teamName, taskId, cwd, { readTask: teamReadTask });
-}
-
-export async function teamReclaimExpiredTaskClaim(): Promise<{ ok: false; error: 'not_supported' }> {
-  return { ok: false, error: 'not_supported' };
-}
-
 export async function teamTransitionTaskStatus(
   teamName: string,
   taskId: string,
@@ -622,14 +564,6 @@ export async function teamSendMessage(
 ): Promise<TeamMailboxMessage> {
   return withMailboxLock(teamName, toWorker, cwd, async () => {
     const mailbox = await readMailbox(teamName, toWorker, cwd);
-    const existing = mailbox.messages.find((candidate) =>
-      candidate.from_worker === fromWorker
-      && candidate.to_worker === toWorker
-      && candidate.body === body
-      && !candidate.delivered_at,
-    );
-    if (existing) return existing;
-
     const message: TeamMailboxMessage = {
       message_id: randomUUID(),
       from_worker: fromWorker,
@@ -709,78 +643,6 @@ export async function teamMarkMessageNotified(
   });
 }
 
-export async function teamEnqueueDispatchRequest(
-  teamName: string,
-  input: TeamDispatchRequestInput,
-  cwd: string,
-): Promise<TeamDispatchRequest> {
-  const request: TeamDispatchRequest = {
-    request_id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    kind: input.kind,
-    team_name: teamName,
-    to_worker: input.to_worker,
-    worker_index: input.worker_index,
-    pane_id: input.pane_id,
-    trigger_message: input.trigger_message,
-    message_id: input.message_id,
-    inbox_correlation_key: input.inbox_correlation_key,
-    transport_preference: input.transport_preference ?? 'hook_preferred_with_fallback',
-    fallback_allowed: input.fallback_allowed ?? true,
-    status: 'pending',
-    attempt_count: 0,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    last_reason: input.last_reason,
-    intent: input.intent,
-  };
-  const p = absPath(cwd, join(TeamPaths.root(teamName), 'dispatch', `${request.request_id}.json`));
-  await writeAtomic(p, JSON.stringify(request, null, 2));
-  return request;
-}
-
-export async function teamListDispatchRequests(teamName: string, cwd: string): Promise<TeamDispatchRequest[]> {
-  const dir = absPath(cwd, join(TeamPaths.root(teamName), 'dispatch'));
-  try {
-    const entries = (await readdir(dir)).filter((file) => file.endsWith('.json'));
-    const requests = await Promise.all(entries.map((file) => readJsonSafe<TeamDispatchRequest>(join(dir, file))));
-    return requests.filter((request): request is TeamDispatchRequest => Boolean(request));
-  } catch {
-    return [];
-  }
-}
-
-export async function teamReadDispatchRequest(teamName: string, requestId: string, cwd: string): Promise<TeamDispatchRequest | null> {
-  return readJsonSafe<TeamDispatchRequest>(absPath(cwd, join(TeamPaths.root(teamName), 'dispatch', `${requestId}.json`)));
-}
-
-export async function teamTransitionDispatchRequest(
-  teamName: string,
-  requestId: string,
-  status: TeamDispatchRequestStatus,
-  patch: Partial<TeamDispatchRequest>,
-  cwd: string,
-): Promise<TeamDispatchRequest | null> {
-  const current = await teamReadDispatchRequest(teamName, requestId, cwd);
-  if (!current) return null;
-  const updated = { ...current, ...patch, status, updated_at: new Date().toISOString() };
-  await writeAtomic(absPath(cwd, join(TeamPaths.root(teamName), 'dispatch', `${requestId}.json`)), JSON.stringify(updated, null, 2));
-  return updated;
-}
-
-export async function teamMarkDispatchRequestNotified(teamName: string, requestId: string, cwd: string): Promise<TeamDispatchRequest | null> {
-  return teamTransitionDispatchRequest(teamName, requestId, 'notified', { notified_at: new Date().toISOString() }, cwd);
-}
-
-export async function teamMarkDispatchRequestDelivered(teamName: string, requestId: string, cwd: string): Promise<TeamDispatchRequest | null> {
-  return teamTransitionDispatchRequest(teamName, requestId, 'delivered', { delivered_at: new Date().toISOString() }, cwd);
-}
-
-export function resolveDispatchLockTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
-  const raw = env.OMC_TEAM_DISPATCH_LOCK_TIMEOUT_MS ?? env.OMX_TEAM_DISPATCH_LOCK_TIMEOUT_MS;
-  const parsed = raw ? Number(raw) : Number.NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 5_000;
-}
-
 // ---------------------------------------------------------------------------
 // Events
 // ---------------------------------------------------------------------------
@@ -790,12 +652,12 @@ export async function teamAppendEvent(
   event: Omit<TeamEvent, 'event_id' | 'created_at' | 'team'>,
   cwd: string,
 ): Promise<TeamEvent> {
-  const full = {
+  const full: TeamEvent = {
     event_id: randomUUID(),
     team: teamName,
     created_at: new Date().toISOString(),
     ...event,
-  } as TeamEvent;
+  };
   const p = absPath(cwd, TeamPaths.events(teamName));
   await mkdir(dirname(p), { recursive: true });
   await appendFile(p, `${JSON.stringify(full)}\n`, 'utf8');
@@ -958,32 +820,6 @@ export async function teamWriteMonitorSnapshot(
 ): Promise<void> {
   const p = absPath(cwd, TeamPaths.monitorSnapshot(teamName));
   await writeAtomic(p, JSON.stringify(snapshot, null, 2));
-}
-
-export async function teamReadPhase(teamName: string, cwd: string): Promise<TeamPhaseState | null> {
-  return readJsonSafe<TeamPhaseState>(absPath(cwd, TeamPaths.phaseState(teamName)));
-}
-
-export async function teamWritePhase(teamName: string, phase: TeamPhaseState, cwd: string): Promise<void> {
-  await writeAtomic(absPath(cwd, TeamPaths.phaseState(teamName)), JSON.stringify(phase, null, 2));
-}
-
-export async function teamReadLeaderAttention(): Promise<null> { return null; }
-export async function teamWriteLeaderAttention(): Promise<void> {}
-export async function teamMarkLeaderSessionStopped(): Promise<void> {}
-export async function teamMarkOwnedTeamsLeaderSessionStopped(): Promise<void> {}
-
-export async function teamWriteWorkerStatus(
-  teamName: string,
-  workerName: string,
-  status: WorkerStatus,
-  cwd: string,
-): Promise<void> {
-  await writeAtomic(absPath(cwd, TeamPaths.workerStatus(teamName, workerName)), JSON.stringify(status, null, 2));
-}
-
-export async function teamWithScalingLock<T>(_teamName: string, _cwd: string, fn: () => Promise<T>): Promise<T> {
-  return fn();
 }
 
 // Atomic write re-export for other modules

@@ -23,9 +23,7 @@ const modelContractMocks = vi.hoisted(() => ({
   getWorkerEnv: vi.fn(() => ({ OMC_TEAM_WORKER: 'issue2675-team/worker-1' })),
   isPromptModeAgent: vi.fn(() => false),
   getPromptModeArgs: vi.fn(() => []),
-  resolveAgentReasoningEffort: vi.fn(() => undefined),
   resolveClaudeWorkerModel: vi.fn(() => undefined),
-  resolveWorkerLaunchExtraFlags: vi.fn(() => []),
 }));
 
 vi.mock('../../cli/tmux-utils.js', () => ({
@@ -40,8 +38,6 @@ vi.mock('../tmux-session.js', () => ({
   paneHasActiveTask: vi.fn(() => false),
   paneLooksReady: vi.fn(() => true),
   applyMainVerticalLayout: mocks.applyMainVerticalLayout,
-  killTeamSession: vi.fn(async () => {}),
-  sanitizeName: vi.fn((value: string) => value),
 }));
 
 vi.mock('../model-contract.js', () => ({
@@ -51,9 +47,7 @@ vi.mock('../model-contract.js', () => ({
   getWorkerEnv: modelContractMocks.getWorkerEnv,
   isPromptModeAgent: modelContractMocks.isPromptModeAgent,
   getPromptModeArgs: modelContractMocks.getPromptModeArgs,
-  resolveAgentReasoningEffort: modelContractMocks.resolveAgentReasoningEffort,
   resolveClaudeWorkerModel: modelContractMocks.resolveClaudeWorkerModel,
-  resolveWorkerLaunchExtraFlags: modelContractMocks.resolveWorkerLaunchExtraFlags,
 }));
 
 vi.mock('../mcp-comm.js', () => ({

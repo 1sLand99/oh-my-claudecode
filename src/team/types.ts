@@ -6,10 +6,10 @@
  * All types used across the team bridge module for MCP worker orchestration.
  */
 
-import type { TeamEventType, TeamTaskStatus } from './contracts.js';
+import type { TeamTaskStatus } from './contracts.js';
 import type { TeamPhase } from './phase-controller.js';
-import type { TeamReminderIntent } from './reminder-intents.js';
-import type { CanonicalTeamRole, RoleAssignment, TeamWorkerOverrideSpec } from '../shared/types.js';
+import type { TeamLeaderNextAction } from './leader-nudge-guidance.js';
+import type { CanonicalTeamRole, RoleAssignment } from '../shared/types.js';
 
 /** Bridge daemon configuration — passed via --config file to bridge-entry.ts */
 export interface BridgeConfig {
@@ -263,18 +263,14 @@ export interface TeamManifestV2 {
   created_at: string;
   leader_cwd?: string;
   team_state_root?: string;
-  team_root?: string;
   workspace_mode?: 'single' | 'worktree';
   worktree_mode?: 'disabled' | 'detached' | 'named';
-  /** Explicit opt-in for legacy monitor-driven auto-merge/cross-rebase integration. */
-  auto_merge?: boolean;
   lifecycle_profile?: 'default' | 'linked_ralph';
   leader_pane_id: string | null;
   hud_pane_id: string | null;
   resize_hook_name: string | null;
   resize_hook_target: string | null;
   next_worker_index?: number;
-  worker_overrides?: Record<string, TeamWorkerOverrideSpec>;
 }
 
 /** Worker info within a team config */
@@ -284,8 +280,6 @@ export interface WorkerInfo {
   role: string;
   worker_cli?: 'codex' | 'claude' | 'gemini' | 'cursor';
   assigned_tasks: string[];
-  team_root?: string;
-  task_scope?: string[];
   pid?: number;
   pane_id?: string;
   working_dir?: string;
@@ -320,11 +314,8 @@ export interface TeamConfig {
   next_task_id: number;
   leader_cwd?: string;
   team_state_root?: string;
-  team_root?: string;
   workspace_mode?: 'single' | 'worktree';
   worktree_mode?: 'disabled' | 'detached' | 'named';
-  /** Explicit opt-in for legacy monitor-driven auto-merge/cross-rebase integration. */
-  auto_merge?: boolean;
   lifecycle_profile?: 'default' | 'linked_ralph';
   leader_pane_id: string | null;
   hud_pane_id: string | null;
@@ -337,8 +328,6 @@ export interface TeamConfig {
    * `scaleUp`, worker restart, and spawn paths. Immutable for the team's lifetime.
    */
   resolved_routing?: Record<CanonicalTeamRole, { primary: RoleAssignment; fallback: RoleAssignment }>;
-  /** Immutable per-worker launch overrides captured at team creation. */
-  worker_overrides?: Record<string, TeamWorkerOverrideSpec>;
 }
 
 /** Dispatch request kinds */
@@ -367,7 +356,6 @@ export interface TeamDispatchRequest {
   delivered_at?: string;
   failed_at?: string;
   last_reason?: string;
-  intent?: TeamReminderIntent;
 }
 
 /** Input for creating a dispatch request */
@@ -382,29 +370,33 @@ export interface TeamDispatchRequestInput {
   transport_preference?: TeamDispatchTransportPreference;
   fallback_allowed?: boolean;
   last_reason?: string;
-  intent?: TeamReminderIntent;
 }
 
 /** Team event emitted by the event bus */
 export interface TeamEvent {
   event_id: string;
   team: string;
-  type: TeamEventType;
+  type:
+    | 'task_completed'
+    | 'task_failed'
+    | 'worker_idle'
+    | 'worker_stopped'
+    | 'message_received'
+    | 'shutdown_ack'
+    | 'shutdown_gate'
+    | 'shutdown_gate_forced'
+    | 'approval_decision'
+    | 'team_leader_nudge';
   worker: string;
   task_id?: string;
   message_id?: string | null;
   reason?: string;
-  intent?: TeamReminderIntent;
-  state?: WorkerStatus['state'];
-  prev_state?: WorkerStatus['state'];
-  worker_count?: number;
-  to_worker?: string;
-  source_type?: string;
-  metadata?: Record<string, unknown>;
+  next_action?: TeamLeaderNextAction;
+  message?: string;
   created_at: string;
-  [key: string]: unknown;
 }
 
+/** Mailbox message between workers */
 export interface TeamMailboxMessage {
   message_id: string;
   from_worker: string;
@@ -439,24 +431,23 @@ export type TaskReadiness =
 /** Result of claiming a task */
 export type ClaimTaskResult =
   | { ok: true; task: TeamTaskV2; claimToken: string }
-  | { ok: false; error: 'claim_conflict' | 'blocked_dependency' | 'task_not_found' | 'already_terminal' | 'worker_not_found' | 'task_scope_violation'; dependencies?: string[] };
+  | { ok: false; error: 'claim_conflict' | 'blocked_dependency' | 'task_not_found' | 'already_terminal' | 'worker_not_found'; dependencies?: string[] };
 
 /** Result of transitioning a task status */
 export type TransitionTaskResult =
   | { ok: true; task: TeamTaskV2 }
-  | { ok: false; error: 'claim_conflict' | 'invalid_transition' | 'task_not_found' | 'already_terminal' | 'lease_expired' | 'missing_delegation_compliance_evidence' | 'worker_not_found' | 'task_scope_violation' };
+  | { ok: false; error: 'claim_conflict' | 'invalid_transition' | 'task_not_found' | 'already_terminal' | 'lease_expired' | 'missing_delegation_compliance_evidence' };
 
 /** Result of releasing a task claim */
 export type ReleaseTaskClaimResult =
   | { ok: true; task: TeamTaskV2 }
-  | { ok: false; error: 'claim_conflict' | 'task_not_found' | 'already_terminal' | 'lease_expired' | 'worker_not_found' | 'task_scope_violation' };
+  | { ok: false; error: 'claim_conflict' | 'task_not_found' | 'already_terminal' | 'lease_expired' };
 
 /** Team summary for monitoring */
 export interface TeamSummary {
   teamName: string;
   workerCount: number;
   team_state_root?: string;
-  team_root?: string;
   workspace_mode?: 'single' | 'worktree';
   worktree_mode?: 'disabled' | 'detached' | 'named';
   tasks: {
@@ -501,15 +492,6 @@ export interface ShutdownAck {
 }
 
 /** Monitor snapshot state for delta detection */
-export interface TeamWorkerIntegrationState {
-  last_seen_head?: string;
-  last_integrated_head?: string;
-  last_rebased_leader_head?: string;
-  status?: 'integrated' | 'rebase_applied' | 'rebase_conflict' | 'rebase_skipped' | 'integration_failed';
-  reason?: string;
-  updated_at?: string;
-}
-
 export interface TeamMonitorSnapshotState {
   taskStatusById: Record<string, string>;
   workerAliveByName: Record<string, boolean>;
@@ -519,7 +501,6 @@ export interface TeamMonitorSnapshotState {
   workerTaskIdByName: Record<string, string>;
   mailboxNotifiedByMessageId: Record<string, string>;
   completedEventTaskIds: Record<string, boolean>;
-  integrationByWorker?: Record<string, TeamWorkerIntegrationState>;
   monitorTimings?: {
     list_tasks_ms: number;
     worker_scan_ms: number;

@@ -453,20 +453,6 @@ export interface TeamRoleAssignmentSpec {
   agent?: KnownAgentName;
 }
 
-export type TeamWorkerReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh';
-
-/** Per-worker launch override keyed by worker name (worker-1) or 1-based index. */
-export interface TeamWorkerOverrideSpec extends Omit<TeamRoleAssignmentSpec, 'agent'> {
-  /** Canonical role alias or known agent name for this worker. */
-  agent?: KnownAgentName | CanonicalTeamRole | string;
-  /** Canonical role to use for routing/reasoning when no explicit agent is set. */
-  role?: CanonicalTeamRole | KnownAgentName | string;
-  /** Additional CLI args inherited only by this worker. */
-  extraFlags?: string[];
-  /** Codex reasoning effort override for this worker. */
-  reasoning?: TeamWorkerReasoningEffort;
-}
-
 /** Orchestrator is pinned to claude; only `model` is user-configurable. */
 export type OrchestratorSpec = Pick<TeamRoleAssignmentSpec, 'model'>;
 
@@ -490,8 +476,6 @@ export interface TeamConfigBlock {
   roleRouting?: Partial<Record<CanonicalTeamRole, TeamRoleAssignmentSpec>> & {
     orchestrator?: OrchestratorSpec;
   };
-  /** Additive per-worker launch overrides keyed by worker name (worker-1) or index (1). */
-  workerOverrides?: Record<string, TeamWorkerOverrideSpec>;
 }
 
 /** Concrete resolved per-role assignment stored in `TeamConfig.resolved_routing`. */

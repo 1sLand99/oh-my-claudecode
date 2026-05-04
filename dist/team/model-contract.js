@@ -2,7 +2,7 @@ import { spawnSync } from 'child_process';
 import { isAbsolute, normalize, win32 as win32Path } from 'path';
 import { validateTeamName } from './team-name.js';
 import { normalizeToCcAlias } from '../features/delegation-enforcer.js';
-import { getDefaultModelHigh, getDefaultModelLow, getDefaultModelMedium, isBedrock, isVertexAI, isProviderSpecificModelId } from '../config/models.js';
+import { isBedrock, isVertexAI, isProviderSpecificModelId } from '../config/models.js';
 import { isExternalLLMDisabled } from '../lib/security-config.js';
 const resolvedPathCache = new Map();
 const UNTRUSTED_PATH_PATTERNS = [
@@ -97,227 +97,6 @@ export const _testInternals = {
     UNTRUSTED_PATH_PATTERNS,
     getTrustedPrefixes,
 };
-const CODEX_BYPASS_FLAG = '--dangerously-bypass-approvals-and-sandbox';
-const MADMAX_FLAG = '--madmax';
-const MODEL_FLAG = '--model';
-const CONFIG_FLAG = '-c';
-const REASONING_KEY = 'model_reasoning_effort';
-const MODEL_PROVIDER_KEY = 'model_provider';
-const LOW_COMPLEXITY_AGENT_TYPES = new Set(['explore', 'style-reviewer']);
-const ROLE_REASONING_DEFAULTS = {
-    explore: 'low',
-    writer: 'low',
-    executor: 'medium',
-    debugger: 'medium',
-    'test-engineer': 'medium',
-    verifier: 'medium',
-    designer: 'medium',
-    'security-reviewer': 'medium',
-    architect: 'high',
-    planner: 'high',
-    analyst: 'high',
-    critic: 'high',
-    'code-reviewer': 'high',
-    'code-simplifier': 'high',
-};
-const ROLE_MODEL_DEFAULTS = {
-    explore: getDefaultModelLow,
-    writer: getDefaultModelLow,
-    executor: getDefaultModelMedium,
-    debugger: getDefaultModelMedium,
-    'test-engineer': getDefaultModelMedium,
-    verifier: getDefaultModelMedium,
-    designer: getDefaultModelMedium,
-    'security-reviewer': getDefaultModelMedium,
-    'document-specialist': getDefaultModelMedium,
-    architect: getDefaultModelHigh,
-    planner: getDefaultModelHigh,
-    analyst: getDefaultModelHigh,
-    critic: getDefaultModelHigh,
-    'code-reviewer': getDefaultModelHigh,
-    'code-simplifier': getDefaultModelHigh,
-    orchestrator: getDefaultModelHigh,
-};
-function isConfigOverrideForKey(value, key) {
-    return new RegExp(`^${key}\\s*=`).test(value.trim());
-}
-function isReasoningOverride(value) {
-    return isConfigOverrideForKey(value, REASONING_KEY);
-}
-function isModelProviderOverride(value) {
-    return isConfigOverrideForKey(value, MODEL_PROVIDER_KEY);
-}
-function isValidModelValue(value) {
-    return value.trim().length > 0 && !value.startsWith('-');
-}
-function normalizeOptionalModel(model) {
-    if (typeof model !== 'string')
-        return undefined;
-    const trimmed = model.trim();
-    return trimmed.length > 0 ? trimmed : undefined;
-}
-function normalizeOptionalReasoning(reasoning) {
-    if (typeof reasoning !== 'string')
-        return undefined;
-    const normalized = reasoning.trim().toLowerCase();
-    if (normalized === 'low' || normalized === 'medium' || normalized === 'high' || normalized === 'xhigh') {
-        return normalized;
-    }
-    return undefined;
-}
-function normalizeRoleName(agentType) {
-    const normalized = agentType?.trim().toLowerCase();
-    return normalized ? normalized : undefined;
-}
-export function splitWorkerLaunchArgs(raw) {
-    if (!raw || raw.trim() === '')
-        return [];
-    return raw.split(/\s+/).map((part) => part.trim()).filter(Boolean);
-}
-export function parseTeamWorkerLaunchArgs(args) {
-    const passthrough = [];
-    let wantsBypass = false;
-    let reasoningOverride = null;
-    let modelProviderOverride = null;
-    let modelOverride = null;
-    for (let i = 0; i < args.length; i += 1) {
-        const arg = args[i];
-        if (arg === CODEX_BYPASS_FLAG || arg === MADMAX_FLAG) {
-            wantsBypass = true;
-            continue;
-        }
-        if (arg === MODEL_FLAG) {
-            const maybeValue = args[i + 1];
-            if (typeof maybeValue === 'string' && isValidModelValue(maybeValue)) {
-                modelOverride = maybeValue.trim();
-                i += 1;
-            }
-            continue;
-        }
-        if (arg.startsWith(`${MODEL_FLAG}=`)) {
-            const inlineValue = arg.slice(`${MODEL_FLAG}=`.length).trim();
-            if (isValidModelValue(inlineValue))
-                modelOverride = inlineValue;
-            continue;
-        }
-        if (arg === CONFIG_FLAG) {
-            const maybeValue = args[i + 1];
-            if (typeof maybeValue === 'string' && isReasoningOverride(maybeValue)) {
-                reasoningOverride = maybeValue;
-                i += 1;
-                continue;
-            }
-            if (typeof maybeValue === 'string' && isModelProviderOverride(maybeValue)) {
-                modelProviderOverride = maybeValue;
-                i += 1;
-                continue;
-            }
-        }
-        passthrough.push(arg);
-    }
-    return { passthrough, wantsBypass, reasoningOverride, modelProviderOverride, modelOverride };
-}
-export function collectInheritableTeamWorkerArgs(workerArgs) {
-    const parsed = parseTeamWorkerLaunchArgs(workerArgs);
-    const inherited = [];
-    if (parsed.wantsBypass)
-        inherited.push(CODEX_BYPASS_FLAG);
-    if (parsed.modelProviderOverride)
-        inherited.push(CONFIG_FLAG, parsed.modelProviderOverride);
-    if (parsed.reasoningOverride)
-        inherited.push(CONFIG_FLAG, parsed.reasoningOverride);
-    if (parsed.modelOverride)
-        inherited.push(MODEL_FLAG, parsed.modelOverride);
-    return inherited;
-}
-export function normalizeTeamWorkerLaunchArgs(args, preferredModel, preferredReasoning, preferredModelProviderOverride) {
-    const parsed = parseTeamWorkerLaunchArgs(args);
-    const normalized = [...parsed.passthrough];
-    if (parsed.wantsBypass)
-        normalized.push(CODEX_BYPASS_FLAG);
-    const normalizedPreferredReasoning = typeof preferredReasoning === 'string' && isReasoningOverride(preferredReasoning)
-        ? preferredReasoning
-        : (normalizeOptionalReasoning(preferredReasoning) ? `${REASONING_KEY}="${normalizeOptionalReasoning(preferredReasoning)}"` : null);
-    const selectedReasoning = parsed.reasoningOverride ?? normalizedPreferredReasoning;
-    const selectedModelProvider = preferredModelProviderOverride ?? parsed.modelProviderOverride;
-    if (selectedModelProvider)
-        normalized.push(CONFIG_FLAG, selectedModelProvider);
-    if (selectedReasoning)
-        normalized.push(CONFIG_FLAG, selectedReasoning);
-    const selectedModel = normalizeOptionalModel(preferredModel) ?? normalizeOptionalModel(parsed.modelOverride);
-    if (selectedModel)
-        normalized.push(MODEL_FLAG, selectedModel);
-    return normalized;
-}
-export function resolveTeamWorkerLaunchArgs(options) {
-    const envArgs = splitWorkerLaunchArgs(options.existingRaw);
-    const inheritedArgs = options.inheritedArgs ?? [];
-    const envParsed = parseTeamWorkerLaunchArgs(envArgs);
-    const inheritedParsed = parseTeamWorkerLaunchArgs(inheritedArgs);
-    const selectedModel = normalizeOptionalModel(envParsed.modelOverride)
-        ?? normalizeOptionalModel(inheritedParsed.modelOverride)
-        ?? normalizeOptionalModel(options.fallbackModel);
-    const selectedReasoning = envParsed.reasoningOverride
-        ?? inheritedParsed.reasoningOverride
-        ?? options.preferredReasoning;
-    const selectedModelProvider = envParsed.modelProviderOverride ?? inheritedParsed.modelProviderOverride ?? undefined;
-    const passthroughArgs = [...envParsed.passthrough, ...inheritedParsed.passthrough];
-    if (envParsed.wantsBypass || inheritedParsed.wantsBypass)
-        passthroughArgs.push(CODEX_BYPASS_FLAG);
-    return normalizeTeamWorkerLaunchArgs(passthroughArgs, selectedModel, selectedReasoning, selectedModelProvider);
-}
-export function isLowComplexityAgentType(agentType) {
-    const normalized = normalizeRoleName(agentType);
-    if (!normalized)
-        return false;
-    if (normalized.endsWith('-low'))
-        return true;
-    return LOW_COMPLEXITY_AGENT_TYPES.has(normalized);
-}
-export function resolveAgentReasoningEffort(agentType) {
-    const normalized = normalizeRoleName(agentType);
-    if (!normalized)
-        return undefined;
-    return ROLE_REASONING_DEFAULTS[normalized];
-}
-export function resolveAgentDefaultModel(agentType) {
-    const normalized = normalizeRoleName(agentType);
-    if (!normalized)
-        return undefined;
-    if (normalized.endsWith('-low'))
-        return getDefaultModelLow();
-    return ROLE_MODEL_DEFAULTS[normalized]?.();
-}
-function contractExtraFlags(agentType, extraFlags, model) {
-    const parsed = parseTeamWorkerLaunchArgs(extraFlags ?? []);
-    const selectedModel = normalizeOptionalModel(parsed.modelOverride) ?? normalizeOptionalModel(model);
-    const passthrough = [...parsed.passthrough];
-    if (agentType === 'codex' && parsed.modelProviderOverride)
-        passthrough.push(CONFIG_FLAG, parsed.modelProviderOverride);
-    if (agentType === 'codex' && parsed.reasoningOverride)
-        passthrough.push(CONFIG_FLAG, parsed.reasoningOverride);
-    if (parsed.wantsBypass && agentType !== 'codex')
-        passthrough.push(CODEX_BYPASS_FLAG);
-    return { model: selectedModel, extraFlags: passthrough };
-}
-export function resolveWorkerLaunchExtraFlags(env = process.env, inheritedArgs = [], fallbackModel, preferredReasoning) {
-    return resolveTeamWorkerLaunchArgs({
-        existingRaw: env.OMC_TEAM_WORKER_LAUNCH_ARGS,
-        inheritedArgs,
-        fallbackModel,
-        preferredReasoning,
-    });
-}
-/**
- * Detect parent launch env for Claude Code API-key auth.
- *
- * Claude Code's `--dangerously-skip-permissions` only bypasses permission
- * prompts. When an API key is present, `--bare` is needed to avoid the
- * interactive OAuth/session login path for team worker panes.
- */
-export function shouldUseClaudeBareMode(env = process.env) {
-    return typeof env.ANTHROPIC_API_KEY === 'string' && env.ANTHROPIC_API_KEY.trim().length > 0;
-}
 const CONTRACTS = {
     claude: {
         agentType: 'claude',
@@ -325,9 +104,6 @@ const CONTRACTS = {
         installInstructions: 'Install Claude CLI: https://claude.ai/download',
         buildLaunchArgs(model, extraFlags = []) {
             const args = ['--dangerously-skip-permissions'];
-            if (shouldUseClaudeBareMode() && !extraFlags.includes('--bare')) {
-                args.push('--bare');
-            }
             if (model) {
                 // Provider-specific model IDs (Bedrock, Vertex) must be passed as-is.
                 // Normalizing them to aliases like "sonnet" causes Claude Code to expand
@@ -480,8 +256,7 @@ export function resolveValidatedBinaryPath(agentType) {
     return resolveCliBinaryPath(contract.binary);
 }
 export function buildLaunchArgs(agentType, config) {
-    const prepared = contractExtraFlags(agentType, config.extraFlags, config.model);
-    return getContract(agentType).buildLaunchArgs(prepared.model, prepared.extraFlags);
+    return getContract(agentType).buildLaunchArgs(config.model, config.extraFlags);
 }
 export function buildWorkerArgv(agentType, config) {
     validateTeamName(config.teamName);
@@ -520,43 +295,13 @@ const WORKER_MODEL_ENV_ALLOWLIST = [
     'OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL',
     'OMC_GEMINI_DEFAULT_MODEL',
 ];
-function setIfText(target, key, value) {
-    if (typeof value === 'string' && value.trim() !== '') {
-        target[key] = value;
-    }
-}
-function serializeTaskScope(taskScope) {
-    if (!taskScope)
-        return undefined;
-    const normalized = taskScope
-        .map((taskId) => taskId.trim())
-        .filter((taskId, index, all) => taskId.length > 0 && all.indexOf(taskId) === index);
-    return normalized.length > 0 ? normalized.join(',') : undefined;
-}
-export function getWorkerEnv(teamName, workerName, agentType, env = process.env, options = {}) {
+export function getWorkerEnv(teamName, workerName, agentType, env = process.env) {
     validateTeamName(teamName);
-    const workerIdentity = `${teamName}/${workerName}`;
     const workerEnv = {
-        OMC_TEAM_WORKER: workerIdentity,
-        OMX_TEAM_WORKER: workerIdentity,
+        OMC_TEAM_WORKER: `${teamName}/${workerName}`,
         OMC_TEAM_NAME: teamName,
-        OMX_TEAM_NAME: teamName,
         OMC_WORKER_AGENT_TYPE: agentType,
-        OMX_WORKER_AGENT_TYPE: agentType,
-        OMC_TEAM_WORKER_CLI: agentType,
-        OMX_TEAM_WORKER_CLI: agentType,
     };
-    setIfText(workerEnv, 'OMC_TEAM_LEADER_CWD', options.leaderCwd);
-    setIfText(workerEnv, 'OMX_TEAM_LEADER_CWD', options.leaderCwd);
-    setIfText(workerEnv, 'OMC_TEAM_WORKER_CWD', options.workerCwd);
-    setIfText(workerEnv, 'OMX_TEAM_WORKER_CWD', options.workerCwd);
-    setIfText(workerEnv, 'OMC_TEAM_STATE_ROOT', options.teamStateRoot);
-    setIfText(workerEnv, 'OMX_TEAM_STATE_ROOT', options.teamStateRoot);
-    setIfText(workerEnv, 'OMC_TEAM_ROOT', options.teamRoot);
-    setIfText(workerEnv, 'OMX_TEAM_ROOT', options.teamRoot);
-    const taskScope = serializeTaskScope(options.taskScope);
-    setIfText(workerEnv, 'OMC_TEAM_TASK_SCOPE', taskScope);
-    setIfText(workerEnv, 'OMX_TEAM_TASK_SCOPE', taskScope);
     for (const key of WORKER_MODEL_ENV_ALLOWLIST) {
         const value = env[key];
         if (typeof value === 'string' && value.length > 0) {

@@ -11,7 +11,7 @@
  * dirty team worktrees are preserved, and cleanup never force-removes dirty
  * worker changes.
  */
-import { existsSync, readFileSync, readdirSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { atomicWriteJson, ensureDirWithMode, validateResolvedPath } from './fs-utils.js';
@@ -49,22 +49,14 @@ function assertCleanLeaderWorktree(repoRoot) {
         throw error;
     }
 }
-function canonicalWorktreePath(path) {
-    try {
-        return realpathSync.native(path);
-    }
-    catch {
-        return resolve(path);
-    }
-}
 function getRegisteredWorktreeBranch(repoRoot, wtPath) {
     try {
         const output = git(repoRoot, ['worktree', 'list', '--porcelain']);
-        const resolvedWtPath = canonicalWorktreePath(wtPath);
+        const resolvedWtPath = resolve(wtPath);
         let currentMatches = false;
         for (const line of output.split('\n')) {
             if (line.startsWith('worktree ')) {
-                currentMatches = canonicalWorktreePath(line.slice('worktree '.length).trim()) === resolvedWtPath;
+                currentMatches = resolve(line.slice('worktree '.length).trim()) === resolvedWtPath;
                 continue;
             }
             if (!currentMatches)
@@ -83,8 +75,8 @@ function getRegisteredWorktreeBranch(repoRoot, wtPath) {
 function isRegisteredWorktreePath(repoRoot, wtPath) {
     try {
         const output = git(repoRoot, ['worktree', 'list', '--porcelain']);
-        const resolvedWtPath = canonicalWorktreePath(wtPath);
-        return output.split('\n').some(line => (line.startsWith('worktree ') && canonicalWorktreePath(line.slice('worktree '.length).trim()) === resolvedWtPath));
+        const resolvedWtPath = resolve(wtPath);
+        return output.split('\n').some(line => (line.startsWith('worktree ') && resolve(line.slice('worktree '.length).trim()) === resolvedWtPath));
     }
     catch {
         return false;

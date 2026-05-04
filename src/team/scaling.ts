@@ -16,13 +16,11 @@ import { tmuxExec, tmuxSpawn } from '../cli/tmux-utils.js';
 import {
   buildWorkerArgv,
   getWorkerEnv as getModelWorkerEnv,
-  resolveAgentReasoningEffort,
   resolveClaudeWorkerModel,
-  resolveWorkerLaunchExtraFlags,
   type CliAgentType,
 } from './model-contract.js';
 import { CANONICAL_TEAM_ROLES } from '../shared/types.js';
-import type { CanonicalTeamRole, TeamWorkerOverrideSpec } from '../shared/types.js';
+import type { CanonicalTeamRole } from '../shared/types.js';
 import { normalizeDelegationRole } from '../features/delegation-routing/types.js';
 import { routeTaskToRole } from './role-router.js';
 import {
@@ -73,31 +71,6 @@ function assertScalingEnabled(env: NodeJS.ProcessEnv = process.env): void {
   }
 }
 
-
-function normalizeCanonicalWorkerRole(role: string | undefined): CanonicalTeamRole | null {
-  if (!role) return null;
-  const knownAgentRoleAliases: Record<string, CanonicalTeamRole> = {
-    codeReviewer: 'code-reviewer',
-    securityReviewer: 'security-reviewer',
-    testEngineer: 'test-engineer',
-    codeSimplifier: 'code-simplifier',
-    documentSpecialist: 'document-specialist',
-  };
-  const normalized = knownAgentRoleAliases[role] ?? normalizeDelegationRole(role);
-  return (CANONICAL_TEAM_ROLES as readonly string[]).includes(normalized)
-    ? (normalized as CanonicalTeamRole)
-    : null;
-}
-
-function getWorkerOverride(
-  overrides: Record<string, TeamWorkerOverrideSpec> | undefined,
-  workerName: string,
-  workerIndex: number,
-): TeamWorkerOverrideSpec | undefined {
-  if (!overrides) return undefined;
-  return overrides[workerName] ?? overrides[String(workerIndex)];
-}
-
 function asCliAgentType(agentType: string): CliAgentType {
   if (CLI_AGENT_TYPES.has(agentType as CliAgentType)) {
     return agentType as CliAgentType;
@@ -140,7 +113,7 @@ export async function scaleUp(
   teamName: string,
   count: number,
   agentType: string,
-  tasks: Array<{ id?: string | number; subject: string; description: string; owner?: string; blocked_by?: string[]; role?: string }>,
+  tasks: Array<{ subject: string; description: string; owner?: string; blocked_by?: string[]; role?: string }>,
   cwd: string,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<ScaleUpResult | ScaleError> {
@@ -279,22 +252,24 @@ export async function scaleUp(
         : (workerTasks[0]
           ? routeTaskToRole(workerTasks[0].subject, workerTasks[0].description, 'executor').role
           : undefined);
-      const workerOverride = getWorkerOverride(config.worker_overrides, workerName, workerIndex);
-      const canonical: CanonicalTeamRole | null = normalizeCanonicalWorkerRole(workerOverride?.role ?? workerOverride?.agent ?? inferredRole);
+      const canonicalRoleSet = new Set<string>(CANONICAL_TEAM_ROLES as readonly string[]);
+      const canonical: CanonicalTeamRole | null = inferredRole
+        ? (() => {
+          const normalized = normalizeDelegationRole(inferredRole);
+          return canonicalRoleSet.has(normalized) ? (normalized as CanonicalTeamRole) : null;
+        })()
+        : null;
+
       let workerAgentType: CliAgentType = cliAgentType;
       let workerModel: string | undefined;
       // Only override caller's agentType when the worker's inferred role came
       // from an explicit `task.role` (user opt-in). Pre-patch semantics: callers
       // passing `--agent-type codex` stay on codex regardless of task text.
       const hasExplicitOwnedRole = ownedRoles.length === 1;
-      const hasExplicitWorkerOverrideRole = Boolean(workerOverride?.role ?? workerOverride?.agent);
-      const routedPair = (hasExplicitOwnedRole || hasExplicitWorkerOverrideRole) && canonical
+      const routedPair = hasExplicitOwnedRole && canonical
         ? config.resolved_routing?.[canonical]
         : undefined;
-      if (workerOverride?.provider) {
-        workerAgentType = asCliAgentType(workerOverride.provider);
-        workerModel = workerOverride.model;
-      } else if (routedPair) {
+      if (routedPair) {
         const { primary } = routedPair;
         const primaryProvider = primary.provider as CliAgentType;
         if (CLI_AGENT_TYPES.has(primaryProvider)) {
@@ -305,9 +280,6 @@ export async function scaleUp(
         // Honor Bedrock/Vertex default-model resolution for non-routed claude workers.
         workerModel = resolveClaudeWorkerModel(env);
       }
-      if (workerOverride?.model) {
-        workerModel = workerOverride.model;
-      }
 
       // AC-8: try the resolved provider first; on trust-path / not-found
       // failure, emit a loud warning and retry with the snapshot's Claude
@@ -317,18 +289,11 @@ export async function scaleUp(
         agentType: CliAgentType,
         model: string | undefined,
       ): { launchBinary: string; launchArgs: string[] } => {
-        const workerExtraFlags = resolveWorkerLaunchExtraFlags(
-          env,
-          workerOverride?.extraFlags,
-          model,
-          agentType === 'codex' ? (workerOverride?.reasoning ?? resolveAgentReasoningEffort(canonical ?? undefined)) : undefined,
-        );
         const [launchBinary, ...launchArgs] = buildWorkerArgv(agentType, {
           teamName: sanitized,
           workerName,
           cwd: workerCwd,
           ...(model ? { model } : {}),
-          extraFlags: workerExtraFlags,
         });
         return { launchBinary, launchArgs };
       };
@@ -368,24 +333,12 @@ export async function scaleUp(
         }
       }
 
-      const workerTaskScope = workerTasks
-        .map((task) => (task.id == null ? '' : String(task.id).trim()))
-        .filter((taskId, idx, all) => taskId.length > 0 && all.indexOf(taskId) === idx);
-      const sharedTeamRoot = config.team_root ?? leaderCwd;
-
       // Rebuild env using the final agentType (fallback may have swapped it).
-      // getModelWorkerEnv starts from a small allowlist and explicitly sets the
-      // OMC + OMX compatibility names below, so stale parent team env cannot
-      // override this worker's cwd/state/team root/provider identity.
       const extraEnv: Record<string, string> = {
-        ...getModelWorkerEnv(sanitized, workerName, workerAgentType, env, {
-          leaderCwd,
-          workerCwd,
-          teamStateRoot,
-          teamRoot: sharedTeamRoot,
-          taskScope: workerTaskScope,
-        }),
-        ...(worktree ? { OMC_TEAM_WORKTREE_PATH: worktree.path, OMX_TEAM_WORKTREE_PATH: worktree.path } : {}),
+        ...getModelWorkerEnv(sanitized, workerName, workerAgentType, env),
+        OMC_TEAM_STATE_ROOT: teamStateRoot,
+        OMC_TEAM_LEADER_CWD: leaderCwd,
+        ...(worktree ? { OMC_TEAM_WORKTREE_PATH: worktree.path, OMC_TEAM_WORKER_CWD: workerCwd } : {}),
       };
 
       if (worktree) {
@@ -460,9 +413,9 @@ export async function scaleUp(
       // Resolve per-worker role from assigned task roles
       const workerTaskRoles = tasks.filter(t => t.owner === workerName).map(t => t.role).filter(Boolean) as string[];
       const uniqueTaskRoles = new Set(workerTaskRoles);
-      const workerRole = canonical ?? (workerTaskRoles.length > 0 && uniqueTaskRoles.size === 1
+      const workerRole = workerTaskRoles.length > 0 && uniqueTaskRoles.size === 1
         ? workerTaskRoles[0]!
-        : agentType);
+        : agentType;
 
       const workerInfo: WorkerInfo = {
         name: workerName,
@@ -471,11 +424,8 @@ export async function scaleUp(
         assigned_tasks: [],
         pid: panePid,
         pane_id: paneId,
-        worker_cli: workerAgentType,
         working_dir: workerCwd,
         team_state_root: teamStateRoot,
-        team_root: sharedTeamRoot,
-        task_scope: workerTaskScope,
         ...(worktree ? {
           worktree_repo_root: leaderCwd,
           worktree_path: worktree.path,

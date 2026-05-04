@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { spawnSync } from 'child_process';
-import { getContract, buildLaunchArgs, buildWorkerArgv, getWorkerEnv, parseCliOutput, isPromptModeAgent, getPromptModeArgs, isCliAvailable, shouldLoadShellRc, resolveCliBinaryPath, clearResolvedPathCache, validateCliBinaryPath, resolveClaudeWorkerModel, shouldUseClaudeBareMode, collectInheritableTeamWorkerArgs, isLowComplexityAgentType, resolveAgentDefaultModel, resolveAgentReasoningEffort, resolveTeamWorkerLaunchArgs, _testInternals, } from '../model-contract.js';
+import { getContract, buildLaunchArgs, buildWorkerArgv, getWorkerEnv, parseCliOutput, isPromptModeAgent, getPromptModeArgs, isCliAvailable, shouldLoadShellRc, resolveCliBinaryPath, clearResolvedPathCache, validateCliBinaryPath, resolveClaudeWorkerModel, _testInternals, } from '../model-contract.js';
 vi.mock('child_process', async (importOriginal) => {
     const actual = await importOriginal();
     return {
@@ -14,29 +14,6 @@ function setProcessPlatform(platform) {
     return () => {
         Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
     };
-}
-function withAnthropicApiKey(value, fn) {
-    const original = process.env.ANTHROPIC_API_KEY;
-    if (value === undefined) {
-        delete process.env.ANTHROPIC_API_KEY;
-    }
-    else {
-        process.env.ANTHROPIC_API_KEY = value;
-    }
-    try {
-        fn();
-    }
-    finally {
-        if (original === undefined) {
-            delete process.env.ANTHROPIC_API_KEY;
-        }
-        else {
-            process.env.ANTHROPIC_API_KEY = original;
-        }
-    }
-}
-function countArg(args, expected) {
-    return args.filter(arg => arg === expected).length;
 }
 describe('model-contract', () => {
     describe('backward-compat API shims', () => {
@@ -169,36 +146,6 @@ describe('model-contract', () => {
             const args = buildLaunchArgs('claude', { teamName: 't', workerName: 'w', cwd: '/tmp' });
             expect(args).toContain('--dangerously-skip-permissions');
         });
-        it('detects Claude bare mode only for non-empty ANTHROPIC_API_KEY', () => {
-            expect(shouldUseClaudeBareMode({ ANTHROPIC_API_KEY: 'sk-test' })).toBe(true);
-            expect(shouldUseClaudeBareMode({ ANTHROPIC_API_KEY: '' })).toBe(false);
-            expect(shouldUseClaudeBareMode({ ANTHROPIC_API_KEY: '   ' })).toBe(false);
-            expect(shouldUseClaudeBareMode({})).toBe(false);
-        });
-        it('claude omits --bare when ANTHROPIC_API_KEY is absent, empty, or whitespace', () => {
-            for (const value of [undefined, '', '   ']) {
-                withAnthropicApiKey(value, () => {
-                    const args = buildLaunchArgs('claude', { teamName: 't', workerName: 'w', cwd: '/tmp' });
-                    expect(args).toContain('--dangerously-skip-permissions');
-                    expect(args).not.toContain('--bare');
-                });
-            }
-        });
-        it('claude includes --bare with API-key auth and dedupes exact extra flag', () => {
-            withAnthropicApiKey('sk-test', () => {
-                const args = buildLaunchArgs('claude', { teamName: 't', workerName: 'w', cwd: '/tmp' });
-                expect(args).toContain('--dangerously-skip-permissions');
-                expect(args).toContain('--bare');
-                expect(countArg(args, '--bare')).toBe(1);
-                const deduped = buildLaunchArgs('claude', {
-                    teamName: 't',
-                    workerName: 'w',
-                    cwd: '/tmp',
-                    extraFlags: ['--bare'],
-                });
-                expect(countArg(deduped, '--bare')).toBe(1);
-            });
-        });
         it('codex includes --dangerously-bypass-approvals-and-sandbox', () => {
             const args = buildLaunchArgs('codex', { teamName: 't', workerName: 'w', cwd: '/tmp' });
             expect(args).not.toContain('exec');
@@ -223,14 +170,10 @@ describe('model-contract', () => {
             expect(args).not.toContain('claude-sonnet-4-6');
         });
         it('passes Bedrock model ID through without normalization for claude agent (issue #1695)', () => {
-            withAnthropicApiKey('sk-test', () => {
-                const args = buildLaunchArgs('claude', { teamName: 't', workerName: 'w', cwd: '/tmp', model: 'us.anthropic.claude-opus-4-6-v1:0' });
-                expect(args).toContain('--bare');
-                expect(countArg(args, '--bare')).toBe(1);
-                expect(args).toContain('--model');
-                expect(args).toContain('us.anthropic.claude-opus-4-6-v1:0');
-                expect(args).not.toContain('opus');
-            });
+            const args = buildLaunchArgs('claude', { teamName: 't', workerName: 'w', cwd: '/tmp', model: 'us.anthropic.claude-opus-4-6-v1:0' });
+            expect(args).toContain('--model');
+            expect(args).toContain('us.anthropic.claude-opus-4-6-v1:0');
+            expect(args).not.toContain('opus');
         });
         it('passes Bedrock ARN model ID through without normalization (issue #1695)', () => {
             const arn = 'arn:aws:bedrock:us-east-2:123456789012:inference-profile/global.anthropic.claude-sonnet-4-6-v1:0';
@@ -292,150 +235,8 @@ describe('model-contract', () => {
             expect(env.OMC_GEMINI_DEFAULT_MODEL).toBe('gemini-2.5-pro');
             expect(env.ANTHROPIC_API_KEY).toBeUndefined();
         });
-        it('scrubs stale team env while setting explicit worker isolation fields and aliases', () => {
-            const env = getWorkerEnv('my-team', 'worker-1', 'codex', {
-                OMC_TEAM_STATE_ROOT: '/stale/omc-state',
-                OMX_TEAM_STATE_ROOT: '/stale/omx-state',
-                OMC_TEAM_WORKER_CWD: '/stale/cwd',
-                OMC_WORKER_AGENT_TYPE: 'claude',
-                ANTHROPIC_API_KEY: 'should-not-be-forwarded',
-                OMC_MODEL_LOW: 'gpt-5.3-codex-spark',
-            }, {
-                leaderCwd: '/repo',
-                workerCwd: '/repo/.omc/team/my-team/worktrees/worker-1',
-                teamStateRoot: '/repo/.omc/state/team/my-team',
-                teamRoot: '/repo',
-                taskScope: ['2', '2', ''],
-            });
-            expect(env).toMatchObject({
-                OMC_TEAM_WORKER: 'my-team/worker-1',
-                OMX_TEAM_WORKER: 'my-team/worker-1',
-                OMC_TEAM_NAME: 'my-team',
-                OMX_TEAM_NAME: 'my-team',
-                OMC_WORKER_AGENT_TYPE: 'codex',
-                OMX_WORKER_AGENT_TYPE: 'codex',
-                OMC_TEAM_WORKER_CLI: 'codex',
-                OMX_TEAM_WORKER_CLI: 'codex',
-                OMC_TEAM_LEADER_CWD: '/repo',
-                OMX_TEAM_LEADER_CWD: '/repo',
-                OMC_TEAM_WORKER_CWD: '/repo/.omc/team/my-team/worktrees/worker-1',
-                OMX_TEAM_WORKER_CWD: '/repo/.omc/team/my-team/worktrees/worker-1',
-                OMC_TEAM_STATE_ROOT: '/repo/.omc/state/team/my-team',
-                OMX_TEAM_STATE_ROOT: '/repo/.omc/state/team/my-team',
-                OMC_TEAM_ROOT: '/repo',
-                OMX_TEAM_ROOT: '/repo',
-                OMC_TEAM_TASK_SCOPE: '2',
-                OMX_TEAM_TASK_SCOPE: '2',
-                OMC_MODEL_LOW: 'gpt-5.3-codex-spark',
-            });
-            expect(env.ANTHROPIC_API_KEY).toBeUndefined();
-        });
         it('rejects invalid team names', () => {
             expect(() => getWorkerEnv('Bad-Team', 'worker-1', 'codex')).toThrow('Invalid team name');
-        });
-    });
-    describe('team worker launch arg normalization', () => {
-        it('collects inheritable bypass, model provider, reasoning, and model overrides', () => {
-            expect(collectInheritableTeamWorkerArgs([
-                '--dangerously-bypass-approvals-and-sandbox',
-                '-c',
-                'sandbox_mode="danger-full-access"',
-                '-c',
-                'model_provider="localRouter"',
-                '-c',
-                'model_reasoning_effort="xhigh"',
-                '--model=gpt-5.5',
-            ])).toEqual([
-                '--dangerously-bypass-approvals-and-sandbox',
-                '-c',
-                'model_provider="localRouter"',
-                '-c',
-                'model_reasoning_effort="xhigh"',
-                '--model',
-                'gpt-5.5',
-            ]);
-        });
-        it('keeps exactly one canonical model with env > inherited > fallback precedence', () => {
-            expect(resolveTeamWorkerLaunchArgs({
-                existingRaw: '--model env-a --model=env-b',
-                inheritedArgs: ['--model', 'inherited-model'],
-                fallbackModel: 'fallback-model',
-            })).toEqual(['--model', 'env-b']);
-            expect(resolveTeamWorkerLaunchArgs({
-                existingRaw: '--no-alt-screen --model',
-                inheritedArgs: ['--model', 'inherited-model'],
-                fallbackModel: 'fallback-model',
-            })).toEqual(['--no-alt-screen', '--model', 'inherited-model']);
-            expect(resolveTeamWorkerLaunchArgs({
-                existingRaw: '--model=',
-                fallbackModel: 'fallback-model',
-            })).toEqual(['--model', 'fallback-model']);
-        });
-        it('injects preferred reasoning only when explicit reasoning is absent', () => {
-            expect(resolveTeamWorkerLaunchArgs({
-                fallbackModel: 'gpt-spark',
-                preferredReasoning: 'low',
-            })).toEqual(['-c', 'model_reasoning_effort="low"', '--model', 'gpt-spark']);
-            const explicit = resolveTeamWorkerLaunchArgs({
-                existingRaw: '-c model_reasoning_effort="high"',
-                fallbackModel: 'gpt-spark',
-                preferredReasoning: 'low',
-            });
-            expect(explicit).toEqual(['-c', 'model_reasoning_effort="high"', '--model', 'gpt-spark']);
-            expect(explicit.join(' ').match(/model_reasoning_effort/g)?.length).toBe(1);
-        });
-        it('keeps exactly one canonical reasoning override with env > inherited > preferred precedence', () => {
-            expect(resolveTeamWorkerLaunchArgs({
-                existingRaw: '-c model_reasoning_effort="high"',
-                inheritedArgs: ['-c', 'model_reasoning_effort="low"'],
-                preferredReasoning: 'medium',
-            })).toEqual(['-c', 'model_reasoning_effort="high"']);
-            expect(resolveTeamWorkerLaunchArgs({
-                inheritedArgs: ['-c', 'model_reasoning_effort="xhigh"'],
-                preferredReasoning: 'medium',
-            })).toEqual(['-c', 'model_reasoning_effort="xhigh"']);
-        });
-        it('maps worker roles to OMC default model and reasoning lanes without model-name heuristics', () => {
-            vi.stubEnv('OMC_MODEL_LOW', 'omc-low-model');
-            vi.stubEnv('OMC_MODEL_MEDIUM', 'omc-medium-model');
-            vi.stubEnv('OMC_MODEL_HIGH', 'omc-high-model');
-            expect(isLowComplexityAgentType('explore')).toBe(true);
-            expect(isLowComplexityAgentType('style-reviewer')).toBe(true);
-            expect(isLowComplexityAgentType('executor')).toBe(false);
-            expect(isLowComplexityAgentType('executor-low')).toBe(true);
-            expect(resolveAgentReasoningEffort('explore')).toBe('low');
-            expect(resolveAgentReasoningEffort('executor')).toBe('medium');
-            expect(resolveAgentReasoningEffort('architect')).toBe('high');
-            expect(resolveAgentReasoningEffort('does-not-exist')).toBeUndefined();
-            expect(resolveAgentDefaultModel('explore')).toBe('omc-low-model');
-            expect(resolveAgentDefaultModel('executor')).toBe('omc-medium-model');
-            expect(resolveAgentDefaultModel('architect')).toBe('omc-high-model');
-            expect(resolveAgentDefaultModel('does-not-exist')).toBeUndefined();
-            vi.unstubAllEnvs();
-        });
-        it('buildLaunchArgs dedupes model flags and keeps codex reasoning config canonical', () => {
-            const args = buildLaunchArgs('codex', {
-                teamName: 't',
-                workerName: 'w',
-                cwd: '/tmp',
-                model: 'fallback-model',
-                extraFlags: [
-                    '--model',
-                    'explicit-model',
-                    '-c',
-                    'model_reasoning_effort="high"',
-                    '--no-alt-screen',
-                ],
-            });
-            expect(args).toEqual([
-                '--dangerously-bypass-approvals-and-sandbox',
-                '--model',
-                'explicit-model',
-                '--no-alt-screen',
-                '-c',
-                'model_reasoning_effort="high"',
-            ]);
-            expect(args.filter(arg => arg === '--model')).toHaveLength(1);
         });
     });
     describe('buildWorkerArgv', () => {
@@ -454,14 +255,9 @@ describe('model-contract', () => {
         it('builds claude interactive worker argv without the exec subcommand', () => {
             const mockSpawnSync = vi.mocked(spawnSync);
             mockSpawnSync.mockReturnValueOnce({ status: 1, stdout: '', stderr: '', pid: 0, output: [], signal: null });
-            let argv = [];
-            withAnthropicApiKey('sk-test', () => {
-                argv = buildWorkerArgv('claude', { teamName: 'my-team', workerName: 'worker-1', cwd: '/tmp' });
-            });
+            const argv = buildWorkerArgv('claude', { teamName: 'my-team', workerName: 'worker-1', cwd: '/tmp' });
             expect(argv[0]).toBe('claude');
             expect(argv).toContain('--dangerously-skip-permissions');
-            expect(argv).toContain('--bare');
-            expect(countArg(argv, '--bare')).toBe(1);
             expect(argv).not.toContain('exec');
             expect(mockSpawnSync).toHaveBeenCalledWith('which', ['claude'], { timeout: 5000, encoding: 'utf8' });
             mockSpawnSync.mockRestore();

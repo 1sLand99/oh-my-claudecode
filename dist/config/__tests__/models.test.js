@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { isBedrock, isVertexAI, isNonClaudeProvider, isProviderSpecificModelId, resolveClaudeFamily, hasExtendedContextSuffix, isSubagentSafeModelId, resolveInheritedModelFromEnv, shouldAutoForceInherit, getTeamChildModel, getDefaultModelMedium, } from '../models.js';
+import { isBedrock, isVertexAI, isNonClaudeProvider, isProviderSpecificModelId, resolveClaudeFamily, hasExtendedContextSuffix, isSubagentSafeModelId, resolveInheritedModelFromEnv, shouldAutoForceInherit, } from '../models.js';
 import { saveAndClear, restore } from './test-helpers.js';
 const TIER_MODEL_ENV_KEYS = [
     'OMC_MODEL_HIGH',
@@ -21,8 +21,6 @@ const ALL_KEYS = [
     'ANTHROPIC_MODEL',
     'ANTHROPIC_BASE_URL',
     'OMC_ROUTING_FORCE_INHERIT',
-    'OMC_TEAM_CHILD_MODEL',
-    'OMX_TEAM_CHILD_MODEL',
     ...TIER_MODEL_ENV_KEYS,
 ];
 // ---------------------------------------------------------------------------
@@ -339,23 +337,6 @@ describe('isSubagentSafeModelId()', () => {
     });
     it('rejects tier alias "haiku"', () => {
         expect(isSubagentSafeModelId('haiku')).toBe(false);
-    });
-});
-describe('getTeamChildModel()', () => {
-    let saved;
-    beforeEach(() => { saved = saveAndClear(ALL_KEYS); });
-    afterEach(() => { restore(saved); });
-    it('prefers OMC_TEAM_CHILD_MODEL over OMX alias', () => {
-        process.env.OMC_TEAM_CHILD_MODEL = 'omc-child';
-        process.env.OMX_TEAM_CHILD_MODEL = 'omx-child';
-        expect(getTeamChildModel()).toBe('omc-child');
-    });
-    it('accepts OMX_TEAM_CHILD_MODEL as source-compatible alias', () => {
-        process.env.OMX_TEAM_CHILD_MODEL = 'omx-child';
-        expect(getTeamChildModel()).toBe('omx-child');
-    });
-    it('falls back to the medium model default', () => {
-        expect(getTeamChildModel()).toBe(getDefaultModelMedium());
     });
 });
 //# sourceMappingURL=models.test.js.map

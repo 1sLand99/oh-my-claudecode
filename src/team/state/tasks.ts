@@ -37,33 +37,15 @@ export async function computeTaskReadiness(
   return { ready: true };
 }
 
-interface ScopedWorkerInfo {
-  name: string;
-  assigned_tasks?: string[];
-  task_scope?: string[];
-}
-
 interface ClaimTaskDeps extends TaskReadDeps {
   teamName: string;
   cwd: string;
-  readTeamConfig: (teamName: string, cwd: string) => Promise<{ workers: ScopedWorkerInfo[] } | null>;
+  readTeamConfig: (teamName: string, cwd: string) => Promise<{ workers: Array<{ name: string }> } | null>;
   withTaskClaimLock: <T>(teamName: string, taskId: string, cwd: string, fn: () => Promise<T>) => Promise<{ ok: true; value: T } | { ok: false }>;
   normalizeTask: (task: TeamTask) => TeamTaskV2;
   isTerminalTaskStatus: (status: TeamTaskStatus) => boolean;
   taskFilePath: (teamName: string, taskId: string, cwd: string) => string;
   writeAtomic: (path: string, data: string) => Promise<void>;
-}
-
-function findWorkerScope(cfg: { workers: ScopedWorkerInfo[] }, workerName: string): ScopedWorkerInfo | null {
-  return cfg.workers.find((w) => w.name === workerName) ?? null;
-}
-
-function isTaskInWorkerScope(worker: ScopedWorkerInfo, taskId: string): boolean {
-  if (Array.isArray(worker.task_scope)) {
-    return worker.task_scope.includes(taskId);
-  }
-  const assigned = worker.assigned_tasks ?? [];
-  return assigned.length === 0 || assigned.includes(taskId);
 }
 
 export async function claimTask(
@@ -73,10 +55,7 @@ export async function claimTask(
   deps: ClaimTaskDeps,
 ): Promise<ClaimTaskResult> {
   const cfg = await deps.readTeamConfig(deps.teamName, deps.cwd);
-  if (!cfg) return { ok: false, error: 'worker_not_found' };
-  const worker = findWorkerScope(cfg, workerName);
-  if (!worker) return { ok: false, error: 'worker_not_found' };
-  if (!isTaskInWorkerScope(worker, taskId)) return { ok: false, error: 'task_scope_violation' };
+  if (!cfg || !cfg.workers.some((w) => w.name === workerName)) return { ok: false, error: 'worker_not_found' };
 
   const existing = await deps.readTask(deps.teamName, taskId, deps.cwd);
   if (!existing) return { ok: false, error: 'task_not_found' };
@@ -91,10 +70,6 @@ export async function claimTask(
     if (!current) return { ok: false as const, error: 'task_not_found' as const };
 
     const v = deps.normalizeTask(current);
-    const cfgAfterLock = await deps.readTeamConfig(deps.teamName, deps.cwd);
-    const workerAfterLock = cfgAfterLock ? findWorkerScope(cfgAfterLock, workerName) : null;
-    if (!workerAfterLock) return { ok: false as const, error: 'worker_not_found' as const };
-    if (!isTaskInWorkerScope(workerAfterLock, taskId)) return { ok: false as const, error: 'task_scope_violation' as const };
     if (expectedVersion !== null && v.version !== expectedVersion) return { ok: false as const, error: 'claim_conflict' as const };
 
     const readinessAfterLock = await computeTaskReadiness(deps.teamName, taskId, deps.cwd, deps);
@@ -198,10 +173,6 @@ export async function transitionTaskStatus(
     if (!v.owner || !v.claim || v.claim.owner !== v.owner || v.claim.token !== claimToken) {
       return { ok: false as const, error: 'claim_conflict' as const };
     }
-    const cfg = await deps.readTeamConfig(deps.teamName, deps.cwd);
-    const scopedWorker = cfg ? findWorkerScope(cfg, v.claim.owner) : null;
-    if (!scopedWorker) return { ok: false as const, error: 'worker_not_found' as const };
-    if (!isTaskInWorkerScope(scopedWorker, taskId)) return { ok: false as const, error: 'task_scope_violation' as const };
     if (new Date(v.claim.leased_until) <= new Date()) return { ok: false as const, error: 'lease_expired' as const };
 
     const normalizedResult = typeof terminalData?.result === 'string' ? terminalData.result : undefined;
@@ -269,15 +240,9 @@ type ReleaseDeps = ClaimTaskDeps;
 export async function releaseTaskClaim(
   taskId: string,
   claimToken: string,
-  workerName: string,
+  _workerName: string,
   deps: ReleaseDeps,
 ): Promise<ReleaseTaskClaimResult> {
-  const cfg = await deps.readTeamConfig(deps.teamName, deps.cwd);
-  if (!cfg) return { ok: false, error: 'worker_not_found' };
-  const worker = findWorkerScope(cfg, workerName);
-  if (!worker) return { ok: false, error: 'worker_not_found' };
-  if (!isTaskInWorkerScope(worker, taskId)) return { ok: false, error: 'task_scope_violation' };
-
   const lock = await deps.withTaskClaimLock(deps.teamName, taskId, deps.cwd, async () => {
     const current = await deps.readTask(deps.teamName, taskId, deps.cwd);
     if (!current) return { ok: false as const, error: 'task_not_found' as const };
@@ -289,10 +254,6 @@ export async function releaseTaskClaim(
     if (!v.owner || !v.claim || v.claim.owner !== v.owner || v.claim.token !== claimToken) {
       return { ok: false as const, error: 'claim_conflict' as const };
     }
-    const cfg = await deps.readTeamConfig(deps.teamName, deps.cwd);
-    const scopedWorker = cfg ? findWorkerScope(cfg, v.claim.owner) : null;
-    if (!scopedWorker) return { ok: false as const, error: 'worker_not_found' as const };
-    if (!isTaskInWorkerScope(scopedWorker, taskId)) return { ok: false as const, error: 'task_scope_violation' as const };
     if (new Date(v.claim.leased_until) <= new Date()) return { ok: false as const, error: 'lease_expired' as const };
 
     const updated: TeamTaskV2 = {

@@ -1,14 +1,12 @@
 import { mkdir, writeFile, readFile, rm, rename } from 'fs/promises';
-import { execFileSync } from 'child_process';
 import { join } from 'path';
 import { existsSync } from 'fs';
 import { tmuxExecAsync } from '../cli/tmux-utils.js';
-import { buildWorkerArgv, resolveValidatedBinaryPath, getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs, resolveClaudeWorkerModel, resolveWorkerLaunchExtraFlags } from './model-contract.js';
+import { buildWorkerArgv, resolveValidatedBinaryPath, getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs, resolveClaudeWorkerModel } from './model-contract.js';
 import { validateTeamName } from './team-name.js';
 import { createTeamSession, spawnWorkerInPane, sendToWorker, isWorkerAlive, killTeamSession, resolveSplitPaneWorkerPaneIds, waitForPaneReady, applyMainVerticalLayout, } from './tmux-session.js';
 import { composeInitialInbox, ensureWorkerStateDir, writeWorkerOverlay, generateTriggerMessage, } from './worker-bootstrap.js';
 import { cleanupTeamWorktrees } from './git-worktree.js';
-import { appendTeamEvent, readMonitorSnapshot, readWorkerStatus, sendDirectMessage, writeMonitorSnapshot } from './state.js';
 import { withTaskLock, writeTaskFailure, DEFAULT_MAX_TASK_RETRIES, } from './task-file-ops.js';
 function workerName(index) {
     return `worker-${index + 1}`;
@@ -295,151 +293,10 @@ export async function startTeam(config) {
     runtime.stopWatchdog = watchdogCliWorkers(runtime, 1000);
     return runtime;
 }
-function gitMaybe(cwd, args) {
-    try {
-        return execFileSync('git', args, { cwd, encoding: 'utf-8', stdio: 'pipe' }).trim();
-    }
-    catch {
-        return null;
-    }
-}
-function gitMust(cwd, args) {
-    return execFileSync('git', args, { cwd, encoding: 'utf-8', stdio: 'pipe' }).trim();
-}
-function isAncestor(repo, ancestor, descendant) {
-    try {
-        execFileSync('git', ['merge-base', '--is-ancestor', ancestor, descendant], { cwd: repo, stdio: 'pipe' });
-        return true;
-    }
-    catch {
-        return false;
-    }
-}
-async function writeIntegrationReport(teamName, cwd, body) {
-    await writeFile(join(stateRoot(cwd, teamName), 'integration-report.md'), body, 'utf-8');
-}
-async function integrateWorkerCommitsIntoLeader(teamName, cwd) {
-    const previous = await readMonitorSnapshot(teamName, cwd).catch(() => null);
-    const integrationByWorker = {
-        ...(previous?.integrationByWorker ?? {}),
-    };
-    const config = await readJsonSafe(join(stateRoot(cwd, teamName), 'config.json'));
-    if (config?.autoMerge !== true && config?.auto_merge !== true) {
-        return integrationByWorker;
-    }
-    const workers = config.workers ?? [];
-    let leaderHead = gitMaybe(cwd, ['rev-parse', 'HEAD']);
-    if (!leaderHead)
-        return integrationByWorker;
-    for (const worker of workers) {
-        if (!worker.worktree_path || !worker.worktree_branch)
-            continue;
-        const workerHead = gitMaybe(cwd, ['rev-parse', worker.worktree_branch]);
-        if (!workerHead || isAncestor(cwd, workerHead, leaderHead)) {
-            continue;
-        }
-        const beforeLeader = leaderHead;
-        try {
-            gitMust(cwd, ['merge', '--no-ff', '--no-edit', worker.worktree_branch]);
-            leaderHead = gitMust(cwd, ['rev-parse', 'HEAD']);
-            integrationByWorker[worker.name] = {
-                ...(integrationByWorker[worker.name] ?? {}),
-                last_seen_head: workerHead,
-                last_integrated_head: leaderHead,
-                status: 'integrated',
-                updated_at: new Date().toISOString(),
-            };
-            await appendTeamEvent(teamName, {
-                type: 'worker_merge_applied',
-                worker: worker.name,
-                reason: `merged ${worker.name} into leader`,
-            }, cwd);
-        }
-        catch (error) {
-            gitMaybe(cwd, ['merge', '--abort']);
-            integrationByWorker[worker.name] = {
-                ...(integrationByWorker[worker.name] ?? {}),
-                last_seen_head: workerHead,
-                status: 'integration_failed',
-                reason: error instanceof Error ? error.message : String(error),
-                updated_at: new Date().toISOString(),
-            };
-            await appendTeamEvent(teamName, {
-                type: 'worker_merge_conflict',
-                worker: worker.name,
-                reason: `merge failed for ${worker.name}`,
-            }, cwd);
-            continue;
-        }
-        for (const other of workers) {
-            if (other.name === worker.name || !other.worktree_path || !other.worktree_branch)
-                continue;
-            const otherHead = gitMaybe(cwd, ['rev-parse', other.worktree_branch]);
-            if (!otherHead || isAncestor(cwd, leaderHead, otherHead))
-                continue;
-            const status = await readWorkerStatus(teamName, other.name, cwd).catch(() => ({ state: 'unknown', updated_at: new Date().toISOString() }));
-            if (status.state !== 'idle') {
-                integrationByWorker[other.name] = {
-                    ...(integrationByWorker[other.name] ?? {}),
-                    last_seen_head: otherHead,
-                    status: 'rebase_skipped',
-                    reason: `worker state ${status.state} is not eligible for cross-rebase`,
-                    updated_at: new Date().toISOString(),
-                };
-                await appendTeamEvent(teamName, {
-                    type: 'worker_cross_rebase_skipped',
-                    worker: other.name,
-                    reason: `worker state ${status.state} is not eligible for cross-rebase`,
-                }, cwd);
-                continue;
-            }
-            try {
-                gitMust(other.worktree_path, ['rebase', '-X', 'ours', leaderHead]);
-                integrationByWorker[other.name] = {
-                    ...(integrationByWorker[other.name] ?? {}),
-                    last_seen_head: otherHead,
-                    last_rebased_leader_head: leaderHead,
-                    status: 'rebase_applied',
-                    updated_at: new Date().toISOString(),
-                };
-                await appendTeamEvent(teamName, {
-                    type: 'worker_cross_rebase_applied',
-                    worker: other.name,
-                    reason: `cross-rebased ${other.name} onto ${leaderHead.slice(0, 12)} (-X ours)`,
-                }, cwd);
-            }
-            catch (error) {
-                const statusOutput = gitMaybe(other.worktree_path, ['status', '--porcelain']) ?? '';
-                const conflictFiles = statusOutput
-                    .split('\n')
-                    .map((line) => line.trim().slice(3).trim())
-                    .filter(Boolean);
-                gitMaybe(other.worktree_path, ['rebase', '--abort']);
-                integrationByWorker[other.name] = {
-                    ...(integrationByWorker[other.name] ?? {}),
-                    last_seen_head: otherHead,
-                    status: 'rebase_conflict',
-                    reason: error instanceof Error ? error.message : String(error),
-                    updated_at: new Date().toISOString(),
-                };
-                await appendTeamEvent(teamName, {
-                    type: 'worker_cross_rebase_conflict',
-                    worker: other.name,
-                    reason: `rebase -X ours onto ${leaderHead.slice(0, 12)} failed; aborted. Will retry next cycle.`,
-                }, cwd);
-                await sendDirectMessage(teamName, other.name, 'leader-fixed', `CONFLICT AUTO-RESOLVED FAILED: ${other.name}'s rebase onto ${leaderHead.slice(0, 12)} with -X ours failed on files: ${conflictFiles.join(', ') || 'unknown'}. Consider steering ${other.name} to review these areas.`, cwd).catch(() => undefined);
-                await writeIntegrationReport(teamName, cwd, `# Team integration report\n\nWorker ${other.name} rebase onto ${leaderHead} failed and was aborted.\n\nFiles:\n${conflictFiles.map((file) => `- ${file}`).join('\n')}\n`);
-            }
-        }
-        if (beforeLeader !== leaderHead)
-            break;
-    }
-    return integrationByWorker;
-}
 /**
  * Monitor team: poll worker health, detect stalls, return snapshot.
  */
-export async function monitorTeam(teamName, cwd, workerPaneIds = []) {
+export async function monitorTeam(teamName, cwd, workerPaneIds) {
     validateTeamName(teamName);
     const monitorStartedAt = Date.now();
     const root = stateRoot(cwd, teamName);
@@ -493,7 +350,6 @@ export async function monitorTeam(teamName, cwd, workerPaneIds = []) {
         // Note: CLI workers (codex/gemini) may not write heartbeat.json — stall is advisory only
     }
     const workerScanMs = Date.now() - workerScanStartedAt;
-    const integrationByWorker = await integrateWorkerCommitsIntoLeader(teamName, cwd);
     // Infer phase from task counts
     let phase = 'executing';
     if (taskCounts.inProgress === 0 && taskCounts.pending > 0 && taskCounts.completed === 0) {
@@ -505,26 +361,12 @@ export async function monitorTeam(teamName, cwd, workerPaneIds = []) {
     else if (taskCounts.completed > 0 && taskCounts.pending === 0 && taskCounts.inProgress === 0 && taskCounts.failed === 0) {
         phase = 'completed';
     }
-    const previousSnapshot = await readMonitorSnapshot(teamName, cwd).catch(() => null);
-    await writeMonitorSnapshot(teamName, {
-        taskStatusById: previousSnapshot?.taskStatusById ?? {},
-        workerAliveByName: Object.fromEntries(workers.map((worker) => [worker.workerName, worker.alive])),
-        workerLivenessByName: previousSnapshot?.workerLivenessByName,
-        workerStateByName: previousSnapshot?.workerStateByName ?? {},
-        workerTurnCountByName: previousSnapshot?.workerTurnCountByName ?? {},
-        workerTaskIdByName: previousSnapshot?.workerTaskIdByName ?? {},
-        mailboxNotifiedByMessageId: previousSnapshot?.mailboxNotifiedByMessageId ?? {},
-        completedEventTaskIds: previousSnapshot?.completedEventTaskIds ?? {},
-        integrationByWorker,
-        monitorTimings: previousSnapshot?.monitorTimings,
-    }, cwd).catch(() => undefined);
     return {
         teamName,
         phase,
         workers,
         taskCounts,
         deadWorkers,
-        integrationByWorker,
         monitorPerformance: {
             listTasksMs,
             workerScanMs,
@@ -728,14 +570,12 @@ export async function spawnWorkerForTask(runtime, workerNameValue, taskIndex) {
         // Claude agents: resolve Bedrock/Vertex model when on those providers
         return resolveClaudeWorkerModel();
     })();
-    const workerExtraFlags = resolveWorkerLaunchExtraFlags(process.env, [], modelForAgent);
     const [launchBinary, ...launchArgs] = buildWorkerArgv(agentType, {
         teamName: runtime.teamName,
         workerName: workerNameValue,
         cwd: runtime.cwd,
         resolvedBinaryPath,
         model: modelForAgent,
-        extraFlags: workerExtraFlags,
     });
     // For prompt-mode agents (e.g. Gemini Ink TUI), pass instruction via CLI
     // flag so tmux send-keys never needs to interact with the TUI input widget.

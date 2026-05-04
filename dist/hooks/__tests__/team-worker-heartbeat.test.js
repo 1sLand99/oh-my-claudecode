@@ -83,30 +83,5 @@ describe('team-worker-hook heartbeat missing file', () => {
         expect(sendKeysCalls[0].text).toContain('All');
         expect(sendKeysCalls[0].text).toContain('idle');
     });
-    it('uses canonical manifest.json for idle leader notifications when config.json is absent', async () => {
-        const teamDir = join(stateDir, 'team', teamName);
-        rmSync(join(teamDir, 'config.json'), { force: true });
-        writeFileSync(join(teamDir, 'manifest.json'), JSON.stringify({
-            workers: [{ name: workerName }],
-            tmux_session: 'test-session',
-            leader_pane_id: '%99',
-        }));
-        const workerDir = join(teamDir, 'workers', workerName);
-        writeFileSync(join(workerDir, 'heartbeat.json'), JSON.stringify({ alive: true, last_turn_at: new Date().toISOString() }));
-        const sendKeysCalls = [];
-        const mockTmux = {
-            async sendKeys(target, text) {
-                sendKeysCalls.push({ target, text });
-            },
-        };
-        await maybeNotifyLeaderAllWorkersIdle({
-            cwd: tmpDir,
-            stateDir,
-            parsedTeamWorker: { teamName, workerName },
-            tmux: mockTmux,
-        });
-        expect(sendKeysCalls.length).toBeGreaterThan(0);
-        expect(sendKeysCalls.some(call => call.target === '%99')).toBe(true);
-    });
 });
 //# sourceMappingURL=team-worker-heartbeat.test.js.map

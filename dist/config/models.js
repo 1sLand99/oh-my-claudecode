@@ -2,7 +2,6 @@ import { validateAnthropicBaseUrl } from '../utils/ssrf-guard.js';
 const DIRECT_MODEL_ENV_KEYS = ['CLAUDE_MODEL', 'ANTHROPIC_MODEL'];
 const INHERIT_TIER_PRIORITY = ['MEDIUM', 'HIGH', 'LOW'];
 const CLAUDE_TIER_ALIASES = new Set(['sonnet', 'opus', 'haiku']);
-const TEAM_CHILD_MODEL_ENV_KEYS = ['OMC_TEAM_CHILD_MODEL', 'OMX_TEAM_CHILD_MODEL'];
 const TIER_ENV_KEYS = {
     LOW: [
         'OMC_MODEL_LOW',
@@ -135,14 +134,6 @@ export function getDefaultModelHigh() {
 }
 export function getDefaultModelMedium() {
     return resolveTierModelFromEnv('MEDIUM') || BUILTIN_TIER_MODEL_DEFAULTS.MEDIUM;
-}
-export function getTeamChildModel() {
-    for (const key of TEAM_CHILD_MODEL_ENV_KEYS) {
-        const value = readEnvValue(key);
-        if (value)
-            return value;
-    }
-    return getDefaultModelMedium();
 }
 export function getDefaultModelLow() {
     return resolveTierModelFromEnv('LOW') || BUILTIN_TIER_MODEL_DEFAULTS.LOW;

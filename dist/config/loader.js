@@ -148,7 +148,6 @@ export function buildDefaultConfig() {
         team: {
             ops: {},
             roleRouting: {},
-            workerOverrides: {},
         },
         planOutput: {
             directory: ".omc/plans",
@@ -437,10 +436,9 @@ export function validateTeamConfig(config) {
         }
     }
     const roleRouting = team.roleRouting;
-    if (roleRouting !== undefined && typeof roleRouting !== "object") {
-        throw new Error(`[OMC] team.roleRouting: must be an object, got ${Array.isArray(roleRouting) ? "array" : typeof roleRouting}`);
-    }
-    for (const [rawRoleKey, rawSpec] of Object.entries(roleRouting ?? {})) {
+    if (!roleRouting || typeof roleRouting !== "object")
+        return;
+    for (const [rawRoleKey, rawSpec] of Object.entries(roleRouting)) {
         const normalized = normalizeDelegationRole(rawRoleKey);
         if (!CANONICAL_TEAM_ROLE_SET.has(normalized)) {
             throw new Error(`[OMC] team.roleRouting: unknown role "${rawRoleKey}". Allowed roles: ${[...CANONICAL_TEAM_ROLE_SET].join(", ")}`);
@@ -472,50 +470,6 @@ export function validateTeamConfig(config) {
         if (spec.agent !== undefined) {
             if (typeof spec.agent !== "string" || !KNOWN_AGENT_NAME_SET.has(spec.agent)) {
                 throw new Error(`[OMC] team.roleRouting.${rawRoleKey}.agent: unknown agent "${String(spec.agent)}". Allowed: ${[...KNOWN_AGENT_NAME_SET].join(", ")}`);
-            }
-        }
-    }
-    const workerOverrides = team.workerOverrides;
-    if (workerOverrides !== undefined && (!workerOverrides || typeof workerOverrides !== "object" || Array.isArray(workerOverrides))) {
-        throw new Error(`[OMC] team.workerOverrides: must be an object, got ${Array.isArray(workerOverrides) ? "array" : typeof workerOverrides}`);
-    }
-    for (const [workerKey, rawSpec] of Object.entries(workerOverrides ?? {})) {
-        if (!/^worker-\d+$/.test(workerKey) && !/^\d+$/.test(workerKey)) {
-            throw new Error(`[OMC] team.workerOverrides: invalid key "${workerKey}". Use worker names like worker-1 or 1-based indexes like 1`);
-        }
-        if (!rawSpec || typeof rawSpec !== "object" || Array.isArray(rawSpec)) {
-            throw new Error(`[OMC] team.workerOverrides.${workerKey}: must be an object, got ${Array.isArray(rawSpec) ? "array" : typeof rawSpec}`);
-        }
-        const spec = rawSpec;
-        if (spec.provider !== undefined && (typeof spec.provider !== "string" || !TEAM_ROLE_PROVIDERS.has(spec.provider))) {
-            throw new Error(`[OMC] team.workerOverrides.${workerKey}.provider: invalid value "${String(spec.provider)}". Allowed: ${[...TEAM_ROLE_PROVIDERS].join(", ")}`);
-        }
-        if (spec.model !== undefined && !isValidModelValue(spec.model)) {
-            throw new Error(`[OMC] team.workerOverrides.${workerKey}.model: must be a non-empty model ID string`);
-        }
-        if (typeof spec.model === "string" && TEAM_ROLE_TIERS.has(spec.model)) {
-            throw new Error(`[OMC] team.workerOverrides.${workerKey}.model: tier names are not supported here; use an explicit model ID string`);
-        }
-        if (spec.agent !== undefined) {
-            const normalizedAgentRole = typeof spec.agent === "string" ? normalizeDelegationRole(spec.agent) : "";
-            if (typeof spec.agent !== "string" || (!KNOWN_AGENT_NAME_SET.has(spec.agent) && !CANONICAL_TEAM_ROLE_SET.has(normalizedAgentRole))) {
-                throw new Error(`[OMC] team.workerOverrides.${workerKey}.agent: unknown agent or role "${String(spec.agent)}". Allowed agents: ${[...KNOWN_AGENT_NAME_SET].join(", ")}. Allowed roles: ${[...CANONICAL_TEAM_ROLE_SET].join(", ")}`);
-            }
-        }
-        if (spec.role !== undefined) {
-            if (typeof spec.role !== "string" || !CANONICAL_TEAM_ROLE_SET.has(normalizeDelegationRole(spec.role))) {
-                throw new Error(`[OMC] team.workerOverrides.${workerKey}.role: unknown role "${String(spec.role)}". Allowed roles: ${[...CANONICAL_TEAM_ROLE_SET].join(", ")}`);
-            }
-        }
-        if (spec.extraFlags !== undefined) {
-            if (!Array.isArray(spec.extraFlags) || !spec.extraFlags.every((flag) => typeof flag === "string")) {
-                throw new Error(`[OMC] team.workerOverrides.${workerKey}.extraFlags: must be an array of strings`);
-            }
-        }
-        if (spec.reasoning !== undefined) {
-            const allowed = new Set(["low", "medium", "high", "xhigh"]);
-            if (typeof spec.reasoning !== "string" || !allowed.has(spec.reasoning)) {
-                throw new Error(`[OMC] team.workerOverrides.${workerKey}.reasoning: invalid value "${String(spec.reasoning)}". Allowed: ${[...allowed].join(", ")}`);
             }
         }
     }
@@ -1024,21 +978,6 @@ export function generateConfigSchema() {
                                 provider: { type: "string", enum: ["claude", "codex", "gemini"] },
                                 model: { type: "string" },
                                 agent: { type: "string" },
-                            },
-                        },
-                    },
-                    workerOverrides: {
-                        type: "object",
-                        description: "Additive per-worker /team launch overrides keyed by worker name (worker-1) or 1-based index",
-                        additionalProperties: {
-                            type: "object",
-                            properties: {
-                                provider: { type: "string", enum: ["claude", "codex", "gemini"] },
-                                model: { type: "string" },
-                                agent: { type: "string" },
-                                role: { type: "string" },
-                                extraFlags: { type: "array", items: { type: "string" } },
-                                reasoning: { type: "string", enum: ["low", "medium", "high", "xhigh"] },
                             },
                         },
                     },

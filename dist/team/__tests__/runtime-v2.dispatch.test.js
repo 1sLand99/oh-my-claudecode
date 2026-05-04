@@ -37,8 +37,6 @@ const modelContractMocks = vi.hoisted(() => ({
     getWorkerEnv: vi.fn(() => ({ OMC_TEAM_WORKER: 'dispatch-team/worker-1' })),
     isPromptModeAgent: vi.fn(() => false),
     getPromptModeArgs: vi.fn((_agentType, instruction) => [instruction]),
-    resolveAgentReasoningEffort: vi.fn(() => undefined),
-    resolveWorkerLaunchExtraFlags: vi.fn(() => []),
 }));
 vi.mock('child_process', async (importOriginal) => {
     const actual = await importOriginal();
@@ -61,9 +59,7 @@ vi.mock('../model-contract.js', () => ({
     getWorkerEnv: modelContractMocks.getWorkerEnv,
     isPromptModeAgent: modelContractMocks.isPromptModeAgent,
     getPromptModeArgs: modelContractMocks.getPromptModeArgs,
-    resolveAgentReasoningEffort: modelContractMocks.resolveAgentReasoningEffort,
     resolveClaudeWorkerModel: vi.fn(() => undefined),
-    resolveWorkerLaunchExtraFlags: modelContractMocks.resolveWorkerLaunchExtraFlags,
 }));
 vi.mock('../tmux-session.js', async (importOriginal) => {
     const actual = await importOriginal();
@@ -114,8 +110,6 @@ describe('runtime v2 startup inbox dispatch', () => {
         modelContractMocks.getWorkerEnv.mockReset();
         modelContractMocks.isPromptModeAgent.mockReset();
         modelContractMocks.getPromptModeArgs.mockReset();
-        modelContractMocks.resolveAgentReasoningEffort.mockReset();
-        modelContractMocks.resolveWorkerLaunchExtraFlags.mockReset();
         mergeMocks.startMergeOrchestrator.mockReset();
         mergeMocks.recoverFromRestart.mockReset();
         mergeMocks.registerWorker.mockReset();
@@ -142,8 +136,6 @@ describe('runtime v2 startup inbox dispatch', () => {
             const workerName = typeof args[1] === 'string' ? args[1] : 'worker-1';
             return { OMC_TEAM_WORKER: `${teamName}/${workerName}` };
         });
-        modelContractMocks.resolveAgentReasoningEffort.mockReturnValue(undefined);
-        modelContractMocks.resolveWorkerLaunchExtraFlags.mockReturnValue([]);
         modelContractMocks.isPromptModeAgent.mockReturnValue(false);
         modelContractMocks.getPromptModeArgs.mockImplementation((_agentType, instruction) => [instruction]);
         mergeMocks.recoverFromRestart.mockResolvedValue(undefined);
@@ -216,40 +208,6 @@ describe('runtime v2 startup inbox dispatch', () => {
             }),
         }));
         expect(mocks.applyMainVerticalLayout).toHaveBeenCalledWith('dispatch-session');
-        expect(mergeMocks.startMergeOrchestrator).not.toHaveBeenCalled();
-        expect(cadenceMocks.installCommitCadence).not.toHaveBeenCalled();
-        const persisted = JSON.parse(await readFile(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'config.json'), 'utf-8'));
-        expect(persisted.auto_merge).toBe(false);
-    });
-    it('persists startup task delegation plans and gives executable result evidence instructions', async () => {
-        cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-delegation-startup-'));
-        const { startTeamV2 } = await import('../runtime-v2.js');
-        await startTeamV2({
-            teamName: 'dispatch-team',
-            workerCount: 1,
-            agentTypes: ['claude'],
-            tasks: [{
-                    subject: 'Investigate flaky runtime behavior',
-                    description: 'Investigate flaky runtime behavior across the team runtime',
-                    delegation: {
-                        mode: 'auto',
-                        required_parallel_probe: true,
-                        skip_allowed_reason_required: true,
-                    },
-                }],
-            cwd,
-        });
-        const taskPath = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'tasks', 'task-1.json');
-        const task = JSON.parse(await readFile(taskPath, 'utf-8'));
-        expect(task.delegation).toMatchObject({
-            mode: 'auto',
-            required_parallel_probe: true,
-        });
-        const inboxPath = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'workers', 'worker-1', 'inbox.md');
-        const inbox = await readFile(inboxPath, 'utf-8');
-        expect(inbox).toContain('"result"');
-        expect(inbox).toContain('Subagent skip reason:');
-        expect(inbox).toContain('only when explicitly allowed by the leader');
     });
     it('persists runtime-v2 worktree contract fields for split-pane teams', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-worktree-contract-'));
@@ -355,8 +313,6 @@ describe('runtime v2 startup inbox dispatch', () => {
             worktreePath: join(cwd, '.omc', 'team', 'dispatch-team', 'worktrees', 'worker-1'),
         }));
         expect(cadenceMocks.startFallbackPoller).toHaveBeenCalledWith(join(cwd, '.omc', 'team', 'dispatch-team', 'worktrees', 'worker-1'), 'worker-1');
-        const persisted = JSON.parse(await readFile(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'config.json'), 'utf-8'));
-        expect(persisted.auto_merge).toBe(true);
         await shutdownTeamV2('dispatch-team', cwd, { timeoutMs: 0, force: true });
         expect(mergeMocks.drainAndStop).toHaveBeenCalledTimes(1);
         expect(mergeMocks.unregisterWorker).toHaveBeenCalledWith('worker-1');
@@ -492,44 +448,6 @@ describe('runtime v2 startup inbox dispatch', () => {
         const persisted = JSON.parse(await readFile(configPath, 'utf-8'));
         expect(persisted.workers.map((worker) => worker.role)).toEqual(['architect', 'writer']);
     });
-    it('applies additive per-worker overrides to startup launch config', async () => {
-        cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-worker-overrides-'));
-        await mkdir(join(cwd, '.claude'), { recursive: true });
-        await writeFile(join(cwd, '.claude', 'omc.jsonc'), JSON.stringify({
-            team: {
-                workerOverrides: {
-                    'worker-1': {
-                        provider: 'codex',
-                        model: 'gpt-5.5',
-                        role: 'executor',
-                        extraFlags: ['--profile', 'team-worker'],
-                        reasoning: 'high',
-                    },
-                },
-            },
-        }), 'utf-8');
-        process.chdir(cwd);
-        const { startTeamV2 } = await import('../runtime-v2.js');
-        const runtime = await startTeamV2({
-            teamName: 'dispatch-team',
-            workerCount: 1,
-            agentTypes: ['claude'],
-            tasks: [{ subject: 'Implement feature', description: 'executor implementation task' }],
-            cwd,
-        });
-        expect(runtime.config.worker_overrides?.['worker-1']).toEqual(expect.objectContaining({
-            provider: 'codex',
-            model: 'gpt-5.5',
-            role: 'executor',
-        }));
-        expect(runtime.config.workers[0]?.worker_cli).toBe('codex');
-        expect(runtime.config.workers[0]?.role).toBe('executor');
-        expect(modelContractMocks.resolveWorkerLaunchExtraFlags).toHaveBeenCalledWith(process.env, ['--profile', 'team-worker'], 'gpt-5.5', 'high');
-        expect(modelContractMocks.buildWorkerArgv).toHaveBeenCalledWith('codex', expect.objectContaining({
-            model: 'gpt-5.5',
-            extraFlags: [],
-        }));
-    });
     it('routes inferred review work through alias-keyed resolved snapshot entries', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-alias-routing-'));
         await mkdir(join(cwd, '.claude'), { recursive: true });
@@ -578,7 +496,6 @@ describe('runtime v2 startup inbox dispatch', () => {
         });
         expect(runtime.config.workers[0]?.pane_id).toBe('%2');
         expect(runtime.config.workers[0]?.assigned_tasks).toEqual([]);
-        expect(runtime.config.workers[0]?.task_scope).toEqual(['1']);
         expect(mocks.execFile.mock.calls.some((call) => call[1]?.[0] === 'kill-pane')).toBe(false);
     });
     it('does not auto-kill a worker pane when startup notification fails', async () => {
@@ -612,7 +529,6 @@ describe('runtime v2 startup inbox dispatch', () => {
         });
         expect(runtime.config.workers[0]?.pane_id).toBe('%2');
         expect(runtime.config.workers[0]?.assigned_tasks).toEqual([]);
-        expect(runtime.config.workers[0]?.task_scope).toEqual(['1']);
         expect(mocks.sendToWorker).toHaveBeenCalledTimes(1);
         const requests = await listDispatchRequests('dispatch-team', cwd, { kind: 'inbox' });
         expect(requests).toHaveLength(1);
@@ -644,39 +560,6 @@ describe('runtime v2 startup inbox dispatch', () => {
             cwd,
         });
         expect(runtime.config.workers[0]?.assigned_tasks).toEqual([]);
-        expect(runtime.config.workers[0]?.task_scope).toEqual(['1']);
-        expect(mocks.sendToWorker).toHaveBeenCalledTimes(1);
-    });
-    it('persists startup task scope before notifying workers', async () => {
-        cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-startup-scope-'));
-        mocks.sendToWorker.mockImplementation(async () => {
-            const rawConfig = await readFile(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'config.json'), 'utf-8');
-            const config = JSON.parse(rawConfig);
-            expect(config.workers[0]).toEqual(expect.objectContaining({
-                name: 'worker-1',
-                assigned_tasks: [],
-                task_scope: ['1'],
-            }));
-            const taskDir = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'tasks');
-            const taskPath = join(taskDir, 'task-1.json');
-            const existing = JSON.parse(await readFile(taskPath, 'utf-8'));
-            await writeFile(taskPath, JSON.stringify({
-                ...existing,
-                status: 'in_progress',
-                owner: 'worker-1',
-            }, null, 2), 'utf-8');
-            return true;
-        });
-        const { startTeamV2 } = await import('../runtime-v2.js');
-        const runtime = await startTeamV2({
-            teamName: 'dispatch-team',
-            workerCount: 1,
-            agentTypes: ['claude'],
-            tasks: [{ subject: 'Dispatch test', description: 'Verify startup scope is pre-persisted' }],
-            cwd,
-        });
-        expect(runtime.config.workers[0]?.assigned_tasks).toEqual(['1']);
-        expect(runtime.config.workers[0]?.task_scope).toEqual(['1']);
         expect(mocks.sendToWorker).toHaveBeenCalledTimes(1);
     });
     it('accepts Claude startup once the worker claims the task', async () => {

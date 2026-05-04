@@ -18221,11 +18221,7 @@ function workerPriority(worker) {
   if (typeof worker.index === "number" && worker.index > 0) return 1;
   return 0;
 }
-function mergeUniqueStrings(primary, secondary) {
-  return mergeUniqueStringsOptional(primary, secondary) ?? [];
-}
-function mergeUniqueStringsOptional(primary, secondary) {
-  if (!Array.isArray(primary) && !Array.isArray(secondary)) return void 0;
+function mergeAssignedTasks(primary, secondary) {
   const merged = [];
   for (const taskId of [...primary ?? [], ...secondary ?? []]) {
     if (typeof taskId !== "string" || taskId.trim() === "" || merged.includes(taskId)) continue;
@@ -18272,7 +18268,7 @@ function canonicalizeWorkers(workers) {
     byName.set(name, {
       ...winner,
       name,
-      assigned_tasks: mergeUniqueStrings(winner.assigned_tasks, loser.assigned_tasks),
+      assigned_tasks: mergeAssignedTasks(winner.assigned_tasks, loser.assigned_tasks),
       pane_id: backfillText(winner.pane_id, loser.pane_id),
       pid: backfillNumber(winner.pid, loser.pid),
       index: backfillNumber(winner.index, loser.index, (value) => value > 0) ?? 0,
@@ -18284,9 +18280,7 @@ function canonicalizeWorkers(workers) {
       worktree_branch: backfillText(winner.worktree_branch, loser.worktree_branch),
       worktree_detached: backfillBoolean(winner.worktree_detached, loser.worktree_detached),
       worktree_created: backfillBoolean(winner.worktree_created, loser.worktree_created),
-      team_state_root: backfillText(winner.team_state_root, loser.team_state_root),
-      team_root: backfillText(winner.team_root, loser.team_root),
-      task_scope: mergeUniqueStringsOptional(winner.task_scope, loser.task_scope)
+      team_state_root: backfillText(winner.team_state_root, loser.team_state_root)
     });
   }
   return {
@@ -18685,18 +18679,11 @@ function getBranchName(teamName, workerName) {
 function git(repoRoot, args, cwd = repoRoot) {
   return (0, import_node_child_process.execFileSync)("git", args, { cwd, encoding: "utf-8", stdio: "pipe" }).trim();
 }
-function canonicalWorktreePath(path4) {
-  try {
-    return import_node_fs.realpathSync.native(path4);
-  } catch {
-    return (0, import_node_path.resolve)(path4);
-  }
-}
 function isRegisteredWorktreePath(repoRoot, wtPath) {
   try {
     const output = git(repoRoot, ["worktree", "list", "--porcelain"]);
-    const resolvedWtPath = canonicalWorktreePath(wtPath);
-    return output.split("\n").some((line) => line.startsWith("worktree ") && canonicalWorktreePath(line.slice("worktree ".length).trim()) === resolvedWtPath);
+    const resolvedWtPath = (0, import_node_path.resolve)(wtPath);
+    return output.split("\n").some((line) => line.startsWith("worktree ") && (0, import_node_path.resolve)(line.slice("worktree ".length).trim()) === resolvedWtPath);
   } catch {
     return false;
   }

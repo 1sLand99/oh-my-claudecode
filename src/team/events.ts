@@ -18,55 +18,6 @@ import type { TeamEvent } from './types.js';
 import type { WorkerPaneLiveness } from './tmux-session.js';
 import { createSwallowedErrorLogger } from '../lib/swallowed-error.js';
 
-export interface TeamEventReadOptions {
-  afterEventId?: string;
-  wakeableOnly?: boolean;
-  type?: TeamEventType | 'worker_idle';
-  worker?: string;
-  taskId?: string;
-}
-
-export interface TeamEventWaitOptions extends TeamEventReadOptions {
-  timeoutMs?: number;
-  pollMs?: number;
-}
-
-export interface TeamEventWaitResult {
-  status: 'event' | 'timeout';
-  cursor: string;
-  event?: TeamEvent;
-}
-
-const WAKEABLE_TEAM_EVENT_TYPES = new Set<TeamEvent['type']>([
-  'task_completed',
-  'task_failed',
-  'worker_idle',
-  'worker_stopped',
-  'message_received',
-  'shutdown_ack',
-  'shutdown_gate',
-  'shutdown_gate_forced',
-  'approval_decision',
-  'team_leader_nudge',
-]);
-
-function filterTeamEvents(events: TeamEvent[], options: TeamEventReadOptions = {}): TeamEvent[] {
-  let afterIndex = -1;
-  if (options.afterEventId) {
-    afterIndex = events.findIndex((event) => event.event_id === options.afterEventId);
-  }
-
-  return events
-    .slice(afterIndex >= 0 ? afterIndex + 1 : 0)
-    .filter((event) => {
-      if (options.wakeableOnly && !WAKEABLE_TEAM_EVENT_TYPES.has(event.type)) return false;
-      if (options.type && event.type !== options.type) return false;
-      if (options.worker && event.worker !== options.worker) return false;
-      if (options.taskId && event.task_id !== options.taskId) return false;
-      return true;
-    });
-}
-
 /**
  * Append a team event to the JSONL event log.
  * Thread-safe via atomic append (O_WRONLY|O_APPEND|O_CREAT).
@@ -76,12 +27,12 @@ export async function appendTeamEvent(
   event: Omit<TeamEvent, 'event_id' | 'created_at' | 'team'>,
   cwd: string,
 ): Promise<TeamEvent> {
-  const full = {
+  const full: TeamEvent = {
     event_id: randomUUID(),
     team: teamName,
     created_at: new Date().toISOString(),
     ...event,
-  } as TeamEvent;
+  };
   const p = absPath(cwd, TeamPaths.events(teamName));
   await mkdir(dirname(p), { recursive: true });
   await appendFile(p, `${JSON.stringify(full)}\n`, 'utf8');
@@ -95,47 +46,18 @@ export async function appendTeamEvent(
 export async function readTeamEvents(
   teamName: string,
   cwd: string,
-  options: TeamEventReadOptions = {},
 ): Promise<TeamEvent[]> {
   const p = absPath(cwd, TeamPaths.events(teamName));
   if (!existsSync(p)) return [];
   try {
     const raw = await readFile(p, 'utf8');
-    const events = raw
+    return raw
       .trim()
       .split('\n')
       .filter(Boolean)
       .map((line) => JSON.parse(line) as TeamEvent);
-    return filterTeamEvents(events, options);
   } catch {
     return [];
-  }
-}
-
-export async function waitForTeamEvent(
-  teamName: string,
-  cwd: string,
-  options: TeamEventWaitOptions = {},
-): Promise<TeamEventWaitResult> {
-  const timeoutMs = Math.max(0, options.timeoutMs ?? 30_000);
-  const pollMs = Math.max(10, options.pollMs ?? 250);
-  const deadline = Date.now() + timeoutMs;
-  let cursor = options.afterEventId ?? '';
-
-  while (true) {
-    const events = await readTeamEvents(teamName, cwd, options);
-    if (events.length > 0) {
-      const event = events[0];
-      return { status: 'event', cursor: event.event_id, event };
-    }
-
-    const allEvents = await readTeamEvents(teamName, cwd);
-    cursor = allEvents.at(-1)?.event_id ?? cursor;
-
-    if (Date.now() >= deadline) {
-      return { status: 'timeout', cursor };
-    }
-    await new Promise((resolve) => setTimeout(resolve, Math.min(pollMs, Math.max(0, deadline - Date.now()))));
   }
 }
 

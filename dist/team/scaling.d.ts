@@ -33,7 +33,6 @@ export interface ScaleError {
  * validates capacity, creates new tmux panes, and bootstraps workers.
  */
 export declare function scaleUp(teamName: string, count: number, agentType: string, tasks: Array<{
-    id?: string | number;
     subject: string;
     description: string;
     owner?: string;
