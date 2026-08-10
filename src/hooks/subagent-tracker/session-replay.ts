@@ -42,6 +42,10 @@ export interface ReplayEvent {
   telemetry_status?: "unmatched_stop";
   parent_mode?: string;
   model?: string;
+  /** Agent-tool description (unnamed-agent address fallback, #3665). */
+  description?: string;
+  /** Agent-tool explicit name (authoritative address). */
+  name?: string;
   /** Hook name (e.g., "keyword-detector") */
   hook?: string;
   /** Claude Code event (e.g., "UserPromptSubmit") */
@@ -182,7 +186,9 @@ export function recordAgentStart(
   agentType: string,
   task?: string,
   parentMode?: string,
-  model?: string
+  model?: string,
+  description?: string,
+  name?: string
 ): void {
   appendReplayEvent(directory, sessionId, {
     agent: agentId.substring(0, 7),
@@ -191,6 +197,8 @@ export function recordAgentStart(
     task: task?.substring(0, 100),
     parent_mode: parentMode,
     model,
+    description: description?.substring(0, 200),
+    name,
   });
 }
 

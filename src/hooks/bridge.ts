@@ -3165,6 +3165,8 @@ export async function processHook(
           hook_event_name: "SubagentStart",
           prompt: normalized.prompt as string | undefined,
           model: normalized.model as string | undefined,
+          name: normalized.name as string | undefined,
+          description: normalized.description as string | undefined,
         };
         // recordAgentStart is already called inside processSubagentStart,
         // so we don't call it here to avoid duplicate session replay entries.

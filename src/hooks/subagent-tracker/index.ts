@@ -37,6 +37,10 @@ export interface SubagentInfo {
   started_at: string;
   parent_mode: string; // 'autopilot' | 'ultrawork' | 'team' | 'ralph' | 'none'
   task_description?: string;
+  /** Explicit user-chosen name (Agent tool `name`) — authoritative address. */
+  name?: string;
+  /** User-supplied description (Agent tool `description`) — display/address fallback (#3665). */
+  description?: string;
   file_ownership?: string[];
   status: "running" | "completed" | "failed";
   completed_at?: string;
@@ -96,6 +100,10 @@ export interface SubagentStartInput {
   hook_event_name: "SubagentStart";
   agent_id: string;
   agent_type: string;
+  /** Explicit user-chosen name (Agent tool `name`) — authoritative address. */
+  name?: string;
+  /** User-supplied description (Agent tool `description`) — display/address fallback (#3665). */
+  description?: string;
   prompt?: string;
   model?: string;
 }
@@ -623,6 +631,9 @@ export function processSubagentStart(input: SubagentStartInput): HookOutput {
       const parentMode = detectParentMode(input.cwd);
       const startedAt = new Date().toISOString();
       const taskDescription = input.prompt?.substring(0, 200); // Truncate for storage
+      // Agent-tool name/description (may be absent for legacy hook payloads).
+      const agentName = input.name?.trim() || undefined;
+      const agentDescription = input.description?.trim() || undefined;
       const existingAgent = state.agents.find((agent) => agent.agent_id === input.agent_id);
       const isDuplicateRunningStart = existingAgent?.status === "running";
       let trackedAgent: SubagentInfo;
@@ -632,6 +643,10 @@ export function processSubagentStart(input: SubagentStartInput): HookOutput {
         existingAgent.parent_mode = parentMode;
         existingAgent.task_description = taskDescription;
         existingAgent.model = input.model;
+        // Only overwrite identity fields when the payload carries them, so a
+        // legacy/partial payload cannot wipe previously recorded name/description.
+        if (agentName) existingAgent.name = agentName;
+        if (agentDescription) existingAgent.description = agentDescription;
 
         if (existingAgent.status !== "running") {
           existingAgent.status = "running";
@@ -652,6 +667,8 @@ export function processSubagentStart(input: SubagentStartInput): HookOutput {
           task_description: taskDescription,
           status: "running",
           model: input.model,
+          name: agentName,
+          description: agentDescription,
         };
 
         // Add to state
@@ -666,7 +683,7 @@ export function processSubagentStart(input: SubagentStartInput): HookOutput {
       if (!isDuplicateRunningStart) {
         // Record to session replay JSONL for /trace
         try {
-          recordAgentStart(input.cwd, input.session_id, input.agent_id, input.agent_type, input.prompt, parentMode, input.model);
+          recordAgentStart(input.cwd, input.session_id, input.agent_id, input.agent_type, input.prompt, parentMode, input.model, input.description, input.name);
         } catch { /* best-effort */ }
 
         try {
@@ -1089,9 +1106,13 @@ export function getAgentDashboard(directory: string, sessionId?: string): string
     const toolCount = agent.tool_usage?.length || 0;
     const lastTool =
       agent.tool_usage?.[agent.tool_usage.length - 1]?.tool_name || "-";
-    const desc = agent.task_description
-      ? ` "${agent.task_description.substring(0, 60)}"`
-      : "";
+    // Prefer the Agent-tool description (with short id for disambiguation,
+    // #3665) over the prompt-derived task description when available.
+    const desc = agent.description
+      ? ` "${agent.description.substring(0, 60)} (${agent.agent_id.substring(0, 7)})"`
+      : agent.task_description
+        ? ` "${agent.task_description.substring(0, 60)}"`
+        : "";
 
     lines.push(
       `  [${agent.agent_id.substring(0, 7)}] ${shortType} (${elapsed}s) tools:${toolCount} last:${lastTool}${desc}`,
