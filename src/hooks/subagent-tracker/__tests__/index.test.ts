@@ -630,6 +630,56 @@ describe("subagent-tracker", () => {
         persistedState.agents.filter((agent) => agent.status === "running"),
       ).toHaveLength(1);
     });
+    it("persists Agent-tool name/description for unnamed-agent addressability (#3665)", () => {
+      const startInput = {
+        session_id: "session-3665",
+        transcript_path: join(testDir, "transcript.jsonl"),
+        cwd: testDir,
+        permission_mode: "default",
+        hook_event_name: "SubagentStart" as const,
+        agent_id: "ae1e2be26cb41fc74",
+        agent_type: "general-purpose",
+        prompt: "Coordinate the S2 nspin4 A/B vehicle analysis",
+        name: "",
+        description: "S2 nspin4 A/B vehicle",
+      };
+      processSubagentStart(startInput);
+      flushPendingWrites();
+
+      const state = readTrackingState(testDir);
+      const tracked = state.agents.find((a) => a.agent_id === "ae1e2be26cb41fc74");
+      expect(tracked).toBeDefined();
+      // Empty-string name is treated as absent (legacy/partial payloads).
+      expect(tracked?.name).toBeUndefined();
+      expect(tracked?.description).toBe("S2 nspin4 A/B vehicle");
+
+      // Dashboard shows the description with the short id for disambiguation.
+      const dashboard = getAgentDashboard(testDir);
+      expect(dashboard).toContain("S2 nspin4 A/B vehicle (ae1e2be)");
+    });
+
+    it("records the Agent-tool description in the session replay stream (#3665)", () => {
+      const startInput = {
+        session_id: "session-3665-replay",
+        transcript_path: join(testDir, "transcript.jsonl"),
+        cwd: testDir,
+        permission_mode: "default",
+        hook_event_name: "SubagentStart" as const,
+        agent_id: "a31df4cfac7e5ba7f",
+        agent_type: "general-purpose",
+        prompt: "Ship logistics payload",
+        name: undefined,
+        description: "S3 logistics payload",
+      };
+      processSubagentStart(startInput);
+      flushPendingWrites();
+
+      const events = readReplayEvents(testDir, "session-3665-replay");
+      const start = events.find((e) => e.event === "agent_start");
+      expect(start).toBeDefined();
+      expect(start?.agent).toBe("a31df4c");
+      expect(start?.description).toBe("S3 logistics payload");
+    });
 
     it("routes mission-state writes to the hook session id (not getProcessSessionId/PID fallback)", () => {
       // Regression: subagent-tracker previously omitted the sessionId arg when
