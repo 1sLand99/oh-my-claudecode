@@ -25,6 +25,7 @@ import { validatePathSegment } from './paths.js';
 import { SessionLock, LockTimeoutError } from './session-lock.js';
 import { sendSocketRequest, SocketConnectionError, SocketTimeoutError, JsonRpcError } from './socket-client.js';
 import { ensureBridge, killBridgeWithEscalation, spawnBridgeServer } from './bridge-manager.js';
+import { PYTHON_REPL_SANDBOX_BOUNDARY } from './sandbox.js';
 
 // =============================================================================
 // CONSTANTS
@@ -682,7 +683,7 @@ export const pythonReplTool = {
     'Execute Python code in a persistent REPL environment. ' +
     'Variables and state persist between calls within the same session. ' +
     'Actions: execute (run code), interrupt (stop execution), reset (clear state), get_state (view memory/variables). ' +
-    'Sandboxed execution: imports, file I/O, and dynamic code execution are blocked; use built-in functions and persistent variables for calculation and in-memory data analysis.',
+    PYTHON_REPL_SANDBOX_BOUNDARY,
   schema: pythonReplSchema.shape,
   handler: async (args: unknown) => {
     const output = await pythonReplHandler(args as PythonReplInput);

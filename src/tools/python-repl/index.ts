@@ -6,6 +6,7 @@
  */
 
 import { pythonReplSchema, pythonReplHandler } from './tool.js';
+import { PYTHON_REPL_SANDBOX_BOUNDARY } from './sandbox.js';
 
 export const pythonReplTool = {
   name: 'python_repl',
@@ -17,6 +18,8 @@ Actions:
 - get_state: Get memory usage and list of defined variables
 - interrupt: Stop long-running execution
 
+${PYTHON_REPL_SANDBOX_BOUNDARY}
+
 Features:
 - Variables persist across tool calls within the same session
 - Structured output markers: [OBJECTIVE], [DATA], [FINDING], [STAT:*], [LIMITATION]
@@ -26,8 +29,7 @@ Features:
 
 Use this instead of Bash heredocs when you need:
 - Multi-step analysis with state persistence
-- Large datasets that shouldn't be reloaded
-- Iterative ML model training
+- In-memory data analysis with persistent variables
 - Any workflow benefiting from Python state persistence`,
 
   schema: pythonReplSchema,
