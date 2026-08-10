@@ -2432,3 +2432,388 @@ describe('pre-tool-enforcer agents.<name>.model injection (issue #3242)', () => 
     expect(updatedModel(throttled)).toBe('sonnet');
   });
 });
+describe('pre-tool-enforcer skill vs agent namespace guard (issue #3667)', () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'pre-tool-enforcer-skill-agent-'));
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  function runTask(
+    subagentType: unknown,
+    toolName = 'Task',
+    extraInput: Record<string, unknown> = {},
+    env: Record<string, string> = {},
+  ): Record<string, unknown> {
+    return runPreToolEnforcerWithEnv(
+      {
+        tool_name: toolName,
+        cwd: tempDir,
+        session_id: 'session-3667',
+        transcript_path: '',
+        toolInput: {
+          subagent_type: subagentType,
+          description: 'Some task',
+          prompt: 'Do something',
+          ...extraInput,
+        },
+      },
+      env,
+    );
+  }
+
+  function denyReason(output: Record<string, unknown>): string {
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+    return String(hookOutput.permissionDecisionReason ?? '');
+  }
+
+  it('denies Task call whose subagent_type names a bundled skill (oh-my-claudecode:ai-slop-cleaner)', () => {
+    const output = runTask('oh-my-claudecode:ai-slop-cleaner');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+
+    expect(output.continue).toBe(true);
+    expect(hookOutput.permissionDecision).toBe('deny');
+    expect(hookOutput.permissionDecisionReason as string).toContain('[SKILL vs AGENT]');
+    expect(hookOutput.permissionDecisionReason as string).toContain('ai-slop-cleaner');
+    // Names the correct tool and identifier — no generic "Agent type not found".
+    expect(hookOutput.permissionDecisionReason as string).toContain(
+      'Skill(skill="oh-my-claudecode:ai-slop-cleaner")',
+    );
+    // Forbids closest-match substitution (code-simplifier is the attractive wrong answer).
+    expect(hookOutput.permissionDecisionReason as string).toContain('closest match');
+    expect(hookOutput.permissionDecisionReason as string).not.toContain('code-simplifier');
+  });
+
+  it('denies Agent call with a bare bundled skill identifier and suggests the canonical namespaced identifier', () => {
+    const output = runTask('ai-slop-cleaner', 'Agent');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+
+    expect(hookOutput.permissionDecision).toBe('deny');
+    // Recovery must be unambiguous: always the plugin-namespaced form, never a
+    // bare skill name that could resolve to a different project/user skill.
+    expect(denyReason(output)).toContain('Skill(skill="oh-my-claudecode:ai-slop-cleaner")');
+    expect(denyReason(output)).not.toContain('Skill(skill="ai-slop-cleaner")');
+  });
+
+  it('recognizes the omc: namespace alias and suggests the canonical oh-my-claudecode: identifier', () => {
+    const output = runTask('omc:ai-slop-cleaner');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+
+    expect(hookOutput.permissionDecision).toBe('deny');
+    expect(denyReason(output)).toContain('Skill(skill="oh-my-claudecode:ai-slop-cleaner")');
+  });
+
+  it('denies skill-as-agent even when an explicit model is present (guard precedes model routing)', () => {
+    const output = runTask('oh-my-claudecode:ai-slop-cleaner', 'Task', { model: 'sonnet' });
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+
+    expect(hookOutput.permissionDecision).toBe('deny');
+    expect(denyReason(output)).toContain('[SKILL vs AGENT]');
+  });
+
+  it('denies skill-as-agent even under force-inherit routing', () => {
+    const output = runTask('oh-my-claudecode:ai-slop-cleaner', 'Task', {}, { OMC_ROUTING_FORCE_INHERIT: 'true' });
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+
+    expect(hookOutput.permissionDecision).toBe('deny');
+    expect(denyReason(output)).toContain('[SKILL vs AGENT]');
+  });
+
+  it('maps a skill alias to its primary name in the Skill-tool identifier', () => {
+    const output = runTask('oh-my-claudecode:cancel-ralph');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+
+    expect(hookOutput.permissionDecision).toBe('deny');
+    expect(denyReason(output)).toContain('alias of "cancel"');
+    expect(denyReason(output)).toContain('Skill(skill="oh-my-claudecode:cancel")');
+  });
+
+  it('recognizes the renamed plan skill dir through its registered name omc-plan', () => {
+    const output = runTask('oh-my-claudecode:plan');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+
+    expect(hookOutput.permissionDecision).toBe('deny');
+    expect(denyReason(output)).toContain('omc-plan');
+    expect(denyReason(output)).toContain('Skill(skill="oh-my-claudecode:omc-plan")');
+  });
+  it('resolves the learner directory/canonical collision to skillify (canonical precedence over directory shortcut)', () => {
+    // skills/learner/SKILL.md exists, but the canonical registry claims
+    // `learner` as a deprecated alias owned by skillify (skillify sorts first).
+    const namespaced = runTask('oh-my-claudecode:learner');
+    const bare = runTask('learner');
+    const owner = runTask('oh-my-claudecode:skillify');
+
+    for (const output of [namespaced, bare, owner]) {
+      const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+      expect(hookOutput.permissionDecision).toBe('deny');
+      expect(denyReason(output)).toContain('Skill(skill="oh-my-claudecode:skillify")');
+    }
+    expect(denyReason(namespaced)).not.toContain('Skill(skill="oh-my-claudecode:learner")');
+    expect(denyReason(bare)).not.toContain('Skill(skill="oh-my-claudecode:learner")');
+  });
+
+  it('resolves the understanding-gate and psm alias claims to their canonical owners', () => {
+    const gate = runTask('oh-my-claudecode:understanding-gate');
+    const psm = runTask('oh-my-claudecode:psm');
+
+    expect((gate.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBe('deny');
+    expect(denyReason(gate)).toContain('Skill(skill="oh-my-claudecode:merge-readiness")');
+    expect((psm.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBe('deny');
+    expect(denyReason(psm)).toContain('Skill(skill="oh-my-claudecode:project-session-manager")');
+  });
+
+  it('does NOT deny a real agent identifier (code-simplifier passes through)', () => {
+    const output = runTask('oh-my-claudecode:code-simplifier');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+
+    expect(output.continue).toBe(true);
+    expect(hookOutput.permissionDecision).toBeUndefined();
+    expect(JSON.stringify(output)).not.toContain('[SKILL vs AGENT]');
+  });
+
+  it('does NOT deny a genuinely unknown agent identifier', () => {
+    const output = runTask('oh-my-claudecode:nonexistent-agent-xyz');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+
+    expect(output.continue).toBe(true);
+    expect(hookOutput.permissionDecision).toBeUndefined();
+    expect(JSON.stringify(output)).not.toContain('[SKILL vs AGENT]');
+  });
+
+  it('does NOT fuzzy-match a typo to a skill (no unsafe closest-match substitution)', () => {
+    const output = runTask('oh-my-claudecode:ai-slop-cleanr');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+
+    expect(output.continue).toBe(true);
+    expect(hookOutput.permissionDecision).toBeUndefined();
+    expect(JSON.stringify(output)).not.toContain('[SKILL vs AGENT]');
+  });
+
+  it('lets a plugin agent with the same name as a skill win the collision (namespaced call)', () => {
+    const pluginRoot = join(tempDir, 'plugin');
+    mkdirSync(join(pluginRoot, 'agents'), { recursive: true });
+    mkdirSync(join(pluginRoot, 'skills', 'wiki'), { recursive: true });
+    writeFileSync(join(pluginRoot, 'agents', 'wiki.md'), '---\nname: wiki\n---\nagent body\n');
+    writeFileSync(join(pluginRoot, 'skills', 'wiki', 'SKILL.md'), '---\nname: wiki\n---\nskill body\n');
+
+    const output = runPreToolEnforcerWithEnv(
+      {
+        tool_name: 'Task',
+        cwd: tempDir,
+        session_id: 'session-3667-collision',
+        transcript_path: '',
+        toolInput: {
+          subagent_type: 'oh-my-claudecode:wiki',
+          description: 'Some task',
+          prompt: 'Do something',
+        },
+      },
+      { CLAUDE_PLUGIN_ROOT: pluginRoot },
+    );
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+
+    expect(output.continue).toBe(true);
+    expect(hookOutput.permissionDecision).toBeUndefined();
+    expect(JSON.stringify(output)).not.toContain('[SKILL vs AGENT]');
+  });
+
+  it('lets a project agent with the same name as a skill win the collision (bare call)', () => {
+    mkdirSync(join(tempDir, '.claude', 'agents'), { recursive: true });
+    writeFileSync(join(tempDir, '.claude', 'agents', 'wiki.md'), '---\nname: wiki\n---\nagent body\n');
+
+    const output = runTask('wiki');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+
+    expect(output.continue).toBe(true);
+    expect(hookOutput.permissionDecision).toBeUndefined();
+    expect(JSON.stringify(output)).not.toContain('[SKILL vs AGENT]');
+  });
+
+  it('denies a bare bundled skill name when no agent definition resolves it anywhere', () => {
+    // tempDir has no .claude/agents and no user-config agents; wiki resolves only as a skill.
+    const output = runTask('wiki');
+    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+
+    expect(hookOutput.permissionDecision).toBe('deny');
+    expect(denyReason(output)).toContain('Skill(skill="oh-my-claudecode:wiki")');
+  });
+
+  it('does NOT deny non-string or empty subagent_type values', () => {
+    const numeric = runTask(42 as unknown as string);
+    const empty = runTask('   ');
+    expect(numeric.hookSpecificOutput as Record<string, unknown>).not.toHaveProperty('permissionDecision');
+    expect(empty.hookSpecificOutput as Record<string, unknown>).not.toHaveProperty('permissionDecision');
+  });
+  it.each(['remember', 'verify', 'debug'])(
+    'does NOT suggest the runtime-hidden %s skill for a non-skininthegamebros user (USER_TYPE != ant)',
+    (hiddenSkill) => {
+      const namespaced = runTask(`oh-my-claudecode:${hiddenSkill}`, 'Task', {}, { USER_TYPE: '' });
+      const bare = runTask(hiddenSkill, 'Task', {}, { USER_TYPE: '' });
+
+      for (const output of [namespaced, bare]) {
+        expect(output.continue).toBe(true);
+        expect((output.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBeUndefined();
+        expect(JSON.stringify(output)).not.toContain('[SKILL vs AGENT]');
+      }
+    },
+  );
+
+  it.each(['remember', 'verify', 'debug'])(
+    'denies the %s skill for a skininthegamebros user (USER_TYPE=ant)',
+    (hiddenSkill) => {
+      const output = runTask(`oh-my-claudecode:${hiddenSkill}`, 'Task', {}, { USER_TYPE: 'ant' });
+      const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+
+      expect(hookOutput.permissionDecision).toBe('deny');
+      expect(denyReason(output)).toContain(`Skill(skill="oh-my-claudecode:${hiddenSkill}")`);
+    },
+  );
+
+  it('still denies visible skills for a non-skininthegamebros user while hidden ones pass through', () => {
+    const visible = runTask('oh-my-claudecode:plan', 'Task', {}, { USER_TYPE: '' });
+    const hidden = runTask('oh-my-claudecode:remember', 'Task', {}, { USER_TYPE: '' });
+
+    expect((visible.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBe('deny');
+    expect(denyReason(visible)).toContain('Skill(skill="oh-my-claudecode:omc-plan")');
+    expect((hidden.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBeUndefined();
+  });
+  describe('case-insensitive identifier folding (Windows/macOS semantics, issue #3667)', () => {
+    it('does NOT suggest a runtime-hidden skill when a case-variant identifier resolves its directory (case-insensitive-faithful harness)', () => {
+      // Simulate a case-insensitive filesystem: the plugin root holds the
+      // hidden skill at the case-variant path `skills/Remember/SKILL.md`,
+      // exactly as a case-insensitive fs would resolve `skills/remember`.
+      const pluginRoot = join(tempDir, 'ci-plugin');
+      mkdirSync(join(pluginRoot, 'skills', 'Remember'), { recursive: true });
+      writeFileSync(
+        join(pluginRoot, 'skills', 'Remember', 'SKILL.md'),
+        '---\nname: remember\n---\nhidden skill body\n',
+      );
+
+      const run = (subagentType: string, env: Record<string, string>) =>
+        runPreToolEnforcerWithEnv(
+          {
+            tool_name: 'Task',
+            cwd: tempDir,
+            session_id: 'session-3667-ci',
+            transcript_path: '',
+            toolInput: { subagent_type: subagentType, description: 'd', prompt: 'p' },
+          },
+          { CLAUDE_PLUGIN_ROOT: pluginRoot, USER_TYPE: '', ...env },
+        );
+
+      const nonAnt = run('oh-my-claudecode:Remember', {});
+      const nonAntLower = run('oh-my-claudecode:remember', {});
+      const ant = run('oh-my-claudecode:Remember', { USER_TYPE: 'ant' });
+
+      expect((nonAnt.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBeUndefined();
+      expect(JSON.stringify(nonAnt)).not.toContain('[SKILL vs AGENT]');
+      expect((nonAntLower.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBeUndefined();
+      // Canonical lowercase output spelling is preserved for the entitled user.
+      expect((ant.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBe('deny');
+      expect(denyReason(ant)).toContain('Skill(skill="oh-my-claudecode:remember")');
+    });
+
+    it.each([
+      ['oh-my-claudecode:Plan', 'oh-my-claudecode:omc-plan'],
+      ['oh-my-claudecode:LEARNER', 'oh-my-claudecode:skillify'],
+      ['oh-my-claudecode:AI-Slop-Cleaner', 'oh-my-claudecode:ai-slop-cleaner'],
+      ['oh-my-claudecode:Cancel-Ralph', 'oh-my-claudecode:cancel'],
+      ['oh-my-claudecode:PSM', 'oh-my-claudecode:project-session-manager'],
+    ])('denies mixed-case %s with the canonical namespaced identifier %s', (input, expected) => {
+      const output = runTask(input, 'Task', {}, { USER_TYPE: '' });
+      const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+      expect(hookOutput.permissionDecision).toBe('deny');
+      expect(denyReason(output)).toContain(`Skill(skill="${expected}")`);
+    });
+
+    it.each(['Remember', 'VERIFY', 'Debug'])(
+      'does NOT suggest the mixed-case runtime-hidden %s skill for a non-ant user',
+      (hiddenSkill) => {
+        const output = runTask(`oh-my-claudecode:${hiddenSkill}`, 'Task', {}, { USER_TYPE: '' });
+        expect((output.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBeUndefined();
+        expect(JSON.stringify(output)).not.toContain('[SKILL vs AGENT]');
+      },
+    );
+
+    it('recognizes case-variant namespace aliases (OMC: / OH-MY-CLAUDECODE:)', () => {
+      const omcUpper = runTask('OMC:ai-slop-cleaner', 'Task', {}, { USER_TYPE: '' });
+      const fullUpper = runTask('OH-MY-CLAUDECODE:Remember', 'Task', {}, { USER_TYPE: '' });
+
+      expect((omcUpper.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBe('deny');
+      expect(denyReason(omcUpper)).toContain('Skill(skill="oh-my-claudecode:ai-slop-cleaner")');
+      // Hidden skill with a case-variant full namespace still fails closed.
+      expect((fullUpper.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBeUndefined();
+    });
+
+    it('applies case folding before explicit-model and force-inherit routing', () => {
+      const withModel = runTask('oh-my-claudecode:Plan', 'Task', { model: 'sonnet' }, { USER_TYPE: '' });
+      expect((withModel.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBe('deny');
+      expect(denyReason(withModel)).toContain('Skill(skill="oh-my-claudecode:omc-plan")');
+
+      const forceInheritVisible = runTask(
+        'oh-my-claudecode:Plan',
+        'Task',
+        {},
+        { USER_TYPE: '', OMC_ROUTING_FORCE_INHERIT: 'true' },
+      );
+      expect((forceInheritVisible.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBe('deny');
+      expect(denyReason(forceInheritVisible)).toContain('Skill(skill="oh-my-claudecode:omc-plan")');
+
+      const forceInheritHidden = runTask(
+        'oh-my-claudecode:Remember',
+        'Task',
+        {},
+        { USER_TYPE: '', OMC_ROUTING_FORCE_INHERIT: 'true' },
+      );
+      expect((forceInheritHidden.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBeUndefined();
+    });
+  });
+  describe('native/session-defined bare agent boundary (issue #3667 P1)', () => {
+    it.each(['plan', 'Plan', 'general-purpose'])(
+      'does NOT deny the bare %s identifier (native Claude agents are not file-discoverable)',
+      (nativeAgent) => {
+        const output = runTask(nativeAgent, 'Task', {}, { USER_TYPE: '' });
+        expect((output.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBeUndefined();
+        expect(JSON.stringify(output)).not.toContain('[SKILL vs AGENT]');
+      },
+    );
+
+    it('denies the plugin-namespaced plan identifier while preserving bare plan', () => {
+      const namespaced = runTask('oh-my-claudecode:plan', 'Task', {}, { USER_TYPE: '' });
+      const omcAlias = runTask('omc:plan', 'Task', {}, { USER_TYPE: '' });
+      const bare = runTask('plan', 'Task', {}, { USER_TYPE: '' });
+
+      expect((namespaced.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBe('deny');
+      expect(denyReason(namespaced)).toContain('Skill(skill="oh-my-claudecode:omc-plan")');
+      expect((omcAlias.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBe('deny');
+      expect(denyReason(omcAlias)).toContain('Skill(skill="oh-my-claudecode:omc-plan")');
+      expect((bare.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBeUndefined();
+    });
+
+    it('still denies bare canonical-registry skill claims (omc-plan, learner, ai-slop-cleaner)', () => {
+      for (const [input, expected] of [
+        ['omc-plan', 'oh-my-claudecode:omc-plan'],
+        ['learner', 'oh-my-claudecode:skillify'],
+        ['ai-slop-cleaner', 'oh-my-claudecode:ai-slop-cleaner'],
+      ] as const) {
+        const output = runTask(input, 'Task', {}, { USER_TYPE: '' });
+        const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+        expect(hookOutput.permissionDecision).toBe('deny');
+        expect(denyReason(output)).toContain(`Skill(skill="${expected}")`);
+      }
+    });
+
+    it('keeps plugin/project agent collisions winning over skills for bare names', () => {
+      // Project agent named `wiki` (also a canonical skill claim) must win.
+      mkdirSync(join(tempDir, '.claude', 'agents'), { recursive: true });
+      writeFileSync(join(tempDir, '.claude', 'agents', 'wiki.md'), '---\nname: wiki\n---\nagent body\n');
+      const output = runTask('wiki', 'Task', {}, { USER_TYPE: '' });
+      expect((output.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBeUndefined();
+      expect(JSON.stringify(output)).not.toContain('[SKILL vs AGENT]');
+    });
+  });
+});
