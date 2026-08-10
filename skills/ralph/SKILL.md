@@ -47,6 +47,24 @@ By default, ralph operates in PRD mode. A scaffold `prd.json` is auto-generated 
 **Deslop opt-out:** If `{{PROMPT}}` contains `--no-deslop`, skip the mandatory post-review deslop pass entirely. Use this only when the cleanup pass is intentionally out of scope for the run.
 
 **Reviewer selection:** Pass `--critic=architect`, `--critic=critic`, or `--critic=codex` in the Ralph prompt to choose the completion reviewer for that run. `architect` remains the default.
+
+**Stale-state detection & reconciliation (#3669):** If a PRD is left unfinished by an abnormal/non-Step 8 exit (crash, force-kill, cancel before `/oh-my-claudecode:cancel`, session end), Ralph surfaces an explicit `[STALE PRD WARNING]` at startup/resume, in the continuation context, and at session end — with unfinished counts, last-touched age, and stale-pointer signals (PRD `branchName` merged/gone). Completion is NEVER inferred from PR/branch/merge status alone; git state is a warning signal only. A story is auto-reconciled to `passes: true` ONLY when the PRD carries configured observable evidence and every check passes:
+
+```json
+{
+  "reconciliation": {
+    "staleAfterMs": 7200000,
+    "observableChecks": {
+      "US-001": [
+        { "type": "fileContains", "path": "src/landed.ts", "pattern": "LANDED_SYMBOL" },
+        { "type": "gitGrep", "ref": "origin/dev", "pattern": "LANDED_SYMBOL" }
+      ]
+    }
+  }
+}
+```
+
+Check types: `fileExists` / `fileContains` (working tree) and `gitGrep` (content at a ref — this is "verified by content on trunk", never PR status). Stories without configured checks are never auto-marked. Reconciled stories keep `architectVerified: false` and still require Step 7 reviewer verification before Step 8; every decision is appended to the `prd-reconciliation.jsonl` audit log and summarized in the story notes.
 </PRD_Mode>
 
 <Execution_Policy>
