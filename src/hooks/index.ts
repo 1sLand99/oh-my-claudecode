@@ -38,6 +38,15 @@ export {
   recordStoryProgress,
   recordPattern,
   shouldCompleteByPrd,
+  // PRD Stale-State Detection & Reconciliation (#3669)
+  detectStalePrd,
+  formatStalePrdWarning,
+  getSessionEndStalePrdWarning,
+  reconcileStalePrd,
+  reconcileStalePrdForStartup,
+  runObservableCheck,
+  PRD_RECONCILIATION_AUDIT_FILENAME,
+  DEFAULT_STALE_PRD_AFTER_MS,
   // PRD (Structured Task Tracking)
   readPrd,
   writePrd,

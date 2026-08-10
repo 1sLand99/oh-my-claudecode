@@ -15,6 +15,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { dirname, join } from 'path';
 import { ensureSessionStateDir, getOmcRoot, getSessionStateDir } from '../../lib/worktree-paths.js';
+import type { ObservableCheck, PrdReconciliationConfig } from './stale-prd.js';
 
 // ============================================================================
 // Types
@@ -76,6 +77,12 @@ export interface PRD {
   description: string;
   /** List of user stories */
   userStories: UserStory[];
+  /**
+   * Optional stale-state reconciliation configuration (#3669). Carried inside
+   * the PRD so it travels with the stories and stays session-scoped. Legacy
+   * PRDs without this field read back as undefined and are fully supported.
+   */
+  reconciliation?: PrdReconciliationConfig;
 }
 
 export interface PRDStatus {
@@ -281,12 +288,90 @@ function normalizePrd(candidate: unknown): PRD | null {
     return null;
   }
 
+  const reconciliation = normalizeReconciliation(prd.reconciliation);
+
   return {
     project: prd.project,
     branchName: prd.branchName,
     description: prd.description,
-    userStories: userStories as UserStory[]
+    userStories: userStories as UserStory[],
+    ...(reconciliation ? { reconciliation } : {})
   };
+}
+
+/**
+ * Validate and preserve the optional reconciliation config. Returns undefined
+ * for legacy PRDs (no field) or malformed values — a malformed config must not
+ * invalidate an otherwise valid PRD, it just disables auto-reconciliation.
+ */
+function normalizeReconciliation(candidate: unknown): PrdReconciliationConfig | undefined {
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+    return undefined;
+  }
+
+  const raw = candidate as Record<string, unknown>;
+  const config: PrdReconciliationConfig = {};
+
+  if (typeof raw.staleAfterMs === 'number' && Number.isFinite(raw.staleAfterMs) && raw.staleAfterMs > 0) {
+    config.staleAfterMs = raw.staleAfterMs;
+  }
+
+  if (typeof raw.autoReconcile === 'boolean') {
+    config.autoReconcile = raw.autoReconcile;
+  }
+
+  if (raw.observableChecks && typeof raw.observableChecks === 'object' && !Array.isArray(raw.observableChecks)) {
+    const checksByStory = raw.observableChecks as Record<string, unknown>;
+    const observableChecks: Record<string, unknown> = {};
+    for (const [storyId, checks] of Object.entries(checksByStory)) {
+      if (!Array.isArray(checks)) {
+        continue;
+      }
+      const normalizedChecks = checks
+        .map(c => normalizeObservableCheck(c))
+        .filter((c): c is ObservableCheck => c !== null);
+      if (normalizedChecks.length > 0) {
+        observableChecks[storyId] = normalizedChecks;
+      }
+    }
+    if (Object.keys(observableChecks).length > 0) {
+      config.observableChecks = observableChecks as PrdReconciliationConfig['observableChecks'];
+    }
+  }
+
+  return Object.keys(config).length > 0 ? config : undefined;
+}
+
+/**
+ * Validate a single observable check. Unknown check types or missing required
+ * fields are dropped rather than failing the whole PRD.
+ */
+function normalizeObservableCheck(candidate: unknown): ObservableCheck | null {
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+    return null;
+  }
+
+  const raw = candidate as Record<string, unknown>;
+  const type = raw.type;
+  if (type !== 'fileExists' && type !== 'fileContains' && type !== 'gitGrep') {
+    return null;
+  }
+
+  const check: ObservableCheck = { type };
+  if (typeof raw.path === 'string' && raw.path.length > 0) {
+    check.path = raw.path;
+  }
+  if (typeof raw.ref === 'string' && raw.ref.length > 0) {
+    check.ref = raw.ref;
+  }
+  if (typeof raw.pattern === 'string' && raw.pattern.length > 0) {
+    check.pattern = raw.pattern;
+  }
+  if (typeof raw.description === 'string' && raw.description.length > 0) {
+    check.description = raw.description;
+  }
+
+  return check;
 }
 
 function readPrdFromPath(prdPath: string): { prd?: PRD; error?: string } {

@@ -161,3 +161,31 @@ export {
   // Types
   type VerificationState
 } from './verifier.js';
+
+// ============================================================================
+// Ralph PRD Stale-State Detection & Reconciliation (#3669)
+// ============================================================================
+
+export {
+  // Detection
+  detectStalePrd,
+  formatStalePrdWarning,
+  getSessionEndStalePrdWarning,
+
+  // Reconciliation
+  reconcileStalePrd,
+  reconcileStalePrdForStartup,
+  runObservableCheck,
+
+  // Constants
+  PRD_RECONCILIATION_AUDIT_FILENAME,
+  DEFAULT_STALE_PRD_AFTER_MS,
+
+  // Types
+  type ObservableCheck,
+  type ObservableCheckResult,
+  type PrdReconciliationConfig,
+  type StalePrdDetection,
+  type ReconciliationAuditEntry,
+  type ReconcileStalePrdResult
+} from './stale-prd.js';
