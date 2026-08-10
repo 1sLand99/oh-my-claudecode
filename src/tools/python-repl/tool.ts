@@ -596,7 +596,6 @@ export async function pythonReplHandler(input: PythonReplInput): Promise<string>
         '',
         'Ensure you have a Python virtual environment:',
         '  python -m venv .venv',
-        '  .venv/bin/pip install pandas numpy matplotlib',
       ].join('\n');
     }
 
@@ -683,7 +682,7 @@ export const pythonReplTool = {
     'Execute Python code in a persistent REPL environment. ' +
     'Variables and state persist between calls within the same session. ' +
     'Actions: execute (run code), interrupt (stop execution), reset (clear state), get_state (view memory/variables). ' +
-    'Supports scientific computing with pandas, numpy, matplotlib.',
+    'Sandboxed execution: imports, file I/O, and dynamic code execution are blocked; use built-in functions and persistent variables for calculation and in-memory data analysis.',
   schema: pythonReplSchema.shape,
   handler: async (args: unknown) => {
     const output = await pythonReplHandler(args as PythonReplInput);
