@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, rmSync } from "fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import {
@@ -25,7 +26,7 @@ import {
   type ToolUsageEntry,
 } from "../index.js";
 import { readMissionBoardState } from "../../../hud/mission-board.js";
-import { readReplayEvents } from "../session-replay.js";
+import { readReplayEvents, getReplaySummary } from "../session-replay.js";
 
 describe("subagent-tracker", () => {
   let testDir: string;
@@ -1308,6 +1309,225 @@ describe("subagent-tracker", () => {
       expect(observatory.lines.length).toBeGreaterThan(0);
       expect(observatory.lines[0]).toContain("executor");
       expect(observatory.lines[0]).toContain("$0.05");
+    });
+  });
+
+  describe("processSubagentStop — worktree dirty evidence (#3663)", () => {
+    function git(cwd: string, args: string[]): string {
+      return execFileSync("git", args, {
+        cwd,
+        encoding: "utf-8",
+        stdio: "pipe",
+        env: {
+          ...process.env,
+          GIT_AUTHOR_NAME: "Test",
+          GIT_AUTHOR_EMAIL: "test@test.com",
+          GIT_COMMITTER_NAME: "Test",
+          GIT_COMMITTER_EMAIL: "test@test.com",
+          GIT_CONFIG_GLOBAL: "/dev/null",
+          GIT_CONFIG_SYSTEM: "/dev/null",
+        },
+      }).trim();
+    }
+
+    function makeGitRepo(): string {
+      const repoDir = join(testDir, `repo-${Math.random().toString(36).slice(2)}`);
+      mkdirSync(join(repoDir, ".omc", "state"), { recursive: true });
+      git(repoDir, ["init"]);
+      git(repoDir, ["config", "user.email", "test@test.com"]);
+      git(repoDir, ["config", "user.name", "Test"]);
+      git(repoDir, ["config", "commit.gpgsign", "false"]);
+      writeFileSync(join(repoDir, ".gitignore"), ".omc/\n");
+      writeFileSync(join(repoDir, "tracked.txt"), "seed\n");
+      git(repoDir, ["add", ".gitignore", "tracked.txt"]);
+      git(repoDir, ["commit", "-m", "seed"]);
+      return repoDir;
+    }
+
+    it("records bounded dirty-worktree evidence on abnormal stop", () => {
+      const repoDir = makeGitRepo();
+      writeFileSync(join(repoDir, "tracked.txt"), "modified\n");
+      writeFileSync(join(repoDir, "new.txt"), "untracked work\n");
+
+      processSubagentStart({
+        session_id: "sess-dirty-1",
+        transcript_path: join(repoDir, "transcript.jsonl"),
+        cwd: repoDir,
+        permission_mode: "default",
+        hook_event_name: "SubagentStart" as const,
+        agent_id: "ag-dirty-1",
+        agent_type: "oh-my-claudecode:executor",
+        prompt: "build a harness",
+      });
+      flushPendingWrites();
+
+      const output = processSubagentStop({
+        session_id: "sess-dirty-1",
+        transcript_path: join(repoDir, "transcript.jsonl"),
+        cwd: repoDir,
+        permission_mode: "default",
+        hook_event_name: "SubagentStop" as const,
+        agent_id: "ag-dirty-1",
+        output: "Agent terminated early due to an API error",
+        success: false,
+      });
+      flushPendingWrites();
+
+      // The hook never blocks and never injects context into the dying agent.
+      expect(output).toEqual({ continue: true, suppressOutput: true });
+
+      const state = readTrackingState(repoDir, "sess-dirty-1");
+      const agent = state.agents.find((a) => a.agent_id === "ag-dirty-1");
+      expect(agent?.status).toBe("failed");
+      expect(agent?.worktree_evidence?.kind).toBe("dirty");
+      expect(agent?.worktree_evidence?.trackedCount).toBe(1);
+      expect(agent?.worktree_evidence?.untrackedCount).toBe(1);
+      expect(agent?.worktree_evidence?.worktreeRoot).toBe(repoDir);
+
+      // Replay JSONL carries the bounded record for /trace.
+      const events = readReplayEvents(repoDir, "sess-dirty-1");
+      const stop = events.find((e) => e.event === "agent_stop" && e.agent === "ag-dirty-1".substring(0, 7));
+      expect(stop?.dirty_worktree).toMatchObject({
+        tracked: 1,
+        untracked: 1,
+        worktree_root: repoDir,
+      });
+
+      // The trace summary surfaces the count.
+      expect(getReplaySummary(repoDir, "sess-dirty-1").dirty_worktrees).toBe(1);
+
+      // The worktree is untouched: no commit, no stash, same status.
+      expect(git(repoDir, ["status", "--porcelain"])).toContain("tracked.txt");
+      expect(git(repoDir, ["rev-list", "--count", "HEAD"])).toBe("1");
+      expect(git(repoDir, ["stash", "list"])).toBe("");
+    });
+
+    it("detects abnormal termination from the API-error output marker even without success flag", () => {
+      const repoDir = makeGitRepo();
+      writeFileSync(join(repoDir, "tracked.txt"), "modified\n");
+
+      processSubagentStart({
+        session_id: "sess-dirty-2",
+        transcript_path: join(repoDir, "transcript.jsonl"),
+        cwd: repoDir,
+        permission_mode: "default",
+        hook_event_name: "SubagentStart" as const,
+        agent_id: "ag-dirty-2",
+        agent_type: "oh-my-claudecode:executor",
+        prompt: "stall mid-stream",
+      });
+      flushPendingWrites();
+
+      // SDK omits `success` for API-error terminations (Bug #1 default would
+      // mark it completed) — the output marker is what makes it abnormal.
+      processSubagentStop({
+        session_id: "sess-dirty-2",
+        transcript_path: join(repoDir, "transcript.jsonl"),
+        cwd: repoDir,
+        permission_mode: "default",
+        hook_event_name: "SubagentStop" as const,
+        agent_id: "ag-dirty-2",
+        output: "API Error: Response stalled mid-stream",
+      });
+      flushPendingWrites();
+
+      const state = readTrackingState(repoDir, "sess-dirty-2");
+      const agent = state.agents.find((a) => a.agent_id === "ag-dirty-2");
+      expect(agent?.worktree_evidence?.kind).toBe("dirty");
+      expect(agent?.worktree_evidence?.trackedCount).toBe(1);
+    });
+
+    it("does not record evidence on normal completion or cancel-like stops", () => {
+      const repoDir = makeGitRepo();
+      writeFileSync(join(repoDir, "tracked.txt"), "modified\n");
+
+      processSubagentStart({
+        session_id: "sess-clean-3",
+        transcript_path: join(repoDir, "transcript.jsonl"),
+        cwd: repoDir,
+        permission_mode: "default",
+        hook_event_name: "SubagentStart" as const,
+        agent_id: "ag-clean-3",
+        agent_type: "oh-my-claudecode:executor",
+        prompt: "normal task",
+      });
+      flushPendingWrites();
+
+      processSubagentStop({
+        session_id: "sess-clean-3",
+        transcript_path: join(repoDir, "transcript.jsonl"),
+        cwd: repoDir,
+        permission_mode: "default",
+        hook_event_name: "SubagentStop" as const,
+        agent_id: "ag-clean-3",
+        output: "completed normally",
+      });
+      flushPendingWrites();
+
+      const state = readTrackingState(repoDir, "sess-clean-3");
+      const agent = state.agents.find((a) => a.agent_id === "ag-clean-3");
+      expect(agent?.status).toBe("completed");
+      expect(agent?.worktree_evidence).toBeUndefined();
+
+      // Cancel-like stop (no failure markers) also records nothing.
+      processSubagentStart({
+        session_id: "sess-cancel-3",
+        transcript_path: join(repoDir, "transcript.jsonl"),
+        cwd: repoDir,
+        permission_mode: "default",
+        hook_event_name: "SubagentStart" as const,
+        agent_id: "ag-cancel-3",
+        agent_type: "oh-my-claudecode:executor",
+        prompt: "cancel me",
+      });
+      flushPendingWrites();
+      processSubagentStop({
+        session_id: "sess-cancel-3",
+        transcript_path: join(repoDir, "transcript.jsonl"),
+        cwd: repoDir,
+        permission_mode: "default",
+        hook_event_name: "SubagentStop" as const,
+        agent_id: "ag-cancel-3",
+        output: "Interrupted by user — cancelling task",
+      });
+      flushPendingWrites();
+
+      const state2 = readTrackingState(repoDir, "sess-cancel-3");
+      const agent2 = state2.agents.find((a) => a.agent_id === "ag-cancel-3");
+      expect(agent2?.worktree_evidence).toBeUndefined();
+      expect(agent2?.status).toBe("completed");
+    });
+
+    it("records non-dirty evidence kinds without failing on non-git stops", () => {
+      // Non-git directory: abnormal stop must not break and must not mark dirty.
+      processSubagentStart({
+        session_id: "sess-ng-4",
+        transcript_path: join(testDir, "transcript.jsonl"),
+        cwd: testDir,
+        permission_mode: "default",
+        hook_event_name: "SubagentStart" as const,
+        agent_id: "ag-ng-4",
+        agent_type: "oh-my-claudecode:executor",
+        prompt: "non-git task",
+      });
+      flushPendingWrites();
+      const output = processSubagentStop({
+        session_id: "sess-ng-4",
+        transcript_path: join(testDir, "transcript.jsonl"),
+        cwd: testDir,
+        permission_mode: "default",
+        hook_event_name: "SubagentStop" as const,
+        agent_id: "ag-ng-4",
+        output: "Agent terminated early due to an API error",
+        success: false,
+      });
+      flushPendingWrites();
+      expect(output).toEqual({ continue: true, suppressOutput: true });
+
+      const state = readTrackingState(testDir, "sess-ng-4");
+      const agent = state.agents.find((a) => a.agent_id === "ag-ng-4");
+      expect(agent?.status).toBe("failed");
+      expect(agent?.worktree_evidence?.kind).toBe("not_git");
     });
   });
 });

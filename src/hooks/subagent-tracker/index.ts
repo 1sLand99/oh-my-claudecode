@@ -26,6 +26,11 @@ import { resolveSessionId } from '../../lib/session-id.js';
 import { withFileLockSync, lockPathFor } from '../../lib/file-lock.js';
 import { recordAgentStart, recordAgentStop } from './session-replay.js';
 import { recordMissionAgentStart, recordMissionAgentStop } from '../../hud/mission-board.js';
+import {
+  collectWorktreeDirtyEvidence,
+  isAbnormalTermination,
+  type WorktreeDirtyEvidence,
+} from './worktree-evidence.js';
 
 // ============================================================================
 // Types
@@ -52,6 +57,8 @@ export interface SubagentInfo {
   synthetic?: boolean;
   telemetry_status?: "unmatched_stop";
   telemetry_note?: string;
+  /** Bounded dirty-worktree evidence recorded on abnormal termination (#3663). */
+  worktree_evidence?: WorktreeDirtyEvidence;
 }
 
 export interface ToolUsageEntry {
@@ -775,6 +782,18 @@ export function processSubagentStop(input: SubagentStopInput): HookOutput {
   ensureParentDir(writePath);
   const lockPath = lockPathFor(writePath);
 
+  // Issue #3663: collect dirty-worktree evidence OUTSIDE the session-state
+  // lock. The collector is bounded (two read-only `git status` calls, up to a
+  // few seconds on abnormal stops) but holding the lock that long would drop
+  // concurrent stop hooks (LOCK_OPTS.timeoutMs is 500ms). READ-ONLY and
+  // fail-closed: never commits, resets, or removes anything, and never throws.
+  let abnormalEvidence: WorktreeDirtyEvidence | undefined;
+  if (isAbnormalTermination(input)) {
+    try {
+      abnormalEvidence = collectWorktreeDirtyEvidence(input.cwd);
+    } catch { /* evidence is best-effort; never break the stop hook */ }
+  }
+
   try {
     return withFileLockSync(lockPath, () => {
       const state = readTrackingState(input.cwd, sessionId);
@@ -850,6 +869,14 @@ export function processSubagentStop(input: SubagentStopInput): HookOutput {
       const stoppedAgent =
         agentIndex !== -1 ? state.agents[agentIndex] : undefined;
 
+      // Issue #3663: attach the dirty-worktree evidence collected outside the
+      // lock to the closed agent entry BEFORE the state write so the
+      // coordinator can see uncommitted work in the agent's (isolated) worktree
+      // before running destructive cleanup. READ-ONLY and fail-closed.
+      if (stoppedAgent && abnormalEvidence) {
+        stoppedAgent.worktree_evidence = abnormalEvidence;
+      }
+
       // Evict oldest completed agents if over limit
       const completedAgents = state.agents.filter(
         (a) => a.status === "completed" || a.status === "failed",
@@ -876,9 +903,23 @@ export function processSubagentStop(input: SubagentStopInput): HookOutput {
         // Fix: SDK doesn't populate agent_type in SubagentStop, so use tracked state
         try {
           const agentType = stoppedAgent?.agent_type || input.agent_type || UNTRACKED_NATIVE_FORK_AGENT_TYPE;
-          recordAgentStop(input.cwd, input.session_id, input.agent_id, agentType, succeeded, stoppedAgent?.duration_ms, stoppedAgent?.synthetic
+          const baseStopMetadata = stoppedAgent?.synthetic
             ? { synthetic: true, telemetry_status: stoppedAgent.telemetry_status, reason: stoppedAgent.telemetry_note }
-            : undefined);
+            : undefined;
+          const evidence = stoppedAgent?.worktree_evidence;
+          const stopMetadata = evidence && evidence.kind === "dirty"
+            ? {
+                ...(baseStopMetadata ?? {}),
+                dirty_worktree: {
+                  tracked: evidence.trackedCount,
+                  untracked: evidence.untrackedCount,
+                  ignored: evidence.ignoredCount,
+                  worktree_root: evidence.worktreeRoot ?? "",
+                  truncated: evidence.truncated,
+                },
+              }
+            : baseStopMetadata;
+          recordAgentStop(input.cwd, input.session_id, input.agent_id, agentType, succeeded, stoppedAgent?.duration_ms, stopMetadata);
         } catch { /* best-effort */ }
 
         try {
