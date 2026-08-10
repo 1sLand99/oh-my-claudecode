@@ -46,6 +46,14 @@ export interface ReplayEvent {
   description?: string;
   /** Agent-tool explicit name (authoritative address). */
   name?: string;
+  /** Bounded dirty-worktree evidence recorded on abnormal termination (#3663). */
+  dirty_worktree?: {
+    tracked: number;
+    untracked: number;
+    ignored: number;
+    worktree_root: string;
+    truncated: boolean;
+  };
   /** Hook name (e.g., "keyword-detector") */
   hook?: string;
   /** Claude Code event (e.g., "UserPromptSubmit") */
@@ -82,6 +90,8 @@ export interface ReplaySummary {
   agents_completed: number;
   agents_failed: number;
   agents_untracked_stops?: number;
+  /** Number of agent stops that left a dirty worktree behind (#3663). */
+  dirty_worktrees?: number;
   tool_summary: Record<string, { count: number; total_ms: number; avg_ms: number; max_ms: number }>;
   bottlenecks: Array<{ tool: string; agent: string; avg_ms: number }>;
   timeline_range: { start: number; end: number };
@@ -206,6 +216,14 @@ export interface AgentStopReplayMetadata {
   synthetic?: boolean;
   telemetry_status?: "unmatched_stop";
   reason?: string;
+  /** Bounded dirty-worktree evidence (issue #3663). */
+  dirty_worktree?: {
+    tracked: number;
+    untracked: number;
+    ignored: number;
+    worktree_root: string;
+    truncated: boolean;
+  };
 }
 
 /**
@@ -229,6 +247,7 @@ export function recordAgentStop(
     synthetic: metadata?.synthetic,
     telemetry_status: metadata?.telemetry_status,
     reason: metadata?.reason,
+    dirty_worktree: metadata?.dirty_worktree,
   });
 }
 
@@ -395,6 +414,9 @@ export function getReplaySummary(directory: string, sessionId: string): ReplaySu
         }
         if (event.success) summary.agents_completed++;
         else summary.agents_failed++;
+        if (event.dirty_worktree) {
+          summary.dirty_worktrees = (summary.dirty_worktrees || 0) + 1;
+        }
         if (event.agent_type && event.duration_ms) {
           const stats = agentTypeStats.get(event.agent_type);
           if (stats) stats.total_ms += event.duration_ms;

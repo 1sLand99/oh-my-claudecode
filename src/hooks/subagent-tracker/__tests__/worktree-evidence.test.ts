@@ -1,0 +1,306 @@
+import { describe, it, expect, afterEach } from "vitest";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  collectWorktreeDirtyEvidence,
+  buildDirtyWorktreeNotice,
+  isAbnormalTermination,
+  MAX_EVIDENCE_ENTRIES,
+  type WorktreeDirtyEvidence,
+} from "../worktree-evidence.js";
+
+const tempDirs: string[] = [];
+
+function makeTempDir(prefix = "omc-wt-evidence-"): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  tempDirs.push(dir);
+  return dir;
+}
+
+function git(cwd: string, args: string[]): string {
+  return execFileSync("git", args, {
+    cwd,
+    encoding: "utf-8",
+    stdio: "pipe",
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: "Test",
+      GIT_AUTHOR_EMAIL: "test@test.com",
+      GIT_COMMITTER_NAME: "Test",
+      GIT_COMMITTER_EMAIL: "test@test.com",
+      GIT_CONFIG_GLOBAL: "/dev/null",
+      GIT_CONFIG_SYSTEM: "/dev/null",
+    },
+  }).trim();
+}
+
+function initRepo(dir: string): void {
+  git(dir, ["init"]);
+  git(dir, ["config", "user.email", "test@test.com"]);
+  git(dir, ["config", "user.name", "Test"]);
+  git(dir, ["config", "commit.gpgsign", "false"]);
+  writeFileSync(join(dir, "README.md"), "# test\n");
+  git(dir, ["add", "."]);
+  git(dir, ["commit", "-m", "initial"]);
+}
+
+afterEach(() => {
+  for (const dir of tempDirs.splice(0)) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+describe("collectWorktreeDirtyEvidence", () => {
+  it("returns clean for a pristine git worktree", () => {
+    const repo = makeTempDir();
+    initRepo(repo);
+
+    const evidence = collectWorktreeDirtyEvidence(repo);
+    expect(evidence.kind).toBe("clean");
+    expect(evidence.trackedCount).toBe(0);
+    expect(evidence.untrackedCount).toBe(0);
+    expect(evidence.ignoredCount).toBe(0);
+    expect(evidence.entries).toEqual([]);
+    expect(evidence.truncated).toBe(false);
+    expect(evidence.worktreeRoot).toBe(repo);
+  });
+
+  it("flags dirty when a tracked file is modified", () => {
+    const repo = makeTempDir();
+    initRepo(repo);
+    writeFileSync(join(repo, "README.md"), "# modified\n");
+
+    const evidence = collectWorktreeDirtyEvidence(repo);
+    expect(evidence.kind).toBe("dirty");
+    expect(evidence.trackedCount).toBe(1);
+    expect(evidence.untrackedCount).toBe(0);
+    expect(evidence.entries).toContain("README.md");
+  });
+
+  it("flags dirty for untracked files", () => {
+    const repo = makeTempDir();
+    initRepo(repo);
+    writeFileSync(join(repo, "campaign.md"), "new work\n");
+
+    const evidence = collectWorktreeDirtyEvidence(repo);
+    expect(evidence.kind).toBe("dirty");
+    expect(evidence.untrackedCount).toBe(1);
+    expect(evidence.entries).toContain("campaign.md");
+  });
+
+  it("counts ignored files separately and does NOT treat them as at-risk work", () => {
+    const repo = makeTempDir();
+    initRepo(repo);
+    writeFileSync(join(repo, ".gitignore"), "build/\n");
+    git(repo, ["add", ".gitignore"]);
+    git(repo, ["commit", "-m", "ignore build"]);
+    mkdirSync(join(repo, "build"), { recursive: true });
+    writeFileSync(join(repo, "build", "out.txt"), "artifact\n");
+
+    const evidence = collectWorktreeDirtyEvidence(repo);
+    expect(evidence.kind).toBe("clean");
+    expect(evidence.trackedCount).toBe(0);
+    expect(evidence.untrackedCount).toBe(0);
+    expect(evidence.ignoredCount).toBe(1);
+  });
+
+  it("combines tracked, untracked, and ignored counts", () => {
+    const repo = makeTempDir();
+    initRepo(repo);
+    writeFileSync(join(repo, ".gitignore"), "build/\n");
+    git(repo, ["add", ".gitignore"]);
+    git(repo, ["commit", "-m", "ignore build"]);
+    writeFileSync(join(repo, "README.md"), "# modified\n");
+    writeFileSync(join(repo, "new.txt"), "untracked\n");
+    mkdirSync(join(repo, "build"), { recursive: true });
+    writeFileSync(join(repo, "build", "out.txt"), "artifact\n");
+
+    const evidence = collectWorktreeDirtyEvidence(repo);
+    expect(evidence.kind).toBe("dirty");
+    expect(evidence.trackedCount).toBe(1);
+    expect(evidence.untrackedCount).toBe(1);
+    expect(evidence.ignoredCount).toBe(1);
+  });
+
+  it("returns not_git for a non-repository directory", () => {
+    const dir = makeTempDir();
+    writeFileSync(join(dir, "file.txt"), "not a repo\n");
+
+    const evidence = collectWorktreeDirtyEvidence(dir);
+    expect(evidence.kind).toBe("not_git");
+  });
+
+  it("returns cwd_missing for a deleted working directory", () => {
+    const missing = join(makeTempDir(), "deleted-cwd");
+    const evidence = collectWorktreeDirtyEvidence(missing);
+    expect(evidence.kind).toBe("cwd_missing");
+  });
+
+  it("returns git_unavailable when the git binary cannot run", () => {
+    const repo = makeTempDir();
+    initRepo(repo);
+
+    const evidence = collectWorktreeDirtyEvidence(repo, {
+      gitCommand: join(repo, "no-such-git-binary"),
+    });
+    expect(evidence.kind).toBe("git_unavailable");
+    expect(evidence.error).toContain("git_unavailable");
+  });
+
+  it("identifies linked git worktrees as isolated worktrees", () => {
+    const repo = makeTempDir();
+    initRepo(repo);
+    const worktree = join(repo, ".omc", "team", "demo-team", "worktrees", "worker-1");
+    mkdirSync(worktree, { recursive: true });
+    git(repo, ["worktree", "add", "-b", "linked-branch", worktree]);
+
+    const evidence = collectWorktreeDirtyEvidence(worktree);
+    expect(evidence.isLinkedWorktree).toBe(true);
+    expect(evidence.worktreeRoot).toBe(worktree);
+    expect(evidence.kind).toBe("clean");
+
+    // Dirty the linked worktree.
+    writeFileSync(join(worktree, "README.md"), "# modified in worktree\n");
+    const dirty = collectWorktreeDirtyEvidence(worktree);
+    expect(dirty.kind).toBe("dirty");
+    expect(dirty.trackedCount).toBe(1);
+  });
+
+  it("bounds entries and marks truncation", () => {
+    const repo = makeTempDir();
+    initRepo(repo);
+    for (let i = 0; i < MAX_EVIDENCE_ENTRIES + 5; i++) {
+      writeFileSync(join(repo, `untracked-${i}.txt`), `content ${i}\n`);
+    }
+
+    const evidence = collectWorktreeDirtyEvidence(repo);
+    expect(evidence.kind).toBe("dirty");
+    expect(evidence.untrackedCount).toBe(MAX_EVIDENCE_ENTRIES + 5);
+    expect(evidence.entries.length).toBe(MAX_EVIDENCE_ENTRIES);
+    expect(evidence.truncated).toBe(true);
+  });
+
+  it("never mutates the repository while collecting evidence", () => {
+    const repo = makeTempDir();
+    initRepo(repo);
+    writeFileSync(join(repo, "README.md"), "# modified\n");
+    writeFileSync(join(repo, "new.txt"), "untracked\n");
+    const statusBefore = git(repo, ["status", "--porcelain"]);
+    const headBefore = git(repo, ["rev-parse", "HEAD"]);
+    const stashBefore = git(repo, ["stash", "list"]);
+
+    collectWorktreeDirtyEvidence(repo);
+
+    expect(git(repo, ["status", "--porcelain"])).toBe(statusBefore);
+    expect(git(repo, ["rev-parse", "HEAD"])).toBe(headBefore);
+    expect(git(repo, ["stash", "list"])).toBe(stashBefore);
+    // No new commits were created by the collector.
+    expect(git(repo, ["rev-list", "--count", "HEAD"])).toBe("1");
+  });
+
+  it("is fail-closed and never throws", () => {
+    expect(() => collectWorktreeDirtyEvidence(join(makeTempDir(), "nope"))).not.toThrow();
+    const repo = makeTempDir();
+    initRepo(repo);
+    expect(() =>
+      collectWorktreeDirtyEvidence(repo, { gitCommand: "/nonexistent/git" }),
+    ).not.toThrow();
+  });
+});
+
+describe("buildDirtyWorktreeNotice", () => {
+  const agentId = "agent-abcdef123456789";
+  const agentType = "oh-my-claudecode:executor";
+
+  it("builds a bounded notice for dirty evidence", () => {
+    const evidence: WorktreeDirtyEvidence = {
+      kind: "dirty",
+      worktreeRoot: "/tmp/omc/worktree-1",
+      isLinkedWorktree: true,
+      trackedCount: 1,
+      untrackedCount: 2,
+      ignoredCount: 0,
+      entries: ["a.txt"],
+      truncated: false,
+    };
+
+    const notice = buildDirtyWorktreeNotice(evidence, agentId, agentType);
+    expect(notice).toBeTruthy();
+    expect(notice).toContain("agent-a");
+    expect(notice).toContain("3 uncommitted file(s)");
+    expect(notice).toContain("1 tracked, 2 untracked");
+    expect(notice).toContain("/tmp/omc/worktree-1");
+    expect(notice).not.toContain("\n");
+  });
+
+  it("returns null for non-dirty kinds", () => {
+    const base: WorktreeDirtyEvidence = {
+      kind: "clean",
+      worktreeRoot: "/tmp/omc/worktree-1",
+      isLinkedWorktree: true,
+      trackedCount: 0,
+      untrackedCount: 0,
+      ignoredCount: 0,
+      entries: [],
+      truncated: false,
+    };
+    expect(buildDirtyWorktreeNotice(base, agentId, agentType)).toBeNull();
+    expect(
+      buildDirtyWorktreeNotice({ ...base, kind: "not_git" }, agentId, agentType),
+    ).toBeNull();
+    expect(
+      buildDirtyWorktreeNotice({ ...base, kind: "cwd_missing" }, agentId, agentType),
+    ).toBeNull();
+    expect(
+      buildDirtyWorktreeNotice(
+        { ...base, kind: "git_unavailable", error: "git_unavailable" },
+        agentId,
+        agentType,
+      ),
+    ).toBeNull();
+  });
+
+  it("redacts file content from the notice", () => {
+    const repo = makeTempDir();
+    initRepo(repo);
+    writeFileSync(join(repo, "secrets.env"), "SUPER_SECRET_TOKEN=hunter2\n");
+    const evidence = collectWorktreeDirtyEvidence(repo);
+
+    const notice = buildDirtyWorktreeNotice(evidence, agentId, agentType);
+    expect(evidence.kind).toBe("dirty");
+    expect(notice).not.toContain("SUPER_SECRET_TOKEN");
+    expect(notice).not.toContain("hunter2");
+  });
+});
+
+describe("isAbnormalTermination", () => {
+  it("treats explicit failure as abnormal", () => {
+    expect(isAbnormalTermination({ success: false })).toBe(true);
+    expect(isAbnormalTermination({ success: false, output: "any output" })).toBe(true);
+  });
+
+  it("detects API-error termination markers in the stop output", () => {
+    expect(
+      isAbnormalTermination({ output: "Agent terminated early due to an API error" }),
+    ).toBe(true);
+    expect(
+      isAbnormalTermination({ output: "API Error: Response stalled mid-stream" }),
+    ).toBe(true);
+    expect(
+      isAbnormalTermination({
+        output: "<task-notification><status>failed</status></task-notification>",
+      }),
+    ).toBe(true);
+  });
+
+  it("treats normal completion and cancel-like stops as non-abnormal", () => {
+    expect(isAbnormalTermination({})).toBe(false);
+    expect(isAbnormalTermination({ success: true, output: "done" })).toBe(false);
+    expect(
+      isAbnormalTermination({ output: "Interrupted by user — cancelling task" }),
+    ).toBe(false);
+    expect(isAbnormalTermination({ output: "" })).toBe(false);
+  });
+});
