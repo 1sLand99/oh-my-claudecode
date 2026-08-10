@@ -7,6 +7,8 @@ import { pythonReplTool as pythonReplToolIndex } from '../index.js';
 import { buildListToolsResponse } from '../../../mcp/tool-registry.js';
 import { scientistAgent, SCIENTIST_PROMPT_METADATA } from '../../../agents/scientist.js';
 import { loadAgentPrompt } from '../../../agents/utils.js';
+import { extractPythonGuidance } from './guidance-sections.js';
+import { toSdkToolFormat, type GenericToolDefinition } from '../../index.js';
 
 // Every user-facing guidance surface for python_repl must match the bridge
 // sandbox (bridge/gyoshu_bridge.py): imports, file I/O, dynamic code
@@ -145,55 +147,202 @@ describe('python_repl sandbox guidance parity (#3682)', () => {
         expect(lower).toContain('built-in');
       });
     }
+
+    it('does not claim standard deviation needs a blocked library', () => {
+      // `variance ** 0.5` runs in the sandbox (see python-sandbox.test.ts), so
+      // calling standard deviation unavailable understates the tool.
+      const prompt = loadAgentPrompt('scientist');
+      expect(prompt).toContain('variance ** 0.5');
+      expect(prompt).not.toMatch(
+        /standard deviations?[^.]{0,120}(require|blocked|unavailable|cannot)/i,
+      );
+      expect(prompt).not.toMatch(
+        /(require|blocked|unavailable|cannot)[^.]{0,120}standard deviations?/i,
+      );
+    });
+
+    it('skills/sciomc/SKILL.md never promises figures the scientist cannot produce', () => {
+      // sciomc exists only to orchestrate scientist agents, so the whole skill
+      // document is scientist guidance — no section scoping applies here. The
+      // scientist has no Write/Edit tools and python_repl blocks file I/O and
+      // plotting, so a figure-generation workflow is unimplementable.
+      const sciomc = readFileSync(
+        fileURLToPath(new URL('../../../../skills/sciomc/SKILL.md', import.meta.url)),
+        'utf-8',
+      ).toLowerCase();
+      expect(sciomc).toContain('scientist');
+      for (const term of [
+        ...THIRD_PARTY_LIBRARIES,
+        ...FILE_IO_DIRECTIVES,
+        ...LIBRARY_API_DIRECTIVES,
+        ...IMPORT_DIRECTIVES,
+        ...SCIENTIST_WORKFLOW_DIRECTIVES,
+        '[figure:',
+        'generatefigures',
+        '.png',
+      ]) {
+        expect(sciomc, `sciomc must not direct "${term}"`).not.toContain(term);
+      }
+    });
+  });
+
+  describe('serialized inputSchema surfaces', () => {
+    // Both real serializers: the standalone MCP ListTools payload and the
+    // Agent SDK tool format. Either one is what a client actually reads.
+    const schemas: [string, { properties: Record<string, unknown> }][] = [
+      [
+        'standalone ListTools inputSchema',
+        (() => {
+          const { tools } = buildListToolsResponse('');
+          const python = tools.find((t) => t.name === 'python_repl');
+          if (!python) throw new Error('python_repl missing from standalone ListTools surface');
+          return python.inputSchema;
+        })(),
+      ],
+      [
+        'Agent SDK toSdkToolFormat inputSchema',
+        toSdkToolFormat(pythonReplToolIndex as unknown as GenericToolDefinition).inputSchema,
+      ],
+    ];
+
+    for (const [name, schema] of schemas) {
+      it(`${name} serves parameter descriptions, so schema text is user-facing guidance`, () => {
+        const label = schema.properties.executionLabel as { description?: string };
+        expect(label?.description).toContain('Human-readable label');
+      });
+
+      it(`${name} does not illustrate parameters with workflows the sandbox blocks`, () => {
+        const lower = JSON.stringify(schema).toLowerCase();
+        for (const term of [
+          ...allToolTerms,
+          'load dataset',
+          'train model',
+          'generate plot',
+          'save figure',
+        ]) {
+          expect(lower, `${name} must not contain "${term}"`).not.toContain(term);
+        }
+      });
+    }
   });
 
   describe('repo documentation surfaces', () => {
-    const agentsDocs = readFileSync(
-      fileURLToPath(new URL('../../../agents/AGENTS.md', import.meta.url)),
-      'utf-8',
-    );
-    const tiersDocs = readFileSync(
-      fileURLToPath(new URL('../../../../docs/shared/agent-tiers.md', import.meta.url)),
-      'utf-8',
-    );
-    const toolsDocs = readFileSync(
-      fileURLToPath(new URL('../../../../docs/TOOLS.md', import.meta.url)),
-      'utf-8',
-    );
-    const referenceDocs = readFileSync(
-      fileURLToPath(new URL('../../../../docs/REFERENCE.md', import.meta.url)),
-      'utf-8',
-    );
+    const readDoc = (relative: string) =>
+      readFileSync(fileURLToPath(new URL(relative, import.meta.url)), 'utf-8');
 
-    it('src/agents/AGENTS.md does not advertise ML/hypothesis or scientific libraries for scientist agents', () => {
-      const lower = agentsDocs.toLowerCase();
-      expect(lower).not.toContain('ml/hypothesis');
-      for (const lib of THIRD_PARTY_LIBRARIES) {
-        expect(lower).not.toContain(lib);
-      }
+    // Only the python_repl / scientist guidance inside each document is under
+    // this contract; unrelated sections may legitimately mention other tools'
+    // libraries or APIs.
+    const docSurfaces: [string, string, string[]][] = [
+      [
+        'src/agents/AGENTS.md',
+        extractPythonGuidance(readDoc('../../../agents/AGENTS.md')),
+        ['ml/hypothesis', ...THIRD_PARTY_LIBRARIES],
+      ],
+      [
+        'docs/shared/agent-tiers.md',
+        extractPythonGuidance(readDoc('../../../../docs/shared/agent-tiers.md')),
+        ['ml/hypothesis', ...THIRD_PARTY_LIBRARIES],
+      ],
+      [
+        'docs/TOOLS.md',
+        extractPythonGuidance(readDoc('../../../../docs/TOOLS.md')),
+        [...THIRD_PARTY_LIBRARIES, ...FILE_IO_DIRECTIVES, 'dataframe', 'plt.'],
+      ],
+      [
+        'docs/REFERENCE.md',
+        extractPythonGuidance(readDoc('../../../../docs/REFERENCE.md')),
+        ['ml/hypothesis', ...THIRD_PARTY_LIBRARIES],
+      ],
+    ];
+
+    for (const [name, guidance, terms] of docSurfaces) {
+      it(`${name} exposes python_repl/scientist guidance to check`, () => {
+        expect(guidance.toLowerCase()).toMatch(/python_repl|scientist/);
+      });
+
+      it(`${name} python_repl/scientist guidance does not advertise blocked libraries or directives`, () => {
+        const lower = guidance.toLowerCase();
+        for (const term of terms) {
+          expect(lower, `${name} guidance must not contain "${term}"`).not.toContain(term);
+        }
+      });
+    }
+
+    it('docs/TOOLS.md guidance keeps the whole Python REPL section, examples included', () => {
+      const guidance = extractPythonGuidance(readDoc('../../../../docs/TOOLS.md'));
+      expect(guidance).toContain('## Python REPL');
+      expect(guidance).toContain('### Features');
+      expect(guidance.toLowerCase()).toContain('imports, file i/o, and dynamic code execution are blocked');
+      // Neighbouring tool sections stay out of scope.
+      expect(guidance).not.toContain('## Session Search');
+      expect(guidance).not.toContain('shared_memory_write');
     });
 
-    it('docs/shared/agent-tiers.md does not advertise ML/hypothesis or scientific libraries for scientist agents', () => {
-      const lower = tiersDocs.toLowerCase();
-      expect(lower).not.toContain('ml/hypothesis');
-      for (const lib of THIRD_PARTY_LIBRARIES) {
-        expect(lower).not.toContain(lib);
-      }
+    it('docs/REFERENCE.md guidance keeps scientist rows without unrelated agent rows', () => {
+      const guidance = extractPythonGuidance(readDoc('../../../../docs/REFERENCE.md'));
+      expect(guidance).toContain('`scientist-high`');
+      expect(guidance).not.toContain('`git-master`');
     });
+  });
+});
 
-    it('docs/TOOLS.md python_repl section does not advertise scientific libraries or file-IO directives', () => {
-      const lower = toolsDocs.toLowerCase();
-      for (const term of [...THIRD_PARTY_LIBRARIES, ...FILE_IO_DIRECTIVES, 'dataframe', 'plt.']) {
-        expect(lower).not.toContain(term);
-      }
-    });
+describe('extractPythonGuidance', () => {
+  const doc = [
+    '# Doc',
+    '',
+    '## Data Frames Tool',
+    '',
+    'Reads spreadsheets with pandas.read_excel and writes to_csv output.',
+    '',
+    '```python',
+    'df = pandas.read_csv("a.csv")',
+    '```',
+    '',
+    '## Python REPL',
+    '',
+    'Sandboxed: imports are blocked.',
+    '',
+    '### Features',
+    '',
+    '```python',
+    'python_repl(code="print(sum(data) / len(data))")',
+    '```',
+    '',
+    '## Agents',
+    '',
+    '| Agent | Tools |',
+    '| --- | --- |',
+    '| scientist | python_repl |',
+    '| notebook-runner | pandas, matplotlib |',
+    '',
+  ].join('\n');
 
-    it('docs/REFERENCE.md does not advertise ML/hypothesis or scientific libraries for scientist agents', () => {
-      const lower = referenceDocs.toLowerCase();
-      expect(lower).not.toContain('ml/hypothesis');
-      for (const lib of THIRD_PARTY_LIBRARIES) {
-        expect(lower).not.toContain(lib);
-      }
-    });
+  const guidance = extractPythonGuidance(doc);
+
+  it('keeps a relevant section including nested subsections and code blocks', () => {
+    expect(guidance).toContain('## Python REPL');
+    expect(guidance).toContain('Sandboxed: imports are blocked.');
+    expect(guidance).toContain('### Features');
+    expect(guidance).toContain('python_repl(code="print(sum(data) / len(data))")');
+  });
+
+  it('drops unrelated sections and their code blocks', () => {
+    expect(guidance).not.toContain('## Data Frames Tool');
+    expect(guidance).not.toContain('read_excel');
+    expect(guidance).not.toContain('pandas.read_csv');
+  });
+
+  it('keeps only the relevant rows of an unrelated section table', () => {
+    expect(guidance).toContain('| scientist | python_repl |');
+    expect(guidance).not.toContain('notebook-runner');
+  });
+
+  it('flags a blocked-library claim inside the relevant section', () => {
+    const polluted = doc.replace(
+      'Sandboxed: imports are blocked.',
+      'Sandboxed: use pandas dataframes for analysis.',
+    );
+    expect(extractPythonGuidance(polluted).toLowerCase()).toContain('pandas');
   });
 });

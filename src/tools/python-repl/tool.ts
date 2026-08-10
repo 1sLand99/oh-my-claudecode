@@ -73,7 +73,7 @@ export const pythonReplSchema = z.object({
     .optional()
     .describe(
       'Human-readable label for this code execution. ' +
-        'Examples: "Load dataset", "Train model", "Generate plot"'
+        'Examples: "Summarize response times", "Compare cohort means", "Recompute totals"'
     ),
 
   executionTimeout: z

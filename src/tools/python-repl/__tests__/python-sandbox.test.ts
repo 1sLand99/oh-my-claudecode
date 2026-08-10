@@ -58,6 +58,22 @@ describe('gyoshu bridge execution builtins hardening', () => {
     expect(result.stdout.trim()).toBe('x=10');
   });
 
+  it('computes variance and standard deviation with pure arithmetic (no library needed)', () => {
+    // Grounds the scientist guidance: `variance ** 0.5` is a plain Pow
+    // expression, so a square root needs no blocked import.
+    const result = executeBridgeCode(
+      [
+        'values = [2, 4, 4, 4, 5, 5, 7, 9]',
+        'n = len(values)',
+        'mean = sum(values) / n',
+        'variance = sum((v - mean) ** 2 for v in values) / (n - 1)',
+        'print(round(variance, 4), round(variance ** 0.5, 4))',
+      ].join('\n'),
+    );
+    expect(result.success).toBe(true);
+    expect(result.stdout.trim()).toBe('4.5714 2.1381');
+  });
+
   it('allows bridge memory helpers', () => {
     const result = executeBridgeCode('memory = get_memory()\nprint(isinstance(memory, dict))');
     expect(result.success).toBe(true);

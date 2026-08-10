@@ -32,7 +32,10 @@ Use this instead of Bash heredocs when you need:
 - In-memory data analysis with persistent variables
 - Any workflow benefiting from Python state persistence`,
 
-  schema: pythonReplSchema,
+  // The SDK `tool()` and every OMC schema serializer expect a ZodRawShape, not
+  // a ZodObject: passing the object serializes its instance properties instead
+  // of the parameters.
+  schema: pythonReplSchema.shape,
   handler: pythonReplHandler
 };
 
