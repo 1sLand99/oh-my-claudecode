@@ -319,7 +319,7 @@ For `/goal` behavior, rely on Claude Code/Anthropic sources: the [Claude Code `/
 
 ### Intelligent Orchestration
 
-- **19 specialized agents** (with tier variants) for architecture, research, design, testing, data science
+- **19 specialized agents** (with tier variants) for architecture, research, design, testing, data analysis
 - **Smart model routing** - Haiku for simple tasks, Opus for complex reasoning
 - **Automatic delegation** - Right agent for the job, every time
 - **[Model × Agent Compatibility Matrix](docs/agents/model-compatibility.md)** - Which model to pair with each agent, with premium/balanced/budget presets

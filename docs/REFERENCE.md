@@ -687,7 +687,7 @@ Always use `oh-my-claudecode:` prefix when calling via Task tool.
 | **Build**          | -                       | `debugger`            | -                   |
 | **TDD**            | -                       | `test-engineer`       | -                   |
 | **Code Review**    | -                       | -                     | `code-reviewer`     |
-| **Data Science**   | -                       | `scientist`           | `scientist-high`    |
+| **Data Analysis** | -                       | `scientist`           | `scientist-high`    |
 | **Git**            | -                       | `git-master`          | -                   |
 | **Simplification** | -                       | -                     | `code-simplifier`   |
 
@@ -723,7 +723,7 @@ Always use `oh-my-claudecode:` prefix when calling via Task tool.
 | Quick code check               | `code-reviewer` (model=haiku)                                          | haiku  |
 | Data analysis/stats            | `scientist`                                                            | sonnet |
 | Quick data inspection          | `scientist` (model=haiku)                                              | haiku  |
-| Complex ML/hypothesis          | `scientist-high`                                                       | opus   |
+| Deep data analysis            | `scientist-high`                                                       | opus   |
 | Git operations                 | `git-master`                                                           | sonnet |
 | Code simplification            | `code-simplifier`                                                      | opus   |
 
