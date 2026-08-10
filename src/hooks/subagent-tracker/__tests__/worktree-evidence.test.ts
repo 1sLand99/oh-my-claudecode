@@ -106,6 +106,29 @@ describe("collectWorktreeDirtyEvidence", () => {
     expect(evidence.ignoredCount).toBe(1);
   });
 
+  it("enumerates nested untracked directories with --untracked-files=all (issue #3663 B1)", () => {
+    const repo = makeTempDir();
+    initRepo(repo);
+    // `git status --porcelain` (without --untracked-files=all) collapses a
+    // nested untracked directory to a single "dir/" line. The collector must
+    // enumerate every file so the counts and bounded entries reflect the real
+    // at-risk work.
+    const nested = join(repo, "src", "deep", "nested");
+    mkdirSync(nested, { recursive: true });
+    writeFileSync(join(nested, "a.ts"), "a\n");
+    writeFileSync(join(nested, "b.ts"), "b\n");
+    writeFileSync(join(nested, "c.ts"), "c\n");
+
+    const evidence = collectWorktreeDirtyEvidence(repo);
+    expect(evidence.kind).toBe("dirty");
+    expect(evidence.untrackedCount).toBe(3);
+    expect(evidence.trackedCount).toBe(0);
+    expect(evidence.entries).toContain("src/deep/nested/a.ts");
+    expect(evidence.entries).toContain("src/deep/nested/b.ts");
+    expect(evidence.entries).toContain("src/deep/nested/c.ts");
+    expect(evidence.truncated).toBe(false);
+  });
+
   it("combines tracked, untracked, and ignored counts", () => {
     const repo = makeTempDir();
     initRepo(repo);
@@ -182,6 +205,26 @@ describe("collectWorktreeDirtyEvidence", () => {
     expect(evidence.truncated).toBe(true);
   });
 
+  it("bounds hundreds of nested untracked files with truncation (issue #3663 B1)", () => {
+    const repo = makeTempDir();
+    initRepo(repo);
+    // With --untracked-files=all every nested file is enumerated; hundreds of
+    // them must be counted fully but only the bounded prefix kept as entries.
+    for (let d = 0; d < 12; d++) {
+      const dir = join(repo, "deep", `d${d}`);
+      mkdirSync(dir, { recursive: true });
+      for (let f = 0; f < 30; f++) {
+        writeFileSync(join(dir, `f${f}.txt`), `content\n`);
+      }
+    }
+
+    const evidence = collectWorktreeDirtyEvidence(repo);
+    expect(evidence.kind).toBe("dirty");
+    expect(evidence.untrackedCount).toBe(360);
+    expect(evidence.entries.length).toBe(MAX_EVIDENCE_ENTRIES);
+    expect(evidence.truncated).toBe(true);
+  });
+
   it("never mutates the repository while collecting evidence", () => {
     const repo = makeTempDir();
     initRepo(repo);
@@ -207,6 +250,198 @@ describe("collectWorktreeDirtyEvidence", () => {
     expect(() =>
       collectWorktreeDirtyEvidence(repo, { gitCommand: "/nonexistent/git" }),
     ).not.toThrow();
+  });
+  it("respects a shared bounded git deadline (issue #3663 B5)", () => {
+    // B5: the total git wall-time must be capped by the shared deadline even
+    // when a single git call would otherwise run far longer. Use a
+    // script-provided fake git that sleeps longer than the tiny deadline; the
+    // collector must degrade fail-open to git_unavailable instead of throwing
+    // or overrunning.
+    const repo = makeTempDir();
+    initRepo(repo);
+    const fakeGit = join(repo, "slow-git.sh");
+    writeFileSync(
+      fakeGit,
+      `#!/bin/sh\nsleep 2\nexit 1\n`,
+      { mode: 0o755 },
+    );
+
+    const startedAt = Date.now();
+    const evidence = collectWorktreeDirtyEvidence(repo, {
+      gitCommand: fakeGit,
+      timeoutMs: 2000,
+      deadlineMs: 120,
+    });
+    const elapsed = Date.now() - startedAt;
+
+    expect(evidence.kind).toBe("git_unavailable");
+    expect(elapsed).toBeLessThan(1500);
+    expect(() => evidence).not.toThrow();
+  });
+
+  it("survives huge nested untracked output beyond the default buffer (issue #3663 B7)", () => {
+    // B7: git status --untracked-files=all on a huge dirty tree can exceed
+    // Node's default 1 MiB maxBuffer (ENOBUFS), losing ALL evidence. The
+    // collector must count every line and cap entries without throwing.
+    // Use a fake git that answers rev-parse with the repo toplevel and emits
+    // > 1 MiB of status lines for the status calls — deterministic and fast.
+    const repo = makeTempDir();
+    initRepo(repo);
+    const fakeGit = join(repo, "huge-git.sh");
+    writeFileSync(
+      fakeGit,
+      `#!/bin/sh
+if [ "$1" = "rev-parse" ]; then
+  echo "$PWD"
+  exit 0
+fi
+# Emit > 1 MiB of untracked status lines (default maxBuffer is 1 MiB).
+for i in $(seq 1 60000); do
+  echo "?? f$i.txt"
+done
+`,
+      { mode: 0o755 },
+    );
+
+    const evidence = collectWorktreeDirtyEvidence(repo, {
+      gitCommand: fakeGit,
+    });
+    expect(evidence.kind).toBe("dirty");
+    expect(evidence.untrackedCount).toBe(60000);
+    expect(evidence.entries.length).toBe(MAX_EVIDENCE_ENTRIES);
+    expect(evidence.truncated).toBe(true);
+  });
+
+  it("keeps dirty evidence when only the ignored scan fails (issue #3663 P1)", () => {
+    // P1: the ignored-file scan is informational. When the regular status call
+    // already proved the worktree dirty, a secondary ignored-scan failure must
+    // NOT overwrite the dirty kind with git_unavailable — that suppressed the
+    // coordinator notice and the replay dirty_worktree record entirely.
+    const repo = makeTempDir();
+    initRepo(repo);
+    const fakeGit = join(repo, "ignored-fails-git.sh");
+    writeFileSync(
+      fakeGit,
+      `#!/bin/sh
+if [ "$1" = "rev-parse" ]; then
+  echo "$PWD"
+  exit 0
+fi
+for arg in "$@"; do
+  case "$arg" in
+    --ignored=*) exit 128 ;;
+  esac
+done
+printf ' M README.md\\n?? new.txt\\n'
+exit 0
+`,
+      { mode: 0o755 },
+    );
+
+    const evidence = collectWorktreeDirtyEvidence(repo, { gitCommand: fakeGit });
+    expect(evidence.kind).toBe("dirty");
+    expect(evidence.trackedCount).toBe(1);
+    expect(evidence.untrackedCount).toBe(1);
+    // Ignored info is unavailable, so it degrades to 0 — never to lost evidence.
+    expect(evidence.ignoredCount).toBe(0);
+    expect(evidence.error).toContain("ignored_scan_failed");
+    expect(evidence.worktreeRoot).toBe(repo);
+    // The coordinator notice and the replay dirty gate both key off kind.
+    expect(
+      buildDirtyWorktreeNotice(evidence, "agent-p1", "executor"),
+    ).toContain("2 uncommitted file(s)");
+  });
+
+  it("keeps a clean verdict when only the ignored scan fails (issue #3663 P1)", () => {
+    const repo = makeTempDir();
+    initRepo(repo);
+    const fakeGit = join(repo, "ignored-fails-clean-git.sh");
+    writeFileSync(
+      fakeGit,
+      `#!/bin/sh
+if [ "$1" = "rev-parse" ]; then
+  echo "$PWD"
+  exit 0
+fi
+for arg in "$@"; do
+  case "$arg" in
+    --ignored=*) exit 128 ;;
+  esac
+done
+exit 0
+`,
+      { mode: 0o755 },
+    );
+
+    const evidence = collectWorktreeDirtyEvidence(repo, { gitCommand: fakeGit });
+    expect(evidence.kind).toBe("clean");
+    expect(evidence.trackedCount).toBe(0);
+    expect(evidence.untrackedCount).toBe(0);
+    expect(evidence.ignoredCount).toBe(0);
+    expect(evidence.error).toContain("ignored_scan_failed");
+  });
+
+  it("attributes overflow rows to their porcelain category (issue #3663 P2)", () => {
+    // P2: rows beyond MAX_EVIDENCE_ENTRIES were counted as untracked
+    // regardless of their porcelain status code, so tracked (at-risk,
+    // committed-history-bearing) work was reported as untracked and ignored
+    // rows past the cap vanished.
+    const repo = makeTempDir();
+    initRepo(repo);
+    const fakeGit = join(repo, "mixed-overflow-git.sh");
+    writeFileSync(
+      fakeGit,
+      `#!/bin/sh
+if [ "$1" = "rev-parse" ]; then
+  echo "$PWD"
+  exit 0
+fi
+emit_tracked() {
+  i=1
+  while [ "$i" -le 30 ]; do
+    printf ' M tracked-%s.txt\\n' "$i"
+    i=$((i + 1))
+  done
+}
+emit_untracked() {
+  i=1
+  while [ "$i" -le 25 ]; do
+    printf '?? untracked-%s.txt\\n' "$i"
+    i=$((i + 1))
+  done
+}
+for arg in "$@"; do
+  case "$arg" in
+    --ignored=*)
+      emit_tracked
+      emit_untracked
+      i=1
+      while [ "$i" -le 10 ]; do
+        printf '!! ignored-%s.txt\\n' "$i"
+        i=$((i + 1))
+      done
+      exit 0
+      ;;
+  esac
+done
+emit_tracked
+emit_untracked
+exit 0
+`,
+      { mode: 0o755 },
+    );
+
+    const evidence = collectWorktreeDirtyEvidence(repo, { gitCommand: fakeGit });
+    expect(evidence.kind).toBe("dirty");
+    expect(evidence.trackedCount).toBe(30);
+    expect(evidence.untrackedCount).toBe(25);
+    expect(evidence.ignoredCount).toBe(10);
+    expect(evidence.entries.length).toBe(MAX_EVIDENCE_ENTRIES);
+    expect(evidence.truncated).toBe(true);
+    // Ignored rows are informational and never inflate the at-risk total.
+    expect(
+      buildDirtyWorktreeNotice(evidence, "agent-p2", "executor"),
+    ).toContain("55 uncommitted file(s)");
   });
 });
 
@@ -281,18 +516,42 @@ describe("isAbnormalTermination", () => {
     expect(isAbnormalTermination({ success: false, output: "any output" })).toBe(true);
   });
 
-  it("detects API-error termination markers in the stop output", () => {
+  it("detects structured failure envelopes when success is omitted (issue #3663 B6)", () => {
+    // Whole-line <status>failed</status> envelope.
+    expect(
+      isAbnormalTermination({
+        output: "<task-notification>\n<status>failed</status>\n</task-notification>",
+      }),
+    ).toBe(true);
+    // Start-of-line API-error phrases.
     expect(
       isAbnormalTermination({ output: "Agent terminated early due to an API error" }),
     ).toBe(true);
     expect(
       isAbnormalTermination({ output: "API Error: Response stalled mid-stream" }),
     ).toBe(true);
+  });
+
+  it("never classifies a successful final report as abnormal (issue #3663 B6)", () => {
+    // Explicit success wins even when the report mentions an API-error phrase.
     expect(
       isAbnormalTermination({
-        output: "<task-notification><status>failed</status></task-notification>",
+        success: true,
+        output: "The parser now quotes \"Agent terminated early due to an API error\" correctly.",
       }),
-    ).toBe(true);
+    ).toBe(false);
+    // Unanchored diagnostic phrases in prose (success omitted) are NOT
+    // structured failure envelopes and must not classify failure.
+    expect(
+      isAbnormalTermination({
+        output: "Final report: the fix covers \"Response stalled mid-stream\" handling and <status>failed</status> quoting in docs.",
+      }),
+    ).toBe(false);
+    expect(
+      isAbnormalTermination({
+        output: "Mid-line <status>failed</status> mention is not an envelope.",
+      }),
+    ).toBe(false);
   });
 
   it("treats normal completion and cancel-like stops as non-abnormal", () => {

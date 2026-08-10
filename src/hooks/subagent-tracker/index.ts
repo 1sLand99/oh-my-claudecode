@@ -459,6 +459,42 @@ export function executeFlush(
 }
 
 /**
+ * Durable merge-and-write for a caller that ALREADY holds the state lock.
+ *
+ * R1 (#3663): the state lock is a non-reentrant O_CREAT|O_EXCL advisory lock
+ * (src/lib/file-lock.ts) and isLockStale() sees the CURRENT process as alive, so
+ * a nested acquisition can never succeed. Routing through writeTrackingState +
+ * flushPendingWrites from inside a lock scope therefore busy-spins for the whole
+ * LOCK_OPTS.timeoutMs (500ms of wasted hook budget, and Atomics.wait throws on
+ * the main thread so the wait is a spin) and then degrades to an UNLOCKED,
+ * NON-MERGE-AWARE writeTrackingStateImmediate fallback that overwrites whatever
+ * a concurrent writer landed on disk.
+ *
+ * This helper does the same disk re-read + merge + atomic write as executeFlush
+ * without re-entering the lock, so an in-lock caller gets a durable, merged
+ * write at zero lock-contention cost.
+ *
+ * Any debounced pending write for the same path is consumed: `state` is derived
+ * from readTrackingState(), which already serves the pending snapshot, so
+ * dropping it cannot lose data and stops a later debounce from resurrecting a
+ * pre-mutation snapshot.
+ */
+function writeTrackingStateLocked(
+  directory: string,
+  state: SubagentTrackingState,
+  sessionId?: string,
+): void {
+  const writePath = resolveWritePath(directory, sessionId);
+  const pending = pendingWrites.get(writePath);
+  if (pending) {
+    clearTimeout(pending.timeout);
+    pendingWrites.delete(writePath);
+  }
+  const merged = mergeTrackerStates(readDiskState(directory, sessionId), state);
+  writeTrackingStateImmediate(directory, merged, sessionId);
+}
+
+/**
  * Write tracking state with debouncing to reduce I/O.
  * The flush callback acquires the lock, re-reads disk state, merges with
  * the pending in-memory delta, and writes atomically.
@@ -661,6 +697,12 @@ export function processSubagentStart(input: SubagentStartInput): HookOutput {
           existingAgent.completed_at = undefined;
           existingAgent.duration_ms = undefined;
           existingAgent.output_summary = undefined;
+          // B4 (#3663): a reused agent ID must not carry stale dirty-worktree
+          // evidence from a previous abnormal termination into the new run.
+          // Clearing on the transition to running guarantees a later NORMAL
+          // stop cannot surface stale dirty state/counts that belong to an
+          // older lifecycle.
+          existingAgent.worktree_evidence = undefined;
           state.total_spawned++;
         }
         trackedAgent = existingAgent;
@@ -783,10 +825,13 @@ export function processSubagentStop(input: SubagentStopInput): HookOutput {
   const lockPath = lockPathFor(writePath);
 
   // Issue #3663: collect dirty-worktree evidence OUTSIDE the session-state
-  // lock. The collector is bounded (two read-only `git status` calls, up to a
-  // few seconds on abnormal stops) but holding the lock that long would drop
-  // concurrent stop hooks (LOCK_OPTS.timeoutMs is 500ms). READ-ONLY and
-  // fail-closed: never commits, resets, or removes anything, and never throws.
+  // lock. The collector is bounded by EVIDENCE_DEADLINE_MS (4s) — comfortably
+  // below the 5s SubagentStop hook budget with the 500ms run.cjs cushion — so
+  // the durable state write below can never be starved (B5). Holding the lock
+  // that long would also drop concurrent stop hooks (LOCK_OPTS.timeoutMs is
+  // 500ms). READ-ONLY, fail-closed, fail-open: a budget timeout degrades to a
+  // non-dirty evidence kind, never a thrown hook, and never commits/resets/
+  // removes anything.
   let abnormalEvidence: WorktreeDirtyEvidence | undefined;
   if (isAbnormalTermination(input)) {
     try {
@@ -798,8 +843,14 @@ export function processSubagentStop(input: SubagentStopInput): HookOutput {
     return withFileLockSync(lockPath, () => {
       const state = readTrackingState(input.cwd, sessionId);
 
-      // SDK does not provide `success` field, so default to 'completed' when undefined (Bug #1 fix)
-      const succeeded = input.success !== false;
+      // B2 (#3663): lifecycle success derives consistently from the abnormal
+      // classification — never from the unreliable SDK `success` field (which
+      // defaults to "completed" when undefined, even for API-error/stalled
+      // terminations). The same classification already gates the dirty-evidence
+      // collection above, so tracking status, counters, replay, and mission
+      // surfaces can never disagree about whether a stop was abnormal.
+      const abnormal = isAbnormalTermination(input);
+      const succeeded = !abnormal;
       const nowIso = new Date().toISOString();
 
       // Find the agent by exact agent_id first.
@@ -877,6 +928,15 @@ export function processSubagentStop(input: SubagentStopInput): HookOutput {
         stoppedAgent.worktree_evidence = abnormalEvidence;
       }
 
+      // B3 (#3663): synthetic native-fork stops must increment the replay dirty
+      // counter BEFORE the replay write (which is the last statement before the
+      // hook returns). If the state write is durable and the replay write
+      // happens to be slow, the hook's fail-open timeout could otherwise return
+      // with the trace summary never having seen the dirty stop. recordAgentStop
+      // is sync + append-only and is the replay surface's own counter; calling it
+      // immediately after the state write (same lock scope) makes the ordering
+      // deterministic.
+
       // Evict oldest completed agents if over limit
       const completedAgents = state.agents.filter(
         (a) => a.status === "completed" || a.status === "failed",
@@ -895,8 +955,22 @@ export function processSubagentStop(input: SubagentStopInput): HookOutput {
         state.agents = state.agents.filter((a) => !toRemove.has(a.agent_id));
       }
 
-      // Write updated state
-      writeTrackingState(input.cwd, state, sessionId);
+      // B8 + R1 (#3663): write the tracking state DURABLY before the hook
+      // returns. writeTrackingState alone is debounced (100ms) and its flush can
+      // be re-queued on lock contention, so the hook could otherwise return with
+      // the evidence still only in memory.
+      //
+      // R1: the durable write must NOT route through writeTrackingState +
+      // flushPendingWrites from here. This whole body runs inside
+      // withFileLockSync on the state lock, the lock is non-reentrant
+      // (O_CREAT|O_EXCL) and its staleness check sees this very process as alive,
+      // so the nested acquisition burned the full LOCK_OPTS.timeoutMs (500ms) of
+      // hook budget spinning and then degraded to an unlocked, non-merge-aware
+      // overwrite that could clobber a concurrent writer's disk state.
+      // writeTrackingStateLocked does the identical disk re-read + merge +
+      // atomic write under the lock this frame already holds, so the state is
+      // durable and merged with no reacquisition and no fallback path.
+      writeTrackingStateLocked(input.cwd, state, sessionId);
 
       if (input.agent_id) {
         // Record to session replay JSONL for /trace
@@ -932,6 +1006,13 @@ export function processSubagentStop(input: SubagentStopInput): HookOutput {
           }, sessionId);
         } catch { /* best-effort */ }
       }
+
+      // B3 (#3663): the replay surface must already have observed the stop
+      // before the hook returns. recordAgentStop above (sync, append-only)
+      // runs inside the lock scope immediately after the durable state write;
+      // on a synthetic native-fork stop whose dirty worktree is recorded, the
+      // replay's dirty counter is incremented BEFORE the hook's fail-open
+      // return path, so a slow replay write can never swallow the evidence.
       return {
         continue: true,
         suppressOutput: true,

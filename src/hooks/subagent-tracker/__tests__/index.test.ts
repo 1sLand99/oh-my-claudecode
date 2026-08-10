@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import {
@@ -11,7 +11,9 @@ import {
   processSubagentStart,
   processSubagentStop,
   readTrackingState,
+  readDiskState,
   writeTrackingState,
+  getStateFilePath,
   recordToolUsageWithTiming,
   getAgentPerformance,
   updateTokenUsage,
@@ -25,6 +27,12 @@ import {
   type SubagentTrackingState,
   type ToolUsageEntry,
 } from "../index.js";
+import { collectWorktreeDirtyEvidence } from "../worktree-evidence.js";
+import {
+  acquireFileLockSync,
+  releaseFileLockSync,
+  lockPathFor,
+} from "../../../lib/file-lock.js";
 import { readMissionBoardState } from "../../../hud/mission-board.js";
 import { readReplayEvents, getReplaySummary } from "../session-replay.js";
 
@@ -1528,6 +1536,346 @@ describe("subagent-tracker", () => {
       const agent = state.agents.find((a) => a.agent_id === "ag-ng-4");
       expect(agent?.status).toBe("failed");
       expect(agent?.worktree_evidence?.kind).toBe("not_git");
+    });
+
+    it("derives lifecycle success from abnormal classification across all surfaces (issue #3663 B2)", () => {
+      // B2: output-marker-inferred abnormal termination (SDK omits `success`)
+      // must mark failed EVERYWHERE: tracking status + counters, replay
+      // agent_stop success, and mission board — not just record evidence.
+      const repoDir = makeGitRepo();
+      writeFileSync(join(repoDir, "tracked.txt"), "modified\n");
+
+      processSubagentStart({
+        session_id: "sess-b2-marker",
+        transcript_path: join(repoDir, "transcript.jsonl"),
+        cwd: repoDir,
+        permission_mode: "default",
+        hook_event_name: "SubagentStart" as const,
+        agent_id: "ag-b2-marker",
+        agent_type: "oh-my-claudecode:executor",
+        prompt: "stall mid-stream",
+      });
+      flushPendingWrites();
+
+      processSubagentStop({
+        session_id: "sess-b2-marker",
+        transcript_path: join(repoDir, "transcript.jsonl"),
+        cwd: repoDir,
+        permission_mode: "default",
+        hook_event_name: "SubagentStop" as const,
+        agent_id: "ag-b2-marker",
+        // No `success` field: the SDK omits it on API-error terminations.
+        output: "API Error: Response stalled mid-stream",
+      });
+      flushPendingWrites();
+
+      const state = readTrackingState(repoDir, "sess-b2-marker");
+      const agent = state.agents.find((a) => a.agent_id === "ag-b2-marker");
+      // Tracking status + counters derive from the same classification.
+      expect(agent?.status).toBe("failed");
+      expect(state.total_failed).toBe(1);
+      expect(state.total_completed).toBe(0);
+
+      // Replay surface carries the same failure.
+      const replayStop = readReplayEvents(repoDir, "sess-b2-marker").find(
+        (e) => e.event === "agent_stop" && e.agent === "ag-b2-marker".substring(0, 7),
+      );
+      expect(replayStop?.success).toBe(false);
+      expect(getReplaySummary(repoDir, "sess-b2-marker").agents_failed).toBe(1);
+      expect(getReplaySummary(repoDir, "sess-b2-marker").dirty_worktrees).toBe(1);
+
+      // Mission board reflects the failure too.
+      const mission = readMissionBoardState(repoDir, "sess-b2-marker")?.missions.find((m) =>
+        m.id.startsWith("session:sess-b2-marker:"),
+      );
+      const missionAgent = mission?.agents.find((a) => a.ownership === "ag-b2-marker");
+      expect(missionAgent?.status).toBe("blocked");
+      expect(mission?.taskCounts.failed).toBe(0); // mission failed is derived from blocked status
+    });
+
+    it("treats a successful final report that mentions API-error phrases as completed (issue #3663 B6)", () => {
+      // B6: an explicit/omitted-success stop whose final report merely QUOTES
+      // an API-error phrase must be completed — never classified abnormal.
+      const repoDir = makeGitRepo();
+      processSubagentStart({
+        session_id: "sess-b6-quote",
+        transcript_path: join(repoDir, "transcript.jsonl"),
+        cwd: repoDir,
+        permission_mode: "default",
+        hook_event_name: "SubagentStart" as const,
+        agent_id: "ag-b6-quote",
+        agent_type: "oh-my-claudecode:executor",
+        prompt: "investigate API error phrasing",
+      });
+      flushPendingWrites();
+
+      processSubagentStop({
+        session_id: "sess-b6-quote",
+        transcript_path: join(repoDir, "transcript.jsonl"),
+        cwd: repoDir,
+        permission_mode: "default",
+        hook_event_name: "SubagentStop" as const,
+        agent_id: "ag-b6-quote",
+        output:
+          "Final report: the parser now quotes \"Agent terminated early due to an API error\" and <status>failed</status> as text.",
+      });
+      flushPendingWrites();
+
+      const state = readTrackingState(repoDir, "sess-b6-quote");
+      const agent = state.agents.find((a) => a.agent_id === "ag-b6-quote");
+      expect(agent?.status).toBe("completed");
+      expect(state.total_completed).toBe(1);
+      expect(state.total_failed).toBe(0);
+      expect(agent?.worktree_evidence).toBeUndefined();
+      const replayStop = readReplayEvents(repoDir, "sess-b6-quote").find(
+        (e) => e.event === "agent_stop" && e.agent === "ag-b6-quote".substring(0, 7),
+      );
+      expect(replayStop?.success).toBe(true);
+    });
+
+    it("clears stale dirty-worktree evidence on agent-id reuse to running (issue #3663 B4)", () => {
+      // B4: a reused agent ID must not retain dirty evidence from a previous
+      // abnormal termination. After restart, a NORMAL stop must not surface
+      // stale dirty state/counts.
+      const repoDir = makeGitRepo();
+      writeFileSync(join(repoDir, "tracked.txt"), "modified\n");
+
+      processSubagentStart({
+        session_id: "sess-b4-reuse",
+        transcript_path: join(repoDir, "transcript.jsonl"),
+        cwd: repoDir,
+        permission_mode: "default",
+        hook_event_name: "SubagentStart" as const,
+        agent_id: "ag-reused-1",
+        agent_type: "oh-my-claudecode:executor",
+        prompt: "first run",
+      });
+      flushPendingWrites();
+
+      // Abnormal termination leaves dirty evidence on the closed entry.
+      processSubagentStop({
+        session_id: "sess-b4-reuse",
+        transcript_path: join(repoDir, "transcript.jsonl"),
+        cwd: repoDir,
+        permission_mode: "default",
+        hook_event_name: "SubagentStop" as const,
+        agent_id: "ag-reused-1",
+        output: "Agent terminated early due to an API error",
+        success: false,
+      });
+      flushPendingWrites();
+      expect(
+        readTrackingState(repoDir, "sess-b4-reuse").agents.find((a) => a.agent_id === "ag-reused-1")
+          ?.worktree_evidence?.kind,
+      ).toBe("dirty");
+
+      // Clean the worktree, then restart the SAME agent id.
+      writeFileSync(join(repoDir, "tracked.txt"), "seed\n");
+      git(repoDir, ["checkout", "--", "tracked.txt"]);
+      processSubagentStart({
+        session_id: "sess-b4-reuse",
+        transcript_path: join(repoDir, "transcript.jsonl"),
+        cwd: repoDir,
+        permission_mode: "default",
+        hook_event_name: "SubagentStart" as const,
+        agent_id: "ag-reused-1",
+        agent_type: "oh-my-claudecode:executor",
+        prompt: "second run",
+      });
+      flushPendingWrites();
+      expect(
+        readTrackingState(repoDir, "sess-b4-reuse").agents.find((a) => a.agent_id === "ag-reused-1")
+          ?.worktree_evidence,
+      ).toBeUndefined();
+
+      // Normal stop after restart: no stale evidence, no dirty count.
+      processSubagentStop({
+        session_id: "sess-b4-reuse",
+        transcript_path: join(repoDir, "transcript.jsonl"),
+        cwd: repoDir,
+        permission_mode: "default",
+        hook_event_name: "SubagentStop" as const,
+        agent_id: "ag-reused-1",
+        output: "completed normally",
+      });
+      flushPendingWrites();
+
+      const state = readTrackingState(repoDir, "sess-b4-reuse");
+      const agent = state.agents.find((a) => a.agent_id === "ag-reused-1");
+      expect(agent?.status).toBe("completed");
+      expect(agent?.worktree_evidence).toBeUndefined();
+      expect(state.total_failed).toBe(1); // from the first abnormal lifecycle
+      expect(state.total_completed).toBe(1); // from the second normal lifecycle
+      expect(getReplaySummary(repoDir, "sess-b4-reuse").dirty_worktrees).toBe(1);
+      const replayStops = readReplayEvents(repoDir, "sess-b4-reuse").filter(
+        (e) => e.event === "agent_stop" && e.agent === "ag-reused-1".substring(0, 7),
+      );
+      expect(replayStops).toHaveLength(2);
+      // The normal stop carries NO dirty evidence.
+      expect(replayStops[1].dirty_worktree).toBeUndefined();
+    });
+
+    it("flushes the durable tracking state before the hook returns under lock contention (issue #3663 B8)", () => {
+      // B8: the stop hook must write the tracking state DURABLY before
+      // returning. writeTrackingState is debounced, so the stop path performs an
+      // in-lock durable merge+write (writeTrackingStateLocked) instead, which
+      // guarantees the state file carries the closed agent + evidence even when
+      // the caller never flushes. See the R1 case below for the lock-scope and
+      // bounded-latency contract of that write.
+      const repoDir = makeGitRepo();
+      writeFileSync(join(repoDir, "tracked.txt"), "modified\n");
+
+      processSubagentStart({
+        session_id: "sess-b8-flush",
+        transcript_path: join(repoDir, "transcript.jsonl"),
+        cwd: repoDir,
+        permission_mode: "default",
+        hook_event_name: "SubagentStart" as const,
+        agent_id: "ag-b8-flush",
+        agent_type: "oh-my-claudecode:executor",
+        prompt: "run with flush",
+      });
+      flushPendingWrites();
+
+      const output = processSubagentStop({
+        session_id: "sess-b8-flush",
+        transcript_path: join(repoDir, "transcript.jsonl"),
+        cwd: repoDir,
+        permission_mode: "default",
+        hook_event_name: "SubagentStop" as const,
+        agent_id: "ag-b8-flush",
+        output: "Agent terminated early due to an API error",
+        success: false,
+      });
+      // NO caller flush: the hook itself must have flushed durably.
+      expect(output).toEqual({ continue: true, suppressOutput: true });
+
+      const state = readTrackingState(repoDir, "sess-b8-flush");
+      const agent = state.agents.find((a) => a.agent_id === "ag-b8-flush");
+      expect(agent?.status).toBe("failed");
+      expect(agent?.worktree_evidence?.kind).toBe("dirty");
+      expect(state.total_failed).toBe(1);
+    });
+
+    it("persists durably under the already-held lock instead of re-entering it (issue #3663 R1)", () => {
+      // R1: processSubagentStop runs its whole body inside withFileLockSync on
+      // the session state lock. The lock (src/lib/file-lock.ts) is a
+      // non-reentrant O_CREAT|O_EXCL advisory lock and isLockStale() sees the
+      // CURRENT process as alive, so a nested acquisition can never succeed: it
+      // busy-spins for the full LOCK_OPTS.timeoutMs (500ms) and then degrades to
+      // an UNLOCKED, UNMERGED writeTrackingStateImmediate fallback that clobbers
+      // whatever a concurrent writer already landed on disk.
+      //
+      // This test calls the hook with NO external flush and pins all five
+      // properties: disk durability, bounded latency, merge-preserving lock
+      // scope, no residual debounce entry, and a released lock.
+      const repoDir = makeGitRepo();
+      writeFileSync(join(repoDir, "tracked.txt"), "modified\n");
+      const sessionId = "sess-r1-lock";
+
+      processSubagentStart({
+        session_id: sessionId,
+        transcript_path: join(repoDir, "transcript.jsonl"),
+        cwd: repoDir,
+        permission_mode: "default",
+        hook_event_name: "SubagentStart" as const,
+        agent_id: "ag-r1-stop",
+        agent_type: "oh-my-claudecode:executor",
+        prompt: "hold the lock exactly once",
+      });
+      flushPendingWrites();
+
+      // Self-calibrating latency baseline: the hook's only unavoidable cost is
+      // the bounded evidence collector, so the nested-lock spin (500ms) is
+      // detectable without a machine-speed-dependent absolute threshold.
+      const evidenceStartedAt = Date.now();
+      collectWorktreeDirtyEvidence(repoDir);
+      const evidenceMs = Date.now() - evidenceStartedAt;
+
+      // Make the hook's in-memory snapshot genuinely stale, deterministically.
+      // processSubagentStop is fully synchronous (execFileSync + sync fs), and so
+      // is everything below, so the 100ms debounce timer seeded here can never
+      // fire before the hook returns — no event-loop turn happens in between.
+      //
+      // 1. Seed the debounce slot with a snapshot that does NOT know about the
+      //    peer agent. readTrackingState() serves this pending snapshot to the
+      //    hook instead of reading disk.
+      // 2. Land a concurrent writer's agent on DISK only.
+      //
+      // A merge-aware write under the held lock (readDiskState + merge) keeps the
+      // peer. The unlocked fallback writes the stale snapshot verbatim and
+      // clobbers it.
+      const statePath = getStateFilePath(repoDir, sessionId);
+      const staleSnapshot = JSON.parse(
+        readFileSync(statePath, "utf-8"),
+      ) as SubagentTrackingState;
+      writeTrackingState(repoDir, staleSnapshot, sessionId);
+
+      const diskWithPeer = JSON.parse(
+        readFileSync(statePath, "utf-8"),
+      ) as SubagentTrackingState;
+      diskWithPeer.agents.push({
+        agent_id: "ag-concurrent-peer",
+        agent_type: "oh-my-claudecode:planner",
+        started_at: new Date().toISOString(),
+        parent_mode: "team",
+        status: "running",
+      });
+      diskWithPeer.total_spawned += 1;
+      writeFileSync(statePath, JSON.stringify(diskWithPeer, null, 2), "utf-8");
+
+      const startedAt = Date.now();
+      const output = processSubagentStop({
+        session_id: sessionId,
+        transcript_path: join(repoDir, "transcript.jsonl"),
+        cwd: repoDir,
+        permission_mode: "default",
+        hook_event_name: "SubagentStop" as const,
+        agent_id: "ag-r1-stop",
+        output: "Agent terminated early due to an API error",
+        success: false,
+      });
+      const elapsedMs = Date.now() - startedAt;
+
+      expect(output).toEqual({ continue: true, suppressOutput: true });
+
+      // (b) Bounded latency: no nested-lock acquisition spin. The 500ms spin
+      // cannot hide inside a 300ms allowance over the collector cost.
+      expect(elapsedMs).toBeLessThan(evidenceMs + 300);
+
+      // (a) Durable on DISK with no caller flush — read the file, not the
+      // in-memory pending cache that readTrackingState would serve.
+      const disk = JSON.parse(
+        readFileSync(statePath, "utf-8"),
+      ) as SubagentTrackingState;
+      const stopped = disk.agents.find((a) => a.agent_id === "ag-r1-stop");
+      expect(stopped?.status).toBe("failed");
+      expect(stopped?.worktree_evidence?.kind).toBe("dirty");
+      expect(stopped?.worktree_evidence?.trackedCount).toBe(1);
+
+      // (c) Lock scope: the concurrent writer's disk-only agent survived, so the
+      // write merged with disk under the lock and never fell back to an
+      // unlocked overwrite.
+      expect(disk.agents.map((a) => a.agent_id)).toContain("ag-concurrent-peer");
+      // Counter merge is preserved too (max of disk and in-memory).
+      expect(disk.total_spawned).toBe(2);
+
+      // (e) The lock is released: a zero-timeout acquisition succeeds.
+      const handle = acquireFileLockSync(lockPathFor(statePath), {
+        timeoutMs: 0,
+      });
+      expect(handle).not.toBeNull();
+      releaseFileLockSync(handle!);
+
+      // (d) No residual debounced pending write can resurrect pre-stop state.
+      flushPendingWrites();
+      const afterFlush = readDiskState(repoDir, sessionId);
+      expect(
+        afterFlush.agents.find((a) => a.agent_id === "ag-r1-stop")?.status,
+      ).toBe("failed");
+      expect(afterFlush.agents.map((a) => a.agent_id)).toContain(
+        "ag-concurrent-peer",
+      );
     });
   });
 });
