@@ -446,6 +446,99 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
     expect(invoke(f)).toEqual({ continue: true, suppressOutput: true });
   });
 
+  it('honors a targetless generic cancellation when exclusive locking is unavailable and no autopilot state exists', () => {
+    const f = fixture(kind);
+    writeFileSync(join(dirname(f.statePath), 'ralph-state.json'), JSON.stringify(ralphState(f)));
+    writeFileSync(join(dirname(f.statePath), 'cancel-signal-state.json'), JSON.stringify({
+      active: true,
+      source: 'state_clear',
+      requested_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 30_000).toISOString(),
+    }));
+
+    expect(invoke(f, {}, { OMC_TEST_FLOCK_AVAILABLE: '0' })).toEqual({ continue: true, suppressOutput: true });
+  });
+
+  it('fails closed for a targetless generic cancellation while the absent autopilot state remains locked', () => {
+    const f = fixture(kind);
+    writeFileSync(join(dirname(f.statePath), 'ralph-state.json'), JSON.stringify(ralphState(f)));
+    writeFileSync(join(dirname(f.statePath), 'cancel-signal-state.json'), JSON.stringify({
+      active: true,
+      source: 'state_clear',
+      requested_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 30_000).toISOString(),
+    }));
+    writeFileSync(`${f.statePath}.mutation.lock`, liveLockOwner());
+
+    expect(invoke(f)).toMatchObject({ decision: 'block' });
+  });
+
+  it('rechecks a generic cancellation after concurrent autopilot activation commits under the state lock', async () => {
+    const f = fixture(kind);
+    writeFileSync(join(dirname(f.statePath), 'cancel-signal-state.json'), JSON.stringify({
+      active: true,
+      source: 'state_clear',
+      requested_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 30_000).toISOString(),
+    }));
+    const lockPath = `${f.statePath}.mutation.lock`;
+    writeFileSync(lockPath, liveLockOwner());
+    const pending = invokeAsync(f);
+    await new Promise(resolve => setTimeout(resolve, 75));
+    writeState(f, workflowState(f));
+    unlinkSync(lockPath);
+
+    expect(await pending).toMatchObject({ continue: false, decision: 'block', reason: expectedStagePrompt('ralplan') });
+  });
+
+  it('fails closed when concurrent autopilot activation commits after lock retries expire', async () => {
+    const f = fixture(kind);
+    writeFileSync(join(dirname(f.statePath), 'ralph-state.json'), JSON.stringify(ralphState(f)));
+    writeFileSync(join(dirname(f.statePath), 'cancel-signal-state.json'), JSON.stringify({
+      active: true,
+      source: 'state_clear',
+      requested_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 30_000).toISOString(),
+    }));
+    const lockPath = `${f.statePath}.mutation.lock`;
+    writeFileSync(lockPath, liveLockOwner());
+    const pending = invokeAsync(f);
+    await new Promise(resolve => setTimeout(resolve, 600));
+    writeState(f, workflowState(f));
+    unlinkSync(lockPath);
+
+    expect(await pending).toMatchObject({ decision: 'block' });
+  });
+
+  it('does not let a target-bound autopilot signal cancel Ralph when the absent autopilot state is locked', () => {
+    const f = fixture(kind);
+    writeFileSync(join(dirname(f.statePath), 'ralph-state.json'), JSON.stringify(ralphState(f)));
+    writeFileSync(join(dirname(f.statePath), 'cancel-signal-state.json'), JSON.stringify({
+      active: true,
+      mode: 'autopilot',
+      source: 'state_clear',
+      requested_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 30_000).toISOString(),
+      target_state_sha256: '0'.repeat(64),
+    }));
+    writeFileSync(`${f.statePath}.mutation.lock`, liveLockOwner());
+
+    expect(invoke(f)).toMatchObject({ decision: 'block' });
+  });
+
+  it('does not let a generic cancellation bypass an active autopilot when exclusive locking is unavailable', () => {
+    const f = fixture(kind);
+    writeState(f, workflowState(f));
+    writeFileSync(join(dirname(f.statePath), 'cancel-signal-state.json'), JSON.stringify({
+      active: true,
+      source: 'state_clear',
+      requested_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 30_000).toISOString(),
+    }));
+
+    expect(invoke(f, {}, { OMC_TEST_FLOCK_AVAILABLE: '0' }).reason).toBe(expectedStagePrompt('ralplan'));
+  });
+
   it('does not let an absent-generation exact autopilot signal suppress concurrent activation', async () => {
     const f = fixture(kind);
     writeFileSync(join(dirname(f.statePath), 'cancel-signal-state.json'), JSON.stringify({
