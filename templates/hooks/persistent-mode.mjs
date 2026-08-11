@@ -98,7 +98,7 @@ const { readStdin } = await import(
 );
 const { resolveOmcStateRoot } = await import(pathToFileURL(join(__dirname, "lib", "state-root.mjs")).href);
 const { advanceWorkflowOnStop, isValidWorkflowDescriptor, isValidWorkflowTrackingState, isWorkflowRuntimeSupported, refreshWorkflowBoundaryForCommit, resolveWorkflowStagePrompt, takeWorkflowTranscriptFailure } = await import(pathToFileURL(join(__dirname, "lib", "workflow-profile-runtime.mjs")).href);
-const { acquireStateFileLockSync, atomicWriteFileSync, releaseStateFileLockSync, withStateFileLockSync } = await import(pathToFileURL(join(__dirname, "lib", "atomic-write.mjs")).href);
+const { acquireStateFileLockSync, atomicWriteFileSync, isStateFileLockingSupported, releaseStateFileLockSync, withStateFileLockSync } = await import(pathToFileURL(join(__dirname, "lib", "atomic-write.mjs")).href);
 
 function readJsonFile(path) {
   try {
@@ -460,7 +460,12 @@ function isSessionCancelInProgress(stateDir, sessionId, currentAutopilotPath, ca
     if (!existsSync(signalPath)) return false;
     if (!currentAutopilotPath || !cancellationContext) return validateSignal(signalPath, null);
     const stateLock = acquireStateFileLockSync(currentAutopilotPath, 50, true);
-    if (!stateLock) return false;
+    if (!stateLock) {
+      if (isStateFileLockingSupported()) return false;
+      const currentAutopilot = readJsonFile(currentAutopilotPath);
+      if (isEnforceableAutopilotCancellationTarget(currentAutopilot, cancellationContext.directory, cancellationContext.isGlobal, cancellationContext.hasValidSessionId, sessionId)) return false;
+      return validateSignal(signalPath, null);
+    }
     try {
       const currentAutopilot = readJsonFile(currentAutopilotPath);
       if (!isEnforceableAutopilotCancellationTarget(currentAutopilot, cancellationContext.directory, cancellationContext.isGlobal, cancellationContext.hasValidSessionId, sessionId)) return validateSignal(signalPath, null);
