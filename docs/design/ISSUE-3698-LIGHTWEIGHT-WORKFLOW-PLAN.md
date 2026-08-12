@@ -3,6 +3,7 @@
 **Status:** planning-only architecture contract; no runtime behavior changes in this PR
 **Owner:** Yeachan-Heo / 허예찬
 **Base measured:** `origin/dev` / `05c800f40d1ad53b42a78609d2667ef4f726808b` (2026-08-12)
+**Planning head verified:** `b4d55efc28d39252afe95ec99e86a49975b012e8` (PR #3701; whitespace-normalized descendant of census head `f0868934d4ca3248453249398e7187cdbaa3db54`)
 **Epic:** [#3698](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3698)
 
 ## 1. Scope and non-goals
@@ -38,17 +39,21 @@ Current Gajae-Code guidance describes exactly four default workflow skills (`dee
 
 Sources: [Gajae README](https://raw.githubusercontent.com/Yeachan-Heo/gajae-code/main/README.md), [Gajae AGENTS.md](https://raw.githubusercontent.com/Yeachan-Heo/gajae-code/main/AGENTS.md).
 
+### Census corrections and prompt evidence
+
+The current runtime census is more precise than the issue’s initial public counts: the plugin manifest exposes 41 skill directories, runtime tests distinguish 37 canonical skills plus four aliases, and `src/agents/definitions.ts` contains 19 keys. Marketplace/documentation counts are stale projections and must not drive deletion. Prompt SSOT is partial today: `docs/CLAUDE.md` is the coordinator source projected to root and `.github/CLAUDE.md`, while `src/agents/utils.ts` loads `agents/*.md` with a generated fallback; inline `omcSystemPrompt`, `prompt-sections/index.ts`, and role markdown repeat policy. Autopilot stage prompts also have generated copies under `scripts/lib` and `templates/hooks`. Current CLAUDE projections carry divergent version markers (root 4.15.10, docs 4.8.2, `.github` 4.9.1), proving projection drift. Coordinator setup already has a SHA-256/engine-version handshake and transactional backup/rollback in `src/cli/claude-md-coordinator.ts`, `scripts/build-claude-md-coordinator.mjs`, `scripts/setup-claude-md.sh`, and `src/installer/claude-md-transaction.ts`; the target should extend this provenance model rather than invent a second one.
+
 ## 3. Current architecture map
 
 ### 3.1 Public surface and routing
 
-`skills/*/SKILL.md` is the public workflow catalog. `commands/*.md` is the command catalog. `src/agents/definitions.ts` is the TypeScript agent registry, with prompt helpers/sections under `src/agents/`. Installation and generated projections are driven by `package.json` build scripts and `scripts/build-*.mjs`; repository copies include `CLAUDE.md`, `.github/CLAUDE.md`, `docs/CLAUDE.md`, agent/command/skill text, and generated coordinator/stage artifacts.
+`skills/*/SKILL.md` is the public workflow catalog. `commands/*.md` is the command catalog. Runtime loading is additionally authoritative in `src/features/builtin-skills/skills.ts` and `src/commands/index.ts`; the plugin manifest currently exposes 41 skill directories while runtime tests distinguish 37 canonical entries plus 4 aliases. `src/agents/definitions.ts` currently defines 19 keys (including `document-specialist` compatibility), while role routing preserves additional deprecated aliases in `src/agents/types.ts`. Installation and generated projections are driven by `package.json` build scripts and `scripts/build-*.mjs`; repository copies include `CLAUDE.md`, `.github/CLAUDE.md`, `docs/CLAUDE.md`, agent/command/skill text, and generated coordinator/stage artifacts.
 
 The current surface has overlapping execution modes (`autopilot`, `ralph`, `ultrawork`, `ultrapilot`, `swarm`, `pipeline`, `team`, `ultraqa`), planning modes (`plan`, `ralplan`, `deep-interview`), review/verification modes (`merge-readiness`, `verify`, `visual-verdict`, `ai-slop-cleaner`), setup/utility skills, and multiple aliases/wrappers. Keyword detection and installed command metadata route into these surfaces; hook state maintains mode continuity across turns.
 
 ### 3.2 Hook and state topology
 
-`src/hooks/bridge.ts` is the TypeScript routing bridge. Hook families include mode activation/persistence, validation, recovery, enhancement, keyword detection, permission handling, project memory, merge-readiness, and session cleanup. `templates/hooks/*.mjs` are installed hook entrypoints; `scripts/hooks.json`/plugin setup registers them. State and lock helpers are spread across hook families and shared scripts, with bounded subprocess timeouts and cleanup/orphan paths. The relevant design risk is not raw file count: multiple entrypoints can perform overlapping pre/post/session work and each may read/write state or add a gate.
+`src/hooks/bridge.ts` is the TypeScript routing bridge. Hook registration currently spans 12 lifecycle surfaces in `hooks/hooks.json`, with fanout across UserPromptSubmit, SessionStart, PostToolUse, Stop, and PreCompact among others. Hook families include mode activation/persistence, validation, recovery, enhancement, keyword detection, permission handling, project memory, merge-readiness, and session cleanup. `templates/hooks/*.mjs` are installed hook entrypoints; `scripts/hooks.json`/plugin setup registers them. State and lock helpers are spread across hook families and shared scripts, with bounded subprocess timeouts and cleanup/orphan paths. The relevant design risk is not raw file count: multiple entrypoints can perform overlapping pre/post/session work and each may read/write state or add a gate. `context-safety.mjs` is intentionally permissive, while `context-guard-stop.mjs` is fail-open and capped; these semantics require parity tests before consolidation.
 
 ### 3.3 CI and gate topology
 
