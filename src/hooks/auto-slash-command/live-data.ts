@@ -15,7 +15,7 @@
  * - Security allowlist via .omc/config/live-data-policy.json
  */
 
-import { execFileSync, execSync } from "child_process";
+import { execFileSync } from "child_process";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import safe from "safe-regex";
@@ -39,7 +39,7 @@ const DIFF_ADDED_LINES_PATTERN = /^\+[^+]/gm;
 const DIFF_DELETED_LINES_PATTERN = /^-[^-]/gm;
 const DIFF_FILE_HEADER_PATTERN = /^(?:diff --git|---|\+\+\+) [ab]\/(.+)/gm;
 const DIFF_HEADER_PREFIX_PATTERN = /^(?:diff --git|---|\+\+\+) [ab]\//;
-const SCRIPT_BEGIN_PATTERN = /^\s*!begin-script\s+(\S+)\s*$/;
+const SCRIPT_BEGIN_PATTERN = /^\s*!begin-script\s+(.+?)\s*$/;
 const SCRIPT_END_PATTERN = /^\s*!end-script\s*$/;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -688,6 +688,12 @@ function getExecutableLiveDataLineIndexes(content: string): Set<number> {
   return executableLineIndexes;
 }
 
+function getExecutableScriptStartIndexes(content: string): Set<number> {
+  const lines = content.split("\n");
+  const codeBlockRanges = getCodeBlockRanges(lines);
+  return new Set(extractScriptBlocks(lines, codeBlockRanges).map((block) => block.startLine));
+}
+
 /**
  * Return whether placeholder replacement made a previously non-executable line
  * become an executable live-data directive.
@@ -707,6 +713,14 @@ export function introducesLiveDataDirective(
 
   const templateExecutableLines = getExecutableLiveDataLineIndexes(templateContent);
   const resolvedExecutableLines = getExecutableLiveDataLineIndexes(resolvedContent);
+  const templateScriptStarts = getExecutableScriptStartIndexes(templateContent);
+  const resolvedScriptStarts = getExecutableScriptStartIndexes(resolvedContent);
+
+  for (const lineIndex of resolvedScriptStarts) {
+    if (!templateScriptStarts.has(lineIndex)) {
+      return true;
+    }
+  }
 
   for (const lineIndex of resolvedExecutableLines) {
     if (!templateExecutableLines.has(lineIndex)) {
@@ -737,7 +751,20 @@ export function resolveLiveData(content: string): string {
       scriptLineSet.add(i);
     }
 
-    const security = checkSecurity(block.shell, block.shell);
+    const parsedShell = parseCommandInvocation(block.shell);
+    if (!parsedShell.ok || parsedShell.invocation.args.length > 0) {
+      const reason = parsedShell.ok
+        ? "script interpreter arguments are not supported"
+        : parsedShell.reason;
+      scriptReplacements.set(
+        block.startLine,
+        `<live-data command="script:${escapeHtml(block.shell)}" error="true">blocked: ${escapeHtml(reason)}</live-data>`,
+      );
+      continue;
+    }
+
+    const shellExecutable = parsedShell.invocation.executable;
+    const security = checkSecurity(block.shell, shellExecutable);
     if (!security.allowed) {
       scriptReplacements.set(
         block.startLine,
@@ -746,14 +773,16 @@ export function resolveLiveData(content: string): string {
       continue;
     }
 
-    // Write script to stdin of shell
+    // Write the authored script body to the explicitly allowlisted interpreter.
     try {
-      const result = execSync(block.shell, {
+      const result = execFileSync(shellExecutable, [], {
         input: block.body,
+        shell: false,
         timeout: TIMEOUT_MS,
         maxBuffer: MAX_OUTPUT_BYTES + 1024,
         encoding: "utf-8",
         stdio: ["pipe", "pipe", "pipe"],
+        windowsHide: true,
       });
       scriptReplacements.set(
         block.startLine,

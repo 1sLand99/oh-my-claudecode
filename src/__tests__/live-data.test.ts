@@ -519,7 +519,7 @@ describe('resolveLiveData - tag injection prevention', () => {
 
 describe('resolveLiveData - multi-line scripts', () => {
   it('executes !begin-script/!end-script blocks', () => {
-    mockedExecSync.mockReturnValue('script output\n');
+    mockedExecFileSync.mockReturnValue('script output\n');
     const input = [
       'before',
       '!begin-script bash',
@@ -534,19 +534,22 @@ describe('resolveLiveData - multi-line scripts', () => {
     expect(result).toContain('after');
     expect(result).toContain('<live-data command="script:bash">script output\n</live-data>');
 
-    // Should call execSync with the shell and input body
-    expect(mockedExecSync).toHaveBeenCalledWith(
+    // Should launch the allowlisted interpreter without a shell and send the body on stdin.
+    expect(mockedExecFileSync).toHaveBeenCalledWith(
       'bash',
+      [],
       expect.objectContaining({
         input: 'echo "hello"\necho "world"',
+        shell: false,
       })
     );
+    expect(mockedExecSync).not.toHaveBeenCalled();
   });
 
   it('handles script errors', () => {
     const error = new Error('script failed') as Error & { stderr: string };
     error.stderr = 'syntax error\n';
-    mockedExecSync.mockImplementation(() => { throw error; });
+    mockedExecFileSync.mockImplementation(() => { throw error; });
 
     const input = '!begin-script bash\nexit 1\n!end-script';
     const result = resolveLiveData(input);
@@ -583,5 +586,17 @@ describe('resolveLiveData - multi-line scripts', () => {
     expect(result).toContain('error="true"');
     expect(result).toContain('blocked');
     expect(mockedExecSync).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['operator-bearing interpreter', 'bash;node'],
+    ['interpreter arguments', 'bash -e'],
+  ])('blocks %s before script execution', (_name, interpreter) => {
+    const input = `!begin-script ${interpreter}\necho safe\n!end-script`;
+    const result = resolveLiveData(input);
+    expect(result).toContain('error="true"');
+    expect(result).toContain('blocked:');
+    expect(mockedExecSync).not.toHaveBeenCalled();
+    expect(mockedExecFileSync).not.toHaveBeenCalled();
   });
 });

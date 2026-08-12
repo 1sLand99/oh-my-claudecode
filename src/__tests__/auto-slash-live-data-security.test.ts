@@ -224,6 +224,30 @@ describe('auto slash live-data security', () => {
     expect(mockedExecFileSync).not.toHaveBeenCalled();
   });
 
+  it('blocks promotion of an authored directive into a script block', async () => {
+    writeFileSync(
+      join(projectDir, '.claude', 'commands', 'live-test.md'),
+      '---\ndescription: Security regression fixture\n---\n!$ARGUMENTS\necho safe\n!end-script\n',
+    );
+    writeFileSync(
+      join(projectDir, '.claude', 'live-data-policy.json'),
+      JSON.stringify({ allowed_patterns: ['^bash'] }),
+    );
+    const { executeSlashCommand } = await import('../hooks/auto-slash-command/executor.js');
+
+    const result = executeSlashCommand({
+      command: 'live-test',
+      args: 'begin-script bash;node',
+      raw: '/live-test begin-script bash;node',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.replacementText).toContain('error="true"');
+    expect(result.replacementText).toContain('blocked: live-data directive introduced by arguments');
+    expect(mockedExecSync).not.toHaveBeenCalled();
+    expect(mockedExecFileSync).not.toHaveBeenCalled();
+  });
+
   it('keeps a placeholder that renders inside a code fence as plain text', async () => {
     writeFileSync(
       join(projectDir, '.claude', 'commands', 'live-test.md'),
