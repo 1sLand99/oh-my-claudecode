@@ -232,9 +232,9 @@ Targets are ranges, not automatic deletion quotas:
 | Primary workflow skills | 41 shipped (37 canonical + 4 aliases in runtime census) | exactly 4 Tier-0 workflows: `plan`, `execute`, `review`, `verify`; all other skills utility, specialist module, or bounded alias |
 | Command entrypoints | 28 | 12–18 canonical; aliases tracked separately |
 | Hook entrypoints / active modules | 294 files / measure registry | 40–60% fewer entrypoints; 25–40% fewer modules |
-| Hard workflow gates | inventory in child 1 | 50–70% fewer ceremony gates; all retained gates risk-labelled |
+| Hard workflow gates | inventory in #3702 | 50–70% fewer ceremony gates; all retained gates risk-labelled |
 | Agent prompt definitions | 19 registry keys | exactly 4 Tier-0 role agents: `planner`, `executor`, `reviewer`, `verifier`; specialists remain internal/routable |
-| Repeated normative prompt tokens | measure in child 2 | 35–50% reduction; <5% projection drift |
+| Repeated normative prompt tokens | measure in #3704 | 35–50% reduction; <5% projection drift |
 | GitHub workflows | 8 | smallest proven set; target 5, acceptable 5–6 only when permissions, triggers, or security require separation |
 | State roots/registries | measure path graph | 50–70% reduction; one workflow + one hook registry |
 | Generated closure burden | measure generated files/checks | 40–60% fewer independently maintained projections/checks |
