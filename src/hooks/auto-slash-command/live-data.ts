@@ -171,7 +171,12 @@ function parseCommandInvocation(command: string): CommandParseResult {
 
     if (quote === "double") {
       if (char === "\\") {
-        escaped = true;
+        const next = command[i + 1];
+        if (next === undefined || '"\\`$'.includes(next)) {
+          escaped = true;
+        } else {
+          token += char;
+        }
       } else if (char === '"') {
         quote = null;
       } else if (char === "`") {
@@ -207,7 +212,17 @@ function parseCommandInvocation(command: string): CommandParseResult {
     }
 
     if (char === "\\") {
-      escaped = true;
+      const next = command[i + 1];
+      if (
+        next === undefined ||
+        next === " " ||
+        next === "\t" ||
+        "'\"\\;&|<>`$".includes(next)
+      ) {
+        escaped = true;
+      } else {
+        token += char;
+      }
       tokenStarted = true;
       continue;
     }

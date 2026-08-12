@@ -395,6 +395,16 @@ describe('resolveLiveData - security', () => {
     );
   });
 
+  it('preserves Windows path backslashes in safe arguments', () => {
+    mockedExecFileSync.mockReturnValue('ok\n');
+    resolveLiveData('!echo C:\\temp\\file.txt "C:\\Program Files\\app.exe"');
+    expect(mockedExecFileSync).toHaveBeenCalledWith(
+      'echo',
+      ['C:\\temp\\file.txt', 'C:\\Program Files\\app.exe'],
+      expect.objectContaining({ shell: false }),
+    );
+  });
+
   it('keeps quoted shell metacharacters as literal argument data', () => {
     mockedExecFileSync.mockReturnValue('ok\n');
     resolveLiveData('!echo "; & | < >"');
