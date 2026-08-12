@@ -233,14 +233,43 @@ function workerCommandViolation(command) {
   return null;
 }
 
-function checkBashCommand(command) {
-  // Check if command might modify files
-  const mayModify = FILE_MODIFY_PATTERNS.some(pattern => pattern.test(command));
-  if (!mayModify) return null;
+// Redirects to /dev/* are not writes. The generic `>` rule already excludes
+// them, but the cat/echo/printf rules use an unanchored `.*>`, so a trailing
+// `2>/dev/null` on a read-only command satisfies them.
+const DEV_REDIRECT_PATTERN = /\d*>&?\s*\d*\s*\/dev\/(null|stderr|stdout)\b/g;
+const FD_DUP_PATTERN = /\d+>&\d+/g;
 
-  // Check if it might affect source files
-  if (SOURCE_EXT_PATTERN.test(command)) {
-    return `[DELEGATION NOTICE] Bash command may modify source files: ${command}
+// A pipeline is a sequence of independent commands. Only the segment that
+// performs the write can be the one touching a source file.
+const PIPELINE_SPLIT_PATTERN = /(?:&&|\|\||;|\|)/;
+
+// The notice stays in the transcript and is re-sent on every later turn, so a
+// heredoc or generated command would keep paying for its whole body.
+const NOTICE_COMMAND_MAX = 200;
+
+function summarizeCommand(command) {
+  const text = String(command || '');
+  return text.length > NOTICE_COMMAND_MAX
+    ? `${text.slice(0, NOTICE_COMMAND_MAX)}… (${text.length} chars)`
+    : text;
+}
+
+function checkBashCommand(command) {
+  const probe = String(command || '')
+    .replace(DEV_REDIRECT_PATTERN, ' ')
+    .replace(FD_DUP_PATTERN, ' ');
+
+  // The write and the source-file mention must land in the SAME segment,
+  // otherwise `echo hi > notes.txt; grep x app.ts` reads as a source edit.
+  const offending = probe
+    .split(PIPELINE_SPLIT_PATTERN)
+    .find(segment =>
+      FILE_MODIFY_PATTERNS.some(pattern => pattern.test(segment)) &&
+      SOURCE_EXT_PATTERN.test(segment)
+    );
+
+  if (offending) {
+    return `[DELEGATION NOTICE] Bash command may modify source files: ${summarizeCommand(command)}
 
 Recommended: Delegate to executor agent instead:
   Task(subagent_type="oh-my-claudecode:executor", model="sonnet", prompt="...")
