@@ -3,7 +3,7 @@
 **Status:** planning-only architecture contract; no runtime behavior changes in this PR
 **Owner:** Yeachan-Heo / 허예찬
 **Base measured:** `origin/dev` / `05c800f40d1ad53b42a78609d2667ef4f726808b` (2026-08-12)
-**Planning head verified:** `b4d55efc28d39252afe95ec99e86a49975b012e8` (PR #3701; whitespace-normalized descendant of census head `f0868934d4ca3248453249398e7187cdbaa3db54`)
+**Planning head verified:** updated on each pushed fix-forward commit (PR #3701); the seed census and durable graph ownership remain distinct.
 **Epic:** [#3698](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3698)
 
 ## 1. Scope and non-goals
