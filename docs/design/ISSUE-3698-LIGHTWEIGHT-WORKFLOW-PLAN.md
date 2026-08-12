@@ -1,8 +1,8 @@
 # Epic #3698: Lightweight workflow, skill consolidation, prompt and hook SSOT
 
-**Status:** planning-only architecture contract; no runtime behavior changes in this PR  
-**Owner:** Yeachan-Heo / 허예찬  
-**Base measured:** `origin/dev` / `05c800f40d1ad53b42a78609d2667ef4f726808b` (2026-08-12)  
+**Status:** planning-only architecture contract; no runtime behavior changes in this PR
+**Owner:** Yeachan-Heo / 허예찬
+**Base measured:** `origin/dev` / `05c800f40d1ad53b42a78609d2667ef4f726808b` (2026-08-12)
 **Epic:** [#3698](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3698)
 
 ## 1. Scope and non-goals
