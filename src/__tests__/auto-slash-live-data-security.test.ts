@@ -131,6 +131,58 @@ describe('auto slash live-data security', () => {
     expect(mockedExecFileSync).not.toHaveBeenCalled();
   });
 
+  it('blocks $ARGUMENTS interpolation inside an authored script block', async () => {
+    writeFileSync(
+      join(projectDir, '.claude', 'commands', 'live-test.md'),
+      '---\ndescription: Security regression fixture\n---\n!begin-script bash\ngit status $ARGUMENTS\n!end-script\n',
+    );
+    writeFileSync(
+      join(projectDir, '.claude', 'live-data-policy.json'),
+      JSON.stringify({ allowed_commands: ['bash', 'git'] }),
+    );
+    const { executeSlashCommand } = await import('../hooks/auto-slash-command/executor.js');
+
+    const result = executeSlashCommand({
+      command: 'live-test',
+      args: '; node -e "process.exit(99)"',
+      raw: '/live-test ; node -e "process.exit(99)"',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.replacementText).toContain('error="true"');
+    expect(result.replacementText).toContain(
+      'blocked: arguments are not supported in live-data script blocks',
+    );
+    expect(mockedExecSync).not.toHaveBeenCalled();
+    expect(mockedExecFileSync).not.toHaveBeenCalled();
+  });
+
+  it('blocks $ARGUMENTS interpolation in an authored script shell declaration', async () => {
+    writeFileSync(
+      join(projectDir, '.claude', 'commands', 'live-test.md'),
+      '---\ndescription: Security regression fixture\n---\n!begin-script $ARGUMENTS\necho safe\n!end-script\n',
+    );
+    writeFileSync(
+      join(projectDir, '.claude', 'live-data-policy.json'),
+      JSON.stringify({ allowed_commands: ['bash'] }),
+    );
+    const { executeSlashCommand } = await import('../hooks/auto-slash-command/executor.js');
+
+    const result = executeSlashCommand({
+      command: 'live-test',
+      args: 'bash',
+      raw: '/live-test bash',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.replacementText).toContain('error="true"');
+    expect(result.replacementText).toContain(
+      'blocked: arguments are not supported in live-data script blocks',
+    );
+    expect(mockedExecSync).not.toHaveBeenCalled();
+    expect(mockedExecFileSync).not.toHaveBeenCalled();
+  });
+
   it('blocks a live-data directive introduced into a placeholder-only template', async () => {
     writeFileSync(
       join(projectDir, '.claude', 'commands', 'live-test.md'),

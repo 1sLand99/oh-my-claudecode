@@ -70,6 +70,10 @@ type CommandParseResult =
   | { ok: true; invocation: ParsedCommandInvocation }
   | { ok: false; reason: string };
 
+function isWindowsPathToken(token: string): boolean {
+  return /^[A-Za-z]:/.test(token) || token.startsWith("\\");
+}
+
 // ─── Cache ───────────────────────────────────────────────────────────────────
 
 const cache = new Map<string, CacheEntry>();
@@ -172,7 +176,9 @@ function parseCommandInvocation(command: string): CommandParseResult {
     if (quote === "double") {
       if (char === "\\") {
         const next = command[i + 1];
-        if (next === undefined || '"\\`$'.includes(next)) {
+        if (isWindowsPathToken(token) || (token === "" && next === "\\")) {
+          token += char;
+        } else if (next === undefined || '"\\`$'.includes(next)) {
           escaped = true;
         } else {
           token += char;
@@ -213,7 +219,9 @@ function parseCommandInvocation(command: string): CommandParseResult {
 
     if (char === "\\") {
       const next = command[i + 1];
-      if (
+      if (isWindowsPathToken(token) || (token === "" && next === "\\")) {
+        token += char;
+      } else if (
         next === undefined ||
         next === " " ||
         next === "\t" ||
@@ -549,10 +557,13 @@ function executeCommand(
 
     return { stdout: output, error: false };
   } catch (err: unknown) {
+    const executionError = err as Error & { code?: string; stderr?: string };
     const message =
-      err instanceof Error
-        ? (err as { stderr?: string }).stderr || err.message
-        : String(err);
+      process.platform === "win32" && executionError?.code === "EINVAL"
+        ? "Windows .cmd/.bat launchers are unsupported for shell-free live-data execution"
+        : err instanceof Error
+          ? executionError.stderr || err.message
+          : String(err);
     return { stdout: String(message), error: true };
   }
 }
@@ -641,6 +652,14 @@ function extractScriptBlocks(
     }
   }
   return blocks;
+}
+
+export function hasLiveDataScriptArgumentPlaceholder(content: string): boolean {
+  const lines = content.split("\n");
+  const codeBlockRanges = getCodeBlockRanges(lines);
+  return extractScriptBlocks(lines, codeBlockRanges).some(
+    (block) => block.shell.includes("$ARGUMENTS") || block.body.includes("$ARGUMENTS"),
+  );
 }
 
 function getExecutableLiveDataLineIndexes(content: string): Set<number> {

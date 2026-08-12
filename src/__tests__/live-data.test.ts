@@ -397,12 +397,38 @@ describe('resolveLiveData - security', () => {
 
   it('preserves Windows path backslashes in safe arguments', () => {
     mockedExecFileSync.mockReturnValue('ok\n');
-    resolveLiveData('!echo C:\\temp\\file.txt "C:\\Program Files\\app.exe"');
+    resolveLiveData(
+      '!echo C:\\temp\\file.txt "C:\\Program Files\\app.exe" C:\\$Recycle.Bin \\\\server\\share\\file.txt C:\\ "C:\\"',
+    );
     expect(mockedExecFileSync).toHaveBeenCalledWith(
       'echo',
-      ['C:\\temp\\file.txt', 'C:\\Program Files\\app.exe'],
+      [
+        'C:\\temp\\file.txt',
+        'C:\\Program Files\\app.exe',
+        'C:\\$Recycle.Bin',
+        '\\\\server\\share\\file.txt',
+        'C:\\',
+        'C:\\',
+      ],
       expect.objectContaining({ shell: false }),
     );
+  });
+
+  it('reports unsupported Windows command shims without enabling a shell', () => {
+    const originalPlatform = process.platform;
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    mockedExecFileSync.mockImplementation(() => {
+      throw Object.assign(new Error('spawn EINVAL'), { code: 'EINVAL' });
+    });
+
+    try {
+      const result = resolveLiveData('!npm --version');
+      expect(result).toContain('error="true"');
+      expect(result).toContain('Windows .cmd/.bat launchers are unsupported');
+      expect(mockedExecSync).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+    }
   });
 
   it('keeps quoted shell metacharacters as literal argument data', () => {

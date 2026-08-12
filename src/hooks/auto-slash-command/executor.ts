@@ -17,7 +17,11 @@ import type {
   CommandScope,
   ExecuteResult,
 } from './types.js';
-import { introducesLiveDataDirective, resolveLiveData } from './live-data.js';
+import {
+  hasLiveDataScriptArgumentPlaceholder,
+  introducesLiveDataDirective,
+  resolveLiveData,
+} from './live-data.js';
 import { parseFrontmatter, parseFrontmatterAliases, stripOptionalQuotes } from '../../utils/frontmatter.js';
 import { rewriteOmcCliInvocations } from '../../utils/omc-cli-rendering.js';
 import { parseSkillPipelineMetadata, renderSkillPipelineGuidance } from '../../utils/skill-pipeline.js';
@@ -301,8 +305,12 @@ function formatCommandTemplate(cmd: CommandInfo, args: string): string {
     : args;
   const commandContent = cmd.content || '';
   const hasArgumentsPlaceholder = commandContent.includes('$ARGUMENTS');
+  const hasScriptArgumentsPlaceholder = hasArgumentsPlaceholder
+    && hasLiveDataScriptArgumentPlaceholder(commandContent);
   const argumentValidationError = hasArgumentsPlaceholder
-    ? validateLiveDataArguments(displayArgs)
+    ? hasScriptArgumentsPlaceholder
+      ? 'arguments are not supported in live-data script blocks'
+      : validateLiveDataArguments(displayArgs)
     : null;
   const resolvedContent = resolveArguments(commandContent, displayArgs);
   const liveDataArgumentError = argumentValidationError
