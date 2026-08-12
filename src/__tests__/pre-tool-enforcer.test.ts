@@ -34,6 +34,10 @@ function runPreToolEnforcerWithEnv(
       NODE_ENV: 'test',
       DISABLE_OMC: '',
       OMC_SKIP_HOOKS: '',
+      // Advisory verbosity: unset it so a contributor running with OMC_QUIET
+      // exported does not silence the advisories these tests assert on.
+      // The OMC_QUIET suites pass their own value via `env`, which wins below.
+      OMC_QUIET: '',
       // Reset Bedrock/routing env vars so tests are isolated from the host environment.
       // Tests that exercise Bedrock model-routing behaviour set these explicitly via `env`.
       OMC_AGENT_PREFLIGHT_CONTEXT_THRESHOLD: '',
