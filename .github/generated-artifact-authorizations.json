@@ -2204,19 +2204,19 @@
     {
       "pullNumber": 3716,
       "targetRef": "dev",
-      "mergeBaseSha": "ab2930671163da645f67f972967a02d8916911cf",
-      "headSha": "e5943ad1588b76aaca0e8bff69d5f9ea85aeb260",
+      "mergeBaseSha": "318e4489837b4d12574ebbb89c70946ae2f13c08",
+      "headSha": "318e4489837b4d12574ebbb89c70946ae2f13c08",
       "owner": "Yeachan-Heo",
       "expiresAt": "2026-08-19T00:00:00.000Z",
       "generatedDelta": {
         "count": 1,
-        "sha256": "d8508c74e4efdaa946581a2396f04af538fd42f0f934bb7a09a407de895af89a"
+        "sha256": "9c36306ed9a2ccd6fc4c548e9a04b2f19d5d2a0fa2f5ae4b18fc5bb8e6d19c0e"
       },
       "generatedFiles": [
         {
           "status": "modified",
           "filename": "bridge/claude-md-coordinator.cjs",
-          "sha": "7f1474d768472f149442095443ac38ab6b524450",
+          "sha": "94f2910bdcfeb7b0ce5903a1dac83e1d9f388384",
           "previousFilename": null
         }
       ]
