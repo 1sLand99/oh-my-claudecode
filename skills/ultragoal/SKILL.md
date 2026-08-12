@@ -53,9 +53,9 @@ Claude Code `/goal` is a session-scoped Stop hook: it blocks the session from st
 
 2. Start (or resume) the next story:
    ```
-   omc ultragoal complete-goals
+   omc ultragoal complete-goals [<goal-id>]
    ```
-   This prints a model-facing handoff. The active Claude agent must read it and:
+   With no goal id, this preserves the default behavior of resuming the active story or starting the first pending story. With a goal id, OMC targets exactly that named eligible story (a pending story may be started out of order); it never falls through to another story. An active different story, unknown id, completed or review-blocked story, or failed story without `--retry-failed` is rejected without state mutation. An in-progress named story is resumed without changing its attempt. This prints a model-facing handoff. The active Claude agent must read it and:
    - Set the native Claude `/goal` for this session — in standalone Claude Code neither the
      shell nor the agent can do it, so ask the user to type `/goal <aggregate objective>` and
      wait. `--claude-goal-json` (below) reconciles the ledger only and does not satisfy the
