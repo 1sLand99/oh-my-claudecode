@@ -14,6 +14,7 @@ import {
 } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { publishCacheOccupancy } from '../utils/cache-occupancy.js';
 
 let configDir: string;
 vi.mock('../utils/config-dir.js', () => ({
@@ -310,6 +311,20 @@ describe('purgeStalePluginCacheVersions on a real filesystem', () => {
 
     expect(result.removedPaths).toContain(orphan);
     expect(existsSync(orphan)).toBe(false);
+  });
+
+  it('does not delete a stale no-sibling root occupied by a live session', async () => {
+    const orphanPlugin = join(configDir, 'plugins', 'cache', 'omc', 'occupied-plugin');
+    const orphan = join(orphanPlugin, '1.0.0');
+    mkdirSync(orphan, { recursive: true });
+    writeFileSync(join(orphan, 'marker'), 'x');
+    makeStale(orphan);
+    expect(await publishCacheOccupancy(orphan, configDir)).toBe(true);
+
+    const result = purgeStalePluginCacheVersions();
+
+    expect(existsSync(orphan)).toBe(true);
+    expect(result.skippedPaths).toContain(orphan);
   });
 });
 
