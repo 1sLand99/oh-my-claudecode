@@ -31,11 +31,11 @@ Run the reproducible inventory (it excludes `.git`, `node_modules`, `dist`, and 
 node scripts/inventory-issue-3698.mjs > /tmp/issue-3698-inventory.json
 ```
 
-The JSON contains sorted paths, public names, counts, base SHA, and an inventory SHA-256. A future measurement MUST report public surfaces separately from implementation modules and generated projections; a reduction in files alone is not a product reduction.
+The JSON contains sorted seed paths, public names, counts, base SHA, planning head, and an inventory SHA-256. This script is reproducible baseline/seed census evidence, not the final exhaustive dependency graph. #3702 owns the durable generated graph/manifest and ongoing drift enforcement. Every future measurement MUST report public surfaces separately from implementation modules and generated projections; a reduction in files alone is not a product reduction.
 
 ### External comparison evidence
 
-Current Gajae-Code guidance describes exactly four default workflow skills (`deep-interview`, `ralplan`, `ultragoal`, `team`) and four role agents (`executor`, `architect`, `planner`, `critic`), with optional tools kept outside the default path. Its README states the routine sequence `deep-interview -> ralplan -> ultragoal`, optional team execution, plan-before-mutation, evidence-backed execution, structural summaries, durable `.gjc` state, and token-conscious context handling. This plan reuses those principles, not Rust/Bun implementation details.
+Current Gajae-Code guidance describes a deliberately small default workflow and role-agent set, with optional tools kept outside the default path. Its README states plan-before-mutation, evidence-backed execution, structural summaries, durable `.gjc` state, and token-conscious context handling. This plan reuses those principles, not Rust/Bun implementation details.
 
 Sources: [Gajae README](https://raw.githubusercontent.com/Yeachan-Heo/gajae-code/main/README.md), [Gajae AGENTS.md](https://raw.githubusercontent.com/Yeachan-Heo/gajae-code/main/AGENTS.md).
 
@@ -98,15 +98,15 @@ Compatibility owner for all public workflow aliases is the workflow registry own
 
 | Surface | Decision | Target / proof |
 |---|---|---|
-| `deep-interview` | Keep | ambiguity/requirements contract; parity tests |
-| `ralplan` | Keep | plan/critique contract; approval boundary tests |
-| `ultragoal` | Keep | durable goals/ledger/evidence; state tests |
-| `team` | Keep (optional) | only when parallel workers are justified; team integration tests |
-| `executor` role | Keep internal canonical | implementation lane contract |
-| `architect` role | Keep internal canonical | read-only architecture/review |
-| `planner` role | Keep internal canonical | sequencing/handoff |
-| `critic` role | Keep internal canonical | terminal/review critique |
-| `autopilot` | Merge into `deep-interview -> ralplan -> ultragoal` | alias through migration window; activation parity |
+| `plan` (absorbs `deep-interview` + `ralplan`) | Keep as Tier-0 canonical | requirements/plan contract; approval boundary tests |
+| `execute` (absorbs `ultragoal`, `autopilot`, `ralph`, `ultrawork`, `ultrapilot`, `swarm`, `pipeline`, optional `team`) | Keep as Tier-0 canonical | execution/state/evidence contract |
+| `review` (absorbs review routing) | Keep as Tier-0 canonical | review contract and risk classification tests |
+| `verify` (absorbs `ultraqa`/verification routing) | Keep as Tier-0 canonical | verification/evidence tests |
+| `planner` role | Keep Tier-0 role | sequencing/handoff |
+| `executor` role | Keep Tier-0 role | implementation lane contract |
+| `reviewer` role (maps current reviewer/code-reviewer/architect/critic specialists) | Keep Tier-0 role | read-only review |
+| `verifier` role (maps current verifier/qa specialists) | Keep Tier-0 role | completion evidence |
+| `autopilot` | Merge into Tier-0 `execute` | alias through migration window; activation parity |
 | `ralph` | Merge into `ultragoal` continuation/evidence | alias + warning; persistence tests |
 | `ultrawork` | Merge into optional `team` | alias + warning; parallelism parity |
 | `ultrapilot` | Merge into optional `team` + `ultragoal` | alias; ownership/rollback tests |
@@ -140,7 +140,7 @@ Compatibility owner for all public workflow aliases is the workflow registry own
 | `learner` | Merge into memory utility | alias and migration docs |
 | `writer-memory` | Merge into memory utility | alias and migration docs |
 | `configure-notifications` | Keep opt-in integration utility | secrets/privacy tests |
-| `release` | Keep release authority workflow | hard release boundary tests |
+| `release` | Alias-deprecate to maintainer-only `omc release` authority | no release/tag/publish mutation in this epic; hard release boundary tests |
 
 The table is intentionally explicit even where the final implementation owner may refine a mapping. No removal is authorized by this planning PR. The implementation issue must attach invocation counts and compatibility proof before changing a row.
 
@@ -165,7 +165,7 @@ The table is intentionally explicit even where the final implementation owner ma
 | `omc-teams` | Alias-deprecate | team |
 | `project-session-manager` | Keep | session utility |
 | `psm` | Alias-deprecate | project-session-manager |
-| `release` | Keep | release authority |
+| `release` | Alias-deprecate | maintainer-only `omc release` authority; no mutation in this epic |
 | `remember` | Keep | memory |
 | `sciomc` | Alias-deprecate | research |
 | `self-improve` | Keep opt-in | learning utility |
@@ -177,7 +177,7 @@ The table is intentionally explicit even where the final implementation owner ma
 | `wiki` | Keep | docs/reference |
 | `writer-memory` | Alias-deprecate | memory |
 
-Command aliases must resolve to one implementation and emit one warning per session. Removal milestone: after two minor releases with telemetry below 1% of workflow starts and migration docs shipped; Tier-0 names (`deep-interview`, `ralplan`, `ultragoal`, `team`, `omc-setup`, `release`, `cancel`) have no removal date without an owner decision.
+Command aliases must resolve to one implementation and emit one concise, actionable warning per session by default; diagnostics retain full mapping and telemetry, with a temporary automation-noise opt-out. Removal requires at least two minor releases and 90 days (whichever is longer), ≥95% canonical-use share over two consecutive releases, and zero known critical integrations; otherwise extend. Tier-0 names are exactly `plan`, `execute`, `review`, and `verify`. `release` is not a general public workflow and remains only as a compatibility alias to maintainer-only `omc release`.
 
 ## 5. Workflow gate taxonomy
 
@@ -205,7 +205,7 @@ Target outcome is one explicit state machine: `idle -> planning (when needed) ->
 
 Add a versioned structured registry (proposed `src/workflow/registry.ts`, generated public metadata under `dist/` and installed `skills/`/`commands/`) containing canonical workflows, aliases, risk class, owner, warning/removal milestone, required evidence, and projection version. Resolver, keyword detector, help, docs, and tests consume this registry. A registration-drift test compares registry projections with installed files and command metadata.
 
-Default path: `deep-interview -> ralplan -> ultragoal`; `team` is optional. Utility and specialist tools remain opt-in and do not become workflow gates.
+Default path: `plan -> execute -> review -> verify`; optional team execution is an internal implementation detail. Utility and specialist tools remain opt-in/routable modules and do not become Tier-0 workflows.
 
 ### 6.2 Prompt SSOT
 
@@ -229,30 +229,30 @@ Targets are ranges, not automatic deletion quotas:
 
 | Metric (public vs internal explicitly separated) | Baseline | Target after approved child issues |
 |---|---:|---:|
-| Primary workflow skills | 41 shipped | 4–8 primary; all others utility or bounded aliases |
+| Primary workflow skills | 41 shipped (37 canonical + 4 aliases in runtime census) | exactly 4 Tier-0 workflows: `plan`, `execute`, `review`, `verify`; all other skills utility, specialist module, or bounded alias |
 | Command entrypoints | 28 | 12–18 canonical; aliases tracked separately |
 | Hook entrypoints / active modules | 294 files / measure registry | 40–60% fewer entrypoints; 25–40% fewer modules |
 | Hard workflow gates | inventory in child 1 | 50–70% fewer ceremony gates; all retained gates risk-labelled |
-| Agent prompt definitions | 19 issue baseline | 4 canonical role prompts + explicit specialist opt-ins |
+| Agent prompt definitions | 19 registry keys | exactly 4 Tier-0 role agents: `planner`, `executor`, `reviewer`, `verifier`; specialists remain internal/routable |
 | Repeated normative prompt tokens | measure in child 2 | 35–50% reduction; <5% projection drift |
-| GitHub workflows | 8 | 5–7, only after branch/release/security parity proof |
+| GitHub workflows | 8 | smallest proven set; target 5, acceptable 5–6 only when permissions, triggers, or security require separation |
 | State roots/registries | measure path graph | 50–70% reduction; one workflow + one hook registry |
 | Generated closure burden | measure generated files/checks | 40–60% fewer independently maintained projections/checks |
 | No-op hook latency | new baseline | p95 <= 50 ms; advisory p95 <= 200 ms |
-| Alias migration | new telemetry | <1% starts for two minor releases before removal |
+| Alias migration | new telemetry | minimum two minor releases and 90 days, whichever is longer; removal requires ≥95% canonical-use share for two consecutive releases and zero known critical integrations |
 
 Every target has a script, before/after artifact, owner, and acceptance test. Public-surface reductions are measured from manifests; internal reductions from file/module graphs; token reductions from normalized prompt digests; gate reductions from risk-labelled registry entries.
 
 ## 8. Reversible migration sequence and rollback
 
-1. **Inventory and freeze (this PR).** Land the script, map, classifications, and unresolved decisions. No behavior change.
+1. **Inventory and freeze (this PR).** Land the reproducible seed census, exhaustive public-surface classification, exact owner contract, and unresolved implementation details. The seed script is baseline evidence only; #3702 owns the durable generated graph/manifest and ongoing drift enforcement. No behavior change.
 2. **Canonical manifests.** Add registry schemas, digest/version fields, and read-only projection/drift checks. Rollback: disable generated projections and retain current files.
 3. **Prompt projection parity.** Generate one projection at a time; compare normalized behavior fixtures and token metrics. Rollback: select previous manifest digest.
-4. **Alias resolver.** Route old names to canonical workflows with warnings/telemetry; no deletion. Rollback: resolver feature flag to legacy mapping.
+4. **Alias resolver.** Route old names to `plan`, `execute`, `review`, or `verify` with one concise actionable warning per session by default; diagnostics retain full mapping/telemetry. Provide a temporary automation-noise opt-out. No deletion. Rollback: resolver feature flag to legacy mapping.
 5. **Hook dispatcher shadow mode.** Run dispatcher observably beside current hooks, compare event/state/evidence outputs without changing decisions. Rollback: disable dispatcher registration.
 6. **Dispatcher cutover.** Move one event family at a time, preserve hard risk checks, and retain old modules behind a timeboxed flag. Rollback per event family.
-7. **Advisory gate reduction.** Convert/delete only gates with evidence; retain security, destructive, release, privacy, and corruption checks. Rollback by manifest version.
-8. **Alias retirement and generated cleanup.** After two releases and telemetry proof, remove aliases/projections in separate PRs. Epic terminal condition requires migration receipts and no unresolved users.
+7. **Advisory gate reduction.** Advisory hooks fail open with bounded warning/telemetry. Hard-risk handlers fail closed only for secrets/privacy, destructive mutation, release/publish authority, proven corruption/integrity risk, and security boundaries. Unknown failures default advisory during migration and must be explicitly classified before legacy removal. Rollback by manifest version.
+8. **Alias retirement and generated cleanup.** Retire only after at least two minor releases and 90 days, whichever is longer, plus ≥95% canonical-use share across two consecutive releases and zero known critical integrations; otherwise extend. Remove aliases/projections in separate PRs. Epic terminal condition requires migration receipts and no unresolved users.
 
 ## 9. Tests, observability, and release migration
 
@@ -266,29 +266,29 @@ Existing installations receive generated projections and alias mappings through 
 
 Create these as one coherent issue each, linked to #3698, only after this plan is reviewed:
 
-1. **Inventory manifest and graph generator** ([#3702](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3702)) — produce JSON inventories/call graph, baseline artifact, and drift tests. Depends on none; rollback is delete-only script removal.
-2. **Workflow registry and compatibility policy** ([#3703](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3703)) — schema for canonical names, aliases, risk classes, owners, warnings, milestones. Depends on 1.
-3. **Prompt SSOT composer and projection digests** ([#3704](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3704)) — structured sections, manifest, deterministic projections, drift/token metrics. Depends on 1–2.
-4. **Prompt projection parity and install migration** ([#3705](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3705)) — generated CLAUDE/agent/command/skill projections, package/plugin smoke and rollback. Depends on 3.
-5. **Alias resolver and telemetry** ([#3706](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3706)) — route all classified aliases, one warning/session, migration dashboard/receipt. Depends on 2.
-6. **Hook registry and dispatcher shadow mode** ([#3707](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3707)) — explicit event/state/lock/timeout/cleanup contracts, shadow comparison only. Depends on 1–2.
-7. **Hook dispatcher cutover by event family** ([#3708](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3708)) — migrate pre/post/session families with latency/error budgets and rollback flags. Depends on 6.
-8. **Gate rationalization** ([#3709](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3709)) — convert/delete ceremony gates and merge duplicate evidence; retain hard risk taxonomy. Depends on 2, 6–7.
-9. **Canonical workflow UX and documentation** ([#3710](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3710)) — simplify help, commands, skills, CLAUDE projections, migration guide. Depends on 3–5, 8.
-10. **Alias retirement and generated closure cleanup** ([#3711](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3711)) — remove only proven aliases/duplicate projections after two-release telemetry. Depends on 5, 9.
-11. **Release/installation verification and epic closure** ([#3712](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3712)) — verify shipped metrics, migration receipts, child terminality, and remaining risk evidence. Depends on 4, 7–10.
+1. **Inventory manifest and graph generator** ([#3702](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3702)) — produce the durable JSON inventories/call graph, baseline artifact, and drift tests. Depends on none; rollback is delete-only script removal.
+2. **Workflow registry and compatibility policy** ([#3703](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3703)) — schema for canonical names, aliases, risk classes, owners, warnings, milestones. Depends on #3702.
+3. **Prompt SSOT composer and projection digests** ([#3704](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3704)) — structured sections, manifest, deterministic projections, drift/token metrics. Depends on #3702 and #3703.
+4. **Prompt projection parity and install migration** ([#3705](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3705)) — generated CLAUDE/agent/command/skill projections, package/plugin smoke and rollback. Depends on #3704.
+5. **Alias resolver and telemetry** ([#3706](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3706)) — route all classified aliases, one warning/session, migration dashboard/receipt. Depends on #3703.
+6. **Hook registry and dispatcher shadow mode** ([#3707](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3707)) — explicit event/state/lock/timeout/cleanup contracts, shadow comparison only. Depends on #3702 and #3703.
+7. **Hook dispatcher cutover by event family** ([#3708](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3708)) — migrate pre/post/session families with latency/error budgets and rollback flags. Depends on #3707.
+8. **Gate rationalization** ([#3709](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3709)) — convert/delete ceremony gates and merge duplicate evidence; retain hard risk taxonomy. Depends on #3703, #3707, and #3708.
+9. **Canonical workflow UX and documentation** ([#3710](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3710)) — simplify help, commands, skills, CLAUDE projections, migration guide. Depends on #3704, #3705, #3706, and #3709.
+10. **Alias retirement and generated closure cleanup** ([#3711](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3711)) — remove only proven aliases/duplicate projections after the two-release/90-day threshold and canonical-use proof. Depends on #3706 and #3710.
+11. **Release/installation verification and epic closure** ([#3712](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3712)) — verify shipped metrics, migration receipts, child terminality, and remaining risk evidence. Depends on #3705, #3708, #3709, #3710, and #3711.
 
 Each child issue must include: exact files/symbols, baseline/target metric, parity tests, owner, rollback boundary, and explicit non-goals. No child may batch unrelated implementation.
 
-## 11. Decisions required before implementation
+## 11. Authoritative owner decisions
 
-The following product choices are intentionally surfaced rather than guessed:
+The owner has resolved the six planning choices. They are now contract, not blockers:
 
-1. Approve the proposed Tier-0 default workflow of four skills and four role agents, or name additions.
-2. Confirm whether `release` remains a public skill/command or is restricted to a release subcommand.
-3. Confirm alias warning wording and whether warnings are visible by default or only in diagnostics.
-4. Confirm the two-minor-release alias retirement window and telemetry threshold.
-5. Confirm whether workflow files may reduce from 8 to 5–7 after parity evidence, or must remain structurally separate.
-6. Confirm the proposed hook fail-open behavior for advisory errors and fail-closed behavior for risk-labelled handlers.
+1. Tier-0 public workflows are exactly `plan`, `execute`, `review`, and `verify`; Tier-0 roles are `planner`, `executor`, `reviewer`, and `verifier`. Specialists remain internal/routable.
+2. `release` is maintainer-only `omc release`, with a compatibility alias during migration; this epic performs no release/tag/publish mutation.
+3. Alias warnings are concise/actionable, visible once per session by default; diagnostics retain full mapping/telemetry; automation may temporarily opt out.
+4. Alias retirement requires at least two minor releases and 90 days (whichever is longer), ≥95% canonical-use share over two consecutive releases, and zero known critical integrations; otherwise extend.
+5. Workflow files reduce to the smallest proven set, targeting five and accepting six only for required permissions/triggers/security separation.
+6. Advisory hooks fail open with bounded warning/telemetry. Hard-risk handlers fail closed only for secrets/privacy, destructive mutation, release/publish authority, proven corruption/integrity risk, and security boundaries. Unknown failures default advisory during migration and must be classified before legacy removal.
 
-Until these are resolved, the planning PR is **OWNER_CONFIRMATION_REQUIRED**, not merge-ready. The epic remains open for child implementation after approval.
+The planning PR is now contract-complete for implementation sequencing. Child implementation remains held until this planning PR merges and exact-head CI/provenance checks are green.

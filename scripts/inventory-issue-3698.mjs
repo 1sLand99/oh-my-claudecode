@@ -25,7 +25,7 @@ const promptSources = rel.filter((p) => /(^|\/)(CLAUDE\.md|.*prompt.*|prompts?\/
 const digest = createHash('sha256').update(JSON.stringify(rel)).digest('hex');
 const result = {
   schemaVersion: 1,
-  generatedAt: new Date().toISOString(),
+  generatedAt: process.env.ISSUE_3698_INVENTORY_TIMESTAMP ?? null,
   repository: 'Yeachan-Heo/oh-my-claudecode',
   base: '05c800f40d1ad53b42a78609d2667ef4f726808b',
   planningHead: process.env.ISSUE_3698_PLANNING_HEAD ?? 'b4d55efc28d39252afe95ec99e86a49975b012e8',
