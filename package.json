@@ -74,6 +74,8 @@
     "sync-metadata": "tsx scripts/sync-metadata.ts",
     "sync-metadata:verify": "tsx scripts/sync-metadata.ts --verify",
     "sync-metadata:dry-run": "tsx scripts/sync-metadata.ts --dry-run",
+    "generate:inventory": "node scripts/generate-inventory-graph.mjs --write",
+    "generate:inventory:verify": "node scripts/generate-inventory-graph.mjs --verify",
     "release": "tsx scripts/release.ts",
     "prepublishOnly": "npm run build",
     "version": "bash scripts/sync-version.sh"
