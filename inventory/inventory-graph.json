@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "63211fc743cff34be1e8f0dca37ba4ff4b3a2f17",
-    "sourceSha256": "31de1b4efe80251d59cd0f12f9dd8d074edd6aa27d382c4b94b168a21b55125d",
+    "head": "d780c9d99dad91eb645f46d9a14c79449e8c2ea2",
+    "sourceSha256": "90c640654625cf3ab11f6ad32d0bed9f516082c17b626d2dbd7db04a68d35e76",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "63211fc743cff34be1e8f0dca37ba4ff4b3a2f17",
-  "sourceSha256": "31de1b4efe80251d59cd0f12f9dd8d074edd6aa27d382c4b94b168a21b55125d",
+  "head": "d780c9d99dad91eb645f46d9a14c79449e8c2ea2",
+  "sourceSha256": "90c640654625cf3ab11f6ad32d0bed9f516082c17b626d2dbd7db04a68d35e76",
   "counts": {
     "public": {
       "skills": 41,
@@ -6169,21 +6169,6 @@
         "id": "benchmarks/harsh-critic/fixtures/analysis/analysis-perf-report.md",
         "kind": "other",
         "path": "benchmarks/harsh-critic/fixtures/analysis/analysis-perf-report.md"
-      },
-      {
-        "id": "benchmarks/harsh-critic/fixtures/code/../db",
-        "kind": "unresolved",
-        "path": "benchmarks/harsh-critic/fixtures/code/../db"
-      },
-      {
-        "id": "benchmarks/harsh-critic/fixtures/code/../logger",
-        "kind": "unresolved",
-        "path": "benchmarks/harsh-critic/fixtures/code/../logger"
-      },
-      {
-        "id": "benchmarks/harsh-critic/fixtures/code/../types/payment",
-        "kind": "unresolved",
-        "path": "benchmarks/harsh-critic/fixtures/code/../types/payment"
       },
       {
         "id": "benchmarks/harsh-critic/fixtures/code/code-payment-handler.ts",
@@ -36096,6 +36081,21 @@
         "path": "typos.toml"
       },
       {
+        "id": "unresolved:benchmarks/harsh-critic/fixtures/code/code-payment-handler.ts#606a5ae937170833",
+        "kind": "unresolved",
+        "path": "unresolved:benchmarks/harsh-critic/fixtures/code/code-payment-handler.ts#606a5ae937170833"
+      },
+      {
+        "id": "unresolved:benchmarks/harsh-critic/fixtures/code/code-payment-handler.ts#6fc99c01be7a76d5",
+        "kind": "unresolved",
+        "path": "unresolved:benchmarks/harsh-critic/fixtures/code/code-payment-handler.ts#6fc99c01be7a76d5"
+      },
+      {
+        "id": "unresolved:benchmarks/harsh-critic/fixtures/code/code-payment-handler.ts#87318efcf4e7d00d",
+        "kind": "unresolved",
+        "path": "unresolved:benchmarks/harsh-critic/fixtures/code/code-payment-handler.ts#87318efcf4e7d00d"
+      },
+      {
         "id": "vitest.config.ts",
         "kind": "other",
         "path": "vitest.config.ts"
@@ -36184,23 +36184,23 @@
       },
       {
         "from": "benchmarks/harsh-critic/fixtures/code/code-payment-handler.ts",
-        "to": "benchmarks/harsh-critic/fixtures/code/../db",
-        "kind": "imports-unresolved"
-      },
-      {
-        "from": "benchmarks/harsh-critic/fixtures/code/code-payment-handler.ts",
-        "to": "benchmarks/harsh-critic/fixtures/code/../logger",
-        "kind": "imports-unresolved"
-      },
-      {
-        "from": "benchmarks/harsh-critic/fixtures/code/code-payment-handler.ts",
-        "to": "benchmarks/harsh-critic/fixtures/code/../types/payment",
-        "kind": "imports-unresolved"
-      },
-      {
-        "from": "benchmarks/harsh-critic/fixtures/code/code-payment-handler.ts",
         "to": "external:axios",
         "kind": "imports"
+      },
+      {
+        "from": "benchmarks/harsh-critic/fixtures/code/code-payment-handler.ts",
+        "to": "unresolved:benchmarks/harsh-critic/fixtures/code/code-payment-handler.ts#606a5ae937170833",
+        "kind": "imports-unresolved"
+      },
+      {
+        "from": "benchmarks/harsh-critic/fixtures/code/code-payment-handler.ts",
+        "to": "unresolved:benchmarks/harsh-critic/fixtures/code/code-payment-handler.ts#6fc99c01be7a76d5",
+        "kind": "imports-unresolved"
+      },
+      {
+        "from": "benchmarks/harsh-critic/fixtures/code/code-payment-handler.ts",
+        "to": "unresolved:benchmarks/harsh-critic/fixtures/code/code-payment-handler.ts#87318efcf4e7d00d",
+        "kind": "imports-unresolved"
       },
       {
         "from": "benchmarks/harsh-critic/run-benchmark.ts",
@@ -44384,11 +44384,6 @@
       },
       {
         "from": "src/agents/analyst.ts",
-        "to": "src/agents/definitions.ts",
-        "kind": "registers"
-      },
-      {
-        "from": "src/agents/analyst.ts",
         "to": "src/agents/types.ts",
         "kind": "type-imports"
       },
@@ -44399,11 +44394,6 @@
       },
       {
         "from": "src/agents/architect.ts",
-        "to": "src/agents/definitions.ts",
-        "kind": "registers"
-      },
-      {
-        "from": "src/agents/architect.ts",
         "to": "src/agents/types.ts",
         "kind": "type-imports"
       },
@@ -44411,11 +44401,6 @@
         "from": "src/agents/architect.ts",
         "to": "src/agents/utils.ts",
         "kind": "imports"
-      },
-      {
-        "from": "src/agents/critic.ts",
-        "to": "src/agents/definitions.ts",
-        "kind": "registers"
       },
       {
         "from": "src/agents/critic.ts",
@@ -44456,11 +44441,6 @@
         "from": "src/agents/definitions.ts",
         "to": "src/agents/critic.ts",
         "kind": "imports"
-      },
-      {
-        "from": "src/agents/definitions.ts",
-        "to": "src/agents/definitions.ts",
-        "kind": "registers"
       },
       {
         "from": "src/agents/definitions.ts",
@@ -44579,11 +44559,6 @@
       },
       {
         "from": "src/agents/designer.ts",
-        "to": "src/agents/definitions.ts",
-        "kind": "registers"
-      },
-      {
-        "from": "src/agents/designer.ts",
         "to": "src/agents/types.ts",
         "kind": "type-imports"
       },
@@ -44594,11 +44569,6 @@
       },
       {
         "from": "src/agents/document-specialist.ts",
-        "to": "src/agents/definitions.ts",
-        "kind": "registers"
-      },
-      {
-        "from": "src/agents/document-specialist.ts",
         "to": "src/agents/types.ts",
         "kind": "type-imports"
       },
@@ -44609,11 +44579,6 @@
       },
       {
         "from": "src/agents/executor.ts",
-        "to": "src/agents/definitions.ts",
-        "kind": "registers"
-      },
-      {
-        "from": "src/agents/executor.ts",
         "to": "src/agents/types.ts",
         "kind": "type-imports"
       },
@@ -44621,11 +44586,6 @@
         "from": "src/agents/executor.ts",
         "to": "src/agents/utils.ts",
         "kind": "imports"
-      },
-      {
-        "from": "src/agents/explore.ts",
-        "to": "src/agents/definitions.ts",
-        "kind": "registers"
       },
       {
         "from": "src/agents/explore.ts",
@@ -44656,11 +44616,6 @@
         "from": "src/agents/index.ts",
         "to": "src/agents/definitions.ts",
         "kind": "exports"
-      },
-      {
-        "from": "src/agents/index.ts",
-        "to": "src/agents/definitions.ts",
-        "kind": "registers"
       },
       {
         "from": "src/agents/index.ts",
@@ -44719,11 +44674,6 @@
       },
       {
         "from": "src/agents/planner.ts",
-        "to": "src/agents/definitions.ts",
-        "kind": "registers"
-      },
-      {
-        "from": "src/agents/planner.ts",
         "to": "src/agents/types.ts",
         "kind": "type-imports"
       },
@@ -44749,11 +44699,6 @@
       },
       {
         "from": "src/agents/prompt-helpers.ts",
-        "to": "src/agents/definitions.ts",
-        "kind": "registers"
-      },
-      {
-        "from": "src/agents/prompt-helpers.ts",
         "to": "src/agents/skininthegamebros-guidance.ts",
         "kind": "imports"
       },
@@ -44769,11 +44714,6 @@
       },
       {
         "from": "src/agents/qa-tester.ts",
-        "to": "src/agents/definitions.ts",
-        "kind": "registers"
-      },
-      {
-        "from": "src/agents/qa-tester.ts",
         "to": "src/agents/types.ts",
         "kind": "type-imports"
       },
@@ -44784,11 +44724,6 @@
       },
       {
         "from": "src/agents/scientist.ts",
-        "to": "src/agents/definitions.ts",
-        "kind": "registers"
-      },
-      {
-        "from": "src/agents/scientist.ts",
         "to": "src/agents/types.ts",
         "kind": "type-imports"
       },
@@ -44796,11 +44731,6 @@
         "from": "src/agents/scientist.ts",
         "to": "src/agents/utils.ts",
         "kind": "imports"
-      },
-      {
-        "from": "src/agents/skininthegamebros-guidance.ts",
-        "to": "src/agents/definitions.ts",
-        "kind": "registers"
       },
       {
         "from": "src/agents/skininthegamebros-guidance.ts",
@@ -44809,11 +44739,6 @@
       },
       {
         "from": "src/agents/tracer.ts",
-        "to": "src/agents/definitions.ts",
-        "kind": "registers"
-      },
-      {
-        "from": "src/agents/tracer.ts",
         "to": "src/agents/types.ts",
         "kind": "type-imports"
       },
@@ -44821,11 +44746,6 @@
         "from": "src/agents/tracer.ts",
         "to": "src/agents/utils.ts",
         "kind": "imports"
-      },
-      {
-        "from": "src/agents/types.ts",
-        "to": "src/agents/definitions.ts",
-        "kind": "registers"
       },
       {
         "from": "src/agents/types.ts",
@@ -44849,18 +44769,8 @@
       },
       {
         "from": "src/agents/utils.ts",
-        "to": "src/agents/definitions.ts",
-        "kind": "registers"
-      },
-      {
-        "from": "src/agents/utils.ts",
         "to": "src/agents/types.ts",
         "kind": "type-imports"
-      },
-      {
-        "from": "src/agents/writer.ts",
-        "to": "src/agents/definitions.ts",
-        "kind": "registers"
       },
       {
         "from": "src/agents/writer.ts",
@@ -69670,11 +69580,11 @@
     ],
     "stats": {
       "nodeCount": 6103,
-      "edgeCount": 6713,
+      "edgeCount": 6695,
       "importEdgeCount": 5478,
-      "registerEdgeCount": 87
+      "registerEdgeCount": 69
     }
   },
   "inventorySha256": "ada7c0fd99be1f6cfb18276fcf55b207b2ef56d840e64fa25c547071d4db645b",
-  "manifestSha256": "477f82e85e2cedda4a21b108227677d4317a193ec25b279e1fdbeab00d73fa33"
+  "manifestSha256": "ccf6c7afa936bacc96189dc1f01b701479635eafc4c4670836f955e33f71544d"
 }

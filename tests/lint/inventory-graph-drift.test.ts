@@ -23,7 +23,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { readFileSync, existsSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+import { isAbsolute, join, normalize, relative, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 
@@ -181,6 +181,16 @@ describe('inventory-graph drift enforcement (#3702)', () => {
     expect(m.graph.stats.edgeCount).toBeGreaterThan(100);
     const nodeIds = new Set(m.graph.nodes.map((node) => node.id));
     expect(m.graph.edges.filter((edge) => !nodeIds.has(edge.from) || !nodeIds.has(edge.to))).toEqual([]);
+    const graphPaths = [
+      ...m.graph.nodes.flatMap((node) => [node.id, node.path]),
+      ...m.graph.edges.flatMap((edge) => [edge.from, edge.to]),
+    ].filter((value) => !value.startsWith('external:') && !value.startsWith('unresolved:'));
+    for (const graphPath of graphPaths) {
+      expect(isAbsolute(graphPath), `absolute graph path: ${graphPath}`).toBe(false);
+      expect(graphPath.includes('\\'), `platform-specific graph path: ${graphPath}`).toBe(false);
+      expect(normalize(graphPath).startsWith('..'), `graph path escapes repository: ${graphPath}`).toBe(false);
+      expect(graphPath.split('/').includes('..'), `non-canonical graph path: ${graphPath}`).toBe(false);
+    }
   });
 
   it('reports public/internal/generated counts separately (no conflation)', () => {
@@ -272,6 +282,7 @@ describe('inventory-graph drift enforcement (#3702)', () => {
       const from = `commands/${cmd}.md`;
       expect(edgeKeys.has(`${from} -> src/commands/index.ts [registers]`), `missing command register edge ${from}`).toBe(true);
     }
+    expect(edgeKeys.has('src/agents/definitions.ts -> src/agents/definitions.ts [registers]')).toBe(false);
     // At least one hook-bridge edge exists
     expect(m.graph.edges.some((e) => e.kind === 'imports')).toBe(true);
     expect(edgeKeys.has('src/agents/index.ts -> src/agents/definitions.ts [exports]')).toBe(true);
@@ -337,5 +348,10 @@ describe('inventory-graph drift enforcement (#3702)', () => {
     expect(invalidOverride.status).not.toBe(0);
     const unreachableOverride = spawnSync('node', [GENERATOR], { ...opts, env: { ...process.env, ISSUE_3702_HEAD: '0'.repeat(40) } });
     expect(unreachableOverride.status).not.toBe(0);
+
+    const outsideOut = resolve(REPO_ROOT, '..', `.tmp-inventory-outside-${process.pid}.json`);
+    const outsideWrite = spawnSync('node', [GENERATOR, '--write', '--out', outsideOut], opts);
+    expect(outsideWrite.status).not.toBe(0);
+    expect(existsSync(outsideOut)).toBe(false);
   });
 });

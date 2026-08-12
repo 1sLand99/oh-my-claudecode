@@ -202,17 +202,20 @@ function resolveImportSpec(fromPath, spec) {
       join(base, spec + '.cjs'),
       join(base, spec, 'index.ts'),
       join(base, spec, 'index.js'),
-    ].map(toPosix);
+    ].map((candidate) => toPosix(resolve('/', candidate)).slice(1));
     return { kind: 'relative', spec, candidates };
   }
   return { kind: 'external', spec, candidates: [] };
 }
 
-async function existsAny(cands) {
+async function existsAny(root, cands) {
   for (const c of cands) {
+    const absolute = resolve(root, c);
+    const confined = relative(root, absolute);
+    if (confined.startsWith('..') || confined === '' || resolve(root, confined) !== absolute) continue;
     try {
-      await stat(join(REPO_ROOT, c));
-      return c;
+      await stat(absolute);
+      return toPosix(confined);
     } catch {
       // continue
     }
@@ -267,7 +270,6 @@ export async function generateInventoryGraph(opts = {}) {
   const commandPaths = relStable.filter((p) => /^commands\/[^/]+\.md$/.test(p)).sort();
   const workflows = relStable.filter((p) => p.startsWith('.github/workflows/')).sort();
   const agents = relStable.filter((p) => /^src\/agents\/[^/]+\.ts$/.test(p)).map((p) => p.slice('src/agents/'.length, -3)).sort();
-  const agentPaths = relStable.filter((p) => /^src\/agents\/[^/]+\.ts$/.test(p)).sort();
   const hookFiles = relStable.filter((p) => p.startsWith('src/hooks/')).sort();
   const featureFiles = relStable.filter((p) => p.startsWith('src/features/')).sort();
   const toolFiles = relStable.filter((p) => p.startsWith('src/tools/')).sort();
@@ -354,14 +356,13 @@ export async function generateInventoryGraph(opts = {}) {
         pushEdge(from, to, kind);
       } else {
         // Try to resolve relative to an existing stable file
-        const hit = await existsAny(resolved.candidates);
+        const hit = await existsAny(root, resolved.candidates);
         if (hit) {
           // Prefer canonical posix relative
           pushEdge(from, hit, kind);
         } else {
-          // Unresolvable relative import — still record as imports with raw spec for drift visibility
-          const to = `${dirname(from)}/${spec}`.replace(/\/\.\//g, '/');
-          const unresolved = toPosix(to);
+          // Keep unresolved identities path-safe and host-independent.
+          const unresolved = `unresolved:${from}#${sha256Hex(spec).slice(0, 16)}`;
           if (!nodeSet.has(unresolved)) nodeSet.set(unresolved, { id: unresolved, kind: 'unresolved', path: unresolved });
           pushEdge(from, unresolved, `${kind}-unresolved`);
         }
@@ -373,13 +374,11 @@ export async function generateInventoryGraph(opts = {}) {
   // Each skill SKILL.md -> builtin skills registry
   const SKILLS_REGISTRY = 'src/features/builtin-skills/skills.ts';
   const COMMANDS_REGISTRY = 'src/commands/index.ts';
-  const AGENTS_REGISTRY = 'src/agents/definitions.ts';
   const HOOK_BRIDGE = 'src/hooks/bridge.ts';
   const HOOKS_JSON = 'hooks/hooks.json';
 
   for (const p of skillPaths) pushEdge(p, SKILLS_REGISTRY, 'registers');
   for (const p of commandPaths) pushEdge(p, COMMANDS_REGISTRY, 'registers');
-  for (const p of agentPaths) pushEdge(p, AGENTS_REGISTRY, 'registers');
   // Template hooks -> hook bridge / hooks.json projection
   for (const p of templateHookFiles) {
     pushEdge(p, HOOK_BRIDGE, 'projects');
@@ -510,6 +509,10 @@ async function main() {
   const wantWrite = args.includes('--write');
   const outIdx = args.indexOf('--out');
   const outPath = outIdx !== -1 ? resolve(args[outIdx + 1] ?? OUT_PATH) : OUT_PATH;
+  const outRelative = relative(REPO_ROOT, outPath);
+  if (outRelative.startsWith('..') || resolve(REPO_ROOT, outRelative) !== outPath) {
+    throw new Error('--out must resolve inside the repository root');
+  }
 
   if (wantVerify) {
     const fresh = await generateInventoryGraph();
