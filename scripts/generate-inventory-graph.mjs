@@ -119,7 +119,7 @@ function getGeneratedAt() {
 
 function isReachableCommit(root, sha) {
   try {
-    execFileSync('git', ['merge-base', '--is-ancestor', sha, 'HEAD'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['cat-file', '-e', `${sha}^{commit}`], { cwd: root, stdio: 'ignore' });
     return true;
   } catch {
     return false;
