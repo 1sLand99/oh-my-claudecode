@@ -17,7 +17,7 @@ import type {
   CommandScope,
   ExecuteResult,
 } from './types.js';
-import { resolveLiveData } from './live-data.js';
+import { introducesLiveDataDirective, resolveLiveData } from './live-data.js';
 import { parseFrontmatter, parseFrontmatterAliases, stripOptionalQuotes } from '../../utils/frontmatter.js';
 import { rewriteOmcCliInvocations } from '../../utils/omc-cli-rendering.js';
 import { parseSkillPipelineMetadata, renderSkillPipelineGuidance } from '../../utils/skill-pipeline.js';
@@ -244,11 +244,6 @@ function resolveArguments(content: string, args: string): string {
   return content.replace(/\$ARGUMENTS/g, args || '(no arguments provided)');
 }
 
-function hasLiveDataArgumentsPlaceholder(content: string): boolean {
-  return content.includes('$ARGUMENTS')
-    && content.split('\n').some((line) => /^\s*!/.test(line));
-}
-
 function validateLiveDataArguments(args: string): string | null {
   for (const char of args) {
     const code = char.charCodeAt(0);
@@ -304,9 +299,16 @@ function formatCommandTemplate(cmd: CommandInfo, args: string): string {
   const displayArgs = isDeepInterviewAutoresearch
     ? stripInvocationFlag(args, '--autoresearch')
     : args;
-  const liveDataArgumentError = hasLiveDataArgumentsPlaceholder(cmd.content || '')
+  const commandContent = cmd.content || '';
+  const hasArgumentsPlaceholder = commandContent.includes('$ARGUMENTS');
+  const argumentValidationError = hasArgumentsPlaceholder
     ? validateLiveDataArguments(displayArgs)
     : null;
+  const resolvedContent = resolveArguments(commandContent, displayArgs);
+  const liveDataArgumentError = argumentValidationError
+    ?? (hasArgumentsPlaceholder && introducesLiveDataDirective(commandContent, resolvedContent)
+      ? 'live-data directive introduced by arguments'
+      : null);
   const renderedArgs = liveDataArgumentError
     ? `[blocked: ${liveDataArgumentError}]`
     : displayArgs;
@@ -340,7 +342,6 @@ function formatCommandTemplate(cmd: CommandInfo, args: string): string {
   sections.push('---\n');
 
   // Resolve arguments in content, then execute any live-data commands
-  const resolvedContent = resolveArguments(cmd.content || '', displayArgs);
   const baseContent = liveDataArgumentError
     ? `<live-data command="$ARGUMENTS" error="true">blocked: ${liveDataArgumentError}</live-data>`
     : resolveLiveData(resolvedContent);

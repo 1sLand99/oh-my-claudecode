@@ -628,6 +628,61 @@ function extractScriptBlocks(
   return blocks;
 }
 
+function getExecutableLiveDataLineIndexes(content: string): Set<number> {
+  const lines = content.split("\n");
+  const codeBlockRanges = getCodeBlockRanges(lines);
+  const scriptBlocks = extractScriptBlocks(lines, codeBlockRanges);
+  const scriptLineIndexes = new Set<number>();
+  const executableLineIndexes = new Set<number>();
+
+  for (const block of scriptBlocks) {
+    executableLineIndexes.add(block.startLine);
+    for (let i = block.startLine; i <= block.endLine; i++) {
+      scriptLineIndexes.add(i);
+    }
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    if (scriptLineIndexes.has(i) || isInsideCodeBlock(i, codeBlockRanges)) {
+      continue;
+    }
+    if (isLiveDataLine(lines[i])) {
+      executableLineIndexes.add(i);
+    }
+  }
+
+  return executableLineIndexes;
+}
+
+/**
+ * Return whether placeholder replacement made a previously non-executable line
+ * become an executable live-data directive.
+ */
+export function introducesLiveDataDirective(
+  templateContent: string,
+  resolvedContent: string,
+): boolean {
+  const templateLines = templateContent.split("\n");
+  const resolvedLines = resolvedContent.split("\n");
+
+  // Argument validation should keep line counts stable. Fail closed if a caller
+  // skips that validation or a future replacement mechanism changes this rule.
+  if (templateLines.length !== resolvedLines.length) {
+    return true;
+  }
+
+  const templateExecutableLines = getExecutableLiveDataLineIndexes(templateContent);
+  const resolvedExecutableLines = getExecutableLiveDataLineIndexes(resolvedContent);
+
+  for (const lineIndex of resolvedExecutableLines) {
+    if (!templateExecutableLines.has(lineIndex)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 // ─── Main Resolver ───────────────────────────────────────────────────────────
 
 /**
