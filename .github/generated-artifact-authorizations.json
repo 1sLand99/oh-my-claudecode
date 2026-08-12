@@ -1822,7 +1822,7 @@
     {
       "pullNumber": 3692,
       "targetRef": "dev",
-      "mergeBaseSha": "edb97afb8f4d3764cdf83f45037ce03abcbbe26f",
+      "mergeBaseSha": "f3ac8e86c3c2d4d61fb1a59245412e38cfd97c6d",
       "headSha": "f93f2bbce67c93d3a8cccd78798a9e809bfecbb3",
       "owner": "Yeachan-Heo",
       "expiresAt": "2026-08-19T00:00:00.000Z",
