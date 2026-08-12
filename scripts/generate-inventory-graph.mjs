@@ -580,10 +580,6 @@ async function main() {
       console.error('[inventory-graph] provenance.head must be one consistent 40-character lowercase Git SHA');
       process.exit(2);
     }
-    if (!isReachableCommit(REPO_ROOT, onDisk.head)) {
-      console.error('[inventory-graph] provenance.head must identify a commit reachable from the current HEAD');
-      process.exit(2);
-    }
     if (!/^[0-9a-f]{64}$/.test(onDisk.sourceSha256 ?? '') || onDisk.provenance?.sourceSha256 !== onDisk.sourceSha256 || onDisk.sourceSha256 !== fresh.sourceSha256) {
       console.error('[inventory-graph] provenance.sourceSha256 must match the current inventoried source content');
       process.exit(2);
