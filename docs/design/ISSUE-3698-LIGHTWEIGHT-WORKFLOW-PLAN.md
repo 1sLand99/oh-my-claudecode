@@ -261,17 +261,17 @@ Existing installations receive generated projections and alias mappings through 
 
 Create these as one coherent issue each, linked to #3698, only after this plan is reviewed:
 
-1. **Inventory manifest and graph generator** — produce JSON inventories/call graph, baseline artifact, and drift tests. Depends on none; rollback is delete-only script removal.
-2. **Workflow registry and compatibility policy** — schema for canonical names, aliases, risk classes, owners, warnings, milestones. Depends on 1.
-3. **Prompt SSOT composer and projection digests** — structured sections, manifest, deterministic projections, drift/token metrics. Depends on 1–2.
-4. **Prompt projection parity and install migration** — generated CLAUDE/agent/command/skill projections, package/plugin smoke and rollback. Depends on 3.
-5. **Alias resolver and telemetry** — route all classified aliases, one warning/session, migration dashboard/receipt. Depends on 2.
-6. **Hook registry and dispatcher shadow mode** — explicit event/state/lock/timeout/cleanup contracts, shadow comparison only. Depends on 1–2.
-7. **Hook dispatcher cutover by event family** — migrate pre/post/session families with latency/error budgets and rollback flags. Depends on 6.
-8. **Gate rationalization** — convert/delete ceremony gates and merge duplicate evidence; retain hard risk taxonomy. Depends on 2, 6–7.
-9. **Canonical workflow UX and documentation** — simplify help, commands, skills, CLAUDE projections, migration guide. Depends on 3–5, 8.
-10. **Alias retirement and generated closure cleanup** — remove only proven aliases/duplicate projections after two-release telemetry. Depends on 5, 9.
-11. **Release/installation verification and epic closure** — verify shipped metrics, migration receipts, child terminality, and remaining risk evidence. Depends on 4, 7–10.
+1. **Inventory manifest and graph generator** ([#3702](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3702)) — produce JSON inventories/call graph, baseline artifact, and drift tests. Depends on none; rollback is delete-only script removal.
+2. **Workflow registry and compatibility policy** ([#3703](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3703)) — schema for canonical names, aliases, risk classes, owners, warnings, milestones. Depends on 1.
+3. **Prompt SSOT composer and projection digests** ([#3704](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3704)) — structured sections, manifest, deterministic projections, drift/token metrics. Depends on 1–2.
+4. **Prompt projection parity and install migration** ([#3705](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3705)) — generated CLAUDE/agent/command/skill projections, package/plugin smoke and rollback. Depends on 3.
+5. **Alias resolver and telemetry** ([#3706](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3706)) — route all classified aliases, one warning/session, migration dashboard/receipt. Depends on 2.
+6. **Hook registry and dispatcher shadow mode** ([#3707](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3707)) — explicit event/state/lock/timeout/cleanup contracts, shadow comparison only. Depends on 1–2.
+7. **Hook dispatcher cutover by event family** ([#3708](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3708)) — migrate pre/post/session families with latency/error budgets and rollback flags. Depends on 6.
+8. **Gate rationalization** ([#3709](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3709)) — convert/delete ceremony gates and merge duplicate evidence; retain hard risk taxonomy. Depends on 2, 6–7.
+9. **Canonical workflow UX and documentation** ([#3710](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3710)) — simplify help, commands, skills, CLAUDE projections, migration guide. Depends on 3–5, 8.
+10. **Alias retirement and generated closure cleanup** ([#3711](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3711)) — remove only proven aliases/duplicate projections after two-release telemetry. Depends on 5, 9.
+11. **Release/installation verification and epic closure** ([#3712](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3712)) — verify shipped metrics, migration receipts, child terminality, and remaining risk evidence. Depends on 4, 7–10.
 
 Each child issue must include: exact files/symbols, baseline/target metric, parity tests, owner, rollback boundary, and explicit non-goals. No child may batch unrelated implementation.
 
