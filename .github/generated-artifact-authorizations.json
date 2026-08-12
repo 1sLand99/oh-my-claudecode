@@ -2162,6 +2162,26 @@
       ]
     },
     {
+      "pullNumber": 3692,
+      "targetRef": "dev",
+      "mergeBaseSha": "db6885cbd2e059b5adaf8601bf1f3f038b1ebdd0",
+      "headSha": "f7df41e675f0a51b5e75b8811d33863ab2eb4e17",
+      "owner": "Yeachan-Heo",
+      "expiresAt": "2026-08-19T00:00:00.000Z",
+      "generatedDelta": {
+        "count": 1,
+        "sha256": "b132b7fc5ed6d5a063d97a7cde1ab3f505f052e153de15b00fe62c9f22242518"
+      },
+      "generatedFiles": [
+        {
+          "status": "modified",
+          "filename": "bridge/claude-md-coordinator.cjs",
+          "sha": "60b372ca868144e33a980e46588dd476d82dcd7d",
+          "previousFilename": null
+        }
+      ]
+    },
+    {
       "pullNumber": 3697,
       "targetRef": "dev",
       "mergeBaseSha": "0b8aa30d290a0e7c2211b011d8520daac5f93c0c",
@@ -2182,21 +2202,21 @@
       ]
     },
     {
-      "pullNumber": 3692,
+      "pullNumber": 3716,
       "targetRef": "dev",
-      "mergeBaseSha": "db6885cbd2e059b5adaf8601bf1f3f038b1ebdd0",
-      "headSha": "f7df41e675f0a51b5e75b8811d33863ab2eb4e17",
+      "mergeBaseSha": "8abb233f33dc7a227805a7fb0ec713232d39f288",
+      "headSha": "3af427d027fde2371419e84490a1f7d786272158",
       "owner": "Yeachan-Heo",
       "expiresAt": "2026-08-19T00:00:00.000Z",
       "generatedDelta": {
         "count": 1,
-        "sha256": "b132b7fc5ed6d5a063d97a7cde1ab3f505f052e153de15b00fe62c9f22242518"
+        "sha256": "d8508c74e4efdaa946581a2396f04af538fd42f0f934bb7a09a407de895af89a"
       },
       "generatedFiles": [
         {
           "status": "modified",
           "filename": "bridge/claude-md-coordinator.cjs",
-          "sha": "60b372ca868144e33a980e46588dd476d82dcd7d",
+          "sha": "7f1474d768472f149442095443ac38ab6b524450",
           "previousFilename": null
         }
       ]
