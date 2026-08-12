@@ -2272,8 +2272,8 @@
     {
       "pullNumber": 3716,
       "targetRef": "dev",
-      "mergeBaseSha": "ca8e9c393ac16220ad77f8e130b20d49f758fc85",
-      "headSha": "5270f6082660da39b16d42ee077a369ac98c3991",
+      "mergeBaseSha": "e18f0758aae84d8bf68af5a71a07a4251e5ad1eb",
+      "headSha": "afa98009ee90649ded7fce416147fa7538a666b2",
       "owner": "Yeachan-Heo",
       "expiresAt": "2026-08-19T00:00:00.000Z",
       "generatedDelta": {
