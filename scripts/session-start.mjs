@@ -13,6 +13,7 @@ import { homedir } from 'os';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { getClaudeConfigDir, getUpdateCheckCachePath } from './lib/config-dir.mjs';
 import { resolveOmcStateRoot } from './lib/state-root.mjs';
+import { publishCacheOccupancy, readOccupiedPluginRoots } from './lib/cache-occupancy.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -918,6 +919,9 @@ async function main() {
     const projectMemoryModules = await loadProjectMemoryModules();
 
     writeSessionStartedMarker(omcRoot, directory, sessionId);
+    if (process.env.CLAUDE_PLUGIN_ROOT) {
+      publishCacheOccupancy(process.env.CLAUDE_PLUGIN_ROOT, configDir);
+    }
     reconcileAbandonedSessionStarts(omcRoot, sessionId);
     reconcileSessionEndJobsInBackground(getRuntimeBaseDir(), directory);
 
@@ -1118,6 +1122,7 @@ ${cleanContent}
     // plugin update whose CLAUDE_PLUGIN_ROOT still points to the old version.
     try {
       const cacheBase = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-claudecode');
+      const occupancy = readOccupiedPluginRoots(configDir);
       let versions = [];
       if (existsSync(cacheBase)) {
         versions = readdirSync(cacheBase)
@@ -1159,6 +1164,7 @@ ${cleanContent}
                   }
                 }
               } else if (stat.isDirectory()) {
+                if (occupancy.unavailable || occupancy.roots.has(resolve(versionPath))) continue;
                 // Directory → symlink: cannot be atomic, but run.cjs now
                 // handles missing targets gracefully (issue #1007).
                 rmSync(versionPath, { recursive: true, force: true });

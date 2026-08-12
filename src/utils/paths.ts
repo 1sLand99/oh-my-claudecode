@@ -6,10 +6,11 @@
  * (which work universally) and handle platform-specific directory conventions.
  */
 
-import { join, dirname } from 'path';
+import { join, dirname, resolve } from 'path';
 import { existsSync, readFileSync, readdirSync, statSync, lstatSync, unlinkSync, rmSync, renameSync, symlinkSync } from 'fs';
 import { homedir } from 'os';
 import { getClaudeConfigDir } from './config-dir.js';
+import { readOccupiedPluginRoots } from './cache-occupancy.js';
 
 /**
  * Convert a path to use forward slashes (for JSON/config files)
@@ -465,10 +466,8 @@ function stripTrailing(p: string): string {
   return toForwardSlash(p).replace(/\/+$/, '');
 }
 
-/** Default grace period: skip directories modified within the last 24 hours.
- * Extended from 1 hour to 24 hours to avoid deleting cache directories that
- * are still referenced by long-running sessions via CLAUDE_PLUGIN_ROOT. */
-const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
+/** Short install/update race guard. Session occupancy is the liveness source. */
+const STALE_THRESHOLD_MS = 10 * 60 * 1000;
 
 /**
  * Compare two semver-like version strings descending (higher version first).
@@ -534,6 +533,7 @@ export function purgeStalePluginCacheVersions(options?: { skipGracePeriod?: bool
   }
 
   const now = Date.now();
+  const occupancy = readOccupiedPluginRoots(configDir);
   const activePathsArray = [...activePaths];
 
   for (const marketplace of marketplaces) {
@@ -667,6 +667,14 @@ export function purgeStalePluginCacheVersions(options?: { skipGracePeriod?: bool
           // accumulate real dirs indefinitely").  A session pinned here is
           // therefore protected only by the grace period, whose mtime signal
           // does not track liveness; that is tracked separately in #3688.
+          // A no-sibling directory is the only destructive cleanup path.  A
+          // session-start occupancy record protects it; registry failures also
+          // fail closed rather than treating mtime as a liveness signal.
+          if (occupancy.unavailable || occupancy.roots.has(resolve(versionDir))) {
+            result.skipped++;
+            result.skippedPaths.push(versionDir);
+            continue;
+          }
           if (safeRmSync(versionDir)) {
             result.removed++;
             result.removedPaths.push(versionDir);
