@@ -228,19 +228,15 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   promote:
-    name: Promote released commit to main (marketplace alignment)
+    name: Assert marketplace promotion before release
     if: github.event_name == 'push'
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
     runs-on: ubuntu-latest
     env:
       RELEASE_VERSION: ${{ github.ref_name }}
       RELEASE_TAG: ${{ github.ref_name }}
       RELEASE_SHA: ${{ github.sha }}
-    outputs:
-      promotion-pr-url: ${{ steps.create-pr.outputs.pull-request-url }}
-      main-promoted: ${{ steps.verify-promotion.outputs.promoted }}
     steps:
       - name: Checkout with full history
         uses: actions/checkout@v4
@@ -256,129 +252,27 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Determine if main is already aligned
-        id: check-aligned
+      - name: Assert tag and marketplace promotion
         run: |
           set -euo pipefail
           RELEASE_VERSION="${RELEASE_VERSION#v}"
-          echo "RELEASE_VERSION=$RELEASE_VERSION" >> "$GITHUB_ENV"
+          git fetch --no-tags --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          TAG_OBJECT=$(git rev-parse --verify "refs/tags/$RELEASE_TAG")
+          test "$(git cat-file -t "$TAG_OBJECT")" = "tag"
+          RELEASE_SHA=$(git rev-parse --verify "refs/tags/$RELEASE_TAG^{}")
+          test "$RELEASE_SHA" = "$GITHUB_SHA"
+          node scripts/release-boundary.mjs assert-trigger --tag "$RELEASE_TAG" --sha "$RELEASE_SHA"
           case "$RELEASE_VERSION" in
-            *-alpha.*|*-beta.*|*-rc.*)
-              echo "aligned=true" >> "$GITHUB_OUTPUT"
-              echo "Skipping marketplace promotion for prerelease v$RELEASE_VERSION"
+            *-*)
+              echo "Skipping marketplace promotion assertion for prerelease v$RELEASE_VERSION"
               exit 0
               ;;
           esac
-          # Check if main's marketplace metadata already matches the released version.
-          if node scripts/release-boundary.mjs assert-marketplace-consistency \
-            --ref origin/main \
-            --version "$RELEASE_VERSION" \
-            --sha "$RELEASE_SHA" 2>/dev/null; then
-            echo "aligned=true" >> "$GITHUB_OUTPUT"
-            echo "✅ main is already at v$RELEASE_VERSION ($RELEASE_SHA)"
-          else
-            echo "aligned=false" >> "$GITHUB_OUTPUT"
-            echo "⚠️ main is not yet at v$RELEASE_VERSION; a promotion PR is required"
-          fi
-
-      - name: Create or update promotion pull request
-        id: create-pr
-        if: steps.check-aligned.outputs.aligned != 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          PR_TITLE="chore: promote dev to main for v${RELEASE_VERSION} release"
-          PR_BODY=$(cat <<BODY
-          ## Promotion PR for v${RELEASE_VERSION}
-
-          This PR was created automatically by the release workflow to align the
-          protected main branch (default branch / marketplace clone source) with
-          the released commit.
-
-          **Released tag:** \`${RELEASE_TAG}\`
-          **Released commit:** \`${RELEASE_SHA}\`
-
-          The marketplace clones the default branch \`main\`. When main falls
-          behind the released version, marketplace consumers get stale code even
-          though npm and GitHub Releases are up to date (#3676).
-
-          This promotion PR must be reviewed and merged so that main carries the
-          same marketplace/plugin/package version as the npm registry and GitHub
-          Release. The release workflow will fail closed until main is aligned.
-
-          Closes #3676
-          BODY
-          )
-
-          # Search for an existing open promotion PR with the same head branch.
-          EXISTING_PR_NUMBER=$(gh pr list \
-            --base main \
-            --head "promote/v${RELEASE_VERSION}" \
-            --state open \
-            --json number \
-            --jq '.[0].number' 2>/dev/null || echo "")
-
-          if [ -n "$EXISTING_PR_NUMBER" ]; then
-            echo "Updating existing promotion PR #$EXISTING_PR_NUMBER"
-            gh pr edit "$EXISTING_PR_NUMBER" \
-              --title "$PR_TITLE" \
-              --body "$PR_BODY" || true
-            echo "pull-request-url=$(gh pr view "$EXISTING_PR_NUMBER" --json url --jq '.url')" >> "$GITHUB_OUTPUT"
-          else
-            BRANCH="promote/v${RELEASE_VERSION}"
-            if ! gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
-              -f "ref=refs/heads/$BRANCH" -f "sha=$RELEASE_SHA"; then
-              git fetch --no-tags --force origin "$BRANCH:refs/remotes/origin/$BRANCH"
-              test "$(git rev-parse "origin/$BRANCH")" = "$RELEASE_SHA"
-            fi
-            echo "Creating new promotion PR from $BRANCH"
-            gh pr create \
-              --base main \
-              --head "$BRANCH" \
-              --title "$PR_TITLE" \
-              --body "$PR_BODY" \
-              --label "release-promotion" \
-              > pr-url.txt || true
-            # If label fails (doesn't exist), retry without it.
-            if [ ! -s pr-url.txt ]; then
-              gh pr create \
-                --base main \
-                --head "promote/v${RELEASE_VERSION}" \
-                --title "$PR_TITLE" \
-                --body "$PR_BODY" \
-                > pr-url.txt
-            fi
-            echo "pull-request-url=$(cat pr-url.txt)" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Verify main promotion (fail closed)
-        id: verify-promotion
-        run: |
-          set -euo pipefail
-          if [ "${{ steps.check-aligned.outputs.aligned }}" = "true" ]; then
-            echo "promoted=true" >> "$GITHUB_OUTPUT"
-            echo "✅ main is aligned with v${RELEASE_VERSION}"
-            exit 0
-          fi
-
           git fetch --no-tags --force origin main:refs/remotes/origin/main
-          # Main is not aligned. Re-check after creating or updating the PR.
-          if node scripts/release-boundary.mjs assert-marketplace-consistency \
+          node scripts/release-boundary.mjs assert-marketplace-consistency \
             --ref origin/main \
             --version "$RELEASE_VERSION" \
-            --sha "$RELEASE_SHA" 2>/dev/null; then
-            echo "promoted=true" >> "$GITHUB_OUTPUT"
-            echo "✅ main was promoted to v${RELEASE_VERSION} during this run"
-            exit 0
-          fi
-
-          echo "promoted=false" >> "$GITHUB_OUTPUT"
-          echo "::error::main has NOT been promoted to v${RELEASE_VERSION}. The release is incomplete until the promotion PR is merged and main carries the released marketplace version."
-          echo "::error::Promotion PR: ${{ steps.create-pr.outputs.pull-request-url }}"
-          echo "::error::Marketplace clones default branch main; until main is aligned, consumers get v$(node -e 'const m = JSON.parse(require("fs").readFileSync(".claude-plugin/marketplace.json","utf8")); process.stdout.write(m.version)') instead of v${RELEASE_VERSION}."
-          exit 1
+            --sha "$RELEASE_SHA"
 
   recover:
     name: Recover GitHub Release
