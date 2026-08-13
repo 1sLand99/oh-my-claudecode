@@ -12,6 +12,7 @@ import * as releaseBoundary from '../../scripts/release-boundary.mjs';
 const {
   assertArchive,
   assertEvidence,
+  assertMarketplaceConsistency,
   assertNpmAbsent,
   assertSlsaProvenance,
   assertSigstoreFallback,
@@ -730,6 +731,266 @@ describe('release-boundary.mjs', () => {
       expect(classifySigstoreRekorFailure(competingLog)).toBeNull();
       writeFileSync(publishLogPath, competingLog);
       expect(() => assertSigstoreFallback(publishLogPath)).toThrow('exactly one recognized');
+    }
+  });
+});
+
+describe('assert-marketplace-consistency', () => {
+  function createPromotionRepository(opts: {
+    version?: string;
+    pluginName?: string;
+    marketplaceSource?: string;
+    claudeMdVersion?: string;
+    packageVersion?: string;
+    branch?: string;
+  } = {}): { root: string; sha: string; tag: string } {
+    const version = opts.version ?? VERSION;
+    const pluginName = opts.pluginName ?? 'oh-my-claudecode';
+    const marketplaceSource = opts.marketplaceSource ?? './';
+    const root = makeTempRoot('release-boundary-promotion-');
+    mkdirSync(join(root, '.claude-plugin'), { recursive: true });
+    mkdirSync(join(root, '.github'), { recursive: true });
+    mkdirSync(join(root, 'docs'), { recursive: true });
+
+    writeFileSync(join(root, 'package.json'), JSON.stringify({
+      name: PACKAGE_NAME,
+      version: opts.packageVersion ?? version,
+      bin: {
+        'oh-my-claudecode': 'bin/oh-my-claudecode.js',
+        omc: 'bin/oh-my-claudecode.js',
+        'omc-cli': 'bridge/cli.cjs',
+      },
+    }, null, 2));
+
+    writeFileSync(join(root, '.claude-plugin', 'plugin.json'), JSON.stringify({
+      name: pluginName,
+      version,
+    }));
+
+    writeFileSync(join(root, '.claude-plugin', 'marketplace.json'), JSON.stringify({
+      version,
+      plugins: [{
+        name: 'oh-my-claudecode',
+        version,
+        source: marketplaceSource,
+      }],
+    }));
+
+    writeFileSync(join(root, 'docs', 'CLAUDE.md'), `<!-- OMC:VERSION:${opts.claudeMdVersion ?? version} -->\n`);
+
+    execFileSync('git', ['init'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.name', 'Promotion Test'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.email', 'promotion@example.test'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['checkout', '-b', 'main'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['add', '.'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', 'promotion fixture'], { cwd: root, stdio: 'ignore' });
+    const sha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+
+    // Create the ref that will be checked (origin/main or just main)
+    if (opts.branch && opts.branch !== 'main') {
+      execFileSync('git', ['branch', opts.branch], { cwd: root, stdio: 'ignore' });
+    }
+
+    return { root, sha, tag: `v${version}` };
+  }
+
+  function commitVersionBump(root: string, version: string, _sha?: string): void {
+    // Update all metadata files and commit as a new commit on main
+    writeFileSync(join(root, 'package.json'), JSON.stringify({
+      name: PACKAGE_NAME,
+      version,
+      bin: {
+        'oh-my-claudecode': 'bin/oh-my-claudecode.js',
+        omc: 'bin/oh-my-claudecode.js',
+        'omc-cli': 'bridge/cli.cjs',
+      },
+    }, null, 2));
+    writeFileSync(join(root, '.claude-plugin', 'plugin.json'), JSON.stringify({
+      name: 'oh-my-claudecode',
+      version,
+    }));
+    writeFileSync(join(root, '.claude-plugin', 'marketplace.json'), JSON.stringify({
+      version,
+      plugins: [{ name: 'oh-my-claudecode', version, source: './' }],
+    }));
+    writeFileSync(join(root, 'docs', 'CLAUDE.md'), `<!-- OMC:VERSION:${version} -->\n`);
+    execFileSync('git', ['add', '.'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', `bump to ${version}`], { cwd: root, stdio: 'ignore' });
+  }
+
+  it('passes when main carries all marketplace surfaces at the released version', () => {
+    const { root, sha } = createPromotionRepository();
+    const result = assertMarketplaceConsistency({
+      ref: 'main',
+      version: VERSION,
+      sha,
+      cwd: root,
+    });
+    expect(result).toEqual({ version: VERSION, ref: 'main', promoted: true });
+  });
+
+  it('passes without --sha when metadata matches even if commit differs', () => {
+    const { root } = createPromotionRepository();
+    // Add an extra commit so the ref SHA differs but metadata stays the same.
+    writeFileSync(join(root, '.gitignore'), 'node_modules\n');
+    execFileSync('git', ['add', '.'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', 'add gitignore'], { cwd: root, stdio: 'ignore' });
+
+    const result = assertMarketplaceConsistency({
+      ref: 'main',
+      version: VERSION,
+      cwd: root,
+    });
+    expect(result.promoted).toBe(true);
+  });
+
+  it('fails when main is at an older version (the issue #3676 scenario)', () => {
+    const { root, sha } = createPromotionRepository({ version: '4.15.7' });
+    // sha is the v4.15.7 commit, but we check against v4.15.10
+    expect(() => assertMarketplaceConsistency({
+      ref: 'main',
+      version: '4.15.10',
+      sha,
+      cwd: root,
+    })).toThrow('must advertise');
+  });
+
+  it('fails when plugin.json has wrong name', () => {
+    const { root, sha } = createPromotionRepository({ pluginName: 'wrong-plugin' });
+    expect(() => assertMarketplaceConsistency({
+      ref: 'main',
+      version: VERSION,
+      sha,
+      cwd: root,
+    })).toThrow('must advertise');
+  });
+
+  it('fails when marketplace.json plugin entry has wrong source', () => {
+    const { root, sha } = createPromotionRepository({ marketplaceSource: './wrong' });
+    expect(() => assertMarketplaceConsistency({
+      ref: 'main',
+      version: VERSION,
+      sha,
+      cwd: root,
+    })).toThrow('plugin entry must match');
+  });
+
+  it('fails when docs/CLAUDE.md version marker is stale', () => {
+    const { root, sha } = createPromotionRepository({ claudeMdVersion: '4.15.0' });
+    expect(() => assertMarketplaceConsistency({
+      ref: 'main',
+      version: VERSION,
+      sha,
+      cwd: root,
+    })).toThrow('OMC version marker');
+  });
+
+  it('fails when docs/CLAUDE.md has duplicate version markers', () => {
+    const { root, sha } = createPromotionRepository();
+    writeFileSync(
+      join(root, 'docs', 'CLAUDE.md'),
+      `<!-- OMC:VERSION:4.15.0 -->\n<!-- OMC:VERSION:${VERSION} -->\n`,
+    );
+    execFileSync('git', ['add', '.'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', 'duplicate docs marker'], { cwd: root, stdio: 'ignore' });
+
+    expect(() => assertMarketplaceConsistency({
+      ref: 'main',
+      version: VERSION,
+      sha,
+      cwd: root,
+    })).toThrow('exactly one OMC version marker');
+  });
+
+  it('fails when package.json version is stale', () => {
+    const { root, sha } = createPromotionRepository({ packageVersion: '4.15.0' });
+    expect(() => assertMarketplaceConsistency({
+      ref: 'main',
+      version: VERSION,
+      sha,
+      cwd: root,
+    })).toThrow('must advertise');
+  });
+
+  it('fails when main does not contain the released commit', () => {
+    const { root } = createPromotionRepository();
+    const wrongSha = 'b'.repeat(40);
+    expect(() => assertMarketplaceConsistency({
+      ref: 'main',
+      version: VERSION,
+      sha: wrongSha,
+      cwd: root,
+    })).toThrow('does not contain released commit');
+  });
+
+  it('passes when a protected-main merge commit contains the released commit', () => {
+    const { root, sha } = createPromotionRepository();
+    writeFileSync(join(root, '.gitignore'), 'node_modules\n');
+    execFileSync('git', ['add', '.'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', 'protected-main merge closure'], { cwd: root, stdio: 'ignore' });
+
+    expect(assertMarketplaceConsistency({
+      ref: 'main',
+      version: VERSION,
+      sha,
+      cwd: root,
+    })).toEqual({ version: VERSION, ref: 'main', promoted: true });
+  });
+
+  it('fails when ref does not exist', () => {
+    const { root } = createPromotionRepository();
+    expect(() => assertMarketplaceConsistency({
+      ref: 'nonexistent-branch',
+      version: VERSION,
+      cwd: root,
+    })).toThrow();
+  });
+
+  it('works with a non-main ref (origin/main simulation)', () => {
+    const { root, sha } = createPromotionRepository({ branch: 'origin/main' });
+    const result = assertMarketplaceConsistency({
+      ref: 'origin/main',
+      version: VERSION,
+      sha,
+      cwd: root,
+    });
+    expect(result).toEqual({ version: VERSION, ref: 'origin/main', promoted: true });
+  });
+
+  it('detects main movement: passes after promotion commit is merged', () => {
+    // Start main at old version, then promote to new version
+    const { root } = createPromotionRepository({ version: '4.15.7' });
+    // Now bump to 4.15.10
+    commitVersionBump(root, '4.15.10', '');
+    const newSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+    const result = assertMarketplaceConsistency({
+      ref: 'main',
+      version: '4.15.10',
+      sha: newSha,
+      cwd: root,
+    });
+    expect(result).toEqual({ version: '4.15.10', ref: 'main', promoted: true });
+  });
+
+  it('exposes assert-marketplace-consistency through cliMain', async () => {
+    const { root, sha } = createPromotionRepository();
+    const originalCwd = process.cwd();
+    process.chdir(root);
+    try {
+      await expect(cliMain([
+        'assert-marketplace-consistency',
+        '--ref', 'main',
+        '--version', VERSION,
+        '--sha', sha,
+      ])).resolves.toBeUndefined();
+
+      await expect(cliMain([
+        'assert-marketplace-consistency',
+        '--ref', 'main',
+        '--version', '4.15.0',
+      ])).rejects.toThrow('must advertise');
+    } finally {
+      process.chdir(originalCwd);
     }
   });
 });

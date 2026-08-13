@@ -23,6 +23,7 @@ jobs:
   release:
     name: Create GitHub Release
     if: github.event_name == 'push'
+    needs: promote
     permissions:
       contents: write
       id-token: write
@@ -156,6 +157,15 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Re-assert marketplace promotion before publish
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          git fetch --no-tags --force origin main:refs/remotes/origin/main
+          node scripts/release-boundary.mjs assert-marketplace-consistency \
+            --ref origin/main \
+            --version "$VERSION" \
+            --sha "$GITHUB_SHA"
+
       - name: Publish exact archive and verify registry
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
@@ -225,6 +235,53 @@ jobs:
           prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  promote:
+    name: Assert marketplace promotion before release
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_VERSION: ${{ github.ref_name }}
+      RELEASE_TAG: ${{ github.ref_name }}
+      RELEASE_SHA: ${{ github.sha }}
+    steps:
+      - name: Checkout with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fetch origin main
+        run: git fetch --no-tags --force origin main:refs/remotes/origin/main
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Assert tag and marketplace promotion
+        run: |
+          set -euo pipefail
+          RELEASE_VERSION="${RELEASE_VERSION#v}"
+          git fetch --no-tags --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          TAG_OBJECT=$(git rev-parse --verify "refs/tags/$RELEASE_TAG")
+          test "$(git cat-file -t "$TAG_OBJECT")" = "tag"
+          RELEASE_SHA=$(git rev-parse --verify "refs/tags/$RELEASE_TAG^{}")
+          test "$RELEASE_SHA" = "$GITHUB_SHA"
+          node scripts/release-boundary.mjs assert-trigger --tag "$RELEASE_TAG" --sha "$RELEASE_SHA"
+          case "$RELEASE_VERSION" in
+            *-*)
+              echo "::error::Prerelease publication is not supported by this stable-release workflow"
+              exit 1
+              ;;
+          esac
+          git fetch --no-tags --force origin main:refs/remotes/origin/main
+          node scripts/release-boundary.mjs assert-marketplace-consistency \
+            --ref origin/main \
+            --version "$RELEASE_VERSION" \
+            --sha "$RELEASE_SHA"
 
   recover:
     name: Recover GitHub Release
