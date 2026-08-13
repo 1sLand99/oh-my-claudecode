@@ -745,12 +745,15 @@ describe('release generation', () => {
     expect(workflow).not.toContain('pull-requests: write');
     expect(workflow).toContain('RELEASE_VERSION="${RELEASE_VERSION#v}"');
     expect(workflow).toContain('*-*)');
-    expect(workflow).toContain('Skipping marketplace promotion assertion for prerelease');
+    expect(workflow).toContain('Prerelease publication is not supported by this stable-release workflow');
     expect(workflow).not.toContain('gh pr create');
     expect(workflow).not.toContain('gh api --method POST');
     expect(workflow).toContain('test "$(git cat-file -t "$TAG_OBJECT")" = "tag"');
     expect(workflow).toContain('node scripts/release-boundary.mjs assert-trigger --tag "$RELEASE_TAG" --sha "$RELEASE_SHA"');
     expect(workflow).toContain('git fetch --no-tags --force origin main:refs/remotes/origin/main');
+    expect(workflow).toContain('- name: Re-assert marketplace promotion before publish');
+    expect(workflow.indexOf('name: Re-assert marketplace promotion before publish'))
+      .toBeLessThan(workflow.indexOf('name: Publish exact archive and verify registry'));
     const releaseJob = workflow.indexOf('  release:\n');
     const promoteJob = workflow.indexOf('  promote:\n');
     expect(releaseJob).toBeGreaterThanOrEqual(0);

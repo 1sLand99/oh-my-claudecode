@@ -741,8 +741,9 @@ export function assertMarketplaceConsistency({ ref, version, sha, cwd = process.
   }
 
   const refClaudeMd = gitShowFile(cwd, ref, refClaudeMdPath);
-  if (!refClaudeMd.includes(`<!-- OMC:VERSION:${expectedVersion} -->`)) {
-    fail(`${ref}:${refClaudeMdPath} must advertise ${expectedVersion} via the OMC version marker`);
+  const versionMarkers = [...refClaudeMd.matchAll(/<!-- OMC:VERSION:([^\s>]+) -->/g)];
+  if (versionMarkers.length !== 1 || versionMarkers[0][1] !== expectedVersion) {
+    fail(`${ref}:${refClaudeMdPath} must contain exactly one OMC version marker for ${expectedVersion}`);
   }
 
   const refPackageText = gitShowFile(cwd, ref, refPackagePath);

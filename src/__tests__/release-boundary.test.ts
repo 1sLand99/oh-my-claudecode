@@ -885,6 +885,23 @@ describe('assert-marketplace-consistency', () => {
     })).toThrow('OMC version marker');
   });
 
+  it('fails when docs/CLAUDE.md has duplicate version markers', () => {
+    const { root, sha } = createPromotionRepository();
+    writeFileSync(
+      join(root, 'docs', 'CLAUDE.md'),
+      `<!-- OMC:VERSION:4.15.0 -->\n<!-- OMC:VERSION:${VERSION} -->\n`,
+    );
+    execFileSync('git', ['add', '.'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', 'duplicate docs marker'], { cwd: root, stdio: 'ignore' });
+
+    expect(() => assertMarketplaceConsistency({
+      ref: 'main',
+      version: VERSION,
+      sha,
+      cwd: root,
+    })).toThrow('exactly one OMC version marker');
+  });
+
   it('fails when package.json version is stale', () => {
     const { root, sha } = createPromotionRepository({ packageVersion: '4.15.0' });
     expect(() => assertMarketplaceConsistency({

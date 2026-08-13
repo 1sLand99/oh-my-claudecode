@@ -157,6 +157,15 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Re-assert marketplace promotion before publish
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          git fetch --no-tags --force origin main:refs/remotes/origin/main
+          node scripts/release-boundary.mjs assert-marketplace-consistency \
+            --ref origin/main \
+            --version "$VERSION" \
+            --sha "$GITHUB_SHA"
+
       - name: Publish exact archive and verify registry
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
@@ -264,8 +273,8 @@ jobs:
           node scripts/release-boundary.mjs assert-trigger --tag "$RELEASE_TAG" --sha "$RELEASE_SHA"
           case "$RELEASE_VERSION" in
             *-*)
-              echo "Skipping marketplace promotion assertion for prerelease v$RELEASE_VERSION"
-              exit 0
+              echo "::error::Prerelease publication is not supported by this stable-release workflow"
+              exit 1
               ;;
           esac
           git fetch --no-tags --force origin main:refs/remotes/origin/main
