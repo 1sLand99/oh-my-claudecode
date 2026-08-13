@@ -40,7 +40,6 @@ const REQUIRED_ENTRYPOINTS = Object.freeze([
   'bridge/runtime-cli.cjs',
   'bridge/team.js',
 ]);
-const PRERELEASE_PATTERN = /-(?:alpha|beta|rc)\.\d+/;
 const MARKETPLACE_PLUGIN_SOURCE = './';
 const MARKETPLACE_FILES = Object.freeze([
   '.claude-plugin/plugin.json',
@@ -691,20 +690,22 @@ function escapeRegExp(value) {
 export function assertMarketplaceConsistency({ ref, version, sha, cwd = process.cwd() }) {
   const expectedVersion = requireVersion(version);
   requireString(ref, 'ref');
-  const isPrerelease = PRERELEASE_PATTERN.test(expectedVersion);
 
   // Verify the ref exists in the local repository.
   const refCommit = git(cwd, ['rev-parse', ref]);
 
-  // If sha is provided, the ref must point at exactly that commit.
+  // A protected-main promotion normally creates a merge commit. Require the
+  // released commit to be reachable from the ref rather than requiring it to
+  // remain the tip after that merge.
   if (sha !== undefined) {
     const expectedSha = requireSha(sha);
-    if (refCommit !== expectedSha) {
-      fail(
-        isPrerelease
-          ? `prerelease ${expectedVersion}: ref ${ref} is at ${refCommit}, expected ${expectedSha} (prerelease promotion is informational; merge the release branch to main before tagging a stable release)`
-          : `main ref ${ref} is at ${refCommit} but the released commit is ${expectedSha}; main has not been promoted to v${expectedVersion}`,
-      );
+    try {
+      execFileSync('git', ['merge-base', '--is-ancestor', expectedSha, ref], {
+        cwd,
+        stdio: 'ignore',
+      });
+    } catch {
+      fail(`main ref ${ref} at ${refCommit} does not contain released commit ${expectedSha}; main has not been promoted to v${expectedVersion}`);
     }
   }
 

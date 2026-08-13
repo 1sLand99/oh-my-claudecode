@@ -895,7 +895,7 @@ describe('assert-marketplace-consistency', () => {
     })).toThrow('must advertise');
   });
 
-  it('fails when sha mismatch and main not promoted', () => {
+  it('fails when main does not contain the released commit', () => {
     const { root } = createPromotionRepository();
     const wrongSha = 'b'.repeat(40);
     expect(() => assertMarketplaceConsistency({
@@ -903,7 +903,21 @@ describe('assert-marketplace-consistency', () => {
       version: VERSION,
       sha: wrongSha,
       cwd: root,
-    })).toThrow('has not been promoted');
+    })).toThrow('does not contain released commit');
+  });
+
+  it('passes when a protected-main merge commit contains the released commit', () => {
+    const { root, sha } = createPromotionRepository();
+    writeFileSync(join(root, '.gitignore'), 'node_modules\n');
+    execFileSync('git', ['add', '.'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', 'protected-main merge closure'], { cwd: root, stdio: 'ignore' });
+
+    expect(assertMarketplaceConsistency({
+      ref: 'main',
+      version: VERSION,
+      sha,
+      cwd: root,
+    })).toEqual({ version: VERSION, ref: 'main', promoted: true });
   });
 
   it('fails when ref does not exist', () => {

@@ -733,4 +733,27 @@ describe('release generation', () => {
     expect(recoveryVerificationStep).toContain('GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}');
     expect(recoveryVerificationStep.indexOf('- name:', 1)).toBe(-1);
   });
+
+  it('promotes stable releases before publication and leaves prereleases on their release branch', () => {
+    const workflow = readFileSync(
+      resolve(process.cwd(), '.github/workflows/release.yml'),
+      'utf-8',
+    );
+
+    expect(workflow).toContain('needs: promote');
+    expect(workflow).toContain('contents: write');
+    expect(workflow).toContain('pull-requests: write');
+    expect(workflow).toContain('RELEASE_VERSION="${RELEASE_VERSION#v}"');
+    expect(workflow).toContain('*-alpha.*|*-beta.*|*-rc.*)');
+    expect(workflow).toContain('Skipping marketplace promotion for prerelease');
+    expect(workflow).toContain('repos/$GITHUB_REPOSITORY/git/refs');
+    expect(workflow).toContain('ref=refs/heads/$BRANCH');
+    expect(workflow).toContain('sha=$RELEASE_SHA');
+    expect(workflow).toContain('git fetch --no-tags --force origin main:refs/remotes/origin/main');
+    const releaseJob = workflow.indexOf('  release:\n');
+    const promoteJob = workflow.indexOf('  promote:\n');
+    expect(releaseJob).toBeGreaterThanOrEqual(0);
+    expect(promoteJob).toBeGreaterThanOrEqual(0);
+    expect(workflow.slice(releaseJob, promoteJob)).toContain('needs: promote');
+  });
 });

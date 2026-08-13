@@ -23,20 +23,11 @@ jobs:
   release:
     name: Create GitHub Release
     if: github.event_name == 'push'
+    needs: promote
     permissions:
       contents: write
       id-token: write
     runs-on: ubuntu-latest
-    outputs:
-      version:
-        description: "Released version (without v prefix)"
-        value: ${{ steps.release-info.outputs.version }}
-      tag:
-        description: "Released tag name (with v prefix)"
-        value: ${{ steps.release-info.outputs.tag }}
-      sha:
-        description: "Released commit SHA"
-        value: ${{ steps.release-info.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -57,7 +48,6 @@ jobs:
         run: npm ci
 
       - name: Assert release trigger and npm availability
-        id: release-info
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           git fetch --no-tags --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
@@ -67,9 +57,6 @@ jobs:
           test "$RELEASE_SHA" = "$GITHUB_SHA"
           node scripts/release-boundary.mjs assert-trigger --tag "$GITHUB_REF_NAME" --sha "$RELEASE_SHA"
           node scripts/release-boundary.mjs assert-npm-absent --package oh-my-claude-sisyphus --version "$VERSION"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
-          echo "sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Validate release notes
         run: |
@@ -244,14 +231,13 @@ jobs:
     name: Promote released commit to main (marketplace alignment)
     if: github.event_name == 'push'
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
     runs-on: ubuntu-latest
-    needs: release
     env:
-      RELEASE_VERSION: ${{ needs.release.outputs.version }}
-      RELEASE_TAG: ${{ needs.release.outputs.tag }}
-      RELEASE_SHA: ${{ needs.release.outputs.sha }}
+      RELEASE_VERSION: ${{ github.ref_name }}
+      RELEASE_TAG: ${{ github.ref_name }}
+      RELEASE_SHA: ${{ github.sha }}
     outputs:
       promotion-pr-url: ${{ steps.create-pr.outputs.pull-request-url }}
       main-promoted: ${{ steps.verify-promotion.outputs.promoted }}
@@ -274,6 +260,15 @@ jobs:
         id: check-aligned
         run: |
           set -euo pipefail
+          RELEASE_VERSION="${RELEASE_VERSION#v}"
+          echo "RELEASE_VERSION=$RELEASE_VERSION" >> "$GITHUB_ENV"
+          case "$RELEASE_VERSION" in
+            *-alpha.*|*-beta.*|*-rc.*)
+              echo "aligned=true" >> "$GITHUB_OUTPUT"
+              echo "Skipping marketplace promotion for prerelease v$RELEASE_VERSION"
+              exit 0
+              ;;
+          esac
           # Check if main's marketplace metadata already matches the released version.
           if node scripts/release-boundary.mjs assert-marketplace-consistency \
             --ref origin/main \
@@ -332,10 +327,16 @@ jobs:
               --body "$PR_BODY" || true
             echo "pull-request-url=$(gh pr view "$EXISTING_PR_NUMBER" --json url --jq '.url')" >> "$GITHUB_OUTPUT"
           else
-            echo "Creating new promotion PR"
+            BRANCH="promote/v${RELEASE_VERSION}"
+            if ! gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f "ref=refs/heads/$BRANCH" -f "sha=$RELEASE_SHA"; then
+              git fetch --no-tags --force origin "$BRANCH:refs/remotes/origin/$BRANCH"
+              test "$(git rev-parse "origin/$BRANCH")" = "$RELEASE_SHA"
+            fi
+            echo "Creating new promotion PR from $BRANCH"
             gh pr create \
               --base main \
-              --head "promote/v${RELEASE_VERSION}" \
+              --head "$BRANCH" \
               --title "$PR_TITLE" \
               --body "$PR_BODY" \
               --label "release-promotion" \
@@ -362,8 +363,8 @@ jobs:
             exit 0
           fi
 
-          # Main is not aligned. Re-check in case the PR was already merged
-          # between the check and now.
+          git fetch --no-tags --force origin main:refs/remotes/origin/main
+          # Main is not aligned. Re-check after creating or updating the PR.
           if node scripts/release-boundary.mjs assert-marketplace-consistency \
             --ref origin/main \
             --version "$RELEASE_VERSION" \
