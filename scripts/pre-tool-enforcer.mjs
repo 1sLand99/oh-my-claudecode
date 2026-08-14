@@ -851,8 +851,10 @@ function extractJsonField(input, field, defaultValue = '') {
 //
 // Name note: the canonical resolver normalizes `subagent-tracking` to
 // `<stateDir>/sessions/<sid>/subagent-tracking-state.json` (Wave-A layout) with
-// read fallback to `<stateDir>/subagent-tracking-state.json`. The pre-Wave-A
-// legacy file was plain `subagent-tracking.json` (still read by
+// read fallback to `<stateDir>/subagent-tracking-state.json`. When the
+// session-scoped file exists but is malformed, the canonical legacy file for
+// the same name is probed explicitly (never skipped). The pre-Wave-A legacy
+// file was plain `subagent-tracking.json` (still read by
 // session-end/post-tool-verifier and written by pre-Wave-A installs), so after
 // the canonical probe finds nothing the plain legacy filename is read
 // directly. When no sessionId is observable only the two legacy filenames are
@@ -865,16 +867,22 @@ async function getAgentTrackingInfo(stateDir, directory, sessionId = '') {
   // unvalidated path would let a payload like `../evil` escape the sessions
   // directory and read unrelated state (issue #3732 review).
   const safeSessionId = isValidSessionId(sessionId) ? sessionId : '';
-  const stateNames = safeSessionId
-    ? ['subagent-tracking', 'subagent-tracking.json']
-    : ['subagent-tracking.json'];
   const candidates = [];
-  for (const stateName of stateNames) {
-    try {
-      const { readPath } = await resolveSessionStatePathsForHook(directory, stateName, safeSessionId || undefined);
-      candidates.push(readPath);
-    } catch {}
-  }
+  try {
+    // Session-scoped effective read for the canonical state name (scoped-first
+    // with canonical-legacy read fallback).
+    const { readPath } = await resolveSessionStatePathsForHook(directory, 'subagent-tracking', safeSessionId || undefined);
+    candidates.push(readPath);
+    // Explicit canonical legacy read: when the session-scoped file exists but
+    // is malformed the effective read above points at it, and without this
+    // probe the valid <stateDir>/subagent-tracking-state.json would be
+    // silently skipped. The canonical legacy file is probed even when no
+    // session id is observable (issue #3732 review). Both reads stay owned by
+    // the canonical resolver — never the suffixed `subagent-tracking.json`
+    // state name, which the resolver would corrupt into `-state.json`.
+    const legacy = await resolveSessionStatePathsForHook(directory, 'subagent-tracking', undefined);
+    if (legacy.readPath !== readPath) candidates.push(legacy.readPath);
+  } catch {}
   // Pre-Wave-A legacy filename, read directly (outside the canonical naming
   // scheme) so old installs keep working. resolveSessionStatePathsForHook
   // appends `-state.json`, which would corrupt a name that already ends in

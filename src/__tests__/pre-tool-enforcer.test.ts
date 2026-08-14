@@ -3011,6 +3011,53 @@ describe('pre-tool-enforcer session-scoped agent tracking (issue #3732)', () => 
     expect(advisory).toContain('Active agents: 1');
   });
 
+  it('does not let a malformed scoped canonical file suppress the canonical legacy file', () => {
+    const sessionId = 'session-3732-malformed-scoped-canonical';
+    // The session-scoped canonical file exists but is shape-corrupt; the
+    // canonical legacy file for the SAME state name holds the valid data. The
+    // resolver's effective read points at the (malformed) scoped file, so the
+    // legacy file must still be probed explicitly instead of being skipped.
+    writeJson(join(tempDir, '.omc', 'state', 'sessions', sessionId, 'subagent-tracking-state.json'), {
+      agents: 'corrupt',
+    });
+    writeJson(join(tempDir, '.omc', 'state', 'subagent-tracking-state.json'), {
+      agents: [
+        { agent_id: 'c1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+      ],
+      total_spawned: 11,
+      last_updated: new Date().toISOString(),
+    });
+
+    const output = spawnAdvisory(sessionId);
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    expect(advisory).toContain('Active agents: 1');
+  });
+
+  it('reads the canonical legacy file when no session id is observable', () => {
+    // No session_id in the payload: the canonical legacy
+    // subagent-tracking-state.json must still be probed (the suffixed state
+    // name the pre-fix reader used normalizes to a nonexistent
+    // `-state.json` name and silently skipped it).
+    writeJson(join(tempDir, '.omc', 'state', 'subagent-tracking-state.json'), {
+      agents: [
+        { agent_id: 'c1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+      ],
+      total_spawned: 11,
+      last_updated: new Date().toISOString(),
+    });
+
+    const output = runPreToolEnforcer({
+      tool_name: 'Task',
+      cwd: tempDir,
+      toolInput: {
+        subagent_type: 'oh-my-claudecode:executor',
+        description: 'issue #3732 no-session regression',
+      },
+    });
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    expect(advisory).toContain('Active agents: 1');
+  });
+
   it('survives all-malformed tracking candidates with a zero count', () => {
     const sessionId = 'session-3732-all-malformed';
     writeJson(join(tempDir, '.omc', 'state', 'sessions', sessionId, 'subagent-tracking-state.json'), {
