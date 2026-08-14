@@ -547,15 +547,16 @@ function isIncomplete(todo: Todo): boolean {
  * Get the Task directory for a session
  *
  * NOTE: This path (~/.claude/tasks/{taskListId}/) mirrors Claude Code's task
- * store. The store identity is NOT always the session id: Claude Code resolves
- * the active task list id as CLAUDE_CODE_TASK_LIST_ID env override first, then
- * a team context name, then the session id. OmC hooks only receive session_id
- * in hook payloads, so we honor the documented env override here; when it is
- * absent the session id is the identity (the single-session case).
+ * store. The store identity is NOT always the session id: when the documented
+ * CLAUDE_CODE_TASK_LIST_ID env override is set, Claude Code reads and writes
+ * the store keyed by that id. Hook payloads carry only session_id and no
+ * observable team/teammate identity field, so OmC honors exactly the
+ * observable contract: the env override when set and valid, otherwise the
+ * session id (the single-session default).
  *
  * Issue #3732: reading with the session id while Claude Code writes under a
- * CLAUDE_CODE_TASK_LIST_ID/team identity makes successful writes invisible to
- * OmC readers — the "tasks disappeared" symptom.
+ * CLAUDE_CODE_TASK_LIST_ID identity makes successful writes invisible to OmC
+ * readers — the "tasks disappeared" symptom.
  */
 export function getTaskDirectory(sessionId: string): string {
   // Claude Code's documented task-list identity override takes precedence.

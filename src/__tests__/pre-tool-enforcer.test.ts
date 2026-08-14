@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { dirname, join } from 'path';
+import { basename, dirname, join } from 'path';
+import { createHash } from 'crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.unmock('child_process');
@@ -2902,6 +2903,60 @@ describe('pre-tool-enforcer session-scoped agent tracking (issue #3732)', () => 
 
     const output = spawnAdvisory(sessionId);
     const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    expect(advisory).toContain('Active agents: 1');
+  });
+  it('falls back to the canonical resolver legacy name when no session-scoped or plain legacy file exists', () => {
+    const sessionId = 'session-3732-canonical-legacy';
+    // The canonical resolver's legacy read path is
+    // .omc/state/subagent-tracking-state.json (normalized name), distinct from
+    // the pre-Wave-A plain subagent-tracking.json. The read must route through
+    // resolveSessionStatePathsForHook and honor this name too.
+    writeJson(join(tempDir, '.omc', 'state', 'subagent-tracking-state.json'), {
+      agents: [
+        { agent_id: 'c1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+      ],
+      total_spawned: 11,
+      total_completed: 10,
+      total_failed: 0,
+      last_updated: new Date().toISOString(),
+    });
+
+    const output = spawnAdvisory(sessionId);
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    expect(advisory).toContain('Active agents: 1');
+  });
+
+  it('resolves the session-scoped tracking read through OMC_STATE_DIR centralized state', () => {
+    const sessionId = 'session-3732-centralized';
+    const centralRoot = mkdtempSync(join(tmpdir(), 'pre-tool-enforcer-central-'));
+    const stateRoot = join(centralRoot, `${basename(tempDir)}-${createHash('sha256').update(tempDir).digest('hex').slice(0, 16)}`);
+    writeJson(join(stateRoot, 'state', 'sessions', sessionId, 'subagent-tracking-state.json'), {
+      agents: [
+        { agent_id: 'z1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+      ],
+      total_spawned: 4,
+      total_completed: 3,
+      total_failed: 0,
+      last_updated: new Date().toISOString(),
+    });
+
+    const output = runPreToolEnforcerWithEnv(
+      {
+        tool_name: 'Task',
+        cwd: tempDir,
+        session_id: sessionId,
+        toolInput: {
+          subagent_type: 'oh-my-claudecode:executor',
+          description: 'issue #3732 centralized regression',
+        },
+      },
+      { OMC_STATE_DIR: centralRoot },
+    );
+    rmSync(centralRoot, { recursive: true, force: true });
+
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    // The canonical resolver (not manual join(stateDir, ...)) routes the read
+    // into the centralized state root; a manual stateDir join would miss it.
     expect(advisory).toContain('Active agents: 1');
   });
 });

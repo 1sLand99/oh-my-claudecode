@@ -921,9 +921,11 @@ function isValidSessionId(sessionId) {
 /**
  * Count incomplete Tasks from Claude Code's native Task system.
  *
- * Claude Code resolves the task-store identity as CLAUDE_CODE_TASK_LIST_ID
- * first, then a team context, then the session id (issue #3732). Hook payloads
- * only carry session_id, so honor the env override when present.
+ * Identity contract (issue #3732): the task store is read at
+ * ~/.claude/tasks/<identity>/ where <identity> is the
+ * CLAUDE_CODE_TASK_LIST_ID env override when set and valid, otherwise the
+ * session id. Hook payloads expose no observable team/teammate identity
+ * field, so no implicit team inference is attempted.
  */
 function countIncompleteTasks(sessionId) {
   if (!sessionId || typeof sessionId !== "string") return 0;
