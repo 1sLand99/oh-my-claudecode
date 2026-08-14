@@ -16,7 +16,7 @@ import { getClaudeConfigDir } from './lib/config-dir.mjs';
 import { encodeProjectPath } from './lib/encode-project-path.mjs';
 import { evaluateAgentHeavyPreflight } from './lib/pre-tool-enforcer-preflight.mjs';
 import { evaluateForceAgentDelegation } from './lib/force-agent-delegation-preflight.mjs';
-import { resolveOmcStateRoot } from './lib/state-root.mjs';
+import { resolveOmcStateRoot, resolveSessionStatePathsForHook } from './lib/state-root.mjs';
 import { readStdin } from './lib/stdin.mjs';
 import { resolveConfiguredAgentModel } from './lib/agent-model-config.mjs';
 import { BOUNDED_GIT_TIMEOUT_MS } from './lib/bounded-git-timeout.mjs';
@@ -841,16 +841,66 @@ function extractJsonField(input, field, defaultValue = '') {
   }
 }
 
-// Get agent tracking info from state file
-function getAgentTrackingInfo(stateDir) {
-  const trackingFile = join(stateDir, 'subagent-tracking.json');
+// Get agent tracking info from state file.
+// Path resolution is owned by the canonical resolveSessionStatePathsForHook()
+// helper (validation/migration-aware, session-scoped-first read with legacy
+// fallback), so this reader cannot drift from the other OmC consumers again.
+// Issue #3732: the pre-fix manual path construction read legacy-only while
+// post-tool-verifier::getAgentCompletionSummary read session-scoped first,
+// producing contradicting agent counts for the same session.
+//
+// Name note: the canonical resolver normalizes `subagent-tracking` to
+// `<stateDir>/sessions/<sid>/subagent-tracking-state.json` (Wave-A layout) with
+// read fallback to `<stateDir>/subagent-tracking-state.json`. When the
+// session-scoped file exists but is malformed, the canonical legacy file for
+// the same name is probed explicitly (never skipped). The pre-Wave-A legacy
+// file was plain `subagent-tracking.json` (still read by
+// session-end/post-tool-verifier and written by pre-Wave-A installs), so after
+// the canonical probe finds nothing the plain legacy filename is read
+// directly. When no sessionId is observable only the two legacy filenames are
+// probed.
+async function getAgentTrackingInfo(stateDir, directory, sessionId = '') {
+  // The session id arrives from the hook payload and is influenceable, so it
+  // is validated against the canonical allowlist BEFORE any scoped resolution.
+  // An invalid id must skip every session-scoped candidate and only probe the
+  // safe legacy roots: the canonical resolver would throw on it, and the
+  // unvalidated path would let a payload like `../evil` escape the sessions
+  // directory and read unrelated state (issue #3732 review).
+  const safeSessionId = isValidSessionId(sessionId) ? sessionId : '';
+  const candidates = [];
   try {
-    if (existsSync(trackingFile)) {
-      const data = JSON.parse(readFileSync(trackingFile, 'utf-8'));
-      const running = (data.agents || []).filter(a => a.status === 'running').length;
-      return { running, total: data.total_spawned || 0 };
-    }
+    // Session-scoped effective read for the canonical state name (scoped-first
+    // with canonical-legacy read fallback).
+    const { readPath } = await resolveSessionStatePathsForHook(directory, 'subagent-tracking', safeSessionId || undefined);
+    candidates.push(readPath);
+    // Explicit canonical legacy read: when the session-scoped file exists but
+    // is malformed the effective read above points at it, and without this
+    // probe the valid <stateDir>/subagent-tracking-state.json would be
+    // silently skipped. The canonical legacy file is probed even when no
+    // session id is observable (issue #3732 review). Both reads stay owned by
+    // the canonical resolver — never the suffixed `subagent-tracking.json`
+    // state name, which the resolver would corrupt into `-state.json`.
+    const legacy = await resolveSessionStatePathsForHook(directory, 'subagent-tracking', undefined);
+    if (legacy.readPath !== readPath) candidates.push(legacy.readPath);
   } catch {}
+  // Pre-Wave-A legacy filename, read directly (outside the canonical naming
+  // scheme) so old installs keep working. resolveSessionStatePathsForHook
+  // appends `-state.json`, which would corrupt a name that already ends in
+  // `.json`, hence the direct join here under the resolved state root.
+  candidates.push(join(stateDir, 'subagent-tracking.json'));
+
+  for (const trackingFile of candidates) {
+    const data = readJsonFile(trackingFile);
+    // Shape-validate per candidate: a parseable file with a non-array `agents`
+    // field is a malformed candidate, never a reason to abort the whole hook
+    // (which would drop the spawn advisory and any configured model injection).
+    // Skip it and continue with the next canonical/legacy candidate.
+    if (!data || typeof data !== 'object' || Array.isArray(data) || !Array.isArray(data.agents)) {
+      continue;
+    }
+    const running = data.agents.filter(a => a && typeof a === 'object' && a.status === 'running').length;
+    return { running, total: data.total_spawned || 0 };
+  }
   return { running: 0, total: 0 };
 }
 
@@ -1367,7 +1417,7 @@ function getActiveTeamState(stateDir, sessionId) {
 }
 
 // Generate agent spawn message with metadata
-function generateAgentSpawnMessage(toolInput, stateDir, todoStatus, sessionId) {
+async function generateAgentSpawnMessage(toolInput, stateDir, directory, todoStatus, sessionId) {
   if (!toolInput || typeof toolInput !== 'object') {
     if (QUIET_LEVEL >= 2) return '';
     return `${todoStatus}Launch multiple agents in parallel when tasks are independent. Use run_in_background for long operations.`;
@@ -1377,7 +1427,7 @@ function generateAgentSpawnMessage(toolInput, stateDir, todoStatus, sessionId) {
   const model = toolInput.model || 'inherit';
   const desc = toolInput.description || '';
   const bg = toolInput.run_in_background ? ' [BACKGROUND]' : '';
-  const tracking = getAgentTrackingInfo(stateDir);
+  const tracking = await getAgentTrackingInfo(stateDir, directory, sessionId);
 
   // Team-routing guidance:
   // Claude Code 2.1.178+ removed TeamCreate/TeamDelete. When OMC team state is
@@ -1901,7 +1951,7 @@ async function main() {
     if (toolName === 'Task' || toolName === 'Agent') {
       const toolInput = data.toolInput || data.tool_input || null;
       // Reflect any injected per-agent model (issue #3242) in the advisory label.
-      message = generateAgentSpawnMessage(updatedToolInput || toolInput, stateDir, todoStatus, sessionId);
+      message = await generateAgentSpawnMessage(updatedToolInput || toolInput, stateDir, directory, todoStatus, sessionId);
     } else {
       message = generateMessage(toolName, todoStatus, modeActive);
     }

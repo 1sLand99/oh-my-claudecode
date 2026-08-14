@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { dirname, join } from 'path';
+import { basename, dirname, join } from 'path';
+import { createHash } from 'crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.unmock('child_process');
@@ -2819,5 +2820,260 @@ describe('pre-tool-enforcer skill vs agent namespace guard (issue #3667)', () =>
       expect((output.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBeUndefined();
       expect(JSON.stringify(output)).not.toContain('[SKILL vs AGENT]');
     });
+  });
+});
+
+describe('pre-tool-enforcer session-scoped agent tracking (issue #3732)', () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'pre-tool-enforcer-session-tracking-'));
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  function spawnAdvisory(sessionId: string): Record<string, unknown> {
+    return runPreToolEnforcer({
+      tool_name: 'Task',
+      cwd: tempDir,
+      session_id: sessionId,
+      toolInput: {
+        subagent_type: 'oh-my-claudecode:executor',
+        description: 'issue #3732 regression',
+      },
+    });
+  }
+
+  it('reports running agents from the session-scoped tracking file', () => {
+    const sessionId = 'session-3732-scoped';
+    writeJson(join(tempDir, '.omc', 'state', 'sessions', sessionId, 'subagent-tracking-state.json'), {
+      agents: [
+        { agent_id: 'a1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+        { agent_id: 'a2', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+      ],
+      total_spawned: 203,
+      total_completed: 185,
+      total_failed: 0,
+      last_updated: new Date().toISOString(),
+    });
+
+    const output = spawnAdvisory(sessionId);
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    expect(advisory).toContain('Active agents: 2');
+  });
+
+  it('prefers session-scoped state over a stale legacy file', () => {
+    const sessionId = 'session-3732-precedence';
+    writeJson(join(tempDir, '.omc', 'state', 'sessions', sessionId, 'subagent-tracking-state.json'), {
+      agents: [
+        { agent_id: 'a1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+      ],
+      total_spawned: 203,
+      total_completed: 185,
+      total_failed: 0,
+      last_updated: new Date().toISOString(),
+    });
+    // Stale legacy file with contradictory counters (the 160-vs-203 symptom).
+    writeJson(join(tempDir, '.omc', 'state', 'subagent-tracking.json'), {
+      agents: [],
+      total_spawned: 160,
+      total_completed: 0,
+      total_failed: 0,
+      last_updated: new Date(0).toISOString(),
+    });
+
+    const output = spawnAdvisory(sessionId);
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    expect(advisory).toContain('Active agents: 1');
+  });
+
+  it('falls back to the legacy file when no session-scoped state exists', () => {
+    const sessionId = 'session-3732-legacy';
+    writeJson(join(tempDir, '.omc', 'state', 'subagent-tracking.json'), {
+      agents: [
+        { agent_id: 'b1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+      ],
+      total_spawned: 7,
+      total_completed: 2,
+      total_failed: 0,
+      last_updated: new Date().toISOString(),
+    });
+
+    const output = spawnAdvisory(sessionId);
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    expect(advisory).toContain('Active agents: 1');
+  });
+  it('falls back to the canonical resolver legacy name when no session-scoped or plain legacy file exists', () => {
+    const sessionId = 'session-3732-canonical-legacy';
+    // The canonical resolver's legacy read path is
+    // .omc/state/subagent-tracking-state.json (normalized name), distinct from
+    // the pre-Wave-A plain subagent-tracking.json. The read must route through
+    // resolveSessionStatePathsForHook and honor this name too.
+    writeJson(join(tempDir, '.omc', 'state', 'subagent-tracking-state.json'), {
+      agents: [
+        { agent_id: 'c1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+      ],
+      total_spawned: 11,
+      total_completed: 10,
+      total_failed: 0,
+      last_updated: new Date().toISOString(),
+    });
+
+    const output = spawnAdvisory(sessionId);
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    expect(advisory).toContain('Active agents: 1');
+  });
+
+  it('resolves the session-scoped tracking read through OMC_STATE_DIR centralized state', () => {
+    const sessionId = 'session-3732-centralized';
+    const centralRoot = mkdtempSync(join(tmpdir(), 'pre-tool-enforcer-central-'));
+    const stateRoot = join(centralRoot, `${basename(tempDir)}-${createHash('sha256').update(tempDir).digest('hex').slice(0, 16)}`);
+    writeJson(join(stateRoot, 'state', 'sessions', sessionId, 'subagent-tracking-state.json'), {
+      agents: [
+        { agent_id: 'z1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+      ],
+      total_spawned: 4,
+      total_completed: 3,
+      total_failed: 0,
+      last_updated: new Date().toISOString(),
+    });
+
+    const output = runPreToolEnforcerWithEnv(
+      {
+        tool_name: 'Task',
+        cwd: tempDir,
+        session_id: sessionId,
+        toolInput: {
+          subagent_type: 'oh-my-claudecode:executor',
+          description: 'issue #3732 centralized regression',
+        },
+      },
+      { OMC_STATE_DIR: centralRoot },
+    );
+    rmSync(centralRoot, { recursive: true, force: true });
+
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    // The canonical resolver (not manual join(stateDir, ...)) routes the read
+    // into the centralized state root; a manual stateDir join would miss it.
+    expect(advisory).toContain('Active agents: 1');
+  });
+
+  it('rejects invalid session ids before scoped resolution (no escaped read)', () => {
+    // A payload with a path-traversal id must not reach the escaped
+    // .omc/state/evil/ location: only the safe legacy roots may be probed.
+    // Under the pre-fix code the unvalidated id flowed into the inline
+    // resolver fallback, join()-normalized `sessions/../evil` into `state/evil`,
+    // and reported counters from the unrelated file below.
+    writeJson(join(tempDir, '.omc', 'state', 'evil', 'subagent-tracking-state.json'), {
+      agents: [
+        { agent_id: 'x1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+        { agent_id: 'x2', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+      ],
+      total_spawned: 99,
+      last_updated: new Date().toISOString(),
+    });
+    writeJson(join(tempDir, '.omc', 'state', 'subagent-tracking.json'), {
+      agents: [
+        { agent_id: 'l1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+      ],
+      total_spawned: 7,
+      last_updated: new Date().toISOString(),
+    });
+
+    const output = spawnAdvisory('../evil');
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    // Safe legacy roots still work for invalid ids...
+    expect(advisory).toContain('Active agents: 1');
+    // ...but the escaped session-scoped file is never read.
+    expect(advisory).not.toContain('Active agents: 2');
+  });
+
+  it('skips a malformed session-scoped candidate and falls back to the legacy file', () => {
+    const sessionId = 'session-3732-malformed';
+    // Parseable but shape-corrupt: `agents` is not an array. This candidate
+    // must be skipped locally so the legacy fallback still resolves and the
+    // hook keeps running instead of aborting into suppressOutput.
+    writeJson(join(tempDir, '.omc', 'state', 'sessions', sessionId, 'subagent-tracking-state.json'), {
+      agents: 'corrupt',
+    });
+    writeJson(join(tempDir, '.omc', 'state', 'subagent-tracking.json'), {
+      agents: [
+        { agent_id: 'l1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+      ],
+      total_spawned: 7,
+      last_updated: new Date().toISOString(),
+    });
+
+    const output = spawnAdvisory(sessionId);
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    expect(advisory).toContain('Active agents: 1');
+  });
+
+  it('does not let a malformed scoped canonical file suppress the canonical legacy file', () => {
+    const sessionId = 'session-3732-malformed-scoped-canonical';
+    // The session-scoped canonical file exists but is shape-corrupt; the
+    // canonical legacy file for the SAME state name holds the valid data. The
+    // resolver's effective read points at the (malformed) scoped file, so the
+    // legacy file must still be probed explicitly instead of being skipped.
+    writeJson(join(tempDir, '.omc', 'state', 'sessions', sessionId, 'subagent-tracking-state.json'), {
+      agents: 'corrupt',
+    });
+    writeJson(join(tempDir, '.omc', 'state', 'subagent-tracking-state.json'), {
+      agents: [
+        { agent_id: 'c1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+      ],
+      total_spawned: 11,
+      last_updated: new Date().toISOString(),
+    });
+
+    const output = spawnAdvisory(sessionId);
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    expect(advisory).toContain('Active agents: 1');
+  });
+
+  it('reads the canonical legacy file when no session id is observable', () => {
+    // No session_id in the payload: the canonical legacy
+    // subagent-tracking-state.json must still be probed (the suffixed state
+    // name the pre-fix reader used normalizes to a nonexistent
+    // `-state.json` name and silently skipped it).
+    writeJson(join(tempDir, '.omc', 'state', 'subagent-tracking-state.json'), {
+      agents: [
+        { agent_id: 'c1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+      ],
+      total_spawned: 11,
+      last_updated: new Date().toISOString(),
+    });
+
+    const output = runPreToolEnforcer({
+      tool_name: 'Task',
+      cwd: tempDir,
+      toolInput: {
+        subagent_type: 'oh-my-claudecode:executor',
+        description: 'issue #3732 no-session regression',
+      },
+    });
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    expect(advisory).toContain('Active agents: 1');
+  });
+
+  it('survives all-malformed tracking candidates with a zero count', () => {
+    const sessionId = 'session-3732-all-malformed';
+    writeJson(join(tempDir, '.omc', 'state', 'sessions', sessionId, 'subagent-tracking-state.json'), {
+      agents: 'corrupt',
+    });
+    writeJson(join(tempDir, '.omc', 'state', 'subagent-tracking.json'), {
+      agents: { agent_id: 'nope' },
+      total_spawned: 42,
+    });
+
+    const output = spawnAdvisory(sessionId);
+    expect(output.continue).toBe(true);
+    // The spawn advisory still flows (no abort into the broad catch's
+    // suppressOutput-only path), with a zero agent count.
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    expect(advisory).toContain('Spawning agent:');
+    expect(advisory).not.toContain('Active agents:');
   });
 });
