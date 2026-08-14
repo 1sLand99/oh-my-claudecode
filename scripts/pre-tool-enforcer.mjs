@@ -841,16 +841,28 @@ function extractJsonField(input, field, defaultValue = '') {
   }
 }
 
-// Get agent tracking info from state file
-function getAgentTrackingInfo(stateDir) {
-  const trackingFile = join(stateDir, 'subagent-tracking.json');
-  try {
-    if (existsSync(trackingFile)) {
-      const data = JSON.parse(readFileSync(trackingFile, 'utf-8'));
-      const running = (data.agents || []).filter(a => a.status === 'running').length;
-      return { running, total: data.total_spawned || 0 };
-    }
-  } catch {}
+// Get agent tracking info from state file.
+// Checks session-scoped path first (Wave A layout), then legacy fallback.
+// Issue #3732: reading legacy-only hid session-scoped state and produced
+// contradicting agent counts vs post-tool-verifier::getAgentCompletionSummary,
+// which already read session-scoped first. sessionId is extracted from the
+// hook payload; when absent only the legacy path is tried.
+function getAgentTrackingInfo(stateDir, sessionId = '') {
+  const safeSessionId = sessionId && SESSION_ID_PATTERN.test(sessionId) ? sessionId : '';
+  const candidates = [
+    safeSessionId ? join(stateDir, 'sessions', safeSessionId, 'subagent-tracking-state.json') : null,
+    join(stateDir, 'subagent-tracking.json'),
+  ].filter(Boolean);
+
+  for (const trackingFile of candidates) {
+    try {
+      if (existsSync(trackingFile)) {
+        const data = JSON.parse(readFileSync(trackingFile, 'utf-8'));
+        const running = (data.agents || []).filter(a => a.status === 'running').length;
+        return { running, total: data.total_spawned || 0 };
+      }
+    } catch {}
+  }
   return { running: 0, total: 0 };
 }
 
@@ -1377,7 +1389,7 @@ function generateAgentSpawnMessage(toolInput, stateDir, todoStatus, sessionId) {
   const model = toolInput.model || 'inherit';
   const desc = toolInput.description || '';
   const bg = toolInput.run_in_background ? ' [BACKGROUND]' : '';
-  const tracking = getAgentTrackingInfo(stateDir);
+  const tracking = getAgentTrackingInfo(stateDir, sessionId);
 
   // Team-routing guidance:
   // Claude Code 2.1.178+ removed TeamCreate/TeamDelete. When OMC team state is

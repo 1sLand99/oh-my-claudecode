@@ -2821,3 +2821,87 @@ describe('pre-tool-enforcer skill vs agent namespace guard (issue #3667)', () =>
     });
   });
 });
+
+describe('pre-tool-enforcer session-scoped agent tracking (issue #3732)', () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'pre-tool-enforcer-session-tracking-'));
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  function spawnAdvisory(sessionId: string): Record<string, unknown> {
+    return runPreToolEnforcer({
+      tool_name: 'Task',
+      cwd: tempDir,
+      session_id: sessionId,
+      toolInput: {
+        subagent_type: 'oh-my-claudecode:executor',
+        description: 'issue #3732 regression',
+      },
+    });
+  }
+
+  it('reports running agents from the session-scoped tracking file', () => {
+    const sessionId = 'session-3732-scoped';
+    writeJson(join(tempDir, '.omc', 'state', 'sessions', sessionId, 'subagent-tracking-state.json'), {
+      agents: [
+        { agent_id: 'a1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+        { agent_id: 'a2', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+      ],
+      total_spawned: 203,
+      total_completed: 185,
+      total_failed: 0,
+      last_updated: new Date().toISOString(),
+    });
+
+    const output = spawnAdvisory(sessionId);
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    expect(advisory).toContain('Active agents: 2');
+  });
+
+  it('prefers session-scoped state over a stale legacy file', () => {
+    const sessionId = 'session-3732-precedence';
+    writeJson(join(tempDir, '.omc', 'state', 'sessions', sessionId, 'subagent-tracking-state.json'), {
+      agents: [
+        { agent_id: 'a1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+      ],
+      total_spawned: 203,
+      total_completed: 185,
+      total_failed: 0,
+      last_updated: new Date().toISOString(),
+    });
+    // Stale legacy file with contradictory counters (the 160-vs-203 symptom).
+    writeJson(join(tempDir, '.omc', 'state', 'subagent-tracking.json'), {
+      agents: [],
+      total_spawned: 160,
+      total_completed: 0,
+      total_failed: 0,
+      last_updated: new Date(0).toISOString(),
+    });
+
+    const output = spawnAdvisory(sessionId);
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    expect(advisory).toContain('Active agents: 1');
+  });
+
+  it('falls back to the legacy file when no session-scoped state exists', () => {
+    const sessionId = 'session-3732-legacy';
+    writeJson(join(tempDir, '.omc', 'state', 'subagent-tracking.json'), {
+      agents: [
+        { agent_id: 'b1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+      ],
+      total_spawned: 7,
+      total_completed: 2,
+      total_failed: 0,
+      last_updated: new Date().toISOString(),
+    });
+
+    const output = spawnAdvisory(sessionId);
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    expect(advisory).toContain('Active agents: 1');
+  });
+});

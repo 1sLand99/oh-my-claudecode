@@ -546,16 +546,29 @@ function isIncomplete(todo: Todo): boolean {
 /**
  * Get the Task directory for a session
  *
- * NOTE: This path (~/.claude/tasks/{sessionId}/) is inferred from Claude Code's
- * implementation. Anthropic has not officially documented this structure.
- * The Task files are created by Claude Code's TaskCreate tool.
+ * NOTE: This path (~/.claude/tasks/{taskListId}/) mirrors Claude Code's task
+ * store. The store identity is NOT always the session id: Claude Code resolves
+ * the active task list id as CLAUDE_CODE_TASK_LIST_ID env override first, then
+ * a team context name, then the session id. OmC hooks only receive session_id
+ * in hook payloads, so we honor the documented env override here; when it is
+ * absent the session id is the identity (the single-session case).
+ *
+ * Issue #3732: reading with the session id while Claude Code writes under a
+ * CLAUDE_CODE_TASK_LIST_ID/team identity makes successful writes invisible to
+ * OmC readers — the "tasks disappeared" symptom.
  */
 export function getTaskDirectory(sessionId: string): string {
-  // Security: validate sessionId before constructing path
-  if (!isValidSessionId(sessionId)) {
+  // Claude Code's documented task-list identity override takes precedence.
+  const override = process.env.CLAUDE_CODE_TASK_LIST_ID;
+  const identity =
+    typeof override === 'string' && override.trim() && isValidSessionId(override)
+      ? override.trim()
+      : sessionId;
+  // Security: validate identity before constructing path
+  if (!isValidSessionId(identity)) {
     return ''; // Return empty string for invalid sessions
   }
-  return join(getClaudeConfigDir(), 'tasks', sessionId);
+  return join(getClaudeConfigDir(), 'tasks', identity);
 }
 
 /**

@@ -752,13 +752,25 @@ function getActiveSubagentCount(stateDir) {
 
 /**
  * Count incomplete Tasks from Claude Code's native Task system.
+ *
+ * Claude Code resolves the task-store identity as CLAUDE_CODE_TASK_LIST_ID
+ * first, then a team context, then the session id (issue #3732). Hook payloads
+ * only carry session_id, so honor the env override when present.
  */
 function countIncompleteTasks(sessionId) {
   if (!sessionId || typeof sessionId !== "string") return 0;
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) return 0;
 
+  const override = process.env.CLAUDE_CODE_TASK_LIST_ID;
+  const identity =
+    typeof override === "string" &&
+    override.trim() &&
+    /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(override)
+      ? override.trim()
+      : sessionId;
+
   const cfgDir = getClaudeConfigDir();
-  const taskDir = join(cfgDir, "tasks", sessionId);
+  const taskDir = join(cfgDir, "tasks", identity);
   if (!existsSync(taskDir)) return 0;
 
   let count = 0;
