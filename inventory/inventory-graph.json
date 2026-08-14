@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "ff38f95f4c5821bdc0e97ccc71b51b1fb8696a59",
-    "sourceSha256": "82825bec0803fb3610fed0ddbd9136261171ffd06f6351a5da58008ffb4ab38d",
+    "head": "0670a9729a740c6bf3394428274c09777dd1d2a2",
+    "sourceSha256": "059e74d0fee69b1bf5bfb676a7e3a0e3bdd9067b4edd1753647deb429c289c62",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "ff38f95f4c5821bdc0e97ccc71b51b1fb8696a59",
-  "sourceSha256": "82825bec0803fb3610fed0ddbd9136261171ffd06f6351a5da58008ffb4ab38d",
+  "head": "0670a9729a740c6bf3394428274c09777dd1d2a2",
+  "sourceSha256": "059e74d0fee69b1bf5bfb676a7e3a0e3bdd9067b4edd1753647deb429c289c62",
   "counts": {
     "public": {
       "skills": 41,
@@ -36456,6 +36456,11 @@
         "path": "tests/integration/multirepo-workspace.test.ts"
       },
       {
+        "id": "tests/integration/task-list-identity-stop.test.ts",
+        "kind": "other",
+        "path": "tests/integration/task-list-identity-stop.test.ts"
+      },
+      {
         "id": "tests/integration/workflow-profile-keyword-activation.test.ts",
         "kind": "other",
         "path": "tests/integration/workflow-profile-keyword-activation.test.ts"
@@ -42680,6 +42685,11 @@
       {
         "from": "src/__tests__/pre-tool-enforcer.test.ts",
         "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/pre-tool-enforcer.test.ts",
+        "to": "external:crypto",
         "kind": "imports"
       },
       {
@@ -70668,6 +70678,36 @@
         "kind": "imports"
       },
       {
+        "from": "tests/integration/task-list-identity-stop.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/task-list-identity-stop.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/task-list-identity-stop.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/task-list-identity-stop.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/task-list-identity-stop.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/integration/task-list-identity-stop.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "tests/integration/workflow-profile-keyword-activation.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -70914,12 +70954,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6174,
-      "edgeCount": 6876,
-      "importEdgeCount": 5615,
+      "nodeCount": 6175,
+      "edgeCount": 6883,
+      "importEdgeCount": 5622,
       "registerEdgeCount": 69
     }
   },
-  "inventorySha256": "32d2e17fbac06048b28f33016ba70977b91930114ee6033f48d5826d1afb3b64",
-  "manifestSha256": "f497731a3171ee207dccaa7472436ba1f78fa533fe4905e7717bf728801724a5"
+  "inventorySha256": "4ebbd40d9d0abf976794d311c52b39e9c514dc7bdfe293ff6270a705a10efcf7",
+  "manifestSha256": "bfc158df7bf2350927670307954a311bc0b0bf4b5b22c1fb0e6229e602279ad3"
 }
