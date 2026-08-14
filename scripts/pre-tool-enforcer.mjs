@@ -858,13 +858,20 @@ function extractJsonField(input, field, defaultValue = '') {
 // directly. When no sessionId is observable only the two legacy filenames are
 // probed.
 async function getAgentTrackingInfo(stateDir, directory, sessionId = '') {
-  const stateNames = sessionId
+  // The session id arrives from the hook payload and is influenceable, so it
+  // is validated against the canonical allowlist BEFORE any scoped resolution.
+  // An invalid id must skip every session-scoped candidate and only probe the
+  // safe legacy roots: the canonical resolver would throw on it, and the
+  // unvalidated path would let a payload like `../evil` escape the sessions
+  // directory and read unrelated state (issue #3732 review).
+  const safeSessionId = isValidSessionId(sessionId) ? sessionId : '';
+  const stateNames = safeSessionId
     ? ['subagent-tracking', 'subagent-tracking.json']
     : ['subagent-tracking.json'];
   const candidates = [];
   for (const stateName of stateNames) {
     try {
-      const { readPath } = await resolveSessionStatePathsForHook(directory, stateName, sessionId || undefined);
+      const { readPath } = await resolveSessionStatePathsForHook(directory, stateName, safeSessionId || undefined);
       candidates.push(readPath);
     } catch {}
   }
@@ -876,8 +883,14 @@ async function getAgentTrackingInfo(stateDir, directory, sessionId = '') {
 
   for (const trackingFile of candidates) {
     const data = readJsonFile(trackingFile);
-    if (!data) continue;
-    const running = (data.agents || []).filter(a => a.status === 'running').length;
+    // Shape-validate per candidate: a parseable file with a non-array `agents`
+    // field is a malformed candidate, never a reason to abort the whole hook
+    // (which would drop the spawn advisory and any configured model injection).
+    // Skip it and continue with the next canonical/legacy candidate.
+    if (!data || typeof data !== 'object' || Array.isArray(data) || !Array.isArray(data.agents)) {
+      continue;
+    }
+    const running = data.agents.filter(a => a && typeof a === 'object' && a.status === 'running').length;
     return { running, total: data.total_spawned || 0 };
   }
   return { running: 0, total: 0 };

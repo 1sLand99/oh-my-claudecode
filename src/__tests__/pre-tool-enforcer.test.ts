@@ -2959,4 +2959,74 @@ describe('pre-tool-enforcer session-scoped agent tracking (issue #3732)', () => 
     // into the centralized state root; a manual stateDir join would miss it.
     expect(advisory).toContain('Active agents: 1');
   });
+
+  it('rejects invalid session ids before scoped resolution (no escaped read)', () => {
+    // A payload with a path-traversal id must not reach the escaped
+    // .omc/state/evil/ location: only the safe legacy roots may be probed.
+    // Under the pre-fix code the unvalidated id flowed into the inline
+    // resolver fallback, join()-normalized `sessions/../evil` into `state/evil`,
+    // and reported counters from the unrelated file below.
+    writeJson(join(tempDir, '.omc', 'state', 'evil', 'subagent-tracking-state.json'), {
+      agents: [
+        { agent_id: 'x1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+        { agent_id: 'x2', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+      ],
+      total_spawned: 99,
+      last_updated: new Date().toISOString(),
+    });
+    writeJson(join(tempDir, '.omc', 'state', 'subagent-tracking.json'), {
+      agents: [
+        { agent_id: 'l1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+      ],
+      total_spawned: 7,
+      last_updated: new Date().toISOString(),
+    });
+
+    const output = spawnAdvisory('../evil');
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    // Safe legacy roots still work for invalid ids...
+    expect(advisory).toContain('Active agents: 1');
+    // ...but the escaped session-scoped file is never read.
+    expect(advisory).not.toContain('Active agents: 2');
+  });
+
+  it('skips a malformed session-scoped candidate and falls back to the legacy file', () => {
+    const sessionId = 'session-3732-malformed';
+    // Parseable but shape-corrupt: `agents` is not an array. This candidate
+    // must be skipped locally so the legacy fallback still resolves and the
+    // hook keeps running instead of aborting into suppressOutput.
+    writeJson(join(tempDir, '.omc', 'state', 'sessions', sessionId, 'subagent-tracking-state.json'), {
+      agents: 'corrupt',
+    });
+    writeJson(join(tempDir, '.omc', 'state', 'subagent-tracking.json'), {
+      agents: [
+        { agent_id: 'l1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+      ],
+      total_spawned: 7,
+      last_updated: new Date().toISOString(),
+    });
+
+    const output = spawnAdvisory(sessionId);
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    expect(advisory).toContain('Active agents: 1');
+  });
+
+  it('survives all-malformed tracking candidates with a zero count', () => {
+    const sessionId = 'session-3732-all-malformed';
+    writeJson(join(tempDir, '.omc', 'state', 'sessions', sessionId, 'subagent-tracking-state.json'), {
+      agents: 'corrupt',
+    });
+    writeJson(join(tempDir, '.omc', 'state', 'subagent-tracking.json'), {
+      agents: { agent_id: 'nope' },
+      total_spawned: 42,
+    });
+
+    const output = spawnAdvisory(sessionId);
+    expect(output.continue).toBe(true);
+    // The spawn advisory still flows (no abort into the broad catch's
+    // suppressOutput-only path), with a zero agent count.
+    const advisory = (output.hookSpecificOutput as Record<string, unknown>).additionalContext as string;
+    expect(advisory).toContain('Spawning agent:');
+    expect(advisory).not.toContain('Active agents:');
+  });
 });

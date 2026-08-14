@@ -74,12 +74,18 @@ function writeActiveUltrawork(f: Fixture) {
 }
 
 function invokeStop(f: Fixture, extraEnv: Record<string, string> = {}) {
+  // Start from a deterministic base: an inherited CLAUDE_CODE_TASK_LIST_ID
+  // from the parent process would silently change the no-override scenarios
+  // (issue #3732 review). Delete it here; extraEnv re-applies an override for
+  // the tests that need one.
+  const baseEnv = { ...process.env };
+  delete baseEnv.CLAUDE_CODE_TASK_LIST_ID;
   const stdout = execFileSync(process.execPath, [f.hook], {
     cwd: f.project,
     input: JSON.stringify({ hook_event_name: 'Stop', session_id: 'stop-session', cwd: f.project }),
     encoding: 'utf8',
     env: {
-      ...process.env,
+      ...baseEnv,
       HOME: f.home,
       USERPROFILE: f.home,
       CLAUDE_CONFIG_DIR: f.claudeConfigDir,
@@ -197,5 +203,41 @@ describe('Stop hook task-store identity mirror parity', () => {
     for (const [name, source] of sources) {
       expect(source, name).toContain('CLAUDE_CODE_TASK_LIST_ID');
     }
+  });
+});
+
+describe('Stop hook inherited task-list override isolation (issue #3732 review)', () => {
+  let previousOverride: string | undefined;
+  let hadPrevious = false;
+
+  // Restore the parent env in cleanup even when the assertion fails.
+  afterEach(() => {
+    if (hadPrevious) {
+      if (previousOverride === undefined) delete process.env.CLAUDE_CODE_TASK_LIST_ID;
+      else process.env.CLAUDE_CODE_TASK_LIST_ID = previousOverride;
+      hadPrevious = false;
+    }
+  });
+
+  it('ignores an inherited CLAUDE_CODE_TASK_LIST_ID in the no-override child env', () => {
+    // Simulate a parent process that already has the override exported: the
+    // base child env in invokeStop() deletes it, so the no-override scenario
+    // stays deterministic and resolves the session store.
+    previousOverride = process.env.CLAUDE_CODE_TASK_LIST_ID;
+    hadPrevious = true;
+    process.env.CLAUDE_CODE_TASK_LIST_ID = 'inherited-override';
+
+    const f = makeFixture('mjs');
+    writeActiveUltrawork(f);
+    // The inherited store is non-empty; the session store is the identity the
+    // no-override child must resolve to.
+    writeTaskStore(f.claudeConfigDir, 'inherited-override', ['pending', 'pending']);
+    writeTaskStore(f.claudeConfigDir, 'stop-session', ['pending']);
+
+    const result = invokeStop(f, {});
+
+    expect(result.decision).toBe('block');
+    expect(result.reason).toContain('1 incomplete Tasks remain');
+    expect(result.reason).not.toContain('2 incomplete Tasks remain');
   });
 });
