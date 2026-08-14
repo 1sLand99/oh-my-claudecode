@@ -11,6 +11,9 @@ English | [한국어](README.ko.md) | [中文](README.zh.md) | [日本語](READM
 
 > **For Codex users:** Check out [oh-my-codex](https://github.com/Yeachan-Heo/oh-my-codex) — the same orchestration experience for OpenAI Codex CLI.
 
+> **Liked OmC but found it a bit overkill? Try [gajae-code](https://github.com/Yeachan-Heo/gajae-code).**
+> Keeps Claude OAuth as-is while being faster, cheaper, simpler, and more powerful — with an SDK-based integration path built for OpenClaw, Hermes, Grokbot, and similar agent runtimes.
+
 **Multi-agent orchestration for Claude Code. Zero learning curve.**
 
 _Don't learn Claude Code. Just use OMC._
