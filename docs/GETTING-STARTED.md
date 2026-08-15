@@ -394,7 +394,9 @@ OMC automatically selects a model tier based on task complexity:
     "defaultTier": "MEDIUM",
     // Force all agents to inherit the parent model
     // (auto-activated when using CC Switch, Bedrock, or Vertex AI)
-    "forceInherit": false
+    "forceInherit": false,
+    // Remap a tier everywhere it is pinned (issue #3738)
+    // "modelAliases": { "opus": "fable" }
   }
 }
 ```
@@ -404,6 +406,18 @@ OMC automatically selects a model tier based on task complexity:
 | LOW | haiku | Quick lookups, simple tasks |
 | MEDIUM | sonnet | Standard implementation, general tasks |
 | HIGH | opus | Architecture, deep analysis |
+| — | fable | Claude Fable 5 (above Opus); usable anywhere a tier alias is accepted |
+
+### Session model vs delegated agents (Fable and other models)
+
+The model selected with `/model` applies to the main conversation loop only. Delegated agents (planner, architect, executor, and the rest of the catalog) run on the tier pinned in their agent definition — `opus`, `sonnet`, or `haiku` — regardless of the session model. OMC's hooks cannot observe the `/model` selection; they only see provider environment variables, which is why session-family inheritance is not automatic on standard Anthropic auth.
+
+To run delegated work on a different model, use one of the supported config surfaces:
+
+- **Per-call**: pass `model` explicitly on the `Task`/`Agent` call (e.g. `model: "fable"`); explicit models are always preserved.
+- **Per-tier remap**: `"routing": { "modelAliases": { "opus": "fable" } }` or `OMC_MODEL_ALIAS_OPUS=fable` — every opus-pinned agent (planner, architect, critic, analyst, code-reviewer, code-simplifier) resolves to Fable while haiku/sonnet pins stay untouched.
+- **Per-agent override**: `"agents": { "planner": { "model": "fable" } }` — precise, applies to a single agent.
+- **Everything inherits**: `"routing": { "forceInherit": true }` — drops per-agent routing entirely (the "nuclear option"; auto-enabled on Bedrock/Vertex/proxy for provider compatibility).
 
 ### CLAUDE.md configuration
 

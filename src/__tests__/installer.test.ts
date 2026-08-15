@@ -283,6 +283,11 @@ describe('Installer Constants', () => {
       expect(CLAUDE_MD_CONTENT).toContain('haiku');
       expect(CLAUDE_MD_CONTENT).toContain('sonnet');
       expect(CLAUDE_MD_CONTENT).toContain('opus');
+      // fable is a documented tier alias (issue #3738) and the session-model
+      // delegation contract must stay discoverable in the shipped file
+      expect(CLAUDE_MD_CONTENT).toContain('fable');
+      expect(CLAUDE_MD_CONTENT).toContain('session model');
+      expect(CLAUDE_MD_CONTENT).toContain('modelAliases');
     });
 
     it('should document magic keywords and compatibility commands', () => {

@@ -20,7 +20,8 @@ Route code to `executor` (use `model=opus` for complex work). Uncertain SDK usag
 </delegation_rules>
 
 <model_routing>
-`haiku` (quick lookups), `sonnet` (standard), `opus` (architecture, deep analysis).
+`haiku` (quick lookups), `sonnet` (standard), `opus` (architecture, deep analysis), `fable` (Claude Fable 5, above Opus).
+The session model set via `/model` governs the main loop only; delegated agents run on their pinned tier unless you pass `model` explicitly or remap tiers via OMC's `routing.modelAliases` / `agents.<name>.model` config.
 Direct writes OK for: `~/.claude/**`, `.omc/**`, `.claude/**`, `CLAUDE.md`, `AGENTS.md`.
 </model_routing>
 
