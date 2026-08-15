@@ -69,7 +69,7 @@ describe("fable routing doc contract (issue #3738)", () => {
   it("GETTING-STARTED documents how to run delegated work on fable", () => {
     const content = read("docs/GETTING-STARTED.md");
     const section = content.slice(
-      content.indexOf("### Session model vs delegated agents"),
+      content.indexOf("### Model routing configuration"),
       content.indexOf("### CLAUDE.md configuration"),
     );
     expect(section).not.toBe("");
@@ -78,5 +78,6 @@ describe("fable routing doc contract (issue #3738)", () => {
     expect(section).toContain('"modelAliases": { "opus": "fable" }');
     expect(section).toContain('"agents": { "planner": { "model": "fable" } }');
     expect(section).toContain("forceInherit");
+    expect(section).toContain("| — | fable |");
   });
 });
