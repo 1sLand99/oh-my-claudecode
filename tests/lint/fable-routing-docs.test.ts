@@ -52,18 +52,20 @@ describe("fable routing doc contract (issue #3738)", () => {
       expect(content).toContain("main loop only");
     });
 
-    it("names the supported delegation remap surfaces", () => {
-      expect(content).toContain("modelAliases");
+    it("names the production-supported delegation override surface", () => {
       expect(content).toContain("agents.<name>.model");
+      // modelAliases is SDK-side only (no consumer on the plugin hook path), so the
+      // shipped prompt must not present it as a plugin-session remap surface.
+      expect(content).not.toMatch(/modelAliases/);
     });
   });
 
   it("omc-reference skill documents fable and the delegation boundary", () => {
     const content = read("skills/omc-reference/SKILL.md");
     expect(content).toContain("`fable`");
-    expect(content).toContain("routing.modelAliases");
     expect(content).toContain("main loop only");
     expect(content).toContain("agents.<name>.model");
+    expect(content).not.toMatch(/modelAliases/);
   });
 
   it("GETTING-STARTED documents how to run delegated work on fable", () => {
@@ -74,10 +76,12 @@ describe("fable routing doc contract (issue #3738)", () => {
     );
     expect(section).not.toBe("");
     expect(section).toContain("`/model` applies to the main conversation loop only");
-    expect(section).toContain("OMC_MODEL_ALIAS_OPUS=fable");
-    expect(section).toContain('"modelAliases": { "opus": "fable" }');
     expect(section).toContain('"agents": { "planner": { "model": "fable" } }');
     expect(section).toContain("forceInherit");
     expect(section).toContain("| — | fable |");
+    // The modelAliases caveat must stay: it is SDK-side only and must stay clearly
+    // scoped away from plugin sessions so users do not pick a silent no-op.
+    expect(section).toContain("honored by the SDK-side `enforceModel` API");
+    expect(section).toContain("plugin hook path does not apply it");
   });
 });

@@ -287,7 +287,7 @@ describe('Installer Constants', () => {
       // delegation contract must stay discoverable in the shipped file
       expect(CLAUDE_MD_CONTENT).toContain('fable');
       expect(CLAUDE_MD_CONTENT).toContain('session model');
-      expect(CLAUDE_MD_CONTENT).toContain('modelAliases');
+      expect(CLAUDE_MD_CONTENT).toContain('agents.<name>.model');
     });
 
     it('should document magic keywords and compatibility commands', () => {

@@ -37,8 +37,8 @@ Prefix: `oh-my-claudecode:`. See `agents/*.md` for full prompts.
 - `haiku` — quick lookups, lightweight inspection, narrow docs work
 - `sonnet` — standard implementation, debugging, and review
 - `opus` — architecture, deep analysis, consensus planning, and high-risk review
-- `fable` — Claude Fable 5 (above Opus); pass explicitly for high-capability lanes or remap a tier via `routing.modelAliases` (e.g. `{ "opus": "fable" }` / `OMC_MODEL_ALIAS_OPUS=fable`)
-- The session model chosen with `/model` applies to the main loop only. Delegated agents run on their pinned tier (see Agent Catalog) unless the Task call passes `model` explicitly, a tier is remapped via `routing.modelAliases`, or a specific agent is overridden with `agents.<name>.model`. To run delegated work on Fable, use one of those three config surfaces; selecting Fable in `/model` alone does not change delegation.
+- `fable` — Claude Fable 5 (above Opus); pass it explicitly on the Task call or pin it per agent with `agents.<name>.model`
+- The session model chosen with `/model` applies to the main loop only. Delegated agents run on their pinned tier (see Agent Catalog) unless the Task call passes `model` explicitly or the agent is overridden via `agents.<name>.model`. To run delegated work on Fable, use one of those two surfaces; selecting Fable in `/model` alone does not change delegation.
 
 ## Tools Reference
 
