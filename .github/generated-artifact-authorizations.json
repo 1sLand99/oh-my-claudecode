@@ -2202,10 +2202,8 @@
       ]
     },
     {
-      "pullNumber": 3739,
+      "pullNumber": 3740,
       "targetRef": "dev",
-      "mergeBaseSha": "c981da59052eafc198b5d598663f54bf76caf67f",
-      "headSha": "52e23e49cd4709a81f90b2e09c999af891380d35",
       "owner": "Yeachan-Heo",
       "expiresAt": "2026-08-23T00:00:00.000Z",
       "generatedDelta": {
@@ -2219,7 +2217,9 @@
           "sha": "12d00cb73704065dde382a07df8a624468cc48a6",
           "previousFilename": null
         }
-      ]
+      ],
+      "mergeBaseSha": "c981da59052eafc198b5d598663f54bf76caf67f",
+      "headSha": "60bf3f9b760d647f1b51884739587a93afd0b48e"
     }
   ]
 }
