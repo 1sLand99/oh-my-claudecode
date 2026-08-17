@@ -24,36 +24,42 @@ resolve_active_plugin_root() {
       && [ -s "${candidate}/skills/omc-reference/SKILL.md" ]
   }
 
+  # Issue #3743: version-manager shims (e.g. Volta on Windows) can truncate a
+  # multiline `node -e` argument at the first newline, silently running an empty
+  # program. Assemble the program on a single line; version candidates still
+  # arrive on stdin.
   select_latest_semver() {
-    node -e '
-      const fs = require("node:fs");
-      const semver = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|[0-9A-Za-z-]+)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-]+))*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
-      const parse = value => {
-        const match = value.match(semver);
-        const pre = match?.[4]?.split(".") ?? [];
-        return match && !pre.some(identifier => /^\d+$/.test(identifier) && !/^(0|[1-9]\d*)$/.test(identifier))
-          ? { value, core: match.slice(1, 4).map(Number), pre }
-          : null;
-      };
-      const compare = (left, right) => {
-        for (let index = 0; index < 3; index += 1) if (left.core[index] !== right.core[index]) return left.core[index] - right.core[index];
-        if (!left.pre.length || !right.pre.length) return left.pre.length ? -1 : right.pre.length ? 1 : 0;
-        for (let index = 0; index < Math.max(left.pre.length, right.pre.length); index += 1) {
-          if (left.pre[index] === undefined) return -1;
-          if (right.pre[index] === undefined) return 1;
-          if (left.pre[index] === right.pre[index]) continue;
-          const numericLeft = /^\d+$/.test(left.pre[index]);
-          const numericRight = /^\d+$/.test(right.pre[index]);
-          if (numericLeft && numericRight) return Number(left.pre[index]) - Number(right.pre[index]);
-          if (numericLeft !== numericRight) return numericLeft ? -1 : 1;
-          return left.pre[index] < right.pre[index] ? -1 : 1;
-        }
-        return 0;
-      };
-      const versions = fs.readFileSync(0, "utf8").split(/\r?\n/).filter(Boolean).map(parse).filter(Boolean);
-      versions.sort(compare);
-      if (versions.length) process.stdout.write(`${versions.at(-1).value}\n`);
-    '
+    local semver_prog
+    semver_prog="$(printf '%s ' \
+      'const fs = require("node:fs");' \
+      'const semver = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|[0-9A-Za-z-]+)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-]+))*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;' \
+      'const parse = value => {' \
+      'const match = value.match(semver);' \
+      'const pre = match?.[4]?.split(".") ?? [];' \
+      'return match && !pre.some(identifier => /^\d+$/.test(identifier) && !/^(0|[1-9]\d*)$/.test(identifier))' \
+      '? { value, core: match.slice(1, 4).map(Number), pre }' \
+      ': null;' \
+      '};' \
+      'const compare = (left, right) => {' \
+      'for (let index = 0; index < 3; index += 1) if (left.core[index] !== right.core[index]) return left.core[index] - right.core[index];' \
+      'if (!left.pre.length || !right.pre.length) return left.pre.length ? -1 : right.pre.length ? 1 : 0;' \
+      'for (let index = 0; index < Math.max(left.pre.length, right.pre.length); index += 1) {' \
+      'if (left.pre[index] === undefined) return -1;' \
+      'if (right.pre[index] === undefined) return 1;' \
+      'if (left.pre[index] === right.pre[index]) continue;' \
+      'const numericLeft = /^\d+$/.test(left.pre[index]);' \
+      'const numericRight = /^\d+$/.test(right.pre[index]);' \
+      'if (numericLeft && numericRight) return Number(left.pre[index]) - Number(right.pre[index]);' \
+      'if (numericLeft !== numericRight) return numericLeft ? -1 : 1;' \
+      'return left.pre[index] < right.pre[index] ? -1 : 1;' \
+      '}' \
+      'return 0;' \
+      '};' \
+      'const versions = fs.readFileSync(0, "utf8").split(/\r?\n/).filter(Boolean).map(parse).filter(Boolean);' \
+      'versions.sort(compare);' \
+      'if (versions.length) process.stdout.write(`${versions.at(-1).value}\n`);'
+    )"
+    node -e "$semver_prog"
   }
 
   list_cache_versions() {
@@ -134,6 +140,25 @@ install_omc_reference_skill() {
   cp "$source" "$SKILL_TARGET_PATH"
   echo "Installed omc-reference skill to $SKILL_TARGET_PATH"
 }
+# Issue #3743: installed_plugins.json can record Windows-style installPath
+# values that never string-match POSIX/MSYS roots, which made the re-exec guard
+# exec the same script forever. Canonicalize both sides physically; equal roots
+# must continue in this process instead of re-exec.
+normalize_plugin_root() {
+  local root="$1" canonical
+  case "$root" in
+    *\\*)
+      if command -v cygpath >/dev/null 2>&1; then
+        root="$(cygpath -u "$root" 2>/dev/null || printf '%s\n' "$root")"
+      fi
+      ;;
+  esac
+  if canonical="$(cd "$root" 2>/dev/null && pwd -P)"; then
+    printf '%s\n' "$canonical"
+  else
+    printf '%s\n' "$root"
+  fi
+}
 
 if [ "$MODE" != "local" ] && [ "$MODE" != "global" ]; then
   echo "ERROR: Invalid mode '$MODE'. Use 'local' or 'global'." >&2
@@ -148,8 +173,21 @@ if ! ACTIVE_PLUGIN_ROOT="$(resolve_active_plugin_root)"; then
   echo "ERROR: Active plugin root lacks the required coordinator artifact and canonical source; refusing setup." >&2
   exit 1
 fi
-if [ "$ACTIVE_PLUGIN_ROOT" != "$SCRIPT_PLUGIN_ROOT" ]; then
-  exec bash "${ACTIVE_PLUGIN_ROOT}/scripts/setup-claude-md.sh" "$MODE" "$INSTALL_STYLE"
+ACTIVE_PLUGIN_ROOT_NORMALIZED="$(normalize_plugin_root "$ACTIVE_PLUGIN_ROOT")"
+SCRIPT_PLUGIN_ROOT_NORMALIZED="$(normalize_plugin_root "$SCRIPT_PLUGIN_ROOT")"
+if [ "$ACTIVE_PLUGIN_ROOT_NORMALIZED" = "$SCRIPT_PLUGIN_ROOT_NORMALIZED" ]; then
+  # Same physical plugin root: keep executing this script. Re-exec'ing here is
+  # what turned a Windows-style installPath into an infinite process chain.
+  ACTIVE_PLUGIN_ROOT="$SCRIPT_PLUGIN_ROOT"
+else
+  # Bounded re-exec (issue #3743): a defect that makes the guard compare
+  # unequal roots forever must terminate loudly, not hang the user's shell.
+  REEXEC_DEPTH=$(( ${OMC_SETUP_REEXEC_DEPTH:-0} + 1 ))
+  if [ "$REEXEC_DEPTH" -gt 2 ]; then
+    echo "ERROR: setup re-exec loop detected (depth $REEXEC_DEPTH); refusing to continue." >&2
+    exit 1
+  fi
+  exec env OMC_SETUP_REEXEC_DEPTH="$REEXEC_DEPTH" bash "${ACTIVE_PLUGIN_ROOT}/scripts/setup-claude-md.sh" "$MODE" "$INSTALL_STYLE"
 fi
 COORDINATOR="${ACTIVE_PLUGIN_ROOT}/bridge/claude-md-coordinator.cjs"
 CANONICAL_CLAUDE_MD="${ACTIVE_PLUGIN_ROOT}/docs/CLAUDE.md"
