@@ -261,6 +261,39 @@ describe('team config revision transaction', () => {
       await expect(migrateTeamConfigRevision(teamName, cwd)).resolves.toMatchObject({ config: { max_workers: 20 } });
       await expect(readTeamConfig(teamName, cwd)).resolves.toMatchObject({ max_workers: 20 });
     });
+
+    it.each([0, -1, 1.5])('rejects a legacy config carrying invalid cap %s through every reader and migration', async maxWorkers => {
+      writeLegacyConfig(maxWorkers);
+      writeMergeManifest();
+
+      await expect(readTeamConfig(teamName, cwd)).rejects.toThrow('invalid_persisted_state');
+      await expect(teamReadConfig(teamName, cwd)).rejects.toThrow('invalid_persisted_state');
+      await expect(readRevisionedTeamConfig(teamName, cwd)).rejects.toThrow('invalid_persisted_state');
+      await expect(migrateTeamConfigRevision(teamName, cwd)).rejects.toThrow('invalid_persisted_state');
+    });
+
+    it.each([0, -1, 1.5])('rejects a revisioned config carrying invalid cap %s through every reader and migration', async maxWorkers => {
+      writeConfig({ ...initialConfig(), max_workers: maxWorkers });
+
+      await expect(readTeamConfig(teamName, cwd)).rejects.toThrow('invalid_persisted_state');
+      await expect(teamReadConfig(teamName, cwd)).rejects.toThrow('invalid_persisted_state');
+      await expect(readRevisionedTeamConfig(teamName, cwd)).rejects.toThrow('invalid_persisted_state');
+      await expect(migrateTeamConfigRevision(teamName, cwd)).rejects.toThrow('invalid_persisted_state');
+    });
+
+    it.each([0, -1, 1.5])('refuses to persist invalid cap %s through both writers', async maxWorkers => {
+      await expect(saveTeamConfig({ ...initialConfig(), max_workers: maxWorkers }, cwd)).rejects.toThrow('invalid_persisted_state');
+      await expect(saveTeamConfigAtRevision({ ...initialConfig(), max_workers: maxWorkers, state_revision: 2 }, 1, cwd))
+        .rejects.toThrow('invalid_persisted_state');
+    });
+
+    it.each([1, 20])('keeps configured boundary cap %s valid through both readers', async maxWorkers => {
+      writeLegacyConfig(maxWorkers);
+      writeMergeManifest();
+
+      await expect(readTeamConfig(teamName, cwd)).resolves.toMatchObject({ max_workers: maxWorkers });
+      await expect(teamReadConfig(teamName, cwd)).resolves.toMatchObject({ max_workers: maxWorkers });
+    });
   });
 
   it('never lets a divergent manifest override revisioned config authority', async () => {

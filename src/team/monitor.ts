@@ -112,6 +112,10 @@ function isSafeCounter(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
 
+export function isValidPersistedMaxWorkers(value: unknown): value is number | undefined {
+  return value === undefined || (isSafeCounter(value) && value >= 1);
+}
+
 function isTimestamp(value: unknown): value is string {
   return typeof value === 'string' && Number.isFinite(Date.parse(value));
 }
@@ -204,7 +208,7 @@ function isTeamConfig(value: unknown, requireRevision: boolean, expectedTeamName
     || (value.task !== undefined && typeof value.task !== 'string')
     || (value.worker_launch_mode !== undefined && !['interactive', 'prompt'].includes(value.worker_launch_mode as string))
     || !isSafeCounter(value.worker_count)
-    || (value.max_workers !== undefined && !isSafeCounter(value.max_workers))
+    || !isValidPersistedMaxWorkers(value.max_workers)
     || !Array.isArray(value.workers) || value.worker_count !== value.workers.length
     || !value.workers.every(isWorkerInfo) || !hasUniqueWorkerIdentity(value.workers)
     || !isTimestamp(value.created_at) || !isNonEmptyString(value.tmux_session)
