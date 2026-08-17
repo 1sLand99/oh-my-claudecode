@@ -204,7 +204,7 @@ function isTeamConfig(value: unknown, requireRevision: boolean, expectedTeamName
     || (value.task !== undefined && typeof value.task !== 'string')
     || (value.worker_launch_mode !== undefined && !['interactive', 'prompt'].includes(value.worker_launch_mode as string))
     || !isSafeCounter(value.worker_count)
-    || (value.max_workers !== undefined && !isSafeCounter(value.max_workers))
+    || (value.max_workers !== undefined && (!isSafeCounter(value.max_workers) || value.max_workers < 1))
     || !Array.isArray(value.workers) || value.worker_count !== value.workers.length
     || !value.workers.every(isWorkerInfo) || !hasUniqueWorkerIdentity(value.workers)
     || !isTimestamp(value.created_at) || !isNonEmptyString(value.tmux_session)

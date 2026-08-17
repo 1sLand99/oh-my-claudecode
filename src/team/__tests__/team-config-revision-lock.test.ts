@@ -261,6 +261,38 @@ describe('team config revision transaction', () => {
       await expect(migrateTeamConfigRevision(teamName, cwd)).resolves.toMatchObject({ config: { max_workers: 20 } });
       await expect(readTeamConfig(teamName, cwd)).resolves.toMatchObject({ max_workers: 20 });
     });
+
+    it('keeps a configured cap of 1 valid', async () => {
+      writeLegacyConfig(1);
+      writeMergeManifest();
+
+      await expect(readTeamConfig(teamName, cwd)).resolves.toMatchObject({ max_workers: 1 });
+    });
+
+    it('rejects a legacy config carrying a zero cap as invalid persisted state', async () => {
+      writeLegacyConfig(0);
+      writeMergeManifest();
+
+      await expect(readTeamConfig(teamName, cwd)).rejects.toThrow('invalid_persisted_state');
+    });
+
+    it('rejects a revisioned config carrying a zero cap on read and migrate', async () => {
+      writeConfig({ ...initialConfig(), max_workers: 0 });
+
+      await expect(readRevisionedTeamConfig(teamName, cwd)).rejects.toThrow('invalid_persisted_state');
+      await expect(migrateTeamConfigRevision(teamName, cwd)).rejects.toThrow('invalid_persisted_state');
+    });
+
+    it('refuses to persist a zero cap', async () => {
+      await expect(saveTeamConfig({ ...initialConfig(), max_workers: 0 }, cwd)).rejects.toThrow('invalid_persisted_state');
+    });
+
+    it('rejects a negative cap', async () => {
+      writeLegacyConfig(-1);
+      writeMergeManifest();
+
+      await expect(readTeamConfig(teamName, cwd)).rejects.toThrow('invalid_persisted_state');
+    });
   });
 
   it('never lets a divergent manifest override revisioned config authority', async () => {
