@@ -262,36 +262,37 @@ describe('team config revision transaction', () => {
       await expect(readTeamConfig(teamName, cwd)).resolves.toMatchObject({ max_workers: 20 });
     });
 
-    it('keeps a configured cap of 1 valid', async () => {
-      writeLegacyConfig(1);
-      writeMergeManifest();
-
-      await expect(readTeamConfig(teamName, cwd)).resolves.toMatchObject({ max_workers: 1 });
-    });
-
-    it('rejects a legacy config carrying a zero cap as invalid persisted state', async () => {
-      writeLegacyConfig(0);
+    it.each([0, -1, 1.5])('rejects a legacy config carrying invalid cap %s through every reader and migration', async maxWorkers => {
+      writeLegacyConfig(maxWorkers);
       writeMergeManifest();
 
       await expect(readTeamConfig(teamName, cwd)).rejects.toThrow('invalid_persisted_state');
-    });
-
-    it('rejects a revisioned config carrying a zero cap on read and migrate', async () => {
-      writeConfig({ ...initialConfig(), max_workers: 0 });
-
+      await expect(teamReadConfig(teamName, cwd)).rejects.toThrow('invalid_persisted_state');
       await expect(readRevisionedTeamConfig(teamName, cwd)).rejects.toThrow('invalid_persisted_state');
       await expect(migrateTeamConfigRevision(teamName, cwd)).rejects.toThrow('invalid_persisted_state');
     });
 
-    it('refuses to persist a zero cap', async () => {
-      await expect(saveTeamConfig({ ...initialConfig(), max_workers: 0 }, cwd)).rejects.toThrow('invalid_persisted_state');
-    });
-
-    it('rejects a negative cap', async () => {
-      writeLegacyConfig(-1);
-      writeMergeManifest();
+    it.each([0, -1, 1.5])('rejects a revisioned config carrying invalid cap %s through every reader and migration', async maxWorkers => {
+      writeConfig({ ...initialConfig(), max_workers: maxWorkers });
 
       await expect(readTeamConfig(teamName, cwd)).rejects.toThrow('invalid_persisted_state');
+      await expect(teamReadConfig(teamName, cwd)).rejects.toThrow('invalid_persisted_state');
+      await expect(readRevisionedTeamConfig(teamName, cwd)).rejects.toThrow('invalid_persisted_state');
+      await expect(migrateTeamConfigRevision(teamName, cwd)).rejects.toThrow('invalid_persisted_state');
+    });
+
+    it.each([0, -1, 1.5])('refuses to persist invalid cap %s through both writers', async maxWorkers => {
+      await expect(saveTeamConfig({ ...initialConfig(), max_workers: maxWorkers }, cwd)).rejects.toThrow('invalid_persisted_state');
+      await expect(saveTeamConfigAtRevision({ ...initialConfig(), max_workers: maxWorkers, state_revision: 2 }, 1, cwd))
+        .rejects.toThrow('invalid_persisted_state');
+    });
+
+    it.each([1, 20])('keeps configured boundary cap %s valid through both readers', async maxWorkers => {
+      writeLegacyConfig(maxWorkers);
+      writeMergeManifest();
+
+      await expect(readTeamConfig(teamName, cwd)).resolves.toMatchObject({ max_workers: maxWorkers });
+      await expect(teamReadConfig(teamName, cwd)).resolves.toMatchObject({ max_workers: maxWorkers });
     });
   });
 

@@ -17,7 +17,7 @@ import { dirname, join } from 'node:path';
 import { TeamPaths, absPath } from './state-paths.js';
 import { normalizeTeamManifest, resolveMaxWorkers } from './governance.js';
 import { normalizeTeamGovernance } from './governance.js';
-import { migrateTeamConfigRevision, readRevisionedTeamConfig, saveTeamConfigAtRevision } from './monitor.js';
+import { isValidPersistedMaxWorkers, migrateTeamConfigRevision, readRevisionedTeamConfig, saveTeamConfigAtRevision } from './monitor.js';
 import { withProcessIdentityFileLock } from './process-identity-lock.js';
 import {
   isTerminalTeamTaskStatus,
@@ -267,6 +267,7 @@ export async function teamReadConfig(teamName: string, cwd: string): Promise<Tea
     readJsonSafe<TeamConfig & { agentTypes?: unknown[] }>(configPath),
   ]);
   if (!config && existsSync(configPath)) throw new Error('invalid_persisted_state');
+  if (config && !isValidPersistedMaxWorkers(config.max_workers)) throw new Error('invalid_persisted_state');
   // Preserve raw V1 agentTypes provenance before any worker canonicalization.
   // Canonicalization must not erase the only signal used to route legacy cleanup.
   if (config && Array.isArray((config as { agentTypes?: unknown[] }).agentTypes)) {
