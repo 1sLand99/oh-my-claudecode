@@ -63,42 +63,25 @@ describe('alias-resolver — Tier-0 routing', () => {
     if (origDisable === undefined) delete process.env.OMC_DISABLE_ALIAS_RESOLVER; else process.env.OMC_DISABLE_ALIAS_RESOLVER = origDisable;
   });
 
-  it('routes autopilot -> execute', () => {
-    const r = resolveWorkflowAlias('autopilot');
-    expect(r.canonical).toBe('execute');
-    expect(r.tier0).toBe('execute');
-    expect(r.isAlias).toBe(true);
-    expect(r.warning).toContain('execute');
+  // 5.0.0 retired these aliases outright (major-version carve-out). They no
+  // longer resolve to anything — the legacy names are gone, not redirected.
+  it.each([
+    'autopilot', 'ralph', 'ultrawork', 'ultrapilot', 'swarm', 'pipeline',
+    'ultragoal', 'ultraqa', 'merge-readiness', 'deep-dive', 'sciomc', 'ccg',
+    'omc-teams', 'mcp-setup', 'learner', 'writer-memory',
+  ])('retired alias %s no longer resolves to a canonical target', (name) => {
+    const r = resolveWorkflowAlias(name);
+    expect(r.isAlias).toBe(false);
+    expect(r.tier0).toBe(null);
   });
 
-  it('routes ralph -> execute', () => {
-    expect(resolveWorkflowAlias('ralph').canonical).toBe('execute');
-  });
-
-  it('routes ultrawork -> execute', () => {
-    expect(resolveWorkflowAlias('ultrawork').canonical).toBe('execute');
-  });
-
-  it('routes ultrapilot -> execute', () => {
-    expect(resolveWorkflowAlias('ultrapilot').canonical).toBe('execute');
-  });
-
-  it('routes swarm -> execute', () => {
-    expect(resolveWorkflowAlias('swarm').canonical).toBe('execute');
-  });
-
-  it('routes pipeline -> execute', () => {
-    expect(resolveWorkflowAlias('pipeline').canonical).toBe('execute');
-  });
-
-  it('routes ultraqa -> verify', () => {
-    expect(resolveWorkflowAlias('ultraqa').canonical).toBe('verify');
-    expect(resolveWorkflowAlias('ultraqa').tier0).toBe('verify');
-  });
-
-  it('routes ai-slop-cleaner -> review', () => {
-    expect(resolveWorkflowAlias('ai-slop-cleaner').canonical).toBe('review');
-  });
+  // Kept skills must never be rewritten into something else.
+  it.each(['team', 'autopilot', 'autoresearch', 'ai-slop-cleaner', 'visual-verdict', 'self-improve'])(
+    'kept skill %s resolves to itself, not an alias target',
+    (name) => {
+      expect(resolveWorkflowAlias(name).isAlias).toBe(false);
+    },
+  );
 
   it('ralplan is now Tier-0 (owner direction #3708)', () => {
     const r = resolveWorkflowAlias('ralplan');
@@ -114,10 +97,6 @@ describe('alias-resolver — Tier-0 routing', () => {
     expect(r.isAlias).toBe(false);
   });
 
-
-  it('routes ccg -> execute', () => {
-    expect(resolveWorkflowAlias('ccg').canonical).toBe('execute');
-  });
 
   it('routes release -> omc-release (maintainer-only)', () => {
     const r = resolveWorkflowAlias('release');
@@ -138,10 +117,10 @@ describe('alias-resolver — Tier-0 routing', () => {
   });
 
   it('is case-insensitive and handles slash prefixes', () => {
-    expect(resolveWorkflowAlias('Ralph').canonical).toBe('execute');
-    expect(resolveWorkflowAlias('/ralph').canonical).toBe('execute');
-    expect(resolveWorkflowAlias('/omc:autopilot').canonical).toBe('execute');
-    expect(resolveWorkflowAlias('/oh-my-claudecode:ultrawork').canonical).toBe('execute');
+    expect(resolveWorkflowAlias('Release').canonical).toBe('omc-release');
+    expect(resolveWorkflowAlias('/release').canonical).toBe('omc-release');
+    expect(resolveWorkflowAlias('/omc:release').canonical).toBe('omc-release');
+    expect(resolveWorkflowAlias('/oh-my-claudecode:psm').canonical).toBe('project-session-manager');
     expect(resolveWorkflowAlias('OMC:RALPLAN').canonical).toBe('ralplan');
   });
 
@@ -155,7 +134,7 @@ describe('alias-resolver — Tier-0 routing', () => {
   it('resolver flag disables alias routing', () => {
     withEnv({ OMC_ALIAS_RESOLVER_ENABLED: '0' }, () => {
       expect(isResolverEnabled()).toBe(false);
-      const r = resolveWorkflowAlias('ralph');
+      const r = resolveWorkflowAlias('release');
       expect(r.isAlias).toBe(false);
       expect(r.warning).toBe(null);
       expect(r.enabled).toBe(false);
@@ -179,18 +158,19 @@ describe('alias-resolver — Tier-0 routing', () => {
 
 describe('alias-resolver — warnings once/session + diagnostics', () => {
   it('warning is concise and actionable', () => {
-    const w = formatAliasWarning('ralph', 'execute');
+    const w = formatAliasWarning('psm', 'project-session-manager');
     expect(w.length).toBeLessThan(160);
-    expect(w).toContain('ralph');
-    expect(w).toContain('execute');
+    expect(w).toContain('psm');
+    expect(w).toContain('project-session-manager');
     const rw = formatAliasWarning('release', 'omc-release');
     expect(rw).toContain('omc release');
   });
 
   it('getAliasMapping retains full mapping/telemetry even when warnings suppressed', () => {
     const mapping = getAliasMapping();
-    expect(mapping.length).toBeGreaterThan(10);
-    expect(mapping.find((m) => m.alias === 'ralph')?.canonical).toBe('execute');
+    // 5.0.0 retired most aliases; the surviving set is deliberately small.
+    expect(mapping.length).toBeGreaterThan(0);
+    expect(mapping.find((m) => m.alias === 'psm')?.canonical).toBe('project-session-manager');
     expect(mapping.find((m) => m.alias === 'release')?.canonical).toBe('omc-release');
     // diagnostics
     const d = getDiagnostics();
@@ -254,19 +234,19 @@ describe('alias-resolver — automation opt-out', () => {
     try {
       // without opt-out, first call emits
       delete process.env.OMC_QUIET;
-      const res = resolveWorkflowAlias('ralph');
+      const res = resolveWorkflowAlias('psm');
       const w1 = maybeGetAliasWarning(res, sidSafe, worktreeRoot);
       expect(w1).not.toBe(null);
       // second call for same alias/session is suppressed
       const w2 = maybeGetAliasWarning(res, sidSafe, worktreeRoot);
       expect(w2).toBe(null);
       // but a different alias still emits
-      const res2 = resolveWorkflowAlias('autopilot');
+      const res2 = resolveWorkflowAlias('release');
       const w3 = maybeGetAliasWarning(res2, sidSafe, worktreeRoot);
       expect(w3).not.toBe(null);
       // opt-out suppresses even first warning for a fresh alias
       process.env.OMC_QUIET = '1';
-      const res3 = resolveWorkflowAlias('ultrawork');
+      const res3 = resolveWorkflowAlias('verify');
       const w4 = maybeGetAliasWarning(res3, sidSafe, worktreeRoot);
       expect(w4).toBe(null);
     } finally {
@@ -300,17 +280,17 @@ describe('alias-resolver — telemetry and usage receipts', () => {
     try {
       clearAliasTelemetryForTests(worktreeRoot);
       // alias use
-      recordAliasTelemetry({ alias: 'ralph', normalized: 'ralph', canonical: 'execute', tier0: 'execute', sessionId: 's1', warned: true, release: false }, worktreeRoot);
-      recordAliasTelemetry({ alias: 'ralph', normalized: 'ralph', canonical: 'execute', tier0: 'execute', sessionId: 's1', warned: false, release: false }, worktreeRoot);
+      recordAliasTelemetry({ alias: 'psm', normalized: 'psm', canonical: 'project-session-manager', tier0: null, sessionId: 's1', warned: true, release: false }, worktreeRoot);
+      recordAliasTelemetry({ alias: 'psm', normalized: 'psm', canonical: 'project-session-manager', tier0: null, sessionId: 's1', warned: false, release: false }, worktreeRoot);
       recordAliasTelemetry({ alias: 'release', normalized: 'release', canonical: 'omc-release', tier0: null, sessionId: 's1', warned: true, release: true }, worktreeRoot);
       const receipts = readUsageReceipts(worktreeRoot);
-      expect(receipts.byAlias['ralph'].count).toBe(2);
+      expect(receipts.byAlias['psm'].count).toBe(2);
       expect(receipts.byAlias['release'].count).toBe(1);
       expect(receipts.totals.aliasUses).toBe(3);
       expect(receipts.releaseUses).toBe(1);
       const tail = readTelemetryTail(10, worktreeRoot);
       expect(tail.length).toBe(3);
-      expect(tail[0].canonical).toBe('execute');
+      expect(tail[0].canonical).toBe('project-session-manager');
     } finally {
       rmSync(worktreeRoot, { recursive: true, force: true });
     }
@@ -323,7 +303,11 @@ describe('alias-resolver — telemetry and usage receipts', () => {
       if (isSelfCanonical) {
         expect(TIER0_WORKFLOWS).toContain(e.canonical as any);
       } else {
-        expect(['plan', 'execute', 'review', 'verify', 'omc-release']).toContain(e.canonical);
+        expect([
+          'plan', 'execute', 'review', 'verify',
+          // non-Tier-0 targets: internal lane, maintainer authority, kept utility
+          'research', 'omc-release', 'project-session-manager',
+        ]).toContain(e.canonical);
       }
     }
   });

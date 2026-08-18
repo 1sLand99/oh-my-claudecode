@@ -43,8 +43,9 @@ describe('registry projections — canonical JSON and digest', () => {
 describe('registry projections — drift check against installed surfaces', () => {
   it('matches the repository skills/ and commands/ surface exactly', () => {
     const installed = enumerateInstalledSurfaces(process.cwd());
-    expect(installed.skills.length).toBe(41);
-    expect(installed.commands.length).toBe(28);
+    // 41 + execute/review/research, which now ship as real skill directories.
+    expect(installed.skills.length).toBe(30);
+    expect(installed.commands.length).toBe(21);
     const drift = checkProjectionDrift(installed);
     expect(drift.unregistered).toEqual([]);
     expect(drift.missing).toEqual([]);
@@ -64,18 +65,22 @@ describe('registry projections — drift check against installed surfaces', () =
   it('flags a registered entry whose installed file disappeared', () => {
     const installed = enumerateInstalledSurfaces(process.cwd());
     const drift = checkProjectionDrift({
-      skills: installed.skills.filter((n) => n !== 'ralph'),
+      skills: installed.skills.filter((n) => n !== 'autopilot'),
       commands: installed.commands,
     });
     expect(drift.ok).toBe(false);
-    expect(drift.missing).toContain('skill:ralph');
+    expect(drift.missing).toContain('skill:autopilot');
   });
 
   it('exempts declaredOnly entries from the installed-file requirement', () => {
     const installed = enumerateInstalledSurfaces(process.cwd());
-    // execute/review/research/omc-release/ultrapilot/swarm/pipeline are declaredOnly
-    for (const name of ['execute', 'review', 'research', 'omc-release']) {
+    // execute/review/research now ship as real skill directories; the remaining
+    // declaredOnly entries (omc-release/ultrapilot/swarm/pipeline) have no files.
+    for (const name of ['omc-release', 'ultrapilot', 'swarm', 'pipeline']) {
       expect(installed.skills).not.toContain(name);
+    }
+    for (const name of ['execute', 'review', 'research']) {
+      expect(installed.skills).toContain(name);
     }
     expect(checkProjectionDrift(installed).ok).toBe(true);
   });

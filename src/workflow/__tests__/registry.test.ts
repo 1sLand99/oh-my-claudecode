@@ -77,11 +77,12 @@ describe('workflow registry — risk classes and gate policy', () => {
 });
 
 describe('workflow registry — aliases and classification', () => {
-  it('classifies all 41 installed skills and 28 installed commands exactly once', () => {
+  it('classifies all 30 installed skills and 21 installed commands exactly once', () => {
     const skills = WORKFLOW_ENTRIES.filter((e) => e.kind === 'skill' && !e.declaredOnly);
     const commands = WORKFLOW_ENTRIES.filter((e) => e.kind === 'command' && !e.declaredOnly);
-    expect(skills).toHaveLength(41);
-    expect(commands).toHaveLength(28);
+    // 41 + execute/review/research, which now ship as real skill directories.
+    expect(skills).toHaveLength(30);
+    expect(commands).toHaveLength(21);
     const keys = WORKFLOW_ENTRIES.map((e) => `${e.kind}:${e.name}`);
     expect(new Set(keys).size).toBe(keys.length);
   });
@@ -96,12 +97,17 @@ describe('workflow registry — aliases and classification', () => {
     }
   });
 
-  it('routes legacy execution modes into execute', () => {
-    for (const name of ['autopilot', 'ultragoal', 'ralph', 'pipeline']) {
-      expect(resolveCanonical(name, 'skill')?.name).toBe('execute');
+  it('drops legacy execution modes retired in 5.0.0', () => {
+    // Retired outright under the major-version carve-out — no registry entry,
+    // so they no longer resolve to a canonical target at all.
+    for (const name of ['ralph', 'pipeline', 'ultrawork', 'swarm', 'ultrapilot']) {
+      expect(getEntry(name, 'skill')).toBeUndefined();
+      expect(resolveCanonical(name, 'skill')).toBeUndefined();
     }
-    // team is an internal lane; ultrawork/swarm merge into team
-    expect(resolveCanonical('ultrawork', 'skill')?.name).toBe('team');
+    // autopilot survives as a directly-invocable workflow (owner direction).
+    expect(getEntry('autopilot', 'skill')?.decision).toBe('keep');
+    expect(resolveCanonical('autopilot', 'skill')?.name).toBe('autopilot');
+    // team remains an internal lane.
     expect(getEntry('team', 'skill')?.internalOnly).toBe(true);
   });
 
@@ -113,8 +119,11 @@ describe('workflow registry — aliases and classification', () => {
     expect(getEntry('ralplan', 'skill')?.tier).toBe(0);
     expect(resolveCanonical('deep-interview', 'skill')?.name).toBe('deep-interview');
     expect(resolveCanonical('ralplan', 'skill')?.name).toBe('ralplan');
-    expect(resolveCanonical('ultraqa', 'skill')?.name).toBe('verify');
-    expect(resolveCanonical('merge-readiness', 'skill')?.name).toBe('review');
+    // ultraqa and merge-readiness were retired in 5.0.0; verify/review are canonical.
+    expect(getEntry('ultraqa', 'skill')).toBeUndefined();
+    expect(getEntry('merge-readiness', 'skill')).toBeUndefined();
+    expect(resolveCanonical('verify', 'skill')?.name).toBe('verify');
+    expect(resolveCanonical('review', 'skill')?.name).toBe('review');
   });
 
 
@@ -179,10 +188,11 @@ describe('workflow registry — feature flag and resolver adapter seam', () => {
   });
 
   it('serves workflow aliases through the #3706 AliasRegistryLookup seam', () => {
-    const e = registryAliasLookup('autopilot');
+    // After the 5.0.0 retirement the only registry-served workflow alias is
+    // the maintainer-only release boundary; everything else was removed or kept.
+    const e = registryAliasLookup('release');
     expect(e).toBeDefined();
-    expect(e!.canonical).toBe('execute');
-    expect(e!.tier0).toBe('execute');
+    expect(e!.canonical).toBe('omc-release');
     expect(e!.isWorkflowAlias).toBe(true);
     expect(e!.owner).toBe(REGISTRY_OWNER);
   });
@@ -194,9 +204,10 @@ describe('workflow registry — feature flag and resolver adapter seam', () => {
     expect(e!.tier0).toBeUndefined();
   });
 
-  it('maps internal-lane aliases to their Tier-0 workflow', () => {
-    expect(registryAliasLookup('ultrawork')?.canonical).toBe('execute');
-    expect(registryAliasLookup('sciomc')?.canonical).toBe('plan');
+  it('no longer serves the internal-lane aliases retired in 5.0.0', () => {
+    for (const name of ['ultrawork', 'sciomc', 'deep-dive', 'ccg']) {
+      expect(registryAliasLookup(name)).toBeUndefined();
+    }
   });
 
   it('returns undefined for canonical names, unknown names, and when disabled', () => {

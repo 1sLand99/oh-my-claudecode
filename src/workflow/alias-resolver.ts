@@ -33,12 +33,22 @@ import { getOmcRoot, resolveToWorktreeRoot } from '../lib/worktree-paths.js';
 export const TIER0_WORKFLOWS = ['plan', 'deep-interview', 'ralplan', 'execute', 'review', 'verify'] as const;
 export type Tier0Workflow = (typeof TIER0_WORKFLOWS)[number];
 
-export type AliasTarget = Tier0Workflow | 'omc-release';
+/**
+ * Non-Tier-0 alias targets. `research` is an internal lane (registry.ts marks
+ * it internalOnly); `omc-release` is the maintainer-only release authority;
+ * `project-session-manager` is a kept utility that the short `psm` name points
+ * at. None of these join TIER0_WORKFLOWS.
+ */
+export type AliasTarget =
+  | Tier0Workflow
+  | 'omc-release'
+  | 'research'
+  | 'project-session-manager';
 
 export interface AliasEntry {
   alias: string;
   canonical: AliasTarget;
-  tier0?: Tier0Workflow; // when canonical is omc-release, tier0 is undefined
+  tier0?: Tier0Workflow; // undefined when canonical is omc-release or research
   owner: string;
   description: string;
   removalMilestone: string; // e.g. "≥2 minor releases + 90 days, ≥95% canonical share"
@@ -57,39 +67,24 @@ export interface AliasMappingDiagnostics {
 // Tier-0 workflows are themselves canonical; they appear as keys with isAlias=false
 const CANONICAL_SET = new Set<string>(TIER0_WORKFLOWS);
 
+/**
+ * 5.0.0 retired the legacy workflow aliases outright under the major-version
+ * carve-out (see alias-retirement/policy.ts). Removed entirely rather than
+ * aliased: ralph, ultragoal, ultrawork, ultraqa, ultrapilot, swarm, pipeline,
+ * merge-readiness, deep-dive, sciomc, ccg, omc-teams, mcp-setup, learner,
+ * writer-memory, local-build-reminder, setup, omc-reference.
+ *
+ * Entries that remain are genuine aliases only. Skills the registry marks
+ * `decision: 'keep'` (team, autopilot, autoresearch, ai-slop-cleaner,
+ * visual-verdict, self-improve) are deliberately absent — listing a kept skill
+ * here would rewrite a direct invocation into something else.
+ */
 export const ALIAS_REGISTRY: readonly AliasEntry[] = [
-  // ---- Workflow aliases → execute ----
-  { alias: 'autopilot', canonical: 'execute', tier0: 'execute', owner: 'workflow-registry', description: 'legacy autopilot pipeline', removalMilestone: '≥2 minor +90d, ≥95% canonical', isWorkflowAlias: true },
-  { alias: 'ralph', canonical: 'execute', tier0: 'execute', owner: 'workflow-registry', description: 'ralph continuation/evidence', removalMilestone: '≥2 minor +90d, ≥95% canonical', isWorkflowAlias: true },
-  { alias: 'ultrawork', canonical: 'execute', tier0: 'execute', owner: 'workflow-registry', description: 'ultrawork parallelism', removalMilestone: '≥2 minor +90d, ≥95% canonical', isWorkflowAlias: true },
-  { alias: 'ultrapilot', canonical: 'execute', tier0: 'execute', owner: 'workflow-registry', description: 'ultrapilot (team+ultragoal)', removalMilestone: '≥2 minor +90d, ≥95% canonical', isWorkflowAlias: true },
-  { alias: 'swarm', canonical: 'execute', tier0: 'execute', owner: 'workflow-registry', description: 'swarm workers', removalMilestone: '≥2 minor +90d, ≥95% canonical', isWorkflowAlias: true },
-  { alias: 'pipeline', canonical: 'execute', tier0: 'execute', owner: 'workflow-registry', description: 'legacy pipeline stages', removalMilestone: '≥2 minor +90d, ≥95% canonical', isWorkflowAlias: true },
-  { alias: 'team', canonical: 'execute', tier0: 'execute', owner: 'workflow-registry', description: 'team orchestration (now executor detail)', removalMilestone: '≥2 minor +90d, ≥95% canonical', isWorkflowAlias: true },
-  { alias: 'ccg', canonical: 'execute', tier0: 'execute', owner: 'workflow-registry', description: 'claude-codex-gemini orchestration', removalMilestone: '≥2 minor +90d, ≥95% canonical', isWorkflowAlias: true },
-  { alias: 'omc-teams', canonical: 'execute', tier0: 'execute', owner: 'workflow-registry', description: 'omc-teams command alias', removalMilestone: '≥2 minor +90d, ≥95% canonical', isWorkflowAlias: true },
+  // ---- Canonical self-entries (isAlias=false at resolve time) ----
+  { alias: 'verify', canonical: 'verify', tier0: 'verify', owner: 'workflow-registry', description: 'verify (Tier-0 canonical)', removalMilestone: 'canonical', isWorkflowAlias: true },
 
-  // ---- Workflow aliases → plan ----
-  { alias: 'sciomc', canonical: 'plan', tier0: 'plan', owner: 'workflow-registry', description: 'sciomc research', removalMilestone: '≥2 minor +90d, ≥95% canonical', isWorkflowAlias: true },
-  { alias: 'autoresearch', canonical: 'plan', tier0: 'plan', owner: 'workflow-registry', description: 'autoresearch lane', removalMilestone: '≥2 minor +90d, ≥95% canonical', isWorkflowAlias: true },
-  { alias: 'deep-dive', canonical: 'plan', tier0: 'plan', owner: 'workflow-registry', description: 'deep-dive research', removalMilestone: '≥2 minor +90d, ≥95% canonical', isWorkflowAlias: true },
-  { alias: 'ultragoal', canonical: 'execute', tier0: 'execute', owner: 'workflow-registry', description: 'ultragoal stages', removalMilestone: '≥2 minor +90d, ≥95% canonical', isWorkflowAlias: true },
-
-  // ---- Workflow aliases → review ----
-  { alias: 'merge-readiness', canonical: 'review', tier0: 'review', owner: 'workflow-registry', description: 'merge-readiness gate', removalMilestone: '≥2 minor +90d, ≥95% canonical', isWorkflowAlias: true },
-  { alias: 'ai-slop-cleaner', canonical: 'review', tier0: 'review', owner: 'workflow-registry', description: 'ai-slop-cleaner (opt-in)', removalMilestone: '≥2 minor +90d, ≥95% canonical', isWorkflowAlias: true },
-  { alias: 'visual-verdict', canonical: 'review', tier0: 'review', owner: 'workflow-registry', description: 'visual-verdict (opt-in)', removalMilestone: '≥2 minor +90d, ≥95% canonical', isWorkflowAlias: true },
-
-  // ---- Workflow aliases → verify ----
-  { alias: 'ultraqa', canonical: 'verify', tier0: 'verify', owner: 'workflow-registry', description: 'ultraqa QA cycle', removalMilestone: '≥2 minor +90d, ≥95% canonical', isWorkflowAlias: true },
-  { alias: 'verify', canonical: 'verify', tier0: 'verify', owner: 'workflow-registry', description: 'verify (now Tier-0)', removalMilestone: 'canonical', isWorkflowAlias: true },
-
-  // ---- Utility compatibility aliases (not Tier-0, kept for diagnostics) ----
-  { alias: 'mcp-setup', canonical: 'plan', tier0: 'plan', owner: 'workflow-registry', description: 'mcp-setup → omc-setup (utility)', removalMilestone: '≥2 minor +90d', isWorkflowAlias: false },
-  { alias: 'learner', canonical: 'plan', tier0: 'plan', owner: 'workflow-registry', description: 'learner → skillify/memory', removalMilestone: '≥2 minor +90d', isWorkflowAlias: false },
-  { alias: 'writer-memory', canonical: 'plan', tier0: 'plan', owner: 'workflow-registry', description: 'writer-memory → memory utility', removalMilestone: '≥2 minor +90d', isWorkflowAlias: false },
-  { alias: 'psm', canonical: 'plan', tier0: 'plan', owner: 'workflow-registry', description: 'psm → project-session-manager', removalMilestone: '≥2 minor +90d', isWorkflowAlias: false },
-  { alias: 'self-improve', canonical: 'plan', tier0: 'plan', owner: 'workflow-registry', description: 'self-improve (opt-in)', removalMilestone: '≥2 minor +90d', isWorkflowAlias: false },
+  // ---- Utility compatibility alias ----
+  { alias: 'psm', canonical: 'project-session-manager', owner: 'workflow-registry', description: 'psm → project-session-manager', removalMilestone: 'short-name convenience alias; retained by owner direction', isWorkflowAlias: false },
 
   // ---- Maintainer-only release ----
   { alias: 'release', canonical: 'omc-release', owner: 'maintainers', description: 'release → maintainer-only omc release', removalMilestone: 'compatibility alias during migration; never auto-removed without owner approval', isWorkflowAlias: true },
