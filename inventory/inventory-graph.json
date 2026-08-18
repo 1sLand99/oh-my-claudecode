@@ -5,22 +5,22 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "09423938a5c514f67726516a9f2407dc68092a6a",
-    "sourceSha256": "6176204ce179c2ee50aac57592445ee0f43b7a98457b4b9f354047c34ac7ea4d",
+    "head": "9fd610b6589883fcaf2d9dcba1b9f1e9ed56aff5",
+    "sourceSha256": "4ee5231e3016171112cc7d61df05c6f4f1d878c83ee55443fc39193fc334d3cb",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "09423938a5c514f67726516a9f2407dc68092a6a",
-  "sourceSha256": "6176204ce179c2ee50aac57592445ee0f43b7a98457b4b9f354047c34ac7ea4d",
+  "head": "9fd610b6589883fcaf2d9dcba1b9f1e9ed56aff5",
+  "sourceSha256": "4ee5231e3016171112cc7d61df05c6f4f1d878c83ee55443fc39193fc334d3cb",
   "counts": {
     "public": {
-      "skills": 41,
-      "commands": 28,
+      "skills": 30,
+      "commands": 21,
       "workflows": 8,
       "agents": 18,
-      "total": 95
+      "total": 77
     },
     "internal": {
       "hookFiles": 306,
@@ -39,8 +39,8 @@
     "prompt": {
       "promptLikeFiles": 62
     },
-    "skills": 41,
-    "commands": 28,
+    "skills": 30,
+    "commands": 21,
     "hookFiles": 306,
     "workflows": 8,
     "agentDefinitions": 18,
@@ -53,72 +53,54 @@
       "autopilot",
       "autoresearch",
       "cancel",
-      "ccg",
       "configure-notifications",
       "debug",
-      "deep-dive",
       "deep-interview",
       "deepinit",
+      "execute",
       "external-context",
       "hud",
-      "learner",
-      "local-build-reminder",
-      "mcp-setup",
-      "merge-readiness",
       "omc-doctor",
-      "omc-reference",
       "omc-setup",
-      "omc-teams",
       "plan",
       "project-session-manager",
-      "ralph",
       "ralplan",
       "release",
       "remember",
-      "sciomc",
+      "research",
+      "review",
       "self-improve",
-      "setup",
       "skill",
       "skillify",
       "team",
       "trace",
       "ultragoal",
-      "ultraqa",
-      "ultrawork",
       "verify",
       "visual-verdict",
-      "wiki",
-      "writer-memory"
+      "wiki"
     ],
     "commands": [
       "ask",
       "autoresearch",
-      "ccg",
       "compact",
       "configure-notifications",
       "debug",
-      "deep-dive",
       "deepinit",
       "external-context",
       "hud",
-      "learner",
-      "mcp-setup",
       "omc-doctor",
       "omc-setup",
-      "omc-teams",
       "project-session-manager",
       "psm",
       "release",
       "remember",
-      "sciomc",
       "self-improve",
       "skill",
       "skillify",
       "trace",
       "verify",
       "visual-verdict",
-      "wiki",
-      "writer-memory"
+      "wiki"
     ],
     "agents": [
       "analyst",
@@ -6451,11 +6433,6 @@
         "path": "commands/autoresearch.md"
       },
       {
-        "id": "commands/ccg.md",
-        "kind": "command",
-        "path": "commands/ccg.md"
-      },
-      {
         "id": "commands/compact.md",
         "kind": "command",
         "path": "commands/compact.md"
@@ -6469,11 +6446,6 @@
         "id": "commands/debug.md",
         "kind": "command",
         "path": "commands/debug.md"
-      },
-      {
-        "id": "commands/deep-dive.md",
-        "kind": "command",
-        "path": "commands/deep-dive.md"
       },
       {
         "id": "commands/deepinit.md",
@@ -6491,16 +6463,6 @@
         "path": "commands/hud.md"
       },
       {
-        "id": "commands/learner.md",
-        "kind": "command",
-        "path": "commands/learner.md"
-      },
-      {
-        "id": "commands/mcp-setup.md",
-        "kind": "command",
-        "path": "commands/mcp-setup.md"
-      },
-      {
         "id": "commands/omc-doctor.md",
         "kind": "command",
         "path": "commands/omc-doctor.md"
@@ -6509,11 +6471,6 @@
         "id": "commands/omc-setup.md",
         "kind": "command",
         "path": "commands/omc-setup.md"
-      },
-      {
-        "id": "commands/omc-teams.md",
-        "kind": "command",
-        "path": "commands/omc-teams.md"
       },
       {
         "id": "commands/project-session-manager.md",
@@ -6534,11 +6491,6 @@
         "id": "commands/remember.md",
         "kind": "command",
         "path": "commands/remember.md"
-      },
-      {
-        "id": "commands/sciomc.md",
-        "kind": "command",
-        "path": "commands/sciomc.md"
       },
       {
         "id": "commands/self-improve.md",
@@ -6574,11 +6526,6 @@
         "id": "commands/wiki.md",
         "kind": "command",
         "path": "commands/wiki.md"
-      },
-      {
-        "id": "commands/writer-memory.md",
-        "kind": "command",
-        "path": "commands/writer-memory.md"
       },
       {
         "id": "dist/__tests__/agent-boundary-guidance.test.d.ts",
@@ -29496,11 +29443,6 @@
         "path": "skills/cancel/SKILL.md"
       },
       {
-        "id": "skills/ccg/SKILL.md",
-        "kind": "skill",
-        "path": "skills/ccg/SKILL.md"
-      },
-      {
         "id": "skills/configure-notifications/SKILL.md",
         "kind": "skill",
         "path": "skills/configure-notifications/SKILL.md"
@@ -29509,11 +29451,6 @@
         "id": "skills/debug/SKILL.md",
         "kind": "skill",
         "path": "skills/debug/SKILL.md"
-      },
-      {
-        "id": "skills/deep-dive/SKILL.md",
-        "kind": "skill",
-        "path": "skills/deep-dive/SKILL.md"
       },
       {
         "id": "skills/deep-interview/SKILL.md",
@@ -29526,6 +29463,11 @@
         "path": "skills/deepinit/SKILL.md"
       },
       {
+        "id": "skills/execute/SKILL.md",
+        "kind": "skill",
+        "path": "skills/execute/SKILL.md"
+      },
+      {
         "id": "skills/external-context/SKILL.md",
         "kind": "skill",
         "path": "skills/external-context/SKILL.md"
@@ -29536,34 +29478,9 @@
         "path": "skills/hud/SKILL.md"
       },
       {
-        "id": "skills/learner/SKILL.md",
-        "kind": "skill",
-        "path": "skills/learner/SKILL.md"
-      },
-      {
-        "id": "skills/local-build-reminder/SKILL.md",
-        "kind": "skill",
-        "path": "skills/local-build-reminder/SKILL.md"
-      },
-      {
-        "id": "skills/mcp-setup/SKILL.md",
-        "kind": "skill",
-        "path": "skills/mcp-setup/SKILL.md"
-      },
-      {
-        "id": "skills/merge-readiness/SKILL.md",
-        "kind": "skill",
-        "path": "skills/merge-readiness/SKILL.md"
-      },
-      {
         "id": "skills/omc-doctor/SKILL.md",
         "kind": "skill",
         "path": "skills/omc-doctor/SKILL.md"
-      },
-      {
-        "id": "skills/omc-reference/SKILL.md",
-        "kind": "skill",
-        "path": "skills/omc-reference/SKILL.md"
       },
       {
         "id": "skills/omc-setup/SKILL.md",
@@ -29589,11 +29506,6 @@
         "id": "skills/omc-setup/phases/04-welcome.md",
         "kind": "other",
         "path": "skills/omc-setup/phases/04-welcome.md"
-      },
-      {
-        "id": "skills/omc-teams/SKILL.md",
-        "kind": "skill",
-        "path": "skills/omc-teams/SKILL.md"
       },
       {
         "id": "skills/plan/SKILL.md",
@@ -29701,11 +29613,6 @@
         "path": "skills/project-session-manager/tests/test-psm-prompt-injection.sh"
       },
       {
-        "id": "skills/ralph/SKILL.md",
-        "kind": "skill",
-        "path": "skills/ralph/SKILL.md"
-      },
-      {
         "id": "skills/ralplan/SKILL.md",
         "kind": "skill",
         "path": "skills/ralplan/SKILL.md"
@@ -29721,9 +29628,14 @@
         "path": "skills/remember/SKILL.md"
       },
       {
-        "id": "skills/sciomc/SKILL.md",
+        "id": "skills/research/SKILL.md",
         "kind": "skill",
-        "path": "skills/sciomc/SKILL.md"
+        "path": "skills/research/SKILL.md"
+      },
+      {
+        "id": "skills/review/SKILL.md",
+        "kind": "skill",
+        "path": "skills/review/SKILL.md"
       },
       {
         "id": "skills/self-improve/SKILL.md",
@@ -29791,11 +29703,6 @@
         "path": "skills/self-improve/templates/settings.json"
       },
       {
-        "id": "skills/setup/SKILL.md",
-        "kind": "skill",
-        "path": "skills/setup/SKILL.md"
-      },
-      {
         "id": "skills/skill/SKILL.md",
         "kind": "skill",
         "path": "skills/skill/SKILL.md"
@@ -29821,16 +29728,6 @@
         "path": "skills/ultragoal/SKILL.md"
       },
       {
-        "id": "skills/ultraqa/SKILL.md",
-        "kind": "skill",
-        "path": "skills/ultraqa/SKILL.md"
-      },
-      {
-        "id": "skills/ultrawork/SKILL.md",
-        "kind": "skill",
-        "path": "skills/ultrawork/SKILL.md"
-      },
-      {
         "id": "skills/verify/SKILL.md",
         "kind": "skill",
         "path": "skills/verify/SKILL.md"
@@ -29844,41 +29741,6 @@
         "id": "skills/wiki/SKILL.md",
         "kind": "skill",
         "path": "skills/wiki/SKILL.md"
-      },
-      {
-        "id": "skills/writer-memory/SKILL.md",
-        "kind": "skill",
-        "path": "skills/writer-memory/SKILL.md"
-      },
-      {
-        "id": "skills/writer-memory/lib/character-tracker.ts",
-        "kind": "other",
-        "path": "skills/writer-memory/lib/character-tracker.ts"
-      },
-      {
-        "id": "skills/writer-memory/lib/memory-manager.ts",
-        "kind": "other",
-        "path": "skills/writer-memory/lib/memory-manager.ts"
-      },
-      {
-        "id": "skills/writer-memory/lib/relationship-graph.ts",
-        "kind": "other",
-        "path": "skills/writer-memory/lib/relationship-graph.ts"
-      },
-      {
-        "id": "skills/writer-memory/lib/scene-organizer.ts",
-        "kind": "other",
-        "path": "skills/writer-memory/lib/scene-organizer.ts"
-      },
-      {
-        "id": "skills/writer-memory/lib/synopsis-builder.ts",
-        "kind": "other",
-        "path": "skills/writer-memory/lib/synopsis-builder.ts"
-      },
-      {
-        "id": "skills/writer-memory/templates/synopsis-template.md",
-        "kind": "other",
-        "path": "skills/writer-memory/templates/synopsis-template.md"
       },
       {
         "id": "src/AGENTS.md",
@@ -36843,11 +36705,6 @@
         "kind": "registers"
       },
       {
-        "from": "commands/ccg.md",
-        "to": "src/commands/index.ts",
-        "kind": "registers"
-      },
-      {
         "from": "commands/compact.md",
         "to": "src/commands/index.ts",
         "kind": "registers"
@@ -36859,11 +36716,6 @@
       },
       {
         "from": "commands/debug.md",
-        "to": "src/commands/index.ts",
-        "kind": "registers"
-      },
-      {
-        "from": "commands/deep-dive.md",
         "to": "src/commands/index.ts",
         "kind": "registers"
       },
@@ -36883,27 +36735,12 @@
         "kind": "registers"
       },
       {
-        "from": "commands/learner.md",
-        "to": "src/commands/index.ts",
-        "kind": "registers"
-      },
-      {
-        "from": "commands/mcp-setup.md",
-        "to": "src/commands/index.ts",
-        "kind": "registers"
-      },
-      {
         "from": "commands/omc-doctor.md",
         "to": "src/commands/index.ts",
         "kind": "registers"
       },
       {
         "from": "commands/omc-setup.md",
-        "to": "src/commands/index.ts",
-        "kind": "registers"
-      },
-      {
-        "from": "commands/omc-teams.md",
         "to": "src/commands/index.ts",
         "kind": "registers"
       },
@@ -36924,11 +36761,6 @@
       },
       {
         "from": "commands/remember.md",
-        "to": "src/commands/index.ts",
-        "kind": "registers"
-      },
-      {
-        "from": "commands/sciomc.md",
         "to": "src/commands/index.ts",
         "kind": "registers"
       },
@@ -36964,11 +36796,6 @@
       },
       {
         "from": "commands/wiki.md",
-        "to": "src/commands/index.ts",
-        "kind": "registers"
-      },
-      {
-        "from": "commands/writer-memory.md",
         "to": "src/commands/index.ts",
         "kind": "registers"
       },
@@ -38743,22 +38570,12 @@
         "kind": "registers"
       },
       {
-        "from": "skills/ccg/SKILL.md",
-        "to": "src/features/builtin-skills/skills.ts",
-        "kind": "registers"
-      },
-      {
         "from": "skills/configure-notifications/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
       },
       {
         "from": "skills/debug/SKILL.md",
-        "to": "src/features/builtin-skills/skills.ts",
-        "kind": "registers"
-      },
-      {
-        "from": "skills/deep-dive/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
       },
@@ -38773,6 +38590,11 @@
         "kind": "registers"
       },
       {
+        "from": "skills/execute/SKILL.md",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "registers"
+      },
+      {
         "from": "skills/external-context/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
@@ -38783,42 +38605,12 @@
         "kind": "registers"
       },
       {
-        "from": "skills/learner/SKILL.md",
-        "to": "src/features/builtin-skills/skills.ts",
-        "kind": "registers"
-      },
-      {
-        "from": "skills/local-build-reminder/SKILL.md",
-        "to": "src/features/builtin-skills/skills.ts",
-        "kind": "registers"
-      },
-      {
-        "from": "skills/mcp-setup/SKILL.md",
-        "to": "src/features/builtin-skills/skills.ts",
-        "kind": "registers"
-      },
-      {
-        "from": "skills/merge-readiness/SKILL.md",
-        "to": "src/features/builtin-skills/skills.ts",
-        "kind": "registers"
-      },
-      {
         "from": "skills/omc-doctor/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
       },
       {
-        "from": "skills/omc-reference/SKILL.md",
-        "to": "src/features/builtin-skills/skills.ts",
-        "kind": "registers"
-      },
-      {
         "from": "skills/omc-setup/SKILL.md",
-        "to": "src/features/builtin-skills/skills.ts",
-        "kind": "registers"
-      },
-      {
-        "from": "skills/omc-teams/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
       },
@@ -38829,11 +38621,6 @@
       },
       {
         "from": "skills/project-session-manager/SKILL.md",
-        "to": "src/features/builtin-skills/skills.ts",
-        "kind": "registers"
-      },
-      {
-        "from": "skills/ralph/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
       },
@@ -38853,7 +38640,12 @@
         "kind": "registers"
       },
       {
-        "from": "skills/sciomc/SKILL.md",
+        "from": "skills/research/SKILL.md",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "registers"
+      },
+      {
+        "from": "skills/review/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
       },
@@ -38883,11 +38675,6 @@
         "kind": "imports"
       },
       {
-        "from": "skills/setup/SKILL.md",
-        "to": "src/features/builtin-skills/skills.ts",
-        "kind": "registers"
-      },
-      {
         "from": "skills/skill/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
@@ -38913,16 +38700,6 @@
         "kind": "registers"
       },
       {
-        "from": "skills/ultraqa/SKILL.md",
-        "to": "src/features/builtin-skills/skills.ts",
-        "kind": "registers"
-      },
-      {
-        "from": "skills/ultrawork/SKILL.md",
-        "to": "src/features/builtin-skills/skills.ts",
-        "kind": "registers"
-      },
-      {
         "from": "skills/verify/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
@@ -38936,61 +38713,6 @@
         "from": "skills/wiki/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
-      },
-      {
-        "from": "skills/writer-memory/SKILL.md",
-        "to": "src/features/builtin-skills/skills.ts",
-        "kind": "registers"
-      },
-      {
-        "from": "skills/writer-memory/lib/character-tracker.ts",
-        "to": "skills/writer-memory/lib/memory-manager.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "skills/writer-memory/lib/character-tracker.ts",
-        "to": "skills/writer-memory/lib/memory-manager.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "skills/writer-memory/lib/memory-manager.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "skills/writer-memory/lib/memory-manager.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "skills/writer-memory/lib/relationship-graph.ts",
-        "to": "skills/writer-memory/lib/memory-manager.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "skills/writer-memory/lib/relationship-graph.ts",
-        "to": "skills/writer-memory/lib/memory-manager.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "skills/writer-memory/lib/scene-organizer.ts",
-        "to": "skills/writer-memory/lib/memory-manager.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "skills/writer-memory/lib/scene-organizer.ts",
-        "to": "skills/writer-memory/lib/memory-manager.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "skills/writer-memory/lib/synopsis-builder.ts",
-        "to": "skills/writer-memory/lib/memory-manager.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "skills/writer-memory/lib/synopsis-builder.ts",
-        "to": "skills/writer-memory/lib/memory-manager.ts",
-        "kind": "type-imports"
       },
       {
         "from": "src/__tests__/advisory-agent-final-output-contract.test.ts",
@@ -70979,12 +70701,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6176,
-      "edgeCount": 6887,
-      "importEdgeCount": 5626,
-      "registerEdgeCount": 69
+      "nodeCount": 6152,
+      "edgeCount": 6859,
+      "importEdgeCount": 5620,
+      "registerEdgeCount": 51
     }
   },
-  "inventorySha256": "42aa05f88c1779c137e4ee3484bd84f6ed258478814a210853e7a1d8dc4bdd9c",
-  "manifestSha256": "4e899a0088418afcd40607ab6227da17ff8877c3ea95a31faa8c86346ae53a81"
+  "inventorySha256": "2f796df5d14b319fe336b73924774420199068af5da0137e14333e0589ef239d",
+  "manifestSha256": "3faa06a3b1ceb610d900ab147184e2a0f43e5d19c3b28a288d7170d666da9b97"
 }
