@@ -191,25 +191,6 @@ describe('delegation-enforcer', () => {
       expect(thrown!.message).not.toContain('Skill');
       expect(thrown!.message).not.toContain('closest match');
     });
-    it('resolves the learner directory/canonical collision to skillify in the guidance (issue #3667)', () => {
-      const input: AgentInput = {
-        description: 'Learner task',
-        prompt: 'Run it',
-        subagent_type: 'oh-my-claudecode:learner'
-      };
-
-      let thrown: Error | undefined;
-      try {
-        enforceModel(input);
-      } catch (error) {
-        thrown = error as Error;
-      }
-
-      expect(thrown).toBeDefined();
-      // Canonical registry precedence: skillify owns the deprecated alias.
-      expect(thrown!.message).toContain('Skill(skill="oh-my-claudecode:skillify")');
-      expect(thrown!.message).not.toContain('Skill(skill="oh-my-claudecode:learner")');
-    });
 
     it('resolves the dir-only plan name to omc-plan in the guidance (hook parity)', () => {
       const input: AgentInput = {
@@ -228,7 +209,7 @@ describe('delegation-enforcer', () => {
       expect(thrown).toBeDefined();
       expect(thrown!.message).toContain('Skill(skill="oh-my-claudecode:omc-plan")');
     });
-    describe('runtime-hidden skill visibility (USER_TYPE entitlement, issue #3667)', () => {
+    describe('bundled skill visibility (entitlement set empty since 5.0.0, issue #3667)', () => {
       let savedUserType: string | undefined;
 
       beforeEach(() => {
@@ -254,15 +235,15 @@ describe('delegation-enforcer', () => {
         return undefined;
       }
 
+      // Ungated in 5.0.0: remember/verify/debug are suggested for every user.
       it.each(['remember', 'verify', 'debug'])(
-        'does NOT add Skill guidance for the runtime-hidden %s skill when USER_TYPE != ant',
-        (hiddenSkill) => {
+        'adds Skill guidance for the %s skill regardless of USER_TYPE',
+        (skillName) => {
           delete process.env.USER_TYPE;
           clearSkillsCache();
-          const thrown = thrownFor(`oh-my-claudecode:${hiddenSkill}`);
+          const thrown = thrownFor(`oh-my-claudecode:${skillName}`);
           expect(thrown).toBeDefined();
-          expect(thrown!.message).toContain('Unknown agent type');
-          expect(thrown!.message).not.toContain('Skill(skill=');
+          expect(thrown!.message).toContain(`Skill(skill="oh-my-claudecode:${skillName}")`);
         },
       );
 
@@ -277,29 +258,27 @@ describe('delegation-enforcer', () => {
         },
       );
 
-      it('keeps guidance for visible skills while hidden ones stay unsuggested in the same process', () => {
+      it('keeps guidance for every bundled skill in the same process', () => {
         delete process.env.USER_TYPE;
         clearSkillsCache();
         const visible = thrownFor('oh-my-claudecode:ai-slop-cleaner');
-        const hidden = thrownFor('oh-my-claudecode:remember');
+        const ungated = thrownFor('oh-my-claudecode:remember');
         expect(visible!.message).toContain('Skill(skill="oh-my-claudecode:ai-slop-cleaner")');
-        expect(hidden!.message).not.toContain('Skill(skill=');
+        expect(ungated!.message).toContain('Skill(skill="oh-my-claudecode:remember")');
       });
 
       it('case-folds identifiers before visibility and resolution (Windows/macOS semantics, issue #3667)', () => {
         delete process.env.USER_TYPE;
         clearSkillsCache();
-        const hiddenMixedCase = thrownFor('oh-my-claudecode:Remember');
-        expect(hiddenMixedCase!.message).not.toContain('Skill(skill=');
+        const ungatedMixedCase = thrownFor('oh-my-claudecode:Remember');
+        expect(ungatedMixedCase!.message).toContain('Skill(skill="oh-my-claudecode:remember")');
 
         const visibleMixedCase = thrownFor('oh-my-claudecode:Plan');
         expect(visibleMixedCase!.message).toContain('Skill(skill="oh-my-claudecode:omc-plan")');
 
-        const aliasMixedCase = thrownFor('oh-my-claudecode:LEARNER');
-        expect(aliasMixedCase!.message).toContain('Skill(skill="oh-my-claudecode:skillify")');
       });
 
-      it('case-folds the namespace prefix and hidden skills for USER_TYPE=ant', () => {
+      it('case-folds the namespace prefix for USER_TYPE=ant', () => {
         process.env.USER_TYPE = 'ant';
         clearSkillsCache();
         const hiddenMixedCase = thrownFor('oh-my-claudecode:Remember');

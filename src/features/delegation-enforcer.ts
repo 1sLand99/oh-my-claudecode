@@ -165,8 +165,11 @@ function skillInvocationHint(agentType: string, originalSubagentType?: string): 
 /**
  * Skills exposed only to skininthegamebros users. Mirrors
  * src/features/builtin-skills/skills.ts:SKININTHEGAMEBROS_ONLY_SKILLS.
+ *
+ * Empty as of 5.0.0 — remember/verify/debug were ungated. Kept for future
+ * early-access skills.
  */
-const SKININTHEGAMEBROS_ONLY_SKILLS = new Set(['remember', 'verify', 'debug']);
+const SKININTHEGAMEBROS_ONLY_SKILLS = new Set<string>([]);
 
 /**
  * Whether a bundled skill directory is visible to the current user, mirroring
