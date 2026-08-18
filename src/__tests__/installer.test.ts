@@ -293,9 +293,10 @@ describe('Installer Constants', () => {
     it('should document magic keywords and compatibility commands', () => {
       // Keywords are now in skill trigger columns
       // Check for key keywords in the skill tables
+      // ralph and ulw were retired in 5.0.0; canonical triggers remain documented.
       const keywords = [
-        'ralph',
-        'ulw',
+        'autopilot',
+        'ralplan',
         'plan',
       ];
 

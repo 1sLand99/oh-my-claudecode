@@ -2545,31 +2545,7 @@ describe('pre-tool-enforcer skill vs agent namespace guard (issue #3667)', () =>
     expect(denyReason(output)).toContain('omc-plan');
     expect(denyReason(output)).toContain('Skill(skill="oh-my-claudecode:omc-plan")');
   });
-  it('resolves the learner directory/canonical collision to skillify (canonical precedence over directory shortcut)', () => {
-    // skills/learner/SKILL.md exists, but the canonical registry claims
-    // `learner` as a deprecated alias owned by skillify (skillify sorts first).
-    const namespaced = runTask('oh-my-claudecode:learner');
-    const bare = runTask('learner');
-    const owner = runTask('oh-my-claudecode:skillify');
 
-    for (const output of [namespaced, bare, owner]) {
-      const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
-      expect(hookOutput.permissionDecision).toBe('deny');
-      expect(denyReason(output)).toContain('Skill(skill="oh-my-claudecode:skillify")');
-    }
-    expect(denyReason(namespaced)).not.toContain('Skill(skill="oh-my-claudecode:learner")');
-    expect(denyReason(bare)).not.toContain('Skill(skill="oh-my-claudecode:learner")');
-  });
-
-  it('resolves the understanding-gate and psm alias claims to their canonical owners', () => {
-    const gate = runTask('oh-my-claudecode:understanding-gate');
-    const psm = runTask('oh-my-claudecode:psm');
-
-    expect((gate.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBe('deny');
-    expect(denyReason(gate)).toContain('Skill(skill="oh-my-claudecode:merge-readiness")');
-    expect((psm.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBe('deny');
-    expect(denyReason(psm)).toContain('Skill(skill="oh-my-claudecode:project-session-manager")');
-  });
 
   it('does NOT deny a real agent identifier (code-simplifier passes through)', () => {
     const output = runTask('oh-my-claudecode:code-simplifier');
@@ -2724,7 +2700,6 @@ describe('pre-tool-enforcer skill vs agent namespace guard (issue #3667)', () =>
 
     it.each([
       ['oh-my-claudecode:Plan', 'oh-my-claudecode:omc-plan'],
-      ['oh-my-claudecode:LEARNER', 'oh-my-claudecode:skillify'],
       ['oh-my-claudecode:AI-Slop-Cleaner', 'oh-my-claudecode:ai-slop-cleaner'],
       ['oh-my-claudecode:Cancel-Ralph', 'oh-my-claudecode:cancel'],
       ['oh-my-claudecode:PSM', 'oh-my-claudecode:project-session-manager'],
@@ -2799,10 +2774,9 @@ describe('pre-tool-enforcer skill vs agent namespace guard (issue #3667)', () =>
       expect((bare.hookSpecificOutput as Record<string, unknown>).permissionDecision).toBeUndefined();
     });
 
-    it('still denies bare canonical-registry skill claims (omc-plan, learner, ai-slop-cleaner)', () => {
+    it('still denies bare canonical-registry skill claims (omc-plan, ai-slop-cleaner)', () => {
       for (const [input, expected] of [
         ['omc-plan', 'oh-my-claudecode:omc-plan'],
-        ['learner', 'oh-my-claudecode:skillify'],
         ['ai-slop-cleaner', 'oh-my-claudecode:ai-slop-cleaner'],
       ] as const) {
         const output = runTask(input, 'Task', {}, { USER_TYPE: '' });

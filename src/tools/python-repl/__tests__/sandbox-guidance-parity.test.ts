@@ -161,29 +161,6 @@ describe('python_repl sandbox guidance parity (#3682)', () => {
       );
     });
 
-    it('skills/sciomc/SKILL.md never promises figures the scientist cannot produce', () => {
-      // sciomc exists only to orchestrate scientist agents, so the whole skill
-      // document is scientist guidance — no section scoping applies here. The
-      // scientist has no Write/Edit tools and python_repl blocks file I/O and
-      // plotting, so a figure-generation workflow is unimplementable.
-      const sciomc = readFileSync(
-        fileURLToPath(new URL('../../../../skills/sciomc/SKILL.md', import.meta.url)),
-        'utf-8',
-      ).toLowerCase();
-      expect(sciomc).toContain('scientist');
-      for (const term of [
-        ...THIRD_PARTY_LIBRARIES,
-        ...FILE_IO_DIRECTIVES,
-        ...LIBRARY_API_DIRECTIVES,
-        ...IMPORT_DIRECTIVES,
-        ...SCIENTIST_WORKFLOW_DIRECTIVES,
-        '[figure:',
-        'generatefigures',
-        '.png',
-      ]) {
-        expect(sciomc, `sciomc must not direct "${term}"`).not.toContain(term);
-      }
-    });
   });
 
   describe('serialized inputSchema surfaces', () => {

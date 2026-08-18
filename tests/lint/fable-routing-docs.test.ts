@@ -60,8 +60,8 @@ describe("fable routing doc contract (issue #3738)", () => {
     });
   });
 
-  it("omc-reference skill documents fable and the delegation boundary", () => {
-    const content = read("skills/omc-reference/SKILL.md");
+  it("wiki skill documents fable and the delegation boundary", () => {
+    const content = read("skills/wiki/SKILL.md");
     expect(content).toContain("`fable`");
     expect(content).toContain("main loop only");
     expect(content).toContain("agents.<name>.model");
