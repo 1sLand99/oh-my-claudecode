@@ -107,9 +107,9 @@ function buildCoordinatorFixture(pluginRoot: string, claudeMdContent: string, ve
       __OMC_COORDINATOR_SOURCE_SHA256__: JSON.stringify(createHash('sha256').update(claudeMdContent).digest('hex')),
     },
   });
-  mkdirSync(join(pluginRoot, 'skills', 'omc-reference'), { recursive: true });
-  writeFileSync(join(pluginRoot, 'skills', 'omc-reference', 'SKILL.md'), `---
-name: omc-reference
+  mkdirSync(join(pluginRoot, 'skills', 'wiki'), { recursive: true });
+  writeFileSync(join(pluginRoot, 'skills', 'wiki', 'SKILL.md'), `---
+name: wiki
 description: Test fixture reference skill
 user-invocable: false
 ---
@@ -187,8 +187,8 @@ describe('setup-claude-md.sh committed plugin shipping surface (issue #3476)', (
     expect(result.status).toBe(0);
     expect(readFileSync(join(fixture.projectRoot, '.claude', 'CLAUDE.md'), 'utf-8'))
       .toBe(readFileSync(join(fixture.pluginRoot, 'docs', 'CLAUDE.md'), 'utf-8'));
-    expect(readFileSync(join(fixture.projectRoot, '.claude', 'skills', 'omc-reference', 'SKILL.md'), 'utf-8'))
-      .toBe(readFileSync(join(fixture.pluginRoot, 'skills', 'omc-reference', 'SKILL.md'), 'utf-8'));
+    expect(readFileSync(join(fixture.projectRoot, '.claude', 'skills', 'wiki', 'SKILL.md'), 'utf-8'))
+      .toBe(readFileSync(join(fixture.pluginRoot, 'skills', 'wiki', 'SKILL.md'), 'utf-8'));
   });
 
   for (const scenario of ['missing', 'stale'] as const) {
@@ -279,7 +279,7 @@ Use the real docs file.
     expect(installed).toContain('<!-- OMC:VERSION:9.9.9 -->');
     expect(installed).toContain('# Canonical CLAUDE');
 
-    const installedSkillPath = join(fixture.projectRoot, '.claude', 'skills', 'omc-reference', 'SKILL.md');
+    const installedSkillPath = join(fixture.projectRoot, '.claude', 'skills', 'wiki', 'SKILL.md');
     expect(existsSync(installedSkillPath)).toBe(true);
     expect(readFileSync(installedSkillPath, 'utf-8')).toContain('# Test OMC Reference');
   });
@@ -699,7 +699,7 @@ Use the real docs file.
 
     expect(result.status).toBe(0);
     expect(existsSync(join(configDir, 'CLAUDE.md'))).toBe(true);
-    expect(existsSync(join(configDir, 'skills', 'omc-reference', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(configDir, 'skills', 'wiki', 'SKILL.md'))).toBe(true);
     expect(existsSync(join(configDir, 'hooks', 'keyword-detector.sh'))).toBe(true);
     expect(`${result.stdout}\n${result.stderr}`).toContain('Plugin verified');
     expect(`${result.stdout}\n${result.stderr}`).toContain('Preserved unverified legacy hook');

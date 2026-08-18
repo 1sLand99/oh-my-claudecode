@@ -16,12 +16,15 @@ SCRIPT_PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 resolve_active_plugin_root() {
   is_valid_plugin_root() {
     local candidate="$1"
+    # The skill probe is a canary that the checkout carries real skill content
+    # rather than an empty/partial tree. omc-reference was retired in 5.0.0, so
+    # this now probes wiki, its canonical replacement.
     [ -d "$candidate" ] \
       && [ -f "${candidate}/scripts/setup-claude-md.sh" ] \
       && [ -f "${candidate}/scripts/lib/config-dir.sh" ] \
       && [ -f "${candidate}/docs/CLAUDE.md" ] \
       && [ -f "${candidate}/bridge/claude-md-coordinator.cjs" ] \
-      && [ -s "${candidate}/skills/omc-reference/SKILL.md" ]
+      && [ -s "${candidate}/skills/wiki/SKILL.md" ]
   }
 
   # Issue #3743: version-manager shims (e.g. Volta on Windows) can truncate a
@@ -133,12 +136,12 @@ EOF
   echo "Configured git exclude for local OMC/OMX artifacts (preserving .omc/skills/)"
 }
 
-install_omc_reference_skill() {
+install_reference_skill() {
   local source="$1"
-  [ -s "$source" ] || { echo "Skipped omc-reference skill install (canonical skill source unavailable)"; return 0; }
+  [ -s "$source" ] || { echo "Skipped wiki skill install (canonical skill source unavailable)"; return 0; }
   mkdir -p "$(dirname "$SKILL_TARGET_PATH")"
   cp "$source" "$SKILL_TARGET_PATH"
-  echo "Installed omc-reference skill to $SKILL_TARGET_PATH"
+  echo "Installed wiki skill to $SKILL_TARGET_PATH"
 }
 # Issue #3743: installed_plugins.json can record Windows-style installPath
 # values that never string-match POSIX/MSYS roots, which made the re-exec guard
@@ -191,8 +194,8 @@ else
 fi
 COORDINATOR="${ACTIVE_PLUGIN_ROOT}/bridge/claude-md-coordinator.cjs"
 CANONICAL_CLAUDE_MD="${ACTIVE_PLUGIN_ROOT}/docs/CLAUDE.md"
-CANONICAL_OMC_REFERENCE_SKILL="${ACTIVE_PLUGIN_ROOT}/skills/omc-reference/SKILL.md"
-if [ ! -f "$COORDINATOR" ] || [ ! -f "$CANONICAL_CLAUDE_MD" ] || [ ! -s "$CANONICAL_OMC_REFERENCE_SKILL" ]; then
+CANONICAL_REFERENCE_SKILL="${ACTIVE_PLUGIN_ROOT}/skills/wiki/SKILL.md"
+if [ ! -f "$COORDINATOR" ] || [ ! -f "$CANONICAL_CLAUDE_MD" ] || [ ! -s "$CANONICAL_REFERENCE_SKILL" ]; then
   echo "ERROR: Coordinator artifact or canonical source is unavailable; refusing setup." >&2
   exit 1
 fi
@@ -200,11 +203,11 @@ fi
 CONFIG_DIR="$(resolve_claude_config_dir)"
 if [ "$MODE" = "local" ]; then
   CONFIG_ROOT="$(pwd)/.claude"
-  SKILL_TARGET_PATH="${CONFIG_ROOT}/skills/omc-reference/SKILL.md"
+  SKILL_TARGET_PATH="${CONFIG_ROOT}/skills/wiki/SKILL.md"
   COORDINATOR_MODE="local"
 else
   CONFIG_ROOT="$CONFIG_DIR"
-  SKILL_TARGET_PATH="${CONFIG_ROOT}/skills/omc-reference/SKILL.md"
+  SKILL_TARGET_PATH="${CONFIG_ROOT}/skills/wiki/SKILL.md"
   if [ "$INSTALL_STYLE" = "preserve" ]; then COORDINATOR_MODE="global-preserve"; else COORDINATOR_MODE="global-overwrite"; fi
 fi
 # The coordinator owns the build handshake. Independently hashing the canonical
@@ -275,7 +278,7 @@ if [ "$VALIDATOR_STATUS" -ne 0 ]; then
   exit "$VALIDATOR_STATUS"
 fi
 
-install_omc_reference_skill "$CANONICAL_OMC_REFERENCE_SKILL"
+install_reference_skill "$CANONICAL_REFERENCE_SKILL"
 if [ "$MODE" = "local" ]; then ensure_local_omc_git_exclude; fi
 
 if [ "$MODE" = "global" ]; then
