@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "736363b5602b14ceaed8891870afba2c36e3c186",
-    "sourceSha256": "68b4cbcb0499828fcf2549a5aa00cb59dc74bd89ee64e0ec288a7e4ea3130d9f",
+    "head": "6ae617e9bb65f36bd783106598e5c4d8bddb9355",
+    "sourceSha256": "868447a052fba936a71bf20bdfeeb51f8cb5f4d8f3c64feeb9b6c1e5df56b1f7",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "736363b5602b14ceaed8891870afba2c36e3c186",
-  "sourceSha256": "68b4cbcb0499828fcf2549a5aa00cb59dc74bd89ee64e0ec288a7e4ea3130d9f",
+  "head": "6ae617e9bb65f36bd783106598e5c4d8bddb9355",
+  "sourceSha256": "868447a052fba936a71bf20bdfeeb51f8cb5f4d8f3c64feeb9b6c1e5df56b1f7",
   "counts": {
     "public": {
       "skills": 31,
@@ -70719,5 +70719,5 @@
     }
   },
   "inventorySha256": "a5e0979491f038c33f656eed63cee7116707b1320b492ed8f19099027ebccb88",
-  "manifestSha256": "08aa5da46ef98ec6cb847b81a7972ab385b80b718ac83141d02b9617dd6577da"
+  "manifestSha256": "5367bb813ef12e6dc229e04ab690833fee686a0dcd2ffc003b7e8b36e37c8474"
 }
