@@ -20,6 +20,7 @@ import {
   RETIREMENT_POLICY,
   isTemporalThresholdMet,
   isConsecutiveCanonicalShareMet,
+  isMajorBoundaryRemoval,
 } from './policy.js';
 
 export type RetirementVerdict = 'eligible' | 'extended';
@@ -74,6 +75,16 @@ export interface AliasRetirementReceipt {
   };
   verdict: RetirementVerdict;
   blockers: string[];
+  /**
+   * Records whether a major-version boundary authorized this removal despite
+   * unmet temporal/share gates, and which blockers it waived. Always present so
+   * receipts stay auditable; `applied: false` carries the reason it did not fire.
+   */
+  majorBoundaryOverride: {
+    applied: boolean;
+    reason: string;
+    waivedBlockers: string[];
+  };
   /** True when verdict is 'extended' — i.e. this receipt is an extension receipt per the contract. */
   extensionReceipt: boolean;
   generatedArtifacts: string[];
@@ -106,6 +117,8 @@ export function evaluateAlias(input: AliasEvaluationInput): AliasRetirementRecei
     ? 'zero known critical integrations'
     : `blocked by ${criticalItems.length} known critical integration(s): ${criticalItems.slice(0, 5).join(', ')}${criticalItems.length > 5 ? ' …' : ''}`;
 
+  const majorBoundary = isMajorBoundaryRemoval(record.introducedVersion, currentVersion);
+
   const blockers: string[] = [];
   if (!temporal.met) {
     if (!temporal.minors.met) blockers.push(`temporal: ${temporal.minors.reason}`);
@@ -114,7 +127,14 @@ export function evaluateAlias(input: AliasEvaluationInput): AliasRetirementRecei
   if (!consecutiveShare.met) blockers.push(`canonical-share: ${consecutiveShare.reason}`);
   if (!criticalMet) blockers.push(`critical-integrations: ${criticalReason}`);
 
-  const verdict: RetirementVerdict = blockers.length === 0 ? 'eligible' : 'extended';
+  // A major-version boundary authorizes breaking removal on its own, EXCEPT
+  // where a known critical integration still depends on the alias — that
+  // blocker is about breaking real consumers, not about elapsed time, so a
+  // version bump does not clear it.
+  const majorAuthorized = majorBoundary.authorized && criticalMet;
+
+  const verdict: RetirementVerdict =
+    blockers.length === 0 || majorAuthorized ? 'eligible' : 'extended';
 
   return {
     schemaVersion: ALIAS_RETIREMENT_SCHEMA_VERSION,
@@ -139,6 +159,9 @@ export function evaluateAlias(input: AliasEvaluationInput): AliasRetirementRecei
     },
     verdict,
     blockers,
+    majorBoundaryOverride: majorAuthorized
+      ? { applied: true, reason: majorBoundary.reason, waivedBlockers: [...blockers] }
+      : { applied: false, reason: majorBoundary.reason, waivedBlockers: [] },
     extensionReceipt: verdict === 'extended',
     generatedArtifacts: [...record.generatedArtifacts],
     nextEligibleDate: temporal.nextEligibleDate,

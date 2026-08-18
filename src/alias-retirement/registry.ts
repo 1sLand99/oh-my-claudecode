@@ -43,18 +43,10 @@ export interface AliasRecord {
   notes?: string;
 }
 
+// `learner` (-> skillify) and `understanding-gate` (-> merge-readiness) were
+// retired in 5.0.0 under the major-version carve-out; their skills, commands,
+// and generated projections were removed, so they no longer have records here.
 export const ALIAS_REGISTRY: readonly AliasRecord[] = [
-  {
-    alias: 'learner',
-    canonical: 'skillify',
-    kind: 'skill',
-    introducedVersion: '4.2.15',
-    introducedDate: '2026-02-19',
-    owner: 'workflow-registry (src/features/builtin-skills/skills.ts + skills/ + commands/)',
-    removalMilestone: 'TBD: >=4.4.0 && >=2026-05-20 && 2 consecutive releases at >=95% canonical && zero critical integrations',
-    generatedArtifacts: ['skills/learner/SKILL.md', 'commands/learner.md'],
-    notes: 'skillify frontmatter aliases:[learner]; legacy skills/learner dir and commands/learner.md remain as bounded compatibility alias',
-  },
   {
     alias: 'psm',
     canonical: 'project-session-manager',
@@ -76,17 +68,6 @@ export const ALIAS_REGISTRY: readonly AliasRecord[] = [
     removalMilestone: 'TBD: >=4.5.0 && >=2026-05-22 && 2 consecutive releases at >=95% canonical && zero critical integrations',
     generatedArtifacts: [],
     notes: 'cancel frontmatter aliases:[cancel-ralph]; frontmatter-only alias, no duplicate projection dir',
-  },
-  {
-    alias: 'understanding-gate',
-    canonical: 'merge-readiness',
-    kind: 'skill',
-    introducedVersion: '4.15.3',
-    introducedDate: '2026-07-10',
-    owner: 'workflow-registry (src/features/builtin-skills/skills.ts)',
-    removalMilestone: 'TBD: >=4.17.0 && >=2026-10-08 && 2 consecutive releases at >=95% canonical && zero critical integrations',
-    generatedArtifacts: [],
-    notes: 'merge-readiness frontmatter aliases: understanding-gate; frontmatter-only alias introduced with merge-readiness gate',
   },
 ] as const;
 

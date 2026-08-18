@@ -25,32 +25,35 @@ describe('alias-retirement generated closure', () => {
   });
 
   it('marks generated artifacts deletable only after eligibility is proven', () => {
-    // Make learner eligible (temporal already satisfied + share satisfied + no critical)
+    // Make psm eligible (temporal already satisfied + share satisfied + no critical).
+    // psm is the surviving alias that still carries a generated artifact
+    // (commands/psm.md); cancel-ralph is frontmatter-only.
     const receipts = verifyAllAliases({
       currentVersion: CURRENT_VERSION,
       now: NOW,
       usageHistoryByAlias: {
-        learner: [
+        psm: [
           { aliasCount: 2, canonicalCount: 98 },
           { aliasCount: 1, canonicalCount: 99 },
         ],
       },
       criticalIntegrationsByAlias: {
-        learner: [],
+        psm: [],
       },
     });
     const report = buildClosureReport(receipts, {
       exists: () => true,
     });
-    const learnerEntries = report.entries.filter((e) => e.alias === 'learner');
-    expect(learnerEntries.length).toBeGreaterThan(0);
-    // learner entries should be deletable now, others not
-    for (const e of learnerEntries) expect(e.deletableNow).toBe(true);
-    const other = report.entries.filter((e) => e.alias !== 'learner');
-    // at least one other alias remains extended at this version without sufficient share
-    expect(other.some((e) => !e.deletableNow)).toBe(true);
-    // overall not all deletable yet
-    expect(report.allDeletable).toBe(false);
+    const psmEntries = report.entries.filter((e) => e.alias === 'psm');
+    expect(psmEntries.length).toBeGreaterThan(0);
+    // psm entries should be deletable now
+    for (const e of psmEntries) expect(e.deletableNow).toBe(true);
+    // cancel-ralph is frontmatter-only (no generated artifacts), so it
+    // contributes no closure entries even though it is still extended.
+    // allDeletable therefore reflects only artifact-bearing aliases.
+    expect(receipts.find((r) => r.alias === 'cancel-ralph')!.verdict).toBe('extended');
+    expect(report.entries.every((e) => e.alias === 'psm')).toBe(true);
+    expect(report.allDeletable).toBe(true);
   });
 
   it('never treats a missing file as deletable when alias is still extended', () => {
@@ -71,19 +74,11 @@ describe('alias-retirement generated closure', () => {
       currentVersion: futureVersion,
       now: futureNow,
       usageHistoryByAlias: {
-        learner: [
-          { aliasCount: 2, canonicalCount: 98 },
-          { aliasCount: 1, canonicalCount: 99 },
-        ],
         psm: [
           { aliasCount: 2, canonicalCount: 98 },
           { aliasCount: 1, canonicalCount: 99 },
         ],
         'cancel-ralph': [
-          { aliasCount: 2, canonicalCount: 98 },
-          { aliasCount: 1, canonicalCount: 99 },
-        ],
-        'understanding-gate': [
           { aliasCount: 2, canonicalCount: 98 },
           { aliasCount: 1, canonicalCount: 99 },
         ],

@@ -20,6 +20,23 @@ function ineligibleHistory() {
   ];
 }
 
+/**
+ * A recently-introduced alias, used to exercise the temporal gate. The real
+ * `understanding-gate` record filled this role until it was retired in 5.0.0;
+ * every surviving registry alias is now old enough to clear the temporal gate,
+ * so the blocked case needs a synthetic record to stay covered.
+ */
+const RECENT_RECORD = {
+  alias: 'recently-introduced',
+  canonical: 'cancel',
+  kind: 'skill' as const,
+  introducedVersion: '4.15.3',
+  introducedDate: '2026-07-10',
+  owner: 'workflow-registry (test fixture)',
+  removalMilestone: 'TBD: >=4.17.0 && >=2026-10-08 && 2 consecutive releases at >=95% canonical',
+  generatedArtifacts: [],
+};
+
 describe('alias-retirement verifier', () => {
   it('emits extension receipts for every alias at current version without telemetry (acceptance guard)', () => {
     const receipts = verifyAllAliases({ currentVersion: CURRENT_VERSION, now: NOW });
@@ -38,8 +55,8 @@ describe('alias-retirement verifier', () => {
     expect(summary.anyEligible).toBe(false);
   });
 
-  it('understanding-gate is blocked by temporal gate at current version even with perfect telemetry', () => {
-    const rec = getAliasRecord('understanding-gate')!;
+  it('a recently-introduced alias is blocked by temporal gate at current version even with perfect telemetry', () => {
+    const rec = RECENT_RECORD;
     const temporal = isTemporalThresholdMet(rec.introducedVersion, rec.introducedDate, CURRENT_VERSION, NOW);
     expect(temporal.met).toBe(false);
     // 4.15.3 → 4.15.10 is 0 minors, need 2 more; 2026-07-10 → 2026-08-12 is 33 days, need 57 more
@@ -59,8 +76,8 @@ describe('alias-retirement verifier', () => {
     expect(receipt.nextEligibleVersion).toBe('4.17.0');
   });
 
-  it('learner is temporal-eligible at current version but still extended without share telemetry', () => {
-    const rec = getAliasRecord('learner')!;
+  it('psm is temporal-eligible at current version but still extended without share telemetry', () => {
+    const rec = getAliasRecord('psm')!;
     const temporal = isTemporalThresholdMet(rec.introducedVersion, rec.introducedDate, CURRENT_VERSION, NOW);
     expect(temporal.met).toBe(true); // 4.2.15 → 4.15.10 is 13 minors + 174 days
     const receiptNoTelemetry = evaluateAlias({
@@ -75,8 +92,8 @@ describe('alias-retirement verifier', () => {
     expect(receiptNoTelemetry.checks.temporal.met).toBe(true);
   });
 
-  it('learner becomes eligible when all three gates are satisfied (future proof)', () => {
-    const rec = getAliasRecord('learner')!;
+  it('psm becomes eligible when all three gates are satisfied (future proof)', () => {
+    const rec = getAliasRecord('psm')!;
     const receipt = evaluateAlias({
       record: rec,
       currentVersion: CURRENT_VERSION,
@@ -92,8 +109,8 @@ describe('alias-retirement verifier', () => {
     expect(receipt.checks.criticalIntegrations.met).toBe(true);
   });
 
-  it('eligible learner is still extended when only one of the two share samples passes', () => {
-    const rec = getAliasRecord('learner')!;
+  it('eligible psm is still extended when only one of the two share samples passes', () => {
+    const rec = getAliasRecord('psm')!;
     const receipt = evaluateAlias({
       record: rec,
       currentVersion: CURRENT_VERSION,
@@ -106,13 +123,13 @@ describe('alias-retirement verifier', () => {
   });
 
   it('critical-integrations block prevents eligibility even when temporal+share are met', () => {
-    const rec = getAliasRecord('learner')!;
+    const rec = getAliasRecord('psm')!;
     const receipt = evaluateAlias({
       record: rec,
       currentVersion: CURRENT_VERSION,
       now: NOW,
       usageHistory: eligibleHistory(),
-      criticalIntegrations: ['org/repo uses /psm in CI', 'marketplace template references learner'],
+      criticalIntegrations: ['org/repo uses /psm in CI', 'marketplace template references psm'],
     });
     expect(receipt.verdict).toBe('extended');
     expect(receipt.blockers.some((b) => b.includes('critical-integrations'))).toBe(true);
@@ -124,27 +141,22 @@ describe('alias-retirement verifier', () => {
       currentVersion: CURRENT_VERSION,
       now: NOW,
       usageHistoryByAlias: {
-        learner: eligibleHistory(),
         psm: eligibleHistory(),
         'cancel-ralph': ineligibleHistory(),
-        'understanding-gate': eligibleHistory(), // still temporal-blocked
       },
       criticalIntegrationsByAlias: {
-        learner: [],
-        psm: ['team/company-a still uses psm in onboarding docs'],
+        psm: [],
       },
     });
     const byAlias = new Map(receipts.map((r) => [r.alias, r]));
-    expect(byAlias.get('learner')!.verdict).toBe('eligible');
-    expect(byAlias.get('psm')!.verdict).toBe('extended'); // critical integration
+    expect(byAlias.get('psm')!.verdict).toBe('eligible');
     expect(byAlias.get('cancel-ralph')!.verdict).toBe('extended'); // share
-    expect(byAlias.get('understanding-gate')!.verdict).toBe('extended'); // temporal
     expect(summarizeReceipts(receipts).anyEligible).toBe(true);
     expect(summarizeReceipts(receipts).allExtended).toBe(false);
   });
 
   it('receipt shape is stable and carries policy + next-eligible fields', () => {
-    const rec = getAliasRecord('understanding-gate')!;
+    const rec = RECENT_RECORD;
     const receipt = evaluateAlias({
       record: rec,
       currentVersion: '4.17.0',
@@ -163,8 +175,8 @@ describe('alias-retirement verifier', () => {
     expect(Array.isArray(receipt.generatedArtifacts)).toBe(true);
   });
 
-  it('future eligible date/version: understanding-gate becomes eligible only after 4.17.0 + 90d + share with zero integrations', () => {
-    const rec = getAliasRecord('understanding-gate')!;
+  it('future eligible date/version: a recently-introduced alias becomes eligible only after 4.17.0 + 90d + share with zero integrations', () => {
+    const rec = RECENT_RECORD;
     const receipt = evaluateAlias({
       record: rec,
       currentVersion: '4.17.0',

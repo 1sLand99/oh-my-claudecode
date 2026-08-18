@@ -20,6 +20,43 @@ export const RETIREMENT_POLICY = {
   schemaVersion: 1,
 } as const;
 
+/**
+ * Major-version carve-out.
+ *
+ * The gates above protect users from aliases vanishing inside a minor release.
+ * A major version is the sanctioned place for breaking removals, so a major
+ * bump authorizes retirement directly — the removal is announced by the version
+ * number itself rather than earned by elapsed time and usage share.
+ *
+ * This is deliberately narrow: it applies only when the current release crosses
+ * a major boundary relative to when the alias was introduced. It never fires
+ * within a minor or patch release, so the ordinary policy still governs
+ * everything between majors.
+ */
+export function isMajorBoundaryRemoval(
+  introducedVersion: string,
+  currentVersion: string,
+): { authorized: boolean; reason: string } {
+  const intro = parseVersion(introducedVersion);
+  const cur = parseVersion(currentVersion);
+  if (!intro || !cur) {
+    return {
+      authorized: false,
+      reason: `invalid semver (introduced=${introducedVersion}, current=${currentVersion})`,
+    };
+  }
+  if (cur.major > intro.major) {
+    return {
+      authorized: true,
+      reason: `major-version boundary ${intro.major}.x -> ${cur.major}.x authorizes breaking removal`,
+    };
+  }
+  return {
+    authorized: false,
+    reason: `no major boundary crossed (introduced ${intro.major}.x, current ${cur.major}.x)`,
+  };
+}
+
 export interface ParsedVersion {
   major: number;
   minor: number;
