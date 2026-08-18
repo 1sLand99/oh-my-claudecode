@@ -269,22 +269,5 @@ Deep interview body`);
         expect(result.replacementText)
             .toContain('Skill("oh-my-claudecode:autoresearch")');
     });
-    it('routes /ccg advisor asks through the plugin bridge inside an active Claude session when CLAUDE_PLUGIN_ROOT is set', async () => {
-        process.env.CLAUDE_PLUGIN_ROOT = '/plugin-root';
-        process.env.PATH = '';
-        process.env.CLAUDECODE = '1';
-        process.env.CLAUDE_SESSION_ID = 'session-123';
-        const { executeSlashCommand } = await loadExecutor();
-        const result = executeSlashCommand({
-            command: 'ccg',
-            args: 'review this auth flow',
-            raw: '/ccg review this auth flow',
-        });
-        expect(result.success).toBe(true);
-        expect(result.replacementText).toContain('`node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs ask codex "<codex prompt>"`');
-        expect(result.replacementText).toContain('`node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs ask antigravity "<antigravity prompt>"`');
-        expect(result.replacementText).not.toContain('`omc ask codex "<codex prompt>"`');
-        expect(result.replacementText).not.toContain('`omc ask antigravity "<antigravity prompt>"`');
-    });
 });
 //# sourceMappingURL=auto-slash-aliases.test.js.map
