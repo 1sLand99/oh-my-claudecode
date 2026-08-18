@@ -146,14 +146,14 @@ OMC exposes two different surfaces:
 | Setup                                          | `omc setup`                                   | `/omc-setup`                                                            | Both are real entrypoints.                                                                                                            |
 | Ask providers                                  | `omc ask codex "review this patch"`           | `/ask codex "review this patch"`                                        | Both route through the same advisor flow. Providers: `claude`, `codex`, `gemini`, `antigravity`, `grok`, `cursor`.                                            |
 | Team orchestration                             | `omc team 2:codex "review auth flow"`         | `/team 3:executor "fix all TypeScript errors"`                          | Both exist, but they are different runtimes: `omc team` launches tmux CLI workers; `/team` runs the in-session native team workflow. |
-| Autopilot / Execute / Deep Interview           | —                                             | `/autopilot ...`, `/execute ...`, `/deep-interview ...`                 | These are in-session skills. There is no `omc autopilot` / `omc execute` CLI subcommand in this repo.                                |
+| Autopilot / Ralph / Execute / Deep Interview   | —                                             | `/autopilot ...`, `/ralph ...`, `/execute ...`, `/deep-interview ...`   | These are in-session skills. There is no `omc autopilot` / `omc ralph` / `omc execute` CLI subcommand in this repo.                  |
 | Autoresearch                                   | `omc autoresearch` (**hard-deprecated shim**) | `/deep-interview --autoresearch ...` + `/oh-my-claudecode:autoresearch` | Setup stays in deep-interview; execution now belongs to the stateful skill.                                                          |
 
 ### VS Code, Agent SDK, and automation scope
 
 - **VS Code / IDE extension**: OMC does not ship a VS Code extension and does not document extension-specific install or automation flows. Use the Claude Code plugin or terminal CLI surfaces above; IDE integrations are only an optional way to access Claude Code itself.
 - **Agent SDK / programmatic usage**: the npm package exports TypeScript helpers such as `createOmcSession()` and prompt expansion utilities for local Node.js programs using `@anthropic-ai/claude-agent-sdk`. This is a library surface, not a replacement for the Claude Code plugin UI.
-- **CI/CD and headless automation**: prefer deterministic terminal commands (`omc setup`, `omc ask`, `omc session search`, repository scripts such as `npm run sync-metadata:verify`) and set `ANTHROPIC_API_KEY` or provider-specific CLI auth in the runner environment. Do not rely on interactive slash commands (`/autopilot`, `/execute`, `/team`) in CI; they require an active Claude Code session.
+- **CI/CD and headless automation**: prefer deterministic terminal commands (`omc setup`, `omc ask`, `omc session search`, repository scripts such as `npm run sync-metadata:verify`) and set `ANTHROPIC_API_KEY` or provider-specific CLI auth in the runner environment. Do not rely on interactive slash commands (`/autopilot`, `/ralph`, `/execute`, `/team`) in CI; they require an active Claude Code session.
 
 ### Not Sure Where to Start?
 
@@ -395,7 +395,8 @@ These shortcuts run **inside a Claude Code / OMC session**, not as terminal CLI 
 | `/team`                    | Slash skill            | Canonical Team orchestration           | `/team 3:executor "fix all TypeScript errors"` |
 | `/autopilot` / `autopilot` | Skill / prompt trigger | Full autonomous execution              | `/autopilot "build a todo app"`                |
 | `/execute`                 | Slash skill            | Carry an approved task through to verified code | `/execute "refactor auth"`           |
-| `ralph`, `ulw`              | Prompt trigger         | Keyword modes for persistence / max parallelism; route into execution | `ralph refactor auth`         |
+| `/ralph` / `ralph`         | Skill / prompt trigger | Persistence mode                       | `/ralph "refactor auth"`                       |
+| `ulw`                      | Prompt trigger         | Maximum-parallelism keyword mode       | `ulw fix all lint errors`                      |
 | `/ralplan` / `ralplan`     | Skill / prompt trigger | Iterative planning consensus           | `/ralplan "plan this feature"`                 |
 | `/deep-interview`          | Slash skill            | Socratic requirements clarification    | `/deep-interview "vague idea"`                 |
 | `deepsearch`               | Prompt trigger         | Codebase-focused search routing        | `deepsearch for auth middleware`               |
@@ -404,7 +405,7 @@ These shortcuts run **inside a Claude Code / OMC session**, not as terminal CLI 
 
 **Notes:**
 
-- **ralph includes ultrawork behavior**: the `ralph` keyword mode automatically includes maximum-parallelism execution.
+- **ralph includes ultrawork behavior**: when you activate ralph mode, it automatically includes maximum-parallelism execution.
 - `swarm` compatibility alias has been removed; migrate existing prompts to `/team` syntax.
 - `plan this` / `plan the` keyword triggers were removed; use `ralplan` or explicit `/oh-my-claudecode:plan`.
 

@@ -70,7 +70,7 @@ const CANONICAL_SET = new Set<string>(TIER0_WORKFLOWS);
 /**
  * 5.0.0 retired the legacy workflow aliases outright under the major-version
  * carve-out (see alias-retirement/policy.ts). Removed entirely rather than
- * aliased: ralph, ultragoal, ultrawork, ultraqa, ultrapilot, swarm, pipeline,
+ * aliased: ultrawork, ultraqa, ultrapilot, swarm, pipeline,
  * merge-readiness, deep-dive, sciomc, ccg, omc-teams, mcp-setup, learner,
  * writer-memory, local-build-reminder, setup, omc-reference.
  *

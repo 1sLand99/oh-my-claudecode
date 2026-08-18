@@ -147,7 +147,7 @@ const SKILL_ENTRIES: readonly WorkflowEntry[] = [
   entry({ name: 'plan', kind: 'skill', tier: 0, decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Canonical planning workflow.' }),
   entry({ name: 'deep-interview', kind: 'skill', tier: 0, decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Independent Tier-0 requirements interview — not a plan alias (owner direction #3708).' }),
   entry({ name: 'ralplan', kind: 'skill', tier: 0, decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Independent Tier-0 consensus planning — not a plan alias (owner direction #3708).' }),
-  entry({ name: 'execute', kind: 'skill', tier: 0, decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Absorbs ultragoal, autopilot, ralph, ultrawork, ultrapilot, swarm, pipeline; optional team execution stays internal.' }),
+  entry({ name: 'execute', kind: 'skill', tier: 0, decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Absorbs ultrawork, ultrapilot, swarm, pipeline; autopilot, ralph, and ultragoal remain directly invocable.' }),
   entry({ name: 'review', kind: 'skill', tier: 0, decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Absorbs review routing incl. the merge-readiness advisory lane. Installs as omc-review (native-command collision).' }),
   entry({ name: 'verify', kind: 'skill', tier: 0, decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Absorbs ultraqa / verification routing.' }),
 
@@ -157,15 +157,17 @@ const SKILL_ENTRIES: readonly WorkflowEntry[] = [
 
   // Retired in 5.0.0 under the major-version carve-out (policy.isMajorBoundaryRemoval).
   // The following skills were removed outright rather than kept as aliases:
-  //   ralph, ultrawork, ultraqa, ultrapilot, swarm, pipeline,
+  //   ultrawork, ultraqa, ultrapilot, swarm, pipeline,
   //   merge-readiness, deep-dive, sciomc, setup, mcp-setup, omc-reference,
   //   omc-teams, learner, writer-memory, ccg, local-build-reminder.
   // Their behavior lives in execute / verify / review / research / omc-setup /
-  // wiki / remember / team. Owner direction: `autopilot`, `autoresearch`, and
-  // `ultragoal` survive as directly-invocable workflows, so they are `keep`.
+  // wiki / remember / team. Owner direction: `autopilot`, `autoresearch`,
+  // `ultragoal`, and `ralph` survive as directly-invocable workflows, so they
+  // are `keep`.
   entry({ name: 'autopilot', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Retained as a directly-invocable end-to-end workflow alongside execute (owner direction, 5.0.0).' }),
   entry({ name: 'autoresearch', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Retained as its own research lane entrypoint alongside research (owner direction, 5.0.0).' }),
   entry({ name: 'ultragoal', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Retained as the durable multi-goal workflow with its own .omc/ultragoal artifacts (owner direction, 5.0.0).' }),
+  entry({ name: 'ralph', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Retained: src/hooks/ralph is a live subsystem, `ralph` is a wired KeywordType and slash skill, and it is autopilot\'s verification engine (owner direction, 5.0.0).' }),
 
   // Release maintainer boundary (owner decision 2): compatibility alias to
   // maintainer-only `omc release`; fail-closed. Explicitly exempt from the

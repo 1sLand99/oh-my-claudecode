@@ -77,11 +77,11 @@ describe('workflow registry — risk classes and gate policy', () => {
 });
 
 describe('workflow registry — aliases and classification', () => {
-  it('classifies all 30 installed skills and 21 installed commands exactly once', () => {
+  it('classifies all 31 installed skills and 21 installed commands exactly once', () => {
     const skills = WORKFLOW_ENTRIES.filter((e) => e.kind === 'skill' && !e.declaredOnly);
     const commands = WORKFLOW_ENTRIES.filter((e) => e.kind === 'command' && !e.declaredOnly);
     // 41 + execute/review/research, which now ship as real skill directories.
-    expect(skills).toHaveLength(30);
+    expect(skills).toHaveLength(31);
     expect(commands).toHaveLength(21);
     const keys = WORKFLOW_ENTRIES.map((e) => `${e.kind}:${e.name}`);
     expect(new Set(keys).size).toBe(keys.length);
@@ -100,7 +100,7 @@ describe('workflow registry — aliases and classification', () => {
   it('drops legacy execution modes retired in 5.0.0', () => {
     // Retired outright under the major-version carve-out — no registry entry,
     // so they no longer resolve to a canonical target at all.
-    for (const name of ['ralph', 'pipeline', 'ultrawork', 'swarm', 'ultrapilot']) {
+    for (const name of ['pipeline', 'ultrawork', 'swarm', 'ultrapilot']) {
       expect(getEntry(name, 'skill')).toBeUndefined();
       expect(resolveCanonical(name, 'skill')).toBeUndefined();
     }

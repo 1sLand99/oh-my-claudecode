@@ -44,7 +44,7 @@ describe('registry projections — drift check against installed surfaces', () =
   it('matches the repository skills/ and commands/ surface exactly', () => {
     const installed = enumerateInstalledSurfaces(process.cwd());
     // 41 + execute/review/research, which now ship as real skill directories.
-    expect(installed.skills.length).toBe(30);
+    expect(installed.skills.length).toBe(31);
     expect(installed.commands.length).toBe(21);
     const drift = checkProjectionDrift(installed);
     expect(drift.unregistered).toEqual([]);

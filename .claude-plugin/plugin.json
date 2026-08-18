@@ -32,6 +32,7 @@
     "./skills/omc-setup/",
     "./skills/plan/",
     "./skills/project-session-manager/",
+    "./skills/ralph/",
     "./skills/ralplan/",
     "./skills/release/",
     "./skills/remember/",

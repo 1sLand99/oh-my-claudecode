@@ -21,11 +21,11 @@ This guide covers all migration paths for oh-my-claudecode. Find your current ve
 
 ### TL;DR
 
-18 workflow names were **removed outright**, not kept as aliases. The public
+17 workflow names were **removed outright**, not kept as aliases. The public
 surface is now four canonical workflows — `plan` → `execute` → `review` →
 `verify` — plus a small set of independent workflows and utilities.
 
-If you use `/ralph`, `/ultrawork`, `/ultraqa`, `/ccg`, `/sciomc`, `/deep-dive`,
+If you use `/ultrawork`, `/ultraqa`, `/ccg`, `/sciomc`, `/deep-dive`,
 `/omc-teams`, `/setup`, `/mcp-setup`, `/learner`, or `/writer-memory`, those
 names no longer resolve. Use the replacement in the table below.
 
@@ -33,7 +33,6 @@ names no longer resolve. Use the replacement in the table below.
 
 | Removed                | Replacement                              | Notes                                                        |
 | ---------------------- | ---------------------------------------- | ------------------------------------------------------------ |
-| `ralph`                | `/oh-my-claudecode:execute`              | Continuation/evidence behavior lives in execute               |
 | `ultrawork`            | `/oh-my-claudecode:execute` or `/team`   | Use `/team` when you want coordinated parallel workers        |
 | `ultrapilot`           | `/oh-my-claudecode:team`                 | Declared-only; never shipped as a skill file                  |
 | `swarm`                | `/oh-my-claudecode:team`                 | Declared-only                                                 |
@@ -61,7 +60,7 @@ These were **not** retired, despite routing into the canonical workflows:
 
 - **Canonical Tier-0**: `plan`, `execute`, `review`, `verify`
 - **Independent Tier-0 planning**: `deep-interview`, `ralplan`
-- **Directly invocable workflows**: `autopilot`, `autoresearch`, `ultragoal`
+- **Directly invocable workflows**: `autopilot`, `autoresearch`, `ultragoal`, `ralph`
 - **Internal lanes**: `team`, `research`
 - **Surviving aliases**: `psm` → `project-session-manager`, `release` → maintainer-only `omc release`
 

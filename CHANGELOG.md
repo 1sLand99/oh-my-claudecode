@@ -3,7 +3,7 @@
 ## Release Notes
 
 Major release that trims the public workflow surface to four canonical
-workflows and **removes 18 legacy names outright** rather than keeping them as
+workflows and **removes 17 legacy names outright** rather than keeping them as
 compatibility aliases.
 
 See [docs/MIGRATION.md](docs/MIGRATION.md#v4x--v50-workflow-retirement) for the
@@ -11,7 +11,7 @@ full replacement table and migration steps.
 
 ### Breaking Changes
 
-- **Retired 15 skills and 7 commands.** `ralph`, `ultrawork`, `ultraqa`,
+- **Retired 14 skills and 7 commands.** `ultrawork`, `ultraqa`,
   `ultrapilot`, `swarm`, `pipeline`, `merge-readiness`, `deep-dive`, `sciomc`,
   `ccg`, `omc-teams`, `setup`, `mcp-setup`, `omc-reference`, `learner`,
   `writer-memory`, `local-build-reminder`, and the `understanding-gate` alias no
@@ -29,7 +29,7 @@ full replacement table and migration steps.
   at them — every one a dead route
 - **`verify`, `remember`, and `debug` are available to all users**, no longer
   gated behind an internal entitlement
-- **Kept by design**: `autopilot`, `autoresearch`, `ultragoal`,
+- **Kept by design**: `autopilot`, `autoresearch`, `ultragoal`, `ralph`,
   `deep-interview`, `ralplan`, and `team` remain directly invocable
 
 ### New Features
@@ -59,7 +59,7 @@ retired skill directories automatically; no manual cleanup is required.
 
 ### Stats
 
-- **18 names retired** | **3 new skills** | **3 skills ungated** | **3 bug fixes**
+- **17 names retired** | **3 new skills** | **3 skills ungated** | **3 bug fixes**
 
 ---
 

@@ -5,22 +5,22 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "45d63d68e61be96b3a9f6ad058d96b71634fa3d4",
-    "sourceSha256": "4f39dfe6ebf9eb57bdcac013cc6f44836d64dd8ebbe15c04ad8d806178a4b5f7",
+    "head": "2cf42017dcb379d367dd46dc2970bd77c3e8af37",
+    "sourceSha256": "7ca65ac18d9c756359436aff1eb0e20fcae7c60470ad01d5dfd63caefe5cbe73",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "45d63d68e61be96b3a9f6ad058d96b71634fa3d4",
-  "sourceSha256": "4f39dfe6ebf9eb57bdcac013cc6f44836d64dd8ebbe15c04ad8d806178a4b5f7",
+  "head": "2cf42017dcb379d367dd46dc2970bd77c3e8af37",
+  "sourceSha256": "7ca65ac18d9c756359436aff1eb0e20fcae7c60470ad01d5dfd63caefe5cbe73",
   "counts": {
     "public": {
-      "skills": 30,
+      "skills": 31,
       "commands": 21,
       "workflows": 8,
       "agents": 18,
-      "total": 77
+      "total": 78
     },
     "internal": {
       "hookFiles": 306,
@@ -39,7 +39,7 @@
     "prompt": {
       "promptLikeFiles": 62
     },
-    "skills": 30,
+    "skills": 31,
     "commands": 21,
     "hookFiles": 306,
     "workflows": 8,
@@ -64,6 +64,7 @@
       "omc-setup",
       "plan",
       "project-session-manager",
+      "ralph",
       "ralplan",
       "release",
       "remember",
@@ -29613,6 +29614,11 @@
         "path": "skills/project-session-manager/tests/test-psm-prompt-injection.sh"
       },
       {
+        "id": "skills/ralph/SKILL.md",
+        "kind": "skill",
+        "path": "skills/ralph/SKILL.md"
+      },
+      {
         "id": "skills/ralplan/SKILL.md",
         "kind": "skill",
         "path": "skills/ralplan/SKILL.md"
@@ -38621,6 +38627,11 @@
       },
       {
         "from": "skills/project-session-manager/SKILL.md",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "registers"
+      },
+      {
+        "from": "skills/ralph/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
       },
@@ -70701,12 +70712,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6152,
-      "edgeCount": 6859,
+      "nodeCount": 6153,
+      "edgeCount": 6860,
       "importEdgeCount": 5620,
-      "registerEdgeCount": 51
+      "registerEdgeCount": 52
     }
   },
-  "inventorySha256": "2f796df5d14b319fe336b73924774420199068af5da0137e14333e0589ef239d",
-  "manifestSha256": "a06527ff598fdbac8d3d890a1cc5032cc76c15142280c91f71216bad5e30c1a9"
+  "inventorySha256": "a5e0979491f038c33f656eed63cee7116707b1320b492ed8f19099027ebccb88",
+  "manifestSha256": "f7fc1752492b4f87ec1e0513374a6cbe5b3767239e4639ff11b55cb0dda27767"
 }
