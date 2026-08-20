@@ -128,6 +128,25 @@ Line 3`;
     const result = parseFrontmatter(content);
     expect(result.body).toBe('Line 1\nLine 2\nLine 3');
   });
+
+  it('does not promote nested mapping fields to top-level metadata', () => {
+    const content = `---
+name: compatibility-skill
+description: Top-level description
+metadata:
+  integration:
+    description: Nested integration description
+    model: nested-model
+---
+Body`;
+    const result = parseFrontmatter(content);
+
+    expect(result.metadata).toEqual({
+      name: 'compatibility-skill',
+      description: 'Top-level description',
+      metadata: '',
+    });
+  });
 });
 
 describe('parseFrontmatterAliases', () => {

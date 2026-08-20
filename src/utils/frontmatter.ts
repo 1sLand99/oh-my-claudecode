@@ -35,6 +35,8 @@ export function parseFrontmatter(content: string): { metadata: Record<string, st
   const metadata: Record<string, string> = {};
 
   for (const line of yamlContent.split('\n')) {
+    if (/^\s/.test(line)) continue;
+
     const colonIndex = line.indexOf(':');
     if (colonIndex === -1) continue;
 

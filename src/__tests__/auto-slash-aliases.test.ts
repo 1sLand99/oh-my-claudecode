@@ -242,6 +242,42 @@ Compatibility body`
     expect(result.replacementText).toContain('`templates/`');
   });
 
+  it('keeps top-level descriptions for compatibility skills with nested metadata', async () => {
+    mkdirSync(join(tempProjectDir, '.agents', 'skills', 'nested-metadata-skill'), { recursive: true });
+    writeFileSync(
+      join(tempProjectDir, '.agents', 'skills', 'nested-metadata-skill', 'SKILL.md'),
+      `---
+name: nested-metadata-skill
+description: Top-level skill description
+metadata:
+  optionalEnv:
+    - name: EXAMPLE_SECRET
+      description: Nested environment description
+---
+
+Nested metadata skill body`
+    );
+
+    const { findCommand, executeSlashCommand, listAvailableCommands } = await loadExecutor();
+
+    expect(findCommand('nested-metadata-skill')?.metadata.description).toBe('Top-level skill description');
+    expect(listAvailableCommands()).toContainEqual({
+      name: 'nested-metadata-skill',
+      description: 'Top-level skill description',
+      scope: 'skill',
+    });
+
+    const result = executeSlashCommand({
+      command: 'nested-metadata-skill',
+      args: '',
+      raw: '/nested-metadata-skill',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.replacementText).toContain('**Description**: Top-level skill description');
+    expect(result.replacementText).not.toContain('Nested environment description');
+  });
+
   it('discovers workspace-local Claude Code skills from .claude/skills before OMC compatibility skills', async () => {
     mkdirSync(join(tempProjectDir, '.claude', 'skills', 'workspace-skill', 'references'), { recursive: true });
     writeFileSync(
