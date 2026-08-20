@@ -33,9 +33,17 @@ export function parseFrontmatter(content: string): { metadata: Record<string, st
 
   const [, yamlContent, body] = match;
   const metadata: Record<string, string> = {};
+  const lines = yamlContent.split('\n');
+  const rootIndent = lines.reduce<number | undefined>((minimum, line) => {
+    const trimmed = line.trimStart();
+    if (!trimmed || trimmed.startsWith('#') || !trimmed.includes(':')) return minimum;
 
-  for (const line of yamlContent.split('\n')) {
-    if (/^\s/.test(line)) continue;
+    const indentation = line.length - trimmed.length;
+    return minimum === undefined ? indentation : Math.min(minimum, indentation);
+  }, undefined);
+
+  for (const line of lines) {
+    if (line.length - line.trimStart().length !== rootIndent) continue;
 
     const colonIndex = line.indexOf(':');
     if (colonIndex === -1) continue;

@@ -247,12 +247,12 @@ Compatibility body`
     writeFileSync(
       join(tempProjectDir, '.agents', 'skills', 'nested-metadata-skill', 'SKILL.md'),
       `---
-name: nested-metadata-skill
-description: Top-level skill description
-metadata:
-  optionalEnv:
-    - name: EXAMPLE_SECRET
-      description: Nested environment description
+  name: nested-metadata-skill
+  description: Top-level skill description
+  metadata:
+    optionalEnv:
+      - name: EXAMPLE_SECRET
+        description: Nested environment description
 ---
 
 Nested metadata skill body`

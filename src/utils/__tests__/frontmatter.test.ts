@@ -147,6 +147,27 @@ Body`;
       metadata: '',
     });
   });
+
+  it('preserves uniformly indented root mappings without promoting nested fields', () => {
+    const content = `---
+# comment: does not define mapping indentation
+  name: indented-skill
+  description: Indented root description
+  model: opus
+  metadata:
+    description: Nested description
+    model: nested-model
+---
+Body`;
+    const result = parseFrontmatter(content);
+
+    expect(result.metadata).toEqual({
+      name: 'indented-skill',
+      description: 'Indented root description',
+      model: 'opus',
+      metadata: '',
+    });
+  });
 });
 
 describe('parseFrontmatterAliases', () => {
