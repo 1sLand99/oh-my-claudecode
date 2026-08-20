@@ -168,6 +168,21 @@ Body`;
       metadata: '',
     });
   });
+
+  it('ignores comments at the detected root indentation', () => {
+    const content = `---
+  name: indented-skill
+  # fake: comment
+  description: Root description
+---
+Body`;
+    const result = parseFrontmatter(content);
+
+    expect(result.metadata).toEqual({
+      name: 'indented-skill',
+      description: 'Root description',
+    });
+  });
 });
 
 describe('parseFrontmatterAliases', () => {

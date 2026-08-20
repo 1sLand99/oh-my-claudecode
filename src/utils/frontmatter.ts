@@ -43,6 +43,8 @@ export function parseFrontmatter(content: string): { metadata: Record<string, st
   }, undefined);
 
   for (const line of lines) {
+    const trimmed = line.trimStart();
+    if (!trimmed || trimmed.startsWith('#')) continue;
     if (line.length - line.trimStart().length !== rootIndent) continue;
 
     const colonIndex = line.indexOf(':');
