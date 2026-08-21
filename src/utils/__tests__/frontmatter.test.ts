@@ -169,6 +169,25 @@ Body`;
     });
   });
 
+  it('ignores de-indented members of multiline flow mappings', () => {
+    const content = `---
+  name: indented-skill
+  metadata: {
+integration: remote,
+model: nested-model
+  }
+  description: Root description
+---
+Body`;
+    const result = parseFrontmatter(content);
+
+    expect(result.metadata).toEqual({
+      name: 'indented-skill',
+      metadata: '{',
+      description: 'Root description',
+    });
+  });
+
   it('ignores comments at the detected root indentation', () => {
     const content = `---
   name: indented-skill
