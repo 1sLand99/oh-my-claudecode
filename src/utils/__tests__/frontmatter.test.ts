@@ -188,6 +188,46 @@ Body`;
     });
   });
 
+
+  it('ignores nested members of same-indent multiline flow mappings', () => {
+    const content = `---
+name: example-skill
+description: Top-level description
+metadata: {
+description: Nested,
+model: nested
+}
+---
+Body`;
+    const result = parseFrontmatter(content);
+
+    expect(result.metadata).toEqual({
+      name: 'example-skill',
+      description: 'Top-level description',
+      metadata: '{',
+    });
+  });
+
+  it('ignores nested members of same-indent multiline flow sequences', () => {
+    const content = `---
+name: example-skill
+description: Top-level description
+metadata: [
+description: Nested,
+model: nested
+]
+agent: coder
+---
+Body`;
+    const result = parseFrontmatter(content);
+
+    expect(result.metadata).toEqual({
+      name: 'example-skill',
+      description: 'Top-level description',
+      metadata: '[',
+      agent: 'coder',
+    });
+  });
   it('ignores comments at the detected root indentation', () => {
     const content = `---
   name: indented-skill

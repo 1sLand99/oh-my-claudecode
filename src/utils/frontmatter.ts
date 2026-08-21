@@ -40,18 +40,64 @@ export function parseFrontmatter(content: string): { metadata: Record<string, st
   });
   const rootIndent = rootLine === undefined ? undefined : rootLine.length - rootLine.trimStart().length;
 
+  let flowDepth = 0;
+  let quote: "'" | '"' | null = null;
+
   for (const line of lines) {
     const trimmed = line.trimStart();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    if (line.length - line.trimStart().length !== rootIndent) continue;
+    const indent = line.length - trimmed.length;
 
-    const colonIndex = line.indexOf(':');
-    if (colonIndex === -1) continue;
+    if (flowDepth === 0) {
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      if (indent !== rootIndent) continue;
 
-    const key = line.slice(0, colonIndex).trim();
-    const value = stripOptionalQuotes(line.slice(colonIndex + 1));
+      const colonIndex = line.indexOf(':');
+      if (colonIndex === -1) continue;
 
-    metadata[key] = value;
+      const key = line.slice(0, colonIndex).trim();
+      const value = stripOptionalQuotes(line.slice(colonIndex + 1));
+
+      metadata[key] = value;
+    } else {
+      // Inside an unterminated multiline flow collection ({...} / [...]) every line is a
+      // continuation member, never a root mapping key — even when it shares the root
+      // indentation. Matches js-yaml, which nests these members under the opener.
+    }
+
+    // Track flow collection structure across lines. Runs for root keys (an opener like
+    // `metadata: {` starts a collection) and for every line inside one (to find its end).
+    // Quoted scalars and comments never open or close flow structure.
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+
+      if (quote) {
+        if (quote === '"' && char === '\\') {
+          i++;
+          continue;
+        }
+        if (char === quote) {
+          if (quote === "'" && line[i + 1] === "'") {
+            i++;
+            continue;
+          }
+          quote = null;
+        }
+        continue;
+      }
+
+      if (char === '"' || char === "'") {
+        quote = char;
+        continue;
+      }
+      if (char === '#' && (i === 0 || line[i - 1] === ' ' || line[i - 1] === '\t')) {
+        break;
+      }
+      if (char === '{' || char === '[') {
+        flowDepth++;
+      } else if ((char === '}' || char === ']') && flowDepth > 0) {
+        flowDepth--;
+      }
+    }
   }
 
   return { metadata, body };
