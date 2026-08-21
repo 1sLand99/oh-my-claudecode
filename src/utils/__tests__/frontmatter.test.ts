@@ -228,6 +228,22 @@ Body`;
       agent: 'coder',
     });
   });
+
+  it('does not open flow tracking for braces embedded in plain scalar values', () => {
+    const content = `---
+name: example-skill
+description: prose with { stray brace
+model: opus
+---
+Body`;
+    const result = parseFrontmatter(content);
+
+    expect(result.metadata).toEqual({
+      name: 'example-skill',
+      description: 'prose with { stray brace',
+      model: 'opus',
+    });
+  });
   it('ignores comments at the detected root indentation', () => {
     const content = `---
   name: indented-skill

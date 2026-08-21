@@ -64,10 +64,25 @@ export function parseFrontmatter(content: string): { metadata: Record<string, st
       // indentation. Matches js-yaml, which nests these members under the opener.
     }
 
-    // Track flow collection structure across lines. Runs for root keys (an opener like
-    // `metadata: {` starts a collection) and for every line inside one (to find its end).
-    // Quoted scalars and comments never open or close flow structure.
-    for (let i = 0; i < line.length; i++) {
+    // Track flow collection structure across lines. A root line opens a collection only
+    // when its value starts with { or [ (`metadata: {`); a brace appearing later in a
+    // plain scalar is literal text, as in js-yaml block context. Continuation lines are
+    // scanned fully to find the collection end. Quoted scalars and comments never open
+    // or close flow structure.
+    let scanFrom = 0;
+    if (flowDepth === 0) {
+      const colonIndex = line.indexOf(':');
+      const valueStart = colonIndex === -1 ? -1 : line.slice(colonIndex + 1).search(/\S/);
+      if (colonIndex !== -1 && valueStart !== -1) {
+        const firstValueChar = line[colonIndex + 1 + valueStart];
+        if (firstValueChar === '{' || firstValueChar === '[') {
+          scanFrom = colonIndex + 1 + valueStart;
+        }
+      }
+      if (scanFrom === 0) continue;
+    }
+
+    for (let i = scanFrom; i < line.length; i++) {
       const char = line[i];
 
       if (quote) {
