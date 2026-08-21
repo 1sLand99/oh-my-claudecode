@@ -651,6 +651,7 @@ export async function verifyLiveGeneratedArtifactAuthorization({
   token,
   fetchImpl,
   repositoryRoot = REPOSITORY_ROOT,
+  now = new Date(),
 }) {
   const trustedManifest = validateAuthorizationManifest(manifest);
   const eventData = eventIdentity(event, trustedManifest.repository, trustedManifest.owner);
@@ -710,6 +711,7 @@ export async function verifyLiveGeneratedArtifactAuthorization({
     commit,
     signature: graphResponse.data.repository.object,
     files,
+    now,
   });
 
   // Close the observable push-race window before reporting authorization.
