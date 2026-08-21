@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -105,6 +105,7 @@ type VerifierModule = {
     token: string;
     fetchImpl: typeof fetch;
     repositoryRoot: string;
+    now?: Date;
   }): Promise<unknown>;
   validateAuthorizationManifest(manifest: unknown): unknown;
   readDetachedCheckoutHead(repositoryRoot: string): string;
@@ -124,6 +125,8 @@ const exactAuthorization = (() => {
   if (!authorization) throw new Error('Missing exact #3537 base-owned authorization fixture');
   return authorization;
 })();
+const EXPIRES_AT = exactAuthorization.expiresAt;
+const EXPIRY_INSTANT = Date.parse(EXPIRES_AT);
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -524,14 +527,91 @@ describe('generated-artifact base-owned authorization decision', () => {
     }, 'authorized closure');
   });
 
-  it('keeps expiry validation effective after the frozen fixture date', () => {
-    const input = authorizedInput();
-    input.now = new Date('2026-08-20T00:00:00.000Z');
+  it('enforces the exact expiry boundary of the authorized manifest entry', () => {
+    const lastValid = authorizedInput();
+    lastValid.now = new Date(EXPIRY_INSTANT - 1);
+    expect(verifier.evaluateGeneratedArtifactAuthorization(lastValid)).toMatchObject({ allowed: true });
 
-    expect(verifier.evaluateGeneratedArtifactAuthorization(input)).toEqual({
+    const expired = authorizedInput();
+    expired.now = new Date(EXPIRY_INSTANT);
+    expect(verifier.evaluateGeneratedArtifactAuthorization(expired)).toEqual({
       allowed: false,
       reason: 'generated-artifact authorization has expired',
     });
+
+    const farFuture = authorizedInput();
+    farFuture.now = new Date('2999-01-01T00:00:00.000Z');
+    expect(verifier.evaluateGeneratedArtifactAuthorization(farFuture)).toEqual({
+      allowed: false,
+      reason: 'generated-artifact authorization has expired',
+    });
+  });
+
+  it('keeps the live decision green under a wall clock far past the fixture expiry', async () => {
+    // #3759 regression: the live path must consult the injected fixture clock,
+    // never the system clock. Freeze the system clock far past every manifest
+    // expiry and prove the exact-head live verification still authorizes.
+    vi.useFakeTimers({
+      now: new Date('2999-01-01T00:00:00.000Z'),
+      toFake: ['Date'],
+    });
+    try {
+      expect(Date.now()).toBe(Date.parse('2999-01-01T00:00:00.000Z'));
+
+      const checkoutRoot = mkdtempSync(join(tmpdir(), 'generated-artifact-authorization-'));
+      mkdirSync(join(checkoutRoot, '.git'));
+      writeFileSync(join(checkoutRoot, '.git', 'HEAD'), `${LIVE_BASE_SHA}\n`);
+      try {
+        const input = authorizedInput();
+        const fetchImpl: typeof fetch = async request => {
+          const url = new URL(
+            typeof request === 'string' ? request : request instanceof URL ? request.href : request.url,
+          );
+          const path = `${url.pathname}${url.search}`;
+          let body: unknown;
+          if (path === `/repos/${REPOSITORY}`) body = input.repositoryMetadata;
+          else if (path === `/repos/${REPOSITORY}/commits/main`) body = input.runtimeCommit;
+          else if (path === `/repos/${REPOSITORY}/pulls/${PULL_NUMBER}`) body = input.livePull;
+          else if (path.includes(`/pulls/${PULL_NUMBER}/files`) && path.endsWith('page=1')) body = input.files.slice(0, 100);
+          else if (path.includes(`/pulls/${PULL_NUMBER}/files`) && path.endsWith('page=2')) body = input.files.slice(100);
+          else if (path.includes(`/pulls/${PULL_NUMBER}/files`) && path.endsWith('page=3')) body = [];
+          else if (path.startsWith(`/repos/${REPOSITORY}/compare/`)) body = input.compare;
+          else if (path === `/repos/${REPOSITORY}/commits/${HEAD_SHA}`) body = input.commit;
+          else if (path === '/graphql') body = { data: { repository: { object: input.signature } } };
+          else throw new Error(`Unexpected GitHub API path ${path}`);
+          return { ok: true, json: async () => body } as Response;
+        };
+
+        await expect(
+          verifier.verifyLiveGeneratedArtifactAuthorization({
+            event: input.event,
+            manifest: input.manifest,
+            environment: input.environment,
+            token: 'test-token',
+            fetchImpl,
+            repositoryRoot: checkoutRoot,
+            now: input.now,
+          }),
+        ).resolves.toMatchObject({ requiresAuthorization: true, pullNumber: PULL_NUMBER });
+
+        // The same live input must fail closed without the injected clock once
+        // the real (faked far-future) clock is consulted: expiry still bites.
+        await expect(
+          verifier.verifyLiveGeneratedArtifactAuthorization({
+            event: input.event,
+            manifest: input.manifest,
+            environment: input.environment,
+            token: 'test-token',
+            fetchImpl,
+            repositoryRoot: checkoutRoot,
+          }),
+        ).rejects.toThrow('generated-artifact authorization has expired');
+      } finally {
+        rmSync(checkoutRoot, { recursive: true, force: true });
+      }
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('requires exact authorization for generated-path rename, copy, and deletion records', () => {
@@ -781,6 +861,7 @@ describe('generated-artifact base-owned authorization decision', () => {
           token: 'test-token',
           fetchImpl,
           repositoryRoot: checkoutRoot,
+          now: input.now,
         }),
       ).resolves.toMatchObject({ requiresAuthorization: true, pullNumber: PULL_NUMBER });
       expect(requestedPaths).toContain(`/repos/${REPOSITORY}/commits/main`);
@@ -812,6 +893,7 @@ describe('generated-artifact base-owned authorization decision', () => {
           token: 'test-token',
           fetchImpl: raceFetch,
           repositoryRoot: checkoutRoot,
+          now: racedInput.now,
         }),
       ).rejects.toThrow('GITHUB_SHA does not match the current protected default-main commit SHA');
       expect(racePaths).toEqual([`/repos/${REPOSITORY}`, `/repos/${REPOSITORY}/commits/main`]);
@@ -844,6 +926,7 @@ describe('generated-artifact base-owned authorization decision', () => {
           token: 'test-token',
           fetchImpl,
           repositoryRoot: checkoutRoot,
+          now: input.now,
         }),
       ).rejects.toThrow('default branch is not main');
       expect(requestedPaths).toEqual([`/repos/${REPOSITORY}`]);
