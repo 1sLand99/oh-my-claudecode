@@ -95,6 +95,7 @@ export type RestoreCandidate =
       ok: true;
       checkpoint: CompactCheckpoint;
       path: string;
+      mtimeMs: number;
     }
   | {
       ok: false;
@@ -131,6 +132,7 @@ export function markCheckpointRestored(
   sessionId: string,
   checkpointPath: string,
   checkpointCreatedAt?: string,
+  checkpointMtimeMs?: number,
 ): RestoreMarkerStatus {
   if (!isValidSessionId(sessionId)) {
     return 'invalid_session_id'; // never write a marker for an unvalidated session ID
@@ -202,6 +204,7 @@ export function markCheckpointRestored(
         checkpoint_created_at: Number.isFinite(Date.parse(checkpointCreatedAt ?? ''))
           ? checkpointCreatedAt
           : null,
+        checkpoint_mtime_ms: Number.isFinite(checkpointMtimeMs) ? checkpointMtimeMs : null,
       }),
       'utf-8',
     );
@@ -325,7 +328,20 @@ export function markCheckpointRestored(
           const existingTime = Date.parse(marker?.checkpoint_created_at ?? '');
           const candidateTime = Date.parse(checkpointCreatedAt ?? '');
           if (Number.isFinite(existingTime) && Number.isFinite(candidateTime)) {
-            if (existingTime >= candidateTime) return 'existing';
+            if (existingTime > candidateTime) return 'existing';
+            if (existingTime === candidateTime) {
+              const existingMtime = Number(marker?.checkpoint_mtime_ms);
+              if (Number.isFinite(existingMtime) && Number.isFinite(checkpointMtimeMs)) {
+                if (existingMtime > checkpointMtimeMs!) return 'existing';
+                if (existingMtime === checkpointMtimeMs) {
+                  const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
+                  if (!CHECKPOINT_FILE_PATTERN.test(existingName) || existingName >= basename(checkpointPath)) return 'existing';
+                }
+              } else {
+                const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
+                if (!CHECKPOINT_FILE_PATTERN.test(existingName) || existingName >= basename(checkpointPath)) return 'existing';
+              }
+            }
           } else {
             const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
             const candidateName = basename(checkpointPath);
@@ -954,7 +970,8 @@ function sortNewestFirst(candidates: ScoredCandidate[]): ScoredCandidate[] {
     if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) {
       return tb - ta;
     }
-    return b.mtimeMs - a.mtimeMs;
+    if (a.mtimeMs !== b.mtimeMs) return b.mtimeMs - a.mtimeMs;
+    return b.name.localeCompare(a.name);
   });
 }
 
@@ -1038,7 +1055,7 @@ export function findLatestCheckpointForRestore(
         detail: `checkpoint ${candidate.name} older than ${CHECKPOINT_MAX_AGE_MS}ms`,
       };
     }
-    return { ok: true, checkpoint: candidate.checkpoint, path: candidate.path };
+    return { ok: true, checkpoint: candidate.checkpoint, path: candidate.path, mtimeMs: candidate.mtimeMs };
   }
 
   // No parseable candidate was eligible for restoration.
@@ -1071,6 +1088,7 @@ export function restorePreCompactCheckpoint(
       sessionId,
       candidate.path,
       candidate.checkpoint.created_at,
+      candidate.mtimeMs,
     );
     if (marker_status !== 'written') {
       return null;

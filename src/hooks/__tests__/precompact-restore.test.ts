@@ -20,7 +20,9 @@ import {
   readdirSync,
   renameSync,
   symlinkSync,
+  statSync,
   unlinkSync,
+  utimesSync,
   writeFileSync,
   readFileSync,
 } from 'fs';
@@ -801,6 +803,60 @@ describe('PreCompact restore (issue #3730)', () => {
       'restored.json',
     );
     expect(JSON.parse(readFileSync(markerPath, 'utf-8')).checkpoint).toBe(checkpointB);
+  });
+
+  it('advances equal-created-at checkpoints using the same mtime tiebreaker as selection', () => {
+    if (!SECURE_MARKER_SUPPORTED) return;
+    const createdAt = new Date().toISOString();
+    const checkpointDir = join(getOmcRootForTest(tempDir), 'state', 'checkpoints');
+    mkdirSync(checkpointDir, { recursive: true });
+    const checkpointA = join(checkpointDir, 'checkpoint-equal-a.json');
+    const checkpointB = join(checkpointDir, 'checkpoint-equal-b.json');
+    const payload = JSON.stringify({
+      created_at: createdAt,
+      trigger: 'auto',
+      active_modes: {},
+      todo_summary: { pending: 1, in_progress: 0, completed: 0 },
+      wisdom_exported: false,
+    });
+    writeFileSync(checkpointA, payload);
+    const older = new Date(Date.now() - 2_000);
+    utimesSync(checkpointA, older, older);
+    const mtimeA = statSync(checkpointA).mtimeMs;
+    expect(markCheckpointRestored(tempDir, 'marker-equal-time', checkpointA, createdAt, mtimeA)).toBe('written');
+
+    writeFileSync(checkpointB, payload);
+    const newer = new Date();
+    utimesSync(checkpointB, newer, newer);
+    const restored = restorePreCompactCheckpoint(tempDir, 'marker-equal-time');
+    expect(restored?.marker_status).toBe('written');
+    expect(restored?.text).toContain('checkpoint-equal-b.json');
+  });
+
+  it('uses checkpoint name as a stable final tie-breaker when created_at and mtime are equal', () => {
+    if (!SECURE_MARKER_SUPPORTED) return;
+    const createdAt = new Date().toISOString();
+    const checkpointDir = join(getOmcRootForTest(tempDir), 'state', 'checkpoints');
+    mkdirSync(checkpointDir, { recursive: true });
+    const checkpointA = join(checkpointDir, 'checkpoint-tie-a.json');
+    const checkpointB = join(checkpointDir, 'checkpoint-tie-b.json');
+    const payload = JSON.stringify({
+      created_at: createdAt,
+      trigger: 'auto',
+      active_modes: {},
+      todo_summary: { pending: 1, in_progress: 0, completed: 0 },
+      wisdom_exported: false,
+    });
+    writeFileSync(checkpointA, payload);
+    writeFileSync(checkpointB, payload);
+    const sameTime = new Date(Date.now() - 1_000);
+    utimesSync(checkpointA, sameTime, sameTime);
+    utimesSync(checkpointB, sameTime, sameTime);
+    const mtime = statSync(checkpointA).mtimeMs;
+    expect(markCheckpointRestored(tempDir, 'marker-total-order', checkpointA, createdAt, mtime)).toBe('written');
+    const restored = restorePreCompactCheckpoint(tempDir, 'marker-total-order');
+    expect(restored?.marker_status).toBe('written');
+    expect(restored?.text).toContain('checkpoint-tie-b.json');
   });
 });
 

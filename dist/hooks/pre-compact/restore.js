@@ -64,7 +64,7 @@ function isValidSessionId(sessionId) {
  * Session-scoped: different sessions may restore the same checkpoint.
  * Never throws — replay protection must not break restore.
  */
-export function markCheckpointRestored(directory, sessionId, checkpointPath, checkpointCreatedAt) {
+export function markCheckpointRestored(directory, sessionId, checkpointPath, checkpointCreatedAt, checkpointMtimeMs) {
     if (!isValidSessionId(sessionId)) {
         return 'invalid_session_id'; // never write a marker for an unvalidated session ID
     }
@@ -126,6 +126,7 @@ export function markCheckpointRestored(directory, sessionId, checkpointPath, che
             checkpoint_created_at: Number.isFinite(Date.parse(checkpointCreatedAt ?? ''))
                 ? checkpointCreatedAt
                 : null,
+            checkpoint_mtime_ms: Number.isFinite(checkpointMtimeMs) ? checkpointMtimeMs : null,
         }), 'utf-8');
         let offset = 0;
         while (offset < bytes.length) {
@@ -244,8 +245,25 @@ export function markCheckpointRestored(directory, sessionId, checkpointPath, che
                     const existingTime = Date.parse(marker?.checkpoint_created_at ?? '');
                     const candidateTime = Date.parse(checkpointCreatedAt ?? '');
                     if (Number.isFinite(existingTime) && Number.isFinite(candidateTime)) {
-                        if (existingTime >= candidateTime)
+                        if (existingTime > candidateTime)
                             return 'existing';
+                        if (existingTime === candidateTime) {
+                            const existingMtime = Number(marker?.checkpoint_mtime_ms);
+                            if (Number.isFinite(existingMtime) && Number.isFinite(checkpointMtimeMs)) {
+                                if (existingMtime > checkpointMtimeMs)
+                                    return 'existing';
+                                if (existingMtime === checkpointMtimeMs) {
+                                    const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
+                                    if (!CHECKPOINT_FILE_PATTERN.test(existingName) || existingName >= basename(checkpointPath))
+                                        return 'existing';
+                                }
+                            }
+                            else {
+                                const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
+                                if (!CHECKPOINT_FILE_PATTERN.test(existingName) || existingName >= basename(checkpointPath))
+                                    return 'existing';
+                            }
+                        }
                     }
                     else {
                         const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
@@ -750,7 +768,9 @@ function sortNewestFirst(candidates) {
         if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) {
             return tb - ta;
         }
-        return b.mtimeMs - a.mtimeMs;
+        if (a.mtimeMs !== b.mtimeMs)
+            return b.mtimeMs - a.mtimeMs;
+        return b.name.localeCompare(a.name);
     });
 }
 /**
@@ -824,7 +844,7 @@ export function findLatestCheckpointForRestore(directory, sessionId) {
                 detail: `checkpoint ${candidate.name} older than ${CHECKPOINT_MAX_AGE_MS}ms`,
             };
         }
-        return { ok: true, checkpoint: candidate.checkpoint, path: candidate.path };
+        return { ok: true, checkpoint: candidate.checkpoint, path: candidate.path, mtimeMs: candidate.mtimeMs };
     }
     // No parseable candidate was eligible for restoration.
     return {
@@ -846,7 +866,7 @@ export function restorePreCompactCheckpoint(directory, sessionId) {
         if (!candidate.ok) {
             return null;
         }
-        const marker_status = markCheckpointRestored(directory, sessionId, candidate.path, candidate.checkpoint.created_at);
+        const marker_status = markCheckpointRestored(directory, sessionId, candidate.path, candidate.checkpoint.created_at, candidate.mtimeMs);
         if (marker_status !== 'written') {
             return null;
         }

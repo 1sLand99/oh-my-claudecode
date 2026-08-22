@@ -8,7 +8,7 @@
 
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdtempSync, mkdirSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync, existsSync, readFileSync, linkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync, existsSync, readFileSync, linkSync, utimesSync } from 'node:fs';
 import * as nodeFs from 'fs';
 import { basename, join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -462,8 +462,20 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
     ['dist', join(__dirname, '..', '..', 'dist', 'hooks', 'pre-compact', 'restore.js'), false],
   ])('keeps marker advancement monotonic across delayed %s helper processes', async (_label, helperPath, usesOmcRoot) => {
     if (!SECURE_MARKER_SUPPORTED) return;
-    const t1 = new Date(Date.now() - 2_000).toISOString();
-    const checkpointA = writeCheckpoint(project, t1);
+    const createdAt = new Date().toISOString();
+    const checkpointDir = join(project, '.omc', 'state', 'checkpoints');
+    mkdirSync(checkpointDir, { recursive: true });
+    const payload = JSON.stringify({
+      created_at: createdAt,
+      trigger: 'auto',
+      active_modes: {},
+      todo_summary: { pending: 1, in_progress: 0, completed: 0 },
+      wisdom_exported: false,
+    });
+    const checkpointA = join(checkpointDir, 'checkpoint-concurrent-a.json');
+    writeFileSync(checkpointA, payload);
+    const older = new Date(Date.now() - 2_000);
+    utimesSync(checkpointA, older, older);
     const signal = join(tempDir, `marker-lock-signal-${_label}`);
     const release = join(tempDir, `marker-lock-release-${_label}`);
     const preload = join(tempDir, `marker-lock-preload-${_label}.mjs`);
@@ -506,8 +518,10 @@ process.stdout.write(JSON.stringify(result));`;
     }
     expect(existsSync(signal)).toBe(true);
 
-    const t2 = new Date().toISOString();
-    const checkpointB = writeCheckpoint(project, t2);
+    const checkpointB = join(checkpointDir, 'checkpoint-concurrent-b.json');
+    writeFileSync(checkpointB, payload);
+    const newer = new Date();
+    utimesSync(checkpointB, newer, newer);
     const winner = execFileSync(NODE, ['--input-type=module', '-e', code], {
       encoding: 'utf8',
       env: {
@@ -516,7 +530,7 @@ process.stdout.write(JSON.stringify(result));`;
         MARKER_SESSION: `marker-process-${_label}`,
       },
     });
-    expect(JSON.parse(winner)?.text).toContain(t2);
+    expect(JSON.parse(winner)?.text).toContain('checkpoint-concurrent-b.json');
     writeFileSync(release, 'release');
     const delayedStatus = await new Promise<number | null>((resolve) => delayed.on('close', resolve));
     expect(delayedStatus, delayedStderr).toBe(0);
@@ -576,6 +590,42 @@ process.stdout.write(JSON.stringify(restorePreCompactCheckpoint(process.env.OMC_
     expect(await new Promise<number | null>((resolve) => delayed.on('close', resolve))).toBe(0);
     expect(JSON.parse(delayedStdout)).toBeNull();
   }, 15_000);
+
+  it.each([
+    ['installed', join(__dirname, '..', '..', 'scripts', 'lib', 'precompact-restore.mjs'), true],
+    ['template', join(__dirname, '..', '..', 'templates', 'hooks', 'lib', 'precompact-restore.mjs'), true],
+    ['dist', join(__dirname, '..', '..', 'dist', 'hooks', 'pre-compact', 'restore.js'), false],
+  ])('uses mtime to advance equal-created-at checkpoints in the %s helper', (_label, helperPath, usesOmcRoot) => {
+    if (!SECURE_MARKER_SUPPORTED) return;
+    const checkpointDir = join(project, '.omc', 'state', 'checkpoints');
+    mkdirSync(checkpointDir, { recursive: true });
+    const createdAt = new Date().toISOString();
+    const payload = JSON.stringify({
+      created_at: createdAt,
+      trigger: 'auto',
+      active_modes: {},
+      todo_summary: { pending: 1, in_progress: 0, completed: 0 },
+      wisdom_exported: false,
+    });
+    const checkpointA = join(checkpointDir, 'checkpoint-equal-a.json');
+    const checkpointB = join(checkpointDir, 'checkpoint-equal-b.json');
+    writeFileSync(checkpointA, payload);
+    const older = new Date(Date.now() - 2_000);
+    utimesSync(checkpointA, older, older);
+    const code = `import { restorePreCompactCheckpoint } from ${JSON.stringify(pathToFileURL(helperPath).href)};
+process.stdout.write(JSON.stringify(restorePreCompactCheckpoint(process.env.OMC_ROOT, process.env.MARKER_SESSION)));`;
+    const inputRoot = usesOmcRoot ? join(project, '.omc') : project;
+    const run = () => JSON.parse(execFileSync(NODE, ['--input-type=module', '-e', code], {
+      encoding: 'utf8',
+      env: { ...process.env, OMC_ROOT: inputRoot, MARKER_SESSION: `equal-time-${_label}` },
+    }));
+    expect(run()?.text).toContain('checkpoint-equal-a.json');
+    writeFileSync(checkpointB, payload);
+    const newer = new Date();
+    utimesSync(checkpointB, newer, newer);
+    expect(run()?.text).toContain('checkpoint-equal-b.json');
+    expect(run()).toBeNull();
+  });
 
   it('fails open (no restore) on a malformed checkpoint', () => {
     const dir = join(project, '.omc', 'state', 'checkpoints');

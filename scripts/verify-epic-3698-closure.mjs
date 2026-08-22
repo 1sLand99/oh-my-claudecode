@@ -817,19 +817,48 @@ function readInlineDestination(text, start) {
   return index === destinationStart ? null : { target: text.slice(destinationStart, index), end: index };
 }
 
+function stripMarkdownContainerPrefix(line) {
+  let content = line;
+  for (;;) {
+    const blockQuote = content.match(/^ {0,3}>[ \t]?/);
+    if (blockQuote) {
+      content = content.slice(blockQuote[0].length);
+      continue;
+    }
+    const listItem = content.match(/^ {0,3}(?:[-+*]|\d{1,9}[.)])[ \t]+/);
+    if (listItem) {
+      content = content.slice(listItem[0].length);
+      continue;
+    }
+    break;
+  }
+  return content;
+}
+
 function parseMarkdownDestinations(text, problems, docPath) {
   const definitions = new Map();
   const lines = text.split(/\r?\n/);
-  for (const line of lines) {
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = stripMarkdownContainerPrefix(lines[lineIndex]);
     const leading = line.match(/^ {0,3}/)?.[0].length ?? 0;
     if (line[leading] !== '[') continue;
     const closing = findClosingBracket(line, leading);
     if (closing < 0 || line[closing + 1] !== ':') continue;
-    const rest = line.slice(closing + 2).trimStart();
-    if (!rest) continue;
-    const destination = readInlineDestination(rest, 0);
+    let rest = line.slice(closing + 2).trimStart();
+    if (!rest && lineIndex + 1 < lines.length) {
+      rest = stripMarkdownContainerPrefix(lines[lineIndex + 1]).trimStart();
+    }
     const label = referenceLabel(line.slice(leading + 1, closing));
-    if (destination && !definitions.has(label)) definitions.set(label, destination.target);
+    if (!rest) {
+      problems.push(`${docPath}: unsupported or missing destination for reference definition [${label}]`);
+      continue;
+    }
+    const destination = readInlineDestination(rest, 0);
+    if (!destination) {
+      problems.push(`${docPath}: unsupported destination for reference definition [${label}]`);
+      continue;
+    }
+    if (!definitions.has(label)) definitions.set(label, destination.target);
   }
   const targets = [];
   for (let index = 0; index < text.length; index += 1) {

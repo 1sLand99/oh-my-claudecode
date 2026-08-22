@@ -720,6 +720,7 @@ ${agentsContent}
           sessionId,
           pendingRestore.path,
           pendingRestore.created_at,
+          pendingRestore.mtime_ms,
         );
         if (!markerStatus) {
           messages = messages.filter((message) => message !== pendingRestoreMessage);

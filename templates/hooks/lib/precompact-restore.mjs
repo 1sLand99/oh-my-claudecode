@@ -354,7 +354,7 @@ function isCheckpointRestored(omcRoot, sessionId, checkpointPath) {
   }
 }
 
-function markCheckpointRestored(omcRoot, sessionId, checkpointPath, checkpointCreatedAt) {
+function markCheckpointRestored(omcRoot, sessionId, checkpointPath, checkpointCreatedAt, checkpointMtimeMs) {
   if (!isValidSessionId(sessionId)) return 'invalid_session_id';
   let parentFd = null;
   let markerFd = null;
@@ -402,6 +402,7 @@ function markCheckpointRestored(omcRoot, sessionId, checkpointPath, checkpointCr
         restored_at: new Date().toISOString(),
         checkpoint: checkpointPath,
         checkpoint_created_at: Number.isFinite(Date.parse(checkpointCreatedAt ?? '')) ? checkpointCreatedAt : null,
+        checkpoint_mtime_ms: Number.isFinite(checkpointMtimeMs) ? checkpointMtimeMs : null,
       }),
       'utf-8',
     );
@@ -502,7 +503,20 @@ function markCheckpointRestored(omcRoot, sessionId, checkpointPath, checkpointCr
           const existingTime = Date.parse(marker?.checkpoint_created_at ?? '');
           const candidateTime = Date.parse(checkpointCreatedAt ?? '');
           if (Number.isFinite(existingTime) && Number.isFinite(candidateTime)) {
-            if (existingTime >= candidateTime) return 'existing';
+            if (existingTime > candidateTime) return 'existing';
+            if (existingTime === candidateTime) {
+              const existingMtime = Number(marker?.checkpoint_mtime_ms);
+              if (Number.isFinite(existingMtime) && Number.isFinite(checkpointMtimeMs)) {
+                if (existingMtime > checkpointMtimeMs) return 'existing';
+                if (existingMtime === checkpointMtimeMs) {
+                  const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
+                  if (!CHECKPOINT_FILE_PATTERN.test(existingName) || existingName >= basename(checkpointPath)) return 'existing';
+                }
+              } else {
+                const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
+                if (!CHECKPOINT_FILE_PATTERN.test(existingName) || existingName >= basename(checkpointPath)) return 'existing';
+              }
+            }
           } else {
             const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
             const candidateName = basename(checkpointPath);
@@ -675,7 +689,8 @@ export function preparePreCompactCheckpointRestore(omcRoot, sessionId) {
       const ta = Date.parse(a.checkpoint.created_at);
       const tb = Date.parse(b.checkpoint.created_at);
       if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return tb - ta;
-      return b.mtimeMs - a.mtimeMs;
+      if (a.mtimeMs !== b.mtimeMs) return b.mtimeMs - a.mtimeMs;
+      return b.name.localeCompare(a.name);
     });
 
     // The marker is a monotonic cursor: an exact newest match suppresses all
@@ -683,7 +698,12 @@ export function preparePreCompactCheckpointRestore(omcRoot, sessionId) {
     for (const candidate of candidates) {
       if (sessionId && isCheckpointRestored(omcRoot, sessionId, candidate.path)) return null;
       if (!isWithinAgeBound(candidate.checkpoint.created_at)) continue;
-      return { text: formatRestoreContext(candidate.checkpoint, candidate.path), path: candidate.path, created_at: candidate.checkpoint.created_at };
+      return {
+        text: formatRestoreContext(candidate.checkpoint, candidate.path),
+        path: candidate.path,
+        created_at: candidate.checkpoint.created_at,
+        mtime_ms: candidate.mtimeMs,
+      };
     }
 
     return null;
@@ -694,9 +714,9 @@ export function preparePreCompactCheckpointRestore(omcRoot, sessionId) {
 }
 
 /** Publish the replay marker after SessionStart confirms the complete context was selected. */
-export function commitPreCompactCheckpointRestore(omcRoot, sessionId, checkpointPath, checkpointCreatedAt) {
+export function commitPreCompactCheckpointRestore(omcRoot, sessionId, checkpointPath, checkpointCreatedAt, checkpointMtimeMs) {
   const marker_status = sessionId
-    ? markCheckpointRestored(omcRoot, sessionId, checkpointPath, checkpointCreatedAt)
+    ? markCheckpointRestored(omcRoot, sessionId, checkpointPath, checkpointCreatedAt, checkpointMtimeMs)
     : 'unsupported';
   return marker_status === 'written' ? marker_status : null;
 }
@@ -705,6 +725,12 @@ export function commitPreCompactCheckpointRestore(omcRoot, sessionId, checkpoint
 export function restorePreCompactCheckpoint(omcRoot, sessionId) {
   const prepared = preparePreCompactCheckpointRestore(omcRoot, sessionId);
   if (!prepared) return null;
-  const marker_status = commitPreCompactCheckpointRestore(omcRoot, sessionId, prepared.path, prepared.created_at);
+  const marker_status = commitPreCompactCheckpointRestore(
+    omcRoot,
+    sessionId,
+    prepared.path,
+    prepared.created_at,
+    prepared.mtime_ms,
+  );
   return marker_status ? { ...prepared, marker_status } : null;
 }

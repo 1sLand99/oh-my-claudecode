@@ -42,6 +42,7 @@ export type RestoreCandidate = {
     ok: true;
     checkpoint: CompactCheckpoint;
     path: string;
+    mtimeMs: number;
 } | {
     ok: false;
     reason: 'missing' | 'no_checkpoints' | 'stale' | 'oversized' | 'malformed' | 'already_restored' | 'invalid_session_id';
@@ -58,7 +59,7 @@ export interface RestoredCheckpointContext {
  * Session-scoped: different sessions may restore the same checkpoint.
  * Never throws — replay protection must not break restore.
  */
-export declare function markCheckpointRestored(directory: string, sessionId: string, checkpointPath: string, checkpointCreatedAt?: string): RestoreMarkerStatus;
+export declare function markCheckpointRestored(directory: string, sessionId: string, checkpointPath: string, checkpointCreatedAt?: string, checkpointMtimeMs?: number): RestoreMarkerStatus;
 /**
  * Find the newest checkpoint eligible for restore in this directory/session.
  *
