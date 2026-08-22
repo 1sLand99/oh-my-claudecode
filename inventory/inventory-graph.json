@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "5463afbdcfd9d7477a91a875ce32e33e8ab4df34",
-    "sourceSha256": "8e358f295296db06056e4ee3a3afd85adf8b6c67ab5faa97037478dbaa326d1e",
+    "head": "31a5fe8c782084c30d64897ac76e105e93eb8a4b",
+    "sourceSha256": "f0099d0dce131970f85a7b15b79b24f3b3615a875802c420a6a68a7c729a70ea",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "5463afbdcfd9d7477a91a875ce32e33e8ab4df34",
-  "sourceSha256": "8e358f295296db06056e4ee3a3afd85adf8b6c67ab5faa97037478dbaa326d1e",
+  "head": "31a5fe8c782084c30d64897ac76e105e93eb8a4b",
+  "sourceSha256": "f0099d0dce131970f85a7b15b79b24f3b3615a875802c420a6a68a7c729a70ea",
   "counts": {
     "public": {
       "skills": 31,
@@ -40341,6 +40341,11 @@
         "path": "tests/integration/workflow-profile-stop-transition.test.ts"
       },
       {
+        "id": "tests/lint/cancel-signal-fixture-ttl.test.ts",
+        "kind": "other",
+        "path": "tests/lint/cancel-signal-fixture-ttl.test.ts"
+      },
+      {
         "id": "tests/lint/fable-routing-docs.test.ts",
         "kind": "other",
         "path": "tests/lint/fable-routing-docs.test.ts"
@@ -74553,6 +74558,21 @@
         "kind": "imports"
       },
       {
+        "from": "tests/lint/cancel-signal-fixture-ttl.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/cancel-signal-fixture-ttl.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/cancel-signal-fixture-ttl.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "tests/lint/fable-routing-docs.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -74709,12 +74729,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6819,
-      "edgeCount": 6860,
-      "importEdgeCount": 5620,
+      "nodeCount": 6820,
+      "edgeCount": 6863,
+      "importEdgeCount": 5623,
       "registerEdgeCount": 52
     }
   },
-  "inventorySha256": "1d89540ec7601148a9d0c2622974011e9f1e508adbb6f2d8fd710b2c5ed3e836",
-  "manifestSha256": "8099b4782ab870137f2952a704d8c6bd5c1cdcdfe11ac27d5b5e4c709c9858ca"
+  "inventorySha256": "701586753abe736094554bb05bb7f721f9813c8a171f2b664b51c8d63bf06087",
+  "manifestSha256": "68b8b8c04ddc41c3f4743b49f2a3437dc5af4b5654ce44e99eca595e14b2b4ff"
 }
