@@ -24,6 +24,10 @@
  *   again (marker file, session-scoped).
  * - No cross-project leakage: lookup is always scoped to the checkpoint
  *   directory derived from the caller's own directory (getOmcRoot).
+ * - No symlink traversal: the canonical OMC root, state directory, checkpoint
+ *   directory, and candidate file must remain stable regular paths.
+ * - Descriptor-bound reads: checkpoint bytes are read through an O_NOFOLLOW
+ *   descriptor and verified with fstat before parsing.
  * - Restore is read-only with respect to the checkpoint file itself; only a
  *   small session-scoped marker records that a restore happened.
  */
@@ -44,12 +48,13 @@ export type RestoreCandidate = {
     path?: string;
     detail?: string;
 };
+export type RestoreMarkerStatus = 'written' | 'existing' | 'unsupported' | 'failed' | 'invalid_session_id';
 /**
  * Record that a checkpoint was restored for a session.
  * Session-scoped: different sessions may restore the same checkpoint.
  * Never throws — replay protection must not break restore.
  */
-export declare function markCheckpointRestored(directory: string, sessionId: string, checkpointPath: string): void;
+export declare function markCheckpointRestored(directory: string, sessionId: string, checkpointPath: string): RestoreMarkerStatus;
 /**
  * Find the newest checkpoint eligible for restore in this directory/session.
  *

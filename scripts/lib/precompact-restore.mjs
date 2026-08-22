@@ -8,12 +8,13 @@
 // ancestors are trusted only when they are stable non-symlink directories,
 // and checkpoint bytes are read through an O_NOFOLLOW descriptor.
 
-import { closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readFileSync, readSync, readdirSync, realpathSync, writeFileSync, mkdirSync } from 'fs';
-import { isAbsolute, join, relative, sep } from 'path';
+import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, readdirSync, realpathSync, writeSync, mkdirSync } from 'fs';
+import { basename, isAbsolute, join, relative, sep } from 'path';
 
 const CHECKPOINT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const CHECKPOINT_MAX_BYTES = 256 * 1024;
 const RESTORE_CONTEXT_MAX_CHARS = 1200;
+const RESTORE_MARKER_MAX_BYTES = 16 * 1024;
 const CHECKPOINT_FILE_PATTERN = /^checkpoint-.+\.json$/;
 
 // Mirrors SESSION_ID_REGEX from src/lib/worktree-paths.ts::validateSessionId.
@@ -28,10 +29,6 @@ function isValidSessionId(sessionId) {
 
 function getCheckpointDir(omcRoot) {
   return join(omcRoot, 'state', 'checkpoints');
-}
-
-function getRestoreMarkerPath(omcRoot, sessionId) {
-  return join(omcRoot, 'state', 'checkpoints-restored', sessionId, 'restored.json');
 }
 
 function isPathWithin(root, candidate) {
@@ -96,22 +93,154 @@ function isStableCheckpointContext(omcRoot, context) {
   );
 }
 
-function readBoundedCheckpoint(path, expected) {
+function canonicalChildDirectory(parent, name, create) {
+  const childPath = join(parent.path, name);
+  try {
+    let stat;
+    try {
+      stat = lstatSync(childPath);
+    } catch (error) {
+      if (!create || error?.code !== 'ENOENT') return null;
+      mkdirSync(childPath, { recursive: false, mode: 0o700 });
+      stat = lstatSync(childPath);
+    }
+    if (!stat.isDirectory() || stat.isSymbolicLink()) return null;
+    const canonicalPath = realpathSync(childPath);
+    if (!isPathWithinOrEqual(parent.path, canonicalPath)) return null;
+    const after = lstatSync(childPath);
+    if (
+      !after.isDirectory() ||
+      after.isSymbolicLink() ||
+      after.dev !== stat.dev ||
+      after.ino !== stat.ino ||
+      realpathSync(childPath) !== canonicalPath
+    ) return null;
+    return { path: canonicalPath, dev: after.dev, ino: after.ino };
+  } catch {
+    return null;
+  }
+}
+
+function getRestoreMarkerTarget(omcRoot, sessionId, create) {
+  if (!isValidSessionId(sessionId)) return null;
+  const context = getCanonicalCheckpointContext(omcRoot);
+  if (!context || !isStableCheckpointContext(omcRoot, context)) return null;
+  const markerRoot = canonicalChildDirectory(context.state, 'checkpoints-restored', create);
+  if (!markerRoot || !isPathWithin(context.omcRoot.path, markerRoot.path)) return null;
+  const parent = canonicalChildDirectory(markerRoot, sessionId, create);
+  if (
+    !parent ||
+    !isPathWithin(context.omcRoot.path, parent.path) ||
+    !isPathWithinOrEqual(context.state.path, parent.path) ||
+    !isStableCheckpointContext(omcRoot, context)
+  ) return null;
+  return { context, markerRoot, parent, path: join(parent.path, 'restored.json') };
+}
+
+function isStableRestoreMarkerTarget(target, parentFd) {
+  try {
+    if (
+      !isStableCheckpointContext(target.context.omcRoot.path, target.context) ||
+      !isStableCanonicalDirectory(
+        join(target.context.state.path, 'checkpoints-restored'),
+        target.markerRoot,
+      ) ||
+      !isStableCanonicalDirectory(
+        join(target.context.state.path, 'checkpoints-restored', basename(target.parent.path)),
+        target.parent,
+      )
+    ) return false;
+    if (parentFd !== undefined) {
+      const stat = fstatSync(parentFd);
+      if (
+        !stat.isDirectory() ||
+        stat.isSymbolicLink() ||
+        stat.dev !== target.parent.dev ||
+        stat.ino !== target.parent.ino
+      ) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function openBoundedDirectory(directory) {
+  const readOnly = constants.O_RDONLY;
+  const directoryFlag = constants.O_DIRECTORY;
+  const noFollow = constants.O_NOFOLLOW;
+  if (
+    typeof readOnly !== 'number' ||
+    typeof directoryFlag !== 'number' ||
+    typeof noFollow !== 'number' ||
+    noFollow === 0
+  ) return null;
+  let fd = null;
+  try {
+    fd = openSync(directory.path, readOnly | directoryFlag | noFollow);
+    const stat = fstatSync(fd);
+    if (
+      !stat.isDirectory() ||
+      stat.isSymbolicLink() ||
+      stat.dev !== directory.dev ||
+      stat.ino !== directory.ino ||
+      realpathSync(directory.path) !== directory.path
+    ) {
+      closeSync(fd);
+      return null;
+    }
+    return fd;
+  } catch {
+    if (fd !== null) {
+      try { closeSync(fd); } catch { /* ignore */ }
+    }
+    return null;
+  }
+}
+
+function descriptorChildPath(parentFd, name) {
+  if (process.platform === 'win32') return null;
+  return `/proc/self/fd/${parentFd}/${name}`;
+}
+
+function readBoundedFile(path, expected, maxBytes) {
   const noFollow = constants.O_NOFOLLOW;
   const readOnly = constants.O_RDONLY;
-  if (typeof noFollow !== 'number' || noFollow === 0 || typeof readOnly !== 'number') return null;
+  if (typeof readOnly !== 'number') return null;
 
   let fd = null;
   try {
-    fd = openSync(path, readOnly | noFollow);
+    const beforePath = lstatSync(path);
+    if (
+      !beforePath.isFile() ||
+      beforePath.isSymbolicLink() ||
+      beforePath.nlink > 1 ||
+      beforePath.dev !== expected.dev ||
+      beforePath.ino !== expected.ino ||
+      realpathSync(path) !== expected.path
+    ) return null;
+
+    const flags = typeof noFollow === 'number' && noFollow !== 0 ? readOnly | noFollow : readOnly;
+    fd = openSync(path, flags);
     const before = fstatSync(fd);
     if (
       !before.isFile() ||
       before.isSymbolicLink() ||
+      before.nlink > 1 ||
       before.dev !== expected.dev ||
       before.ino !== expected.ino ||
       !Number.isFinite(before.size) ||
-      before.size > CHECKPOINT_MAX_BYTES
+      before.size > maxBytes ||
+      realpathSync(path) !== expected.path
+    ) return null;
+
+    const openedPath = lstatSync(path);
+    if (
+      !openedPath.isFile() ||
+      openedPath.isSymbolicLink() ||
+      openedPath.nlink > 1 ||
+      openedPath.dev !== before.dev ||
+      openedPath.ino !== before.ino
     ) return null;
 
     const buffer = Buffer.alloc(before.size);
@@ -123,16 +252,23 @@ function readBoundedCheckpoint(path, expected) {
     }
 
     const after = fstatSync(fd);
+    const afterPath = lstatSync(path);
     if (
       !after.isFile() ||
       after.isSymbolicLink() ||
+      after.nlink > 1 ||
       after.dev !== before.dev ||
       after.ino !== before.ino ||
-      after.size !== before.size
+      after.size !== before.size ||
+      afterPath.dev !== before.dev ||
+      afterPath.ino !== before.ino ||
+      afterPath.isSymbolicLink() ||
+      afterPath.nlink > 1 ||
+      realpathSync(path) !== expected.path
     ) return null;
 
     const raw = buffer.toString('utf-8');
-    return raw.length <= CHECKPOINT_MAX_BYTES ? raw : null;
+    return raw.length <= maxBytes ? raw : null;
   } catch {
     return null;
   } finally {
@@ -146,13 +282,17 @@ function readBoundedCheckpoint(path, expected) {
   }
 }
 
+function readBoundedCheckpoint(path, expected) {
+  return readBoundedFile(path, expected, CHECKPOINT_MAX_BYTES);
+}
+
 // Resolve a checkpoint candidate without following a symlinked entry. The
 // repeated lstat/realpath checks fail closed on an obvious replacement race.
 function resolveContainedRegularPath(context, omcRoot, candidatePath) {
   try {
     if (!isStableCheckpointContext(omcRoot, context)) return null;
     const before = lstatSync(candidatePath);
-    if (!before.isFile() || before.isSymbolicLink()) return null;
+    if (!before.isFile() || before.isSymbolicLink() || before.nlink > 1) return null;
 
     const resolvedPath = realpathSync(candidatePath);
     if (!isPathWithin(context.checkpoints.path, resolvedPath)) return null;
@@ -162,6 +302,7 @@ function resolveContainedRegularPath(context, omcRoot, candidatePath) {
     if (
       !after.isFile() ||
       after.isSymbolicLink() ||
+      after.nlink > 1 ||
       after.dev !== before.dev ||
       after.ino !== before.ino
     ) return null;
@@ -173,6 +314,7 @@ function resolveContainedRegularPath(context, omcRoot, candidatePath) {
     if (
       !resolvedStat.isFile() ||
       resolvedStat.isSymbolicLink() ||
+      resolvedStat.nlink > 1 ||
       resolvedStat.dev !== after.dev ||
       resolvedStat.ino !== after.ino
     ) return null;
@@ -187,9 +329,23 @@ function resolveContainedRegularPath(context, omcRoot, candidatePath) {
 
 function isCheckpointRestored(omcRoot, sessionId, checkpointPath) {
   try {
-    const markerPath = getRestoreMarkerPath(omcRoot, sessionId);
-    if (!existsSync(markerPath)) return false;
-    const marker = JSON.parse(readFileSync(markerPath, 'utf-8'));
+    if (!isValidSessionId(sessionId)) return false;
+    const target = getRestoreMarkerTarget(omcRoot, sessionId, false);
+    if (!target) return false;
+    const stat = lstatSync(target.path);
+    if (!stat.isFile() || stat.isSymbolicLink()) return false;
+    const markerPath = realpathSync(target.path);
+    if (
+      markerPath !== target.path ||
+      !isPathWithin(target.context.omcRoot.path, markerPath)
+    ) return false;
+    const raw = readBoundedFile(
+      target.path,
+      { path: markerPath, dev: stat.dev, ino: stat.ino },
+      RESTORE_MARKER_MAX_BYTES,
+    );
+    if (raw === null || !isStableRestoreMarkerTarget(target)) return false;
+    const marker = JSON.parse(raw);
     return marker?.checkpoint === checkpointPath;
   } catch {
     return false;
@@ -197,18 +353,75 @@ function isCheckpointRestored(omcRoot, sessionId, checkpointPath) {
 }
 
 function markCheckpointRestored(omcRoot, sessionId, checkpointPath) {
+  if (!isValidSessionId(sessionId)) return 'invalid_session_id';
+  let parentFd = null;
+  let markerFd = null;
   try {
-    const context = getCanonicalCheckpointContext(omcRoot);
-    if (!context || !isStableCheckpointContext(omcRoot, context)) return;
-    const markerPath = getRestoreMarkerPath(omcRoot, sessionId);
-    mkdirSync(join(markerPath, '..'), { recursive: true });
-    writeFileSync(
-      markerPath,
+    const target = getRestoreMarkerTarget(omcRoot, sessionId, true);
+    if (!target) return 'unsupported';
+    parentFd = openBoundedDirectory(target.parent);
+    if (parentFd === null) return process.platform === 'win32' ? 'unsupported' : 'failed';
+
+    const create = constants.O_CREAT;
+    const exclusive = constants.O_EXCL;
+    const writeOnly = constants.O_WRONLY;
+    if (
+      typeof create !== 'number' ||
+      typeof exclusive !== 'number' ||
+      typeof writeOnly !== 'number'
+    ) return 'unsupported';
+    const noFollow = constants.O_NOFOLLOW;
+    const flags =
+      create |
+      exclusive |
+      writeOnly |
+      (typeof noFollow === 'number' && noFollow !== 0 ? noFollow : 0);
+    const markerPath = descriptorChildPath(parentFd, basename(target.path));
+    if (markerPath === null) return 'unsupported';
+    markerFd = openSync(markerPath, flags, 0o600);
+    const before = fstatSync(markerFd);
+    const openedPath = realpathSync(markerPath);
+    if (
+      !before.isFile() ||
+      before.isSymbolicLink() ||
+      before.nlink > 1 ||
+      before.size !== 0 ||
+      !isPathWithin(target.context.omcRoot.path, openedPath) ||
+      openedPath !== target.path ||
+      !isStableRestoreMarkerTarget(target, parentFd)
+    ) return 'failed';
+    const bytes = Buffer.from(
       JSON.stringify({ restored_at: new Date().toISOString(), checkpoint: checkpointPath }),
       'utf-8',
     );
-  } catch {
-    // Fail-open: replay protection must not break restore.
+    let offset = 0;
+    while (offset < bytes.length) {
+      const count = writeSync(markerFd, bytes, offset, bytes.length - offset);
+      if (!Number.isInteger(count) || count <= 0) return 'failed';
+      offset += count;
+    }
+    const after = fstatSync(markerFd);
+    const afterPath = realpathSync(markerPath);
+    if (
+      !after.isFile() ||
+      after.isSymbolicLink() ||
+      after.nlink > 1 ||
+      after.dev !== before.dev ||
+      after.ino !== before.ino ||
+      after.size !== bytes.length ||
+      afterPath !== target.path ||
+      !isStableRestoreMarkerTarget(target, parentFd)
+    ) return 'failed';
+    return 'written';
+  } catch (error) {
+    return error?.code === 'EEXIST' ? 'existing' : 'failed';
+  } finally {
+    if (markerFd !== null) {
+      try { closeSync(markerFd); } catch { /* ignore */ }
+    }
+    if (parentFd !== null) {
+      try { closeSync(parentFd); } catch { /* ignore */ }
+    }
   }
 }
 
@@ -294,7 +507,7 @@ function formatRestoreContext(checkpoint, path) {
  *
  * @param {string} omcRoot - resolved .omc root directory
  * @param {string} sessionId - session ID for replay guard
- * @returns {{ text: string } | null}
+ * @returns {{ text: string, marker_status: string } | null}
  */
 export function restorePreCompactCheckpoint(omcRoot, sessionId) {
   try {
@@ -349,8 +562,10 @@ export function restorePreCompactCheckpoint(omcRoot, sessionId) {
       if (!isWithinAgeBound(candidate.checkpoint.created_at)) continue;
       // First non-restored, within-age candidate
       const text = formatRestoreContext(candidate.checkpoint, candidate.path);
-      if (sessionId) markCheckpointRestored(omcRoot, sessionId, candidate.path);
-      return { text };
+      const marker_status = sessionId
+        ? markCheckpointRestored(omcRoot, sessionId, candidate.path)
+        : 'unsupported';
+      return { text, marker_status };
     }
 
     return null;

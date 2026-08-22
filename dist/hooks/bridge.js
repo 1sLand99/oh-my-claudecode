@@ -45,7 +45,7 @@ import { getBackgroundBashPermissionFallback, getBackgroundTaskPermissionFallbac
 // Security: wrap untrusted file content to prevent prompt injection
 import { wrapUntrustedFileContent } from "../agents/prompt-helpers.js";
 import { isHookShadowEnabled, runShadowObservation, } from "./registry/index.js";
-import { isFamilyCutoverEnabled, recordDispatchTelemetry, shouldLoosenOrdinaryEnforcement, } from "./registry/cutover.js";
+import { isFamilyCutoverEnabled, hasHookProtocolDeny, recordDispatchTelemetry, shouldLoosenOrdinaryEnforcement, } from "./registry/cutover.js";
 const PKILL_F_FLAG_PATTERN = /\bpkill\b.*\s-f\b/;
 const PKILL_FULL_FLAG_PATTERN = /\bpkill\b.*--full\b/;
 const WORKER_BLOCKED_TMUX_PATTERN = /\btmux\s+/i;
@@ -1857,7 +1857,7 @@ function processPreToolUse(input) {
                 durationMs: 0,
                 verdict: 'advisory-demoted',
                 recordedAt: new Date().toISOString(),
-            });
+            }, directory);
         }
         else {
             return {
@@ -2538,6 +2538,15 @@ async function processHookImpl(hookType, rawInput) {
  */
 export async function processHook(hookType, rawInput) {
     const legacyStarted = performance.now();
+    const rawRecord = rawInput && typeof rawInput === "object"
+        ? rawInput
+        : {};
+    const inputDirectory = typeof rawRecord.cwd === "string"
+        ? rawRecord.cwd
+        : typeof rawRecord.directory === "string"
+            ? rawRecord.directory
+            : undefined;
+    const projectDirectory = resolveToWorktreeRoot(inputDirectory);
     const output = await processHookImpl(hookType, rawInput);
     // Cutover telemetry: one bounded privacy-preserving record per invocation
     // when the hook's family is cut over (event-family cutover, advisory default).
@@ -2555,7 +2564,8 @@ export async function processHook(hookType, rawInput) {
                                                 : null);
         if (evt && isFamilyCutoverEnabled(evt)) {
             const hard = evt === 'PermissionRequest' || evt === 'PreToolUse';
-            const applied = output.continue === false ? (hard ? 'hard' : 'advisory') : 'none';
+            const hasHardDecision = output.continue === false || hasHookProtocolDeny(output);
+            const applied = hasHardDecision ? (hard ? 'hard' : 'advisory') : 'none';
             recordDispatchTelemetry({
                 schemaVersion: 1,
                 event: evt,
@@ -2563,7 +2573,7 @@ export async function processHook(hookType, rawInput) {
                 appliedDecision: applied,
                 durationMs: performance.now() - legacyStarted,
                 recordedAt: new Date().toISOString(),
-            });
+            }, projectDirectory);
         }
     }
     catch {

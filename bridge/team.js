@@ -782,7 +782,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
           continue;
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve12) => setTimeout(resolve12, 25));
+        await new Promise((resolve11) => setTimeout(resolve11, 25));
         continue;
       }
       try {
@@ -803,7 +803,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
           }
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve12) => setTimeout(resolve12, 25));
+        await new Promise((resolve11) => setTimeout(resolve11, 25));
       }
     }
     return await fn();
@@ -2120,7 +2120,7 @@ async function withMailboxLock(teamName, workerName, cwd, fn) {
   while (Date.now() < deadline) {
     const result = await withLock(lockDir, fn);
     if (result.ok) return result.value;
-    await new Promise((resolve12) => setTimeout(resolve12, delayMs));
+    await new Promise((resolve11) => setTimeout(resolve11, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire mailbox lock for ${workerName} after ${timeoutMs}ms`);
@@ -2271,7 +2271,7 @@ async function teamCreateTask(teamName, task, cwd) {
       return taskLock.value;
     });
     if (result.ok) return result.value;
-    await new Promise((resolve12) => setTimeout(resolve12, delayMs));
+    await new Promise((resolve11) => setTimeout(resolve11, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire task creation lock for team ${teamName} after ${timeoutMs}ms`);
@@ -2311,7 +2311,7 @@ async function teamUpdateTask(teamName, taskId, updates, cwd) {
       return merged;
     });
     if (result.ok) return result.value;
-    await new Promise((resolve12) => setTimeout(resolve12, delayMs));
+    await new Promise((resolve11) => setTimeout(resolve11, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire task update lock for task ${taskId} in team ${teamName} after ${timeoutMs}ms`);
@@ -2860,7 +2860,7 @@ async function withDispatchLock(teamName, cwd, fn) {
         );
       }
       const jitter = 0.5 + Math.random() * 0.5;
-      await new Promise((resolve12) => setTimeout(resolve12, Math.floor(pollMs * jitter)));
+      await new Promise((resolve11) => setTimeout(resolve11, Math.floor(pollMs * jitter)));
       pollMs = Math.min(pollMs * 2, DISPATCH_LOCK_MAX_POLL_MS);
     }
   }
@@ -4072,7 +4072,7 @@ function withFileLockSync(lockPath, fn, opts) {
   }
 }
 function sleep(ms) {
-  return new Promise((resolve12) => setTimeout(resolve12, ms));
+  return new Promise((resolve11) => setTimeout(resolve11, ms));
 }
 async function acquireFileLock(lockPath, opts) {
   const staleLockMs = opts?.staleLockMs ?? DEFAULT_STALE_LOCK_MS;
@@ -4146,7 +4146,7 @@ function canonicalAuthorityDigest(input) {
   return createHash6("sha256").update(payload, "utf8").digest("hex");
 }
 function sleep2(ms) {
-  return new Promise((resolve12) => setTimeout(resolve12, ms));
+  return new Promise((resolve11) => setTimeout(resolve11, ms));
 }
 function isExactText(value) {
   return typeof value === "string" && value.length > 0 && value === value.trim();
@@ -7220,7 +7220,7 @@ var init_cache_occupancy = __esm({
 });
 
 // src/utils/paths.ts
-import { join as join16, dirname as dirname15, resolve as resolve6 } from "path";
+import { join as join16, dirname as dirname15 } from "path";
 import { existsSync as existsSync12, readFileSync as readFileSync9, readdirSync as readdirSync5, statSync as statSync2, lstatSync, unlinkSync as unlinkSync7, rmSync, renameSync as renameSync3, symlinkSync } from "fs";
 import { homedir as homedir3 } from "os";
 function getConfigDir() {
@@ -9013,7 +9013,7 @@ var init_runtime_guidance = __esm({
 
 // src/features/builtin-skills/skills.ts
 import { existsSync as existsSync15, readdirSync as readdirSync7, readFileSync as readFileSync11 } from "fs";
-import { join as join18, dirname as dirname18, basename as basename10, resolve as resolve7, relative as relative6, isAbsolute as isAbsolute6, win32 as win322 } from "path";
+import { join as join18, dirname as dirname18, basename as basename10, resolve as resolve6, relative as relative6, isAbsolute as isAbsolute6, win32 as win322 } from "path";
 import { fileURLToPath as fileURLToPath3 } from "url";
 function getPackageDir3() {
   if (typeof __dirname !== "undefined" && __dirname) {
@@ -9796,12 +9796,12 @@ var init_worker_bootstrap = __esm({
 // src/lib/worktree-cleanup-safety.ts
 import { existsSync as existsSync18, lstatSync as lstatSync2, realpathSync as realpathSync4 } from "node:fs";
 import { homedir as homedir4 } from "node:os";
-import { isAbsolute as isAbsolute8, join as join22, parse as parse3, relative as relative7, resolve as resolve8 } from "node:path";
+import { isAbsolute as isAbsolute8, join as join22, parse as parse3, relative as relative7, resolve as resolve7 } from "node:path";
 function realpathOrResolve(path4) {
   try {
     return realpathSync4(path4);
   } catch {
-    return resolve8(path4);
+    return resolve7(path4);
   }
 }
 function assertSafeBoundary(path4, label) {
@@ -9842,7 +9842,7 @@ function validateWorktreeRemovalTarget(options) {
   if (rawCandidate === "." || rawCandidate === ".." || rawCandidate === "~") {
     throw new Error(`worktree_path_suspicious:${rawCandidate}`);
   }
-  const lexicalPath = resolve8(rawCandidate);
+  const lexicalPath = resolve7(rawCandidate);
   if (!existsSync18(lexicalPath)) {
     if (requireExisting) {
       throw new Error(`worktree_path_missing:${lexicalPath}`);
@@ -9884,7 +9884,7 @@ var init_worktree_cleanup_safety = __esm({
 
 // src/team/git-worktree.ts
 import { existsSync as existsSync19, realpathSync as realpathSync5, readFileSync as readFileSync14, readdirSync as readdirSync8, rmSync as rmSync2, unlinkSync as unlinkSync8, writeFileSync as writeFileSync5 } from "node:fs";
-import { join as join23, resolve as resolve9 } from "node:path";
+import { join as join23, resolve as resolve8 } from "node:path";
 import { execFileSync as execFileSync5 } from "node:child_process";
 function getWorktreePath(repoRoot, teamName, workerName) {
   return join23(getOmcRoot(repoRoot), "team", sanitizeName(teamName), "worktrees", sanitizeName(workerName));
@@ -9915,7 +9915,7 @@ function canonicalPathForComparison(path4) {
   try {
     return realpathSync5(path4);
   } catch {
-    return resolve9(path4);
+    return resolve8(path4);
   }
 }
 function getRegisteredWorktreeBranch(repoRoot, wtPath) {
@@ -12028,8 +12028,8 @@ ${dirtyFiles.map((f) => `- \`${f}\``).join("\n")}`;
               return false;
             }
           })(),
-          new Promise((resolve12) => {
-            const t = setTimeout(() => resolve12(false), remaining);
+          new Promise((resolve11) => {
+            const t = setTimeout(() => resolve11(false), remaining);
             if (typeof t.unref === "function") t.unref();
           })
         ]);
@@ -12881,7 +12881,7 @@ async function bootstrapPersistentOwner(input, priorEpoch) {
       return true;
     }
     if (owner && (owner.epoch > expectedEpoch || owner.epoch === expectedEpoch && owner.pid !== child.pid)) return false;
-    await new Promise((resolve12) => setTimeout(resolve12, 25));
+    await new Promise((resolve11) => setTimeout(resolve11, 25));
   }
   return false;
 }
@@ -12978,7 +12978,7 @@ function createRecoveryOwnerClient(dispatch, timing = {}) {
           teamName: normalized.teamName,
           workerName: normalized.workerName
         })) return outcome.result;
-        await new Promise((resolve12) => setTimeout(resolve12, timing.pollIntervalMs ?? 250));
+        await new Promise((resolve11) => setTimeout(resolve11, timing.pollIntervalMs ?? 250));
       }
       return timeoutResult(normalized, canonical.recovery_id);
     }
@@ -13018,7 +13018,7 @@ var init_runtime_owner_client = __esm({
 });
 
 // src/team/scaling.ts
-import { join as join33, resolve as resolve10 } from "path";
+import { join as join33, resolve as resolve9 } from "path";
 import { mkdir as mkdir14, readFile as readFile14, rm as rm6 } from "fs/promises";
 function scaleUpFenceBlocks(config) {
   const attempt = config.active_scale_up;
@@ -13151,7 +13151,7 @@ async function waitForRecoveryGateRecord(path4, expected, timeoutMs, pollInterva
       if (value.recovery_id === expected.recovery_id && value.worker_name === expected.worker_name && value.replacement_generation === expected.replacement_generation && value.pane_attempt_id === expected.pane_attempt_id && value.launch_attempt_id === expected.launch_attempt_id && value.launch_nonce === expected.launch_nonce) return true;
     } catch {
     }
-    await new Promise((resolve12) => setTimeout(resolve12, pollIntervalMs));
+    await new Promise((resolve11) => setTimeout(resolve11, pollIntervalMs));
   }
   return false;
 }
@@ -13190,7 +13190,7 @@ __export(runtime_v2_exports, {
   startTeamV2: () => startTeamV2,
   writeWatchdogFailedMarker: () => writeWatchdogFailedMarker
 });
-import { join as join34, resolve as resolve11 } from "path";
+import { join as join34, resolve as resolve10 } from "path";
 import { existsSync as existsSync29 } from "fs";
 import { link as link4, mkdir as mkdir16, open as open5, readdir as readdir4, readFile as readFile16, rm as rm7, unlink as unlink6, writeFile as writeFile10 } from "fs/promises";
 import { performance } from "perf_hooks";
@@ -13636,7 +13636,7 @@ async function hasCurrentWorkerStartupEvidence(teamName, workerName, taskId, cwd
 async function waitForWorkerStartupEvidence(teamName, workerName, taskId, cwd, baseline, launchAttemptId, attempts = 3, delayMs = 250) {
   for (let attempt = 1; attempt <= attempts; attempt++) {
     if (await hasCurrentWorkerStartupEvidence(teamName, workerName, taskId, cwd, baseline, launchAttemptId)) return true;
-    if (attempt < attempts) await new Promise((resolve12) => setTimeout(resolve12, delayMs));
+    if (attempt < attempts) await new Promise((resolve11) => setTimeout(resolve11, delayMs));
   }
   return false;
 }
@@ -13644,7 +13644,7 @@ async function waitForWorkerStatusTransition(teamName, workerName, cwd, baseline
   for (let attempt = 1; attempt <= attempts; attempt++) {
     const status = await readWorkerStatus(teamName, workerName, cwd);
     if (status.state !== "unknown" && status.launch_attempt_id === launchAttemptId && workerStatusStartupFingerprint(status) !== baselineFingerprint) return true;
-    if (attempt < attempts) await new Promise((resolve12) => setTimeout(resolve12, delayMs));
+    if (attempt < attempts) await new Promise((resolve11) => setTimeout(resolve11, delayMs));
   }
   return false;
 }
@@ -14203,14 +14203,14 @@ async function readOrCreateRecoveryAttempt(input, recoveryId, replacementGenerat
   }
 }
 function waitForBootstrapRecoveryEvidence(delayMs, signal) {
-  return new Promise((resolve12, reject) => {
+  return new Promise((resolve11, reject) => {
     if (signal?.aborted) {
       reject(signal.reason ?? new Error("bootstrap_recovery_evidence_aborted"));
       return;
     }
     const timer = setTimeout(() => {
       signal?.removeEventListener("abort", onAbort);
-      resolve12();
+      resolve11();
     }, delayMs);
     const onAbort = () => {
       clearTimeout(timer);
@@ -15320,7 +15320,7 @@ async function rollbackStartedNativeWorktreeStartup(args) {
 }
 async function startTeamV2(config) {
   const sanitized = sanitizeTeamName(config.teamName);
-  const leaderCwd = resolve11(config.cwd);
+  const leaderCwd = resolve10(config.cwd);
   validateTeamName(sanitized);
   const pluginCfg = config.pluginConfig ?? loadConfig();
   const resolvedRouting = buildResolvedRoutingSnapshot(pluginCfg);
@@ -16768,7 +16768,7 @@ async function readJsonSafe3(filePath) {
         return null;
       }
     }
-    await new Promise((resolve12) => setTimeout(resolve12, 25));
+    await new Promise((resolve11) => setTimeout(resolve11, 25));
   }
   return null;
 }
@@ -18513,7 +18513,7 @@ async function waitForTeamJob(jobId, options = {}) {
     if (status2.status !== "running") {
       return status2;
     }
-    await new Promise((resolve12) => setTimeout(resolve12, delayMs));
+    await new Promise((resolve11) => setTimeout(resolve11, delayMs));
     delayMs = Math.min(Math.floor(delayMs * 1.5), 2e3);
   }
   const status = await getTeamJobStatus(jobId);

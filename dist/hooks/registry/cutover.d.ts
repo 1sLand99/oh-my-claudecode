@@ -40,6 +40,15 @@ export interface DispatchTelemetryRecord {
     rollback?: boolean;
     recordedAt: string;
 }
+/**
+ * Return true when a hook output carries an explicit protocol-level deny.
+ *
+ * Claude Code's hook protocol keeps `continue: true` for several hard
+ * decisions (for example, PreToolUse's `permissionDecision: "deny"`), so
+ * callers must inspect the decision fields instead of treating `continue` as
+ * the complete verdict.
+ */
+export declare function hasHookProtocolDeny(output: unknown): boolean;
 /** Global dispatcher cutover enabled. Aggressively on by default; `off` rolls back to legacy. */
 export declare function isDispatcherEnabled(): boolean;
 /** Per-family cutover enabled (global + rollback). */

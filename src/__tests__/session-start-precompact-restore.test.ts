@@ -8,7 +8,7 @@
 
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync, existsSync, readFileSync, linkSync } from 'node:fs';
 import * as nodeFs from 'fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -632,6 +632,122 @@ describe('precompact-restore helper parity (issue #3730 security)', () => {
     ).toBe(false);
   });
 
+  it('rejects externally hard-linked checkpoint in both helper copies', async () => {
+    const checkpointPath = join(project, '.omc', 'state', 'checkpoints', 'checkpoint-now.json');
+    const externalPath = join(tempDir, 'external-hard-linked-checkpoint.json');
+    rmSync(checkpointPath, { force: true });
+    writeFileSync(
+      externalPath,
+      JSON.stringify({
+        created_at: new Date().toISOString(),
+        trigger: 'auto',
+        active_modes: {},
+        todo_summary: { pending: 1, in_progress: 0, completed: 0 },
+        wisdom_exported: false,
+        plan_refs: { prd: { title: 'EXTERNAL_PARITY_HARD_LINK_MARKER' } },
+      }),
+      'utf-8',
+    );
+    linkSync(externalPath, checkpointPath);
+
+    for (const [helper, suffix] of [
+      [TEMPLATE_HELPER, 'template-hard-link'],
+      [INSTALLED_HELPER, 'installed-hard-link'],
+    ] as const) {
+      const mod = await import(`${pathToFileURL(helper).href}?${suffix}`);
+      const result = mod.restorePreCompactCheckpoint(join(project, '.omc'), suffix);
+      expect(result).toBeNull();
+      expect(result?.text ?? '').not.toContain('EXTERNAL_PARITY_HARD_LINK_MARKER');
+    }
+  });
+
+  it('does not write replay markers outside .omc through a symlinked marker parent', async () => {
+    const markerRoot = join(project, '.omc', 'state', 'checkpoints-restored');
+    const externalMarkerRoot = join(tempDir, 'external-parity-marker-root');
+    mkdirSync(externalMarkerRoot, { recursive: true });
+    rmSync(markerRoot, { recursive: true, force: true });
+    symlinkSync(externalMarkerRoot, markerRoot, 'dir');
+
+    for (const [helper, suffix] of [
+      [TEMPLATE_HELPER, 'template-marker-parent-symlink'],
+      [INSTALLED_HELPER, 'installed-marker-parent-symlink'],
+    ] as const) {
+      const mod = await import(`${pathToFileURL(helper).href}?${suffix}`);
+      const result = mod.restorePreCompactCheckpoint(join(project, '.omc'), suffix);
+      expect(result).not.toBeNull();
+      expect(result?.marker_status).toBe('unsupported');
+      expect(existsSync(join(externalMarkerRoot, suffix, 'restored.json'))).toBe(false);
+    }
+  });
+
+  it('does not read or overwrite an external file through a symlinked marker file', async () => {
+    const markerRoot = join(project, '.omc', 'state', 'checkpoints-restored');
+    const externalMarkerDir = join(tempDir, 'external-parity-marker-file');
+    mkdirSync(externalMarkerDir, { recursive: true });
+
+    for (const [helper, suffix] of [
+      [TEMPLATE_HELPER, 'template-marker-file-symlink'],
+      [INSTALLED_HELPER, 'installed-marker-file-symlink'],
+    ] as const) {
+      const markerParent = join(markerRoot, suffix);
+      mkdirSync(markerParent, { recursive: true });
+      const externalMarker = join(externalMarkerDir, `${suffix}.json`);
+      writeFileSync(
+        externalMarker,
+        JSON.stringify({ checkpoint: join(project, '.omc', 'state', 'checkpoints', 'checkpoint-now.json') }),
+        'utf-8',
+      );
+      symlinkSync(externalMarker, join(markerParent, 'restored.json'));
+
+      const before = readFileSync(externalMarker, 'utf-8');
+      const mod = await import(`${pathToFileURL(helper).href}?${suffix}`);
+      const result = mod.restorePreCompactCheckpoint(join(project, '.omc'), suffix);
+      expect(result).not.toBeNull();
+      expect(result?.marker_status).toBe('existing');
+      expect(readFileSync(externalMarker, 'utf-8')).toBe(before);
+    }
+  });
+
+  it('fails closed when a marker parent is replaced after descriptor validation', async () => {
+    const markerRoot = join(project, '.omc', 'state', 'checkpoints-restored');
+    mkdirSync(markerRoot, { recursive: true });
+
+    for (const [helper, suffix] of [
+      [TEMPLATE_HELPER, 'template-marker-parent-race'],
+      [INSTALLED_HELPER, 'installed-marker-parent-race'],
+    ] as const) {
+      const markerParent = join(markerRoot, suffix);
+      const markerParentBackup = `${markerParent}.backup`;
+      const externalMarkerParent = join(tempDir, `${suffix}-external`);
+      mkdirSync(markerParent, { recursive: true });
+      mkdirSync(externalMarkerParent, { recursive: true });
+      let swapped = false;
+      const originalOpenSync = nodeFs.openSync;
+      const openSpy = vi.spyOn(nodeFs, 'openSync').mockImplementation((path, flags, mode) => {
+        if (!swapped && String(path) === markerParent) {
+          const fd = originalOpenSync(path, flags, mode);
+          swapped = true;
+          renameSync(markerParent, markerParentBackup);
+          symlinkSync(externalMarkerParent, markerParent, 'dir');
+          return fd;
+        }
+        return originalOpenSync(path, flags, mode);
+      });
+      try {
+        const mod = await import(`${pathToFileURL(helper).href}?${suffix}`);
+        const result = mod.restorePreCompactCheckpoint(join(project, '.omc'), suffix);
+        expect(result).not.toBeNull();
+        expect(result?.marker_status).toBe('failed');
+        expect(swapped).toBe(true);
+        expect(existsSync(join(externalMarkerParent, 'restored.json'))).toBe(false);
+      } finally {
+        openSpy.mockRestore();
+        if (existsSync(markerParent)) unlinkSync(markerParent);
+        if (existsSync(markerParentBackup)) renameSync(markerParentBackup, markerParent);
+      }
+    }
+  });
+
   it('rejects a symlinked .omc/state ancestor in the template helper', async () => {
     const omcRoot = join(project, '.omc');
     const statePath = join(omcRoot, 'state');
@@ -784,7 +900,7 @@ describe('precompact-restore helper parity (issue #3730 security)', () => {
       const mod = await import(`${pathToFileURL(TEMPLATE_HELPER).href}?template-mutation`);
       const result = mod.restorePreCompactCheckpoint(join(project, '.omc'), 'template-mutation-session');
       expect(swapped).toBe(true);
-      expect(result).not.toBeNull();
+      expect(result).toBeNull();
       expect(result?.text ?? '').not.toContain(marker);
     } finally {
       readSpy.mockRestore();
@@ -831,7 +947,7 @@ describe('precompact-restore helper parity (issue #3730 security)', () => {
       const mod = await import(`${pathToFileURL(INSTALLED_HELPER).href}?installed-mutation`);
       const result = mod.restorePreCompactCheckpoint(join(project, '.omc'), 'installed-mutation-session');
       expect(swapped).toBe(true);
-      expect(result).not.toBeNull();
+      expect(result).toBeNull();
       expect(result?.text ?? '').not.toContain(marker);
     } finally {
       readSpy.mockRestore();
@@ -841,10 +957,16 @@ describe('precompact-restore helper parity (issue #3730 security)', () => {
   });
 
   it('restores a valid session ID in the template helper (parity with scripts/)', async () => {
-    const mod = await import(pathToFileURL(TEMPLATE_HELPER).href) as { restorePreCompactCheckpoint: (root: string, sid: string) => { text: string } | null };
+    const mod = await import(pathToFileURL(TEMPLATE_HELPER).href) as {
+      restorePreCompactCheckpoint: (
+        root: string,
+        sid: string,
+      ) => { text: string; marker_status: string } | null;
+    };
     const omcRoot = join(project, '.omc');
     const result = mod.restorePreCompactCheckpoint(omcRoot, 'valid-session-3730');
     expect(result).not.toBeNull();
     expect(result!.text).toContain('PRECOMPACT CHECKPOINT RESTORED');
+    expect(result!.marker_status).toBe(process.platform === 'linux' ? 'written' : 'unsupported');
   });
 });

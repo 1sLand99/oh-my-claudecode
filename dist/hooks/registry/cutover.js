@@ -28,6 +28,40 @@ import { dirname, join } from 'node:path';
 import { getOmcRoot, resolveToWorktreeRoot } from '../../lib/worktree-paths.js';
 export const DISPATCH_TELEMETRY_MAX_RECORDS = 500;
 export const DISPATCH_TELEMETRY_MAX_BYTES = 256 * 1024;
+/**
+ * Return true when a hook output carries an explicit protocol-level deny.
+ *
+ * Claude Code's hook protocol keeps `continue: true` for several hard
+ * decisions (for example, PreToolUse's `permissionDecision: "deny"`), so
+ * callers must inspect the decision fields instead of treating `continue` as
+ * the complete verdict.
+ */
+export function hasHookProtocolDeny(output) {
+    if (!output || typeof output !== 'object')
+        return false;
+    const root = output;
+    const isDeny = (value) => typeof value === 'string' && value.trim().toLowerCase() === 'deny';
+    const isDecisionDeny = (value) => {
+        if (isDeny(value))
+            return true;
+        return value !== null
+            && typeof value === 'object'
+            && isDeny(value.behavior);
+    };
+    if (isDeny(root.permissionDecision) || isDeny(root.permission_decision)) {
+        return true;
+    }
+    const hookSpecificOutput = root.hookSpecificOutput;
+    if (!hookSpecificOutput || typeof hookSpecificOutput !== 'object') {
+        return isDecisionDeny(root.decision);
+    }
+    const specific = hookSpecificOutput;
+    if (isDeny(specific.permissionDecision) || isDeny(specific.permission_decision)) {
+        return true;
+    }
+    const decision = specific.decision ?? root.decision;
+    return isDecisionDeny(decision);
+}
 function cutoverFlagRaw() {
     const v = process.env.OMC_HOOK_DISPATCHER ?? process.env.OMC_HOOK_CUTOVER;
     return v;

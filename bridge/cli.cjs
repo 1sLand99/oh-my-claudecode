@@ -3122,6 +3122,10 @@ var init_types = __esm({
 });
 
 // src/utils/cache-occupancy.ts
+function pathIdentity(path27) {
+  const normalized = (0, import_path2.resolve)(path27);
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+}
 function processStartIdentity(pid) {
   if (!Number.isSafeInteger(pid) || pid <= 0) return null;
   if (process.platform === "linux") {
@@ -3219,7 +3223,7 @@ function readOccupiedPluginRoots(configDir = getClaudeConfigDir()) {
       }
       continue;
     }
-    roots.add((0, import_path2.resolve)(record2.pluginRoot));
+    roots.add(pathIdentity(record2.pluginRoot));
   }
   return { roots, unavailable: false };
 }
@@ -3429,6 +3433,10 @@ function relinkStaleVersionDir(versionDir, target) {
 function stripTrailing(p) {
   return toForwardSlash(p).replace(/\/+$/, "");
 }
+function comparisonPath(p) {
+  if (process.platform !== "win32") return stripTrailing(p);
+  return toForwardSlash(pathIdentity(p)).replace(/\/+$/, "");
+}
 function compareSemverDesc(a, b) {
   const parse10 = (s) => s.split(".").map((n) => parseInt(n, 10) || 0);
   const pa = parse10(a), pb = parse10(b);
@@ -3488,6 +3496,7 @@ function purgeStalePluginCacheVersions(options) {
   const now = Date.now();
   const occupancy = readOccupiedPluginRoots(configDir);
   const activePathsArray = [...activePaths];
+  const activePathIdentities = [...new Set(activePathsArray.map(comparisonPath))];
   for (const marketplace of marketplaces) {
     const marketDir = (0, import_path3.join)(cacheDir, marketplace);
     let pluginNames;
@@ -3542,8 +3551,8 @@ function purgeStalePluginCacheVersions(options) {
       }
       for (const version3 of plainVersions) {
         const versionDir = (0, import_path3.join)(pluginDir, version3);
-        const normalised = stripTrailing(versionDir);
-        const isActive = activePaths.has(normalised) || activePathsArray.some((ap) => ap.startsWith(normalised + "/"));
+        const normalised = comparisonPath(versionDir);
+        const isActive = activePathIdentities.includes(normalised) || activePathIdentities.some((ap) => ap.startsWith(normalised + "/"));
         if (isActive) continue;
         if (!options?.skipGracePeriod) {
           try {
@@ -3553,9 +3562,9 @@ function purgeStalePluginCacheVersions(options) {
             continue;
           }
         }
-        const pluginDirNorm = stripTrailing(pluginDir);
+        const pluginDirNorm = comparisonPath(pluginDir);
         const activeVersionDirsHere = dedupePaths(
-          activePathsArray.filter((ap) => ap.startsWith(pluginDirNorm + "/")).map((ap) => (0, import_path3.join)(pluginDir, ap.slice(pluginDirNorm.length + 1).split("/")[0]))
+          activePathIdentities.filter((ap) => ap.startsWith(pluginDirNorm + "/")).map((ap) => (0, import_path3.join)(pluginDir, ap.slice(pluginDirNorm.length + 1).split("/")[0]))
         );
         if (activeVersionDirsHere.length > 0) {
           const target = [...activeVersionDirsHere].sort(
@@ -3574,7 +3583,7 @@ function purgeStalePluginCacheVersions(options) {
             );
           }
         } else {
-          if (occupancy.unavailable || occupancy.roots.has((0, import_path3.resolve)(versionDir))) {
+          if (occupancy.unavailable || occupancy.roots.has(pathIdentity(versionDir))) {
             result.skipped++;
             result.skippedPaths.push(versionDir);
             continue;
@@ -7690,7 +7699,7 @@ async function removeFileIfExists(filePath) {
   }
 }
 function sleep2(ms) {
-  return new Promise((resolve37) => setTimeout(resolve37, ms));
+  return new Promise((resolve36) => setTimeout(resolve36, ms));
 }
 var import_child_process9, fs5, fsPromises2, path5, import_url6, import_child_process10, import_util6, execFileAsync3, BRIDGE_SPAWN_TIMEOUT_MS, DEFAULT_GRACE_PERIOD_MS, SIGTERM_GRACE_MS, ownedBridgeSessionIds, USE_TCP_FALLBACK;
 var init_bridge_manager = __esm({
@@ -14333,7 +14342,7 @@ function withFileLockSync(lockPath2, fn, opts) {
   }
 }
 function sleep3(ms) {
-  return new Promise((resolve37) => setTimeout(resolve37, ms));
+  return new Promise((resolve36) => setTimeout(resolve36, ms));
 }
 async function acquireFileLock(lockPath2, opts) {
   const staleLockMs = opts?.staleLockMs ?? DEFAULT_STALE_LOCK_MS;
@@ -15823,12 +15832,68 @@ function parseFrontmatter2(content) {
   }
   const [, yamlContent, body] = match;
   const metadata = {};
-  for (const line of yamlContent.split("\n")) {
-    const colonIndex = line.indexOf(":");
-    if (colonIndex === -1) continue;
-    const key = line.slice(0, colonIndex).trim();
-    const value = stripOptionalQuotes(line.slice(colonIndex + 1));
-    metadata[key] = value;
+  const lines = yamlContent.split("\n");
+  const rootLine = lines.find((line) => {
+    const trimmed = line.trimStart();
+    return trimmed.length > 0 && !trimmed.startsWith("#") && trimmed.includes(":");
+  });
+  const rootIndent = rootLine === void 0 ? void 0 : rootLine.length - rootLine.trimStart().length;
+  let flowDepth = 0;
+  let quote = null;
+  for (const line of lines) {
+    const trimmed = line.trimStart();
+    const indent = line.length - trimmed.length;
+    if (flowDepth === 0) {
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      if (indent !== rootIndent) continue;
+      const colonIndex = line.indexOf(":");
+      if (colonIndex === -1) continue;
+      const key = line.slice(0, colonIndex).trim();
+      const value = stripOptionalQuotes(line.slice(colonIndex + 1));
+      metadata[key] = value;
+    } else {
+    }
+    let scanFrom = 0;
+    if (flowDepth === 0) {
+      const colonIndex = line.indexOf(":");
+      const valueStart = colonIndex === -1 ? -1 : line.slice(colonIndex + 1).search(/\S/);
+      if (colonIndex !== -1 && valueStart !== -1) {
+        const firstValueChar = line[colonIndex + 1 + valueStart];
+        if (firstValueChar === "{" || firstValueChar === "[") {
+          scanFrom = colonIndex + 1 + valueStart;
+        }
+      }
+      if (scanFrom === 0) continue;
+    }
+    for (let i = scanFrom; i < line.length; i++) {
+      const char = line[i];
+      if (quote) {
+        if (quote === '"' && char === "\\") {
+          i++;
+          continue;
+        }
+        if (char === quote) {
+          if (quote === "'" && line[i + 1] === "'") {
+            i++;
+            continue;
+          }
+          quote = null;
+        }
+        continue;
+      }
+      if (char === '"' || char === "'") {
+        quote = char;
+        continue;
+      }
+      if (char === "#" && (i === 0 || line[i - 1] === " " || line[i - 1] === "	")) {
+        break;
+      }
+      if (char === "{" || char === "[") {
+        flowDepth++;
+      } else if ((char === "}" || char === "]") && flowDepth > 0) {
+        flowDepth--;
+      }
+    }
   }
   return { metadata, body };
 }
@@ -29028,24 +29093,24 @@ async function runSessionEndAction(context, _execute) {
     let settled = false;
     let exitCode = null;
     let settleChild = () => void 0;
-    const childExit = new Promise((resolve37) => {
+    const childExit = new Promise((resolve36) => {
       settleChild = (code2) => {
         if (settled) return;
         settled = true;
         exitCode = code2;
-        resolve37(code2);
+        resolve36(code2);
       };
       child.once("exit", settleChild);
       child.once("error", () => settleChild(null));
     });
     let deadlineTermination;
     let resolveTermination;
-    const terminationFinished = new Promise((resolve37) => {
-      resolveTermination = resolve37;
+    const terminationFinished = new Promise((resolve36) => {
+      resolveTermination = resolve36;
     });
     const terminate = async () => {
-      const postKillWait = new Promise((resolve37) => {
-        const timer = setTimeout(resolve37, Math.max(1, context.deadlineAt + POST_KILL_SETTLE_MS - Date.now()));
+      const postKillWait = new Promise((resolve36) => {
+        const timer = setTimeout(resolve36, Math.max(1, context.deadlineAt + POST_KILL_SETTLE_MS - Date.now()));
         timer.unref();
       });
       if (identity && child.pid) {
@@ -29059,7 +29124,7 @@ async function runSessionEndAction(context, _execute) {
       await Promise.race([childExit, postKillWait]);
     };
     if (!identity || !child.pid) {
-      await Promise.race([childExit, new Promise((resolve37) => setTimeout(resolve37, POST_KILL_SETTLE_MS))]);
+      await Promise.race([childExit, new Promise((resolve36) => setTimeout(resolve36, POST_KILL_SETTLE_MS))]);
       return { code: "runner-identity-unavailable", completed: false };
     }
     const timeout = setTimeout(() => {
@@ -29110,7 +29175,7 @@ async function runActionRunnerEntrypoint() {
       } catch {
       }
       if (armed) break;
-      await new Promise((resolve37) => setTimeout(resolve37, 10));
+      await new Promise((resolve36) => setTimeout(resolve36, 10));
     }
     if (Date.now() >= input.deadlineAt) throw new Error("runner-arm-deadline");
     const deadlineTimer = setTimeout(() => {
@@ -30762,7 +30827,7 @@ async function sendTelegram(config2, payload) {
       text: payload.message,
       parse_mode: config2.parseMode || "Markdown"
     });
-    const result = await new Promise((resolve37) => {
+    const result = await new Promise((resolve36) => {
       const req = (0, import_https.request)(
         telegramRequestOptions(Buffer.byteLength(body), config2.botToken),
         (res) => {
@@ -30778,9 +30843,9 @@ async function sendTelegram(config2, payload) {
                 }
               } catch {
               }
-              resolve37({ platform: "telegram", success: true, messageId });
+              resolve36({ platform: "telegram", success: true, messageId });
             } else {
-              resolve37({
+              resolve36({
                 platform: "telegram",
                 success: false,
                 error: `HTTP ${res.statusCode}`
@@ -30790,11 +30855,11 @@ async function sendTelegram(config2, payload) {
         }
       );
       req.on("error", (e) => {
-        resolve37({ platform: "telegram", success: false, error: e.message });
+        resolve36({ platform: "telegram", success: false, error: e.message });
       });
       req.on("timeout", () => {
         req.destroy();
-        resolve37({
+        resolve36({
           platform: "telegram",
           success: false,
           error: "Request timeout"
@@ -31041,9 +31106,9 @@ async function dispatchNotifications(config2, event, payload, platformMessages) 
           }
         )
       ),
-      new Promise((resolve37) => {
+      new Promise((resolve36) => {
         timer = setTimeout(
-          () => resolve37([
+          () => resolve36([
             {
               platform: "unknown",
               success: false,
@@ -33948,10 +34013,10 @@ async function runWithinDeadline(deadlineAt, run) {
   const controller = new AbortController();
   let timer;
   try {
-    return await Promise.race([run(controller.signal), new Promise((resolve37) => {
+    return await Promise.race([run(controller.signal), new Promise((resolve36) => {
       timer = setTimeout(() => {
         controller.abort();
-        resolve37(void 0);
+        resolve36(void 0);
       }, remaining);
     })]);
   } finally {
@@ -34701,7 +34766,7 @@ async function withProcessIdentityFileLock(lockPath2, fn, timeoutMs = 1e4) {
           continue;
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve37) => setTimeout(resolve37, 25));
+        await new Promise((resolve36) => setTimeout(resolve36, 25));
         continue;
       }
       try {
@@ -34722,7 +34787,7 @@ async function withProcessIdentityFileLock(lockPath2, fn, timeoutMs = 1e4) {
           }
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve37) => setTimeout(resolve37, 25));
+        await new Promise((resolve36) => setTimeout(resolve36, 25));
       }
     }
     return await fn();
@@ -36116,7 +36181,7 @@ async function withMailboxLock(teamName, workerName2, cwd2, fn) {
   while (Date.now() < deadline) {
     const result = await withLock2(lockDir, fn);
     if (result.ok) return result.value;
-    await new Promise((resolve37) => setTimeout(resolve37, delayMs));
+    await new Promise((resolve36) => setTimeout(resolve36, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire mailbox lock for ${workerName2} after ${timeoutMs}ms`);
@@ -36267,7 +36332,7 @@ async function teamCreateTask(teamName, task, cwd2) {
       return taskLock.value;
     });
     if (result.ok) return result.value;
-    await new Promise((resolve37) => setTimeout(resolve37, delayMs));
+    await new Promise((resolve36) => setTimeout(resolve36, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire task creation lock for team ${teamName} after ${timeoutMs}ms`);
@@ -36307,7 +36372,7 @@ async function teamUpdateTask(teamName, taskId, updates, cwd2) {
       return merged;
     });
     if (result.ok) return result.value;
-    await new Promise((resolve37) => setTimeout(resolve37, delayMs));
+    await new Promise((resolve36) => setTimeout(resolve36, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire task update lock for task ${taskId} in team ${teamName} after ${timeoutMs}ms`);
@@ -38047,7 +38112,7 @@ function canonicalAuthorityDigest(input) {
   return (0, import_node_crypto6.createHash)("sha256").update(payload, "utf8").digest("hex");
 }
 function sleep4(ms) {
-  return new Promise((resolve37) => setTimeout(resolve37, ms));
+  return new Promise((resolve36) => setTimeout(resolve36, ms));
 }
 function isExactText(value) {
   return typeof value === "string" && value.length > 0 && value === value.trim();
@@ -40795,7 +40860,7 @@ async function withDispatchLock(teamName, cwd2, fn) {
         );
       }
       const jitter = 0.5 + Math.random() * 0.5;
-      await new Promise((resolve37) => setTimeout(resolve37, Math.floor(pollMs * jitter)));
+      await new Promise((resolve36) => setTimeout(resolve36, Math.floor(pollMs * jitter)));
       pollMs = Math.min(pollMs * 2, DISPATCH_LOCK_MAX_POLL_MS);
     }
   }
@@ -43385,8 +43450,8 @@ async function startMergeOrchestrator(config2) {
   let persisted = { lastShas: {} };
   if ((0, import_node_fs14.existsSync)(persistedPath)) {
     try {
-      const { readFileSync: readFileSync119 } = await import("node:fs");
-      persisted = JSON.parse(readFileSync119(persistedPath, "utf-8"));
+      const { readFileSync: readFileSync118 } = await import("node:fs");
+      persisted = JSON.parse(readFileSync118(persistedPath, "utf-8"));
     } catch {
       persisted = { lastShas: {} };
     }
@@ -43736,8 +43801,8 @@ ${dirtyFiles.map((f) => `- \`${f}\``).join("\n")}`;
               return false;
             }
           })(),
-          new Promise((resolve37) => {
-            const t = setTimeout(() => resolve37(false), remaining);
+          new Promise((resolve36) => {
+            const t = setTimeout(() => resolve36(false), remaining);
             if (typeof t.unref === "function") t.unref();
           })
         ]);
@@ -43792,8 +43857,8 @@ async function recoverFromRestart(config2) {
   let persistedShasLoaded = 0;
   if ((0, import_node_fs14.existsSync)(persistedPath)) {
     try {
-      const { readFileSync: readFileSync119 } = await import("node:fs");
-      const persisted = JSON.parse(readFileSync119(persistedPath, "utf-8"));
+      const { readFileSync: readFileSync118 } = await import("node:fs");
+      const persisted = JSON.parse(readFileSync118(persistedPath, "utf-8"));
       persistedShasLoaded = Object.keys(persisted.lastShas ?? {}).length;
     } catch {
       persistedShasLoaded = 0;
@@ -44588,7 +44653,7 @@ async function bootstrapPersistentOwner(input, priorEpoch) {
       return true;
     }
     if (owner && (owner.epoch > expectedEpoch || owner.epoch === expectedEpoch && owner.pid !== child.pid)) return false;
-    await new Promise((resolve37) => setTimeout(resolve37, 25));
+    await new Promise((resolve36) => setTimeout(resolve36, 25));
   }
   return false;
 }
@@ -44685,7 +44750,7 @@ function createRecoveryOwnerClient(dispatch, timing = {}) {
           teamName: normalized.teamName,
           workerName: normalized.workerName
         })) return outcome.result;
-        await new Promise((resolve37) => setTimeout(resolve37, timing.pollIntervalMs ?? 250));
+        await new Promise((resolve36) => setTimeout(resolve36, timing.pollIntervalMs ?? 250));
       }
       return timeoutResult(normalized, canonical.recovery_id);
     }
@@ -44864,7 +44929,7 @@ async function waitForRecoveryGateRecord(path27, expected, timeoutMs, pollInterv
       if (value.recovery_id === expected.recovery_id && value.worker_name === expected.worker_name && value.replacement_generation === expected.replacement_generation && value.pane_attempt_id === expected.pane_attempt_id && value.launch_attempt_id === expected.launch_attempt_id && value.launch_nonce === expected.launch_nonce) return true;
     } catch {
     }
-    await new Promise((resolve37) => setTimeout(resolve37, pollIntervalMs));
+    await new Promise((resolve36) => setTimeout(resolve36, pollIntervalMs));
   }
   return false;
 }
@@ -45345,7 +45410,7 @@ async function hasCurrentWorkerStartupEvidence(teamName, workerName2, taskId, cw
 async function waitForWorkerStartupEvidence(teamName, workerName2, taskId, cwd2, baseline, launchAttemptId, attempts = 3, delayMs = 250) {
   for (let attempt = 1; attempt <= attempts; attempt++) {
     if (await hasCurrentWorkerStartupEvidence(teamName, workerName2, taskId, cwd2, baseline, launchAttemptId)) return true;
-    if (attempt < attempts) await new Promise((resolve37) => setTimeout(resolve37, delayMs));
+    if (attempt < attempts) await new Promise((resolve36) => setTimeout(resolve36, delayMs));
   }
   return false;
 }
@@ -45353,7 +45418,7 @@ async function waitForWorkerStatusTransition(teamName, workerName2, cwd2, baseli
   for (let attempt = 1; attempt <= attempts; attempt++) {
     const status = await readWorkerStatus(teamName, workerName2, cwd2);
     if (status.state !== "unknown" && status.launch_attempt_id === launchAttemptId && workerStatusStartupFingerprint(status) !== baselineFingerprint) return true;
-    if (attempt < attempts) await new Promise((resolve37) => setTimeout(resolve37, delayMs));
+    if (attempt < attempts) await new Promise((resolve36) => setTimeout(resolve36, delayMs));
   }
   return false;
 }
@@ -45912,14 +45977,14 @@ async function readOrCreateRecoveryAttempt(input, recoveryId, replacementGenerat
   }
 }
 function waitForBootstrapRecoveryEvidence(delayMs, signal) {
-  return new Promise((resolve37, reject) => {
+  return new Promise((resolve36, reject) => {
     if (signal?.aborted) {
       reject(signal.reason ?? new Error("bootstrap_recovery_evidence_aborted"));
       return;
     }
     const timer = setTimeout(() => {
       signal?.removeEventListener("abort", onAbort);
-      resolve37();
+      resolve36();
     }, delayMs);
     const onAbort = () => {
       clearTimeout(timer);
@@ -47551,7 +47616,7 @@ async function processCliWorkerVerdicts(teamName, cwd2) {
     "team.runtime-v2.processCliWorkerVerdicts appendTeamEvent failed"
   );
   const { rename: rename7 } = await import("fs/promises");
-  const { readFileSync: readFileSync119, writeFileSync: writeFileSync48, existsSync: fsExistsSync } = await import("fs");
+  const { readFileSync: readFileSync118, writeFileSync: writeFileSync47, existsSync: fsExistsSync } = await import("fs");
   const { withFileLockSync: withFileLockSync2 } = await Promise.resolve().then(() => (init_file_lock(), file_lock_exports));
   for (const worker of config2.workers) {
     const outputFile = worker.output_file;
@@ -47585,7 +47650,7 @@ async function processCliWorkerVerdicts(teamName, cwd2) {
       const taskPath2 = absPath(cwd2, TeamPaths.taskFile(sanitized, taskId));
       if (!fsExistsSync(taskPath2)) continue;
       try {
-        const taskRaw = readFileSync119(taskPath2, "utf-8");
+        const taskRaw = readFileSync118(taskPath2, "utf-8");
         const taskData = JSON.parse(taskRaw);
         if (taskData.owner === worker.name && taskData.status === "in_progress") {
           targetTaskId = taskId;
@@ -47613,7 +47678,7 @@ async function processCliWorkerVerdicts(teamName, cwd2) {
     let transitionOk = false;
     try {
       withFileLockSync2(targetTaskPath + ".lock", () => {
-        const raw = readFileSync119(targetTaskPath, "utf-8");
+        const raw = readFileSync118(targetTaskPath, "utf-8");
         const taskData = JSON.parse(raw);
         if (taskData.status !== "in_progress" || taskData.owner !== worker.name) {
           return;
@@ -47633,7 +47698,7 @@ async function processCliWorkerVerdicts(teamName, cwd2) {
         if (terminalStatus === "failed") {
           taskData.error = `cli_worker_verdict:${payload.verdict}:${payload.summary}`;
         }
-        writeFileSync48(targetTaskPath, JSON.stringify(taskData, null, 2), "utf-8");
+        writeFileSync47(targetTaskPath, JSON.stringify(taskData, null, 2), "utf-8");
         transitionOk = true;
       });
     } catch {
@@ -48576,7 +48641,7 @@ async function readJsonSafe5(filePath) {
         return null;
       }
     }
-    await new Promise((resolve37) => setTimeout(resolve37, 25));
+    await new Promise((resolve36) => setTimeout(resolve36, 25));
   }
   return null;
 }
@@ -48694,7 +48759,7 @@ async function nextPendingTaskIndex(runtime) {
     let task = await readTask(root2, taskId);
     if (!task) {
       for (let attempt = 1; attempt < transientReadRetryAttempts; attempt++) {
-        await new Promise((resolve37) => setTimeout(resolve37, transientReadRetryDelayMs));
+        await new Promise((resolve36) => setTimeout(resolve36, transientReadRetryDelayMs));
         task = await readTask(root2, taskId);
         if (task) break;
       }
@@ -49591,7 +49656,7 @@ async function pollTelegram(config2, state, rateLimiter) {
   try {
     const offset = state.telegramLastUpdateId ? state.telegramLastUpdateId + 1 : 0;
     const path27 = `/bot${config2.telegramBotToken}/getUpdates?offset=${offset}&timeout=0`;
-    const updates = await new Promise((resolve37, reject) => {
+    const updates = await new Promise((resolve36, reject) => {
       const req = (0, import_https2.request)(
         {
           hostname: "api.telegram.org",
@@ -49608,7 +49673,7 @@ async function pollTelegram(config2, state, rateLimiter) {
             try {
               const body = JSON.parse(Buffer.concat(chunks).toString("utf-8"));
               if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-                resolve37(body.result || []);
+                resolve36(body.result || []);
               } else {
                 reject(new Error(`HTTP ${res.statusCode}`));
               }
@@ -49672,7 +49737,7 @@ async function pollTelegram(config2, state, rateLimiter) {
             text: "Injected into Claude Code session.",
             reply_to_message_id: msg.message_id
           });
-          await new Promise((resolve37) => {
+          await new Promise((resolve36) => {
             const replyReq = (0, import_https2.request)(
               {
                 hostname: "api.telegram.org",
@@ -49687,13 +49752,13 @@ async function pollTelegram(config2, state, rateLimiter) {
               },
               (res) => {
                 res.resume();
-                resolve37();
+                resolve36();
               }
             );
-            replyReq.on("error", () => resolve37());
+            replyReq.on("error", () => resolve36());
             replyReq.on("timeout", () => {
               replyReq.destroy();
-              resolve37();
+              resolve36();
             });
             replyReq.write(replyBody);
             replyReq.end();
@@ -49832,13 +49897,13 @@ async function pollLoop() {
         }
       }
       writeDaemonState(state);
-      await new Promise((resolve37) => setTimeout(resolve37, config2.pollIntervalMs));
+      await new Promise((resolve36) => setTimeout(resolve36, config2.pollIntervalMs));
     } catch (error2) {
       state.errors++;
       state.lastError = redactTokens(error2 instanceof Error ? error2.message : String(error2));
       log(`Poll error: ${state.lastError}`);
       writeDaemonState(state);
-      await new Promise((resolve37) => setTimeout(resolve37, config2.pollIntervalMs * 2));
+      await new Promise((resolve36) => setTimeout(resolve36, config2.pollIntervalMs * 2));
     }
   }
   log("Poll loop ended");
@@ -58432,7 +58497,7 @@ function validateCredentials(creds) {
   return !isCredentialExpired(creds);
 }
 function refreshAccessToken(refreshToken) {
-  return new Promise((resolve37) => {
+  return new Promise((resolve36) => {
     const clientId = process.env.CLAUDE_CODE_OAUTH_CLIENT_ID || DEFAULT_OAUTH_CLIENT_ID;
     const body = new URLSearchParams({
       grant_type: "refresh_token",
@@ -58460,7 +58525,7 @@ function refreshAccessToken(refreshToken) {
             try {
               const parsed = JSON.parse(data);
               if (parsed.access_token) {
-                resolve37({
+                resolve36({
                   accessToken: parsed.access_token,
                   refreshToken: parsed.refresh_token || refreshToken,
                   expiresAt: parsed.expires_in ? Date.now() + parsed.expires_in * 1e3 : parsed.expires_at
@@ -58473,20 +58538,20 @@ function refreshAccessToken(refreshToken) {
           if (process.env.OMC_DEBUG) {
             console.error(`[usage-api] Token refresh failed: HTTP ${res.statusCode}`);
           }
-          resolve37(null);
+          resolve36(null);
         });
       }
     );
-    req.on("error", () => resolve37(null));
+    req.on("error", () => resolve36(null));
     req.on("timeout", () => {
       req.destroy();
-      resolve37(null);
+      resolve36(null);
     });
     req.end(body);
   });
 }
 function fetchUsageFromApi(accessToken) {
-  return new Promise((resolve37) => {
+  return new Promise((resolve36) => {
     const req = import_https3.default.request(
       {
         hostname: "api.anthropic.com",
@@ -58507,41 +58572,41 @@ function fetchUsageFromApi(accessToken) {
         res.on("end", () => {
           if (res.statusCode === 200) {
             try {
-              resolve37({ data: JSON.parse(data) });
+              resolve36({ data: JSON.parse(data) });
             } catch {
-              resolve37({ data: null });
+              resolve36({ data: null });
             }
           } else if (res.statusCode === 429) {
             if (process.env.OMC_DEBUG) {
               console.error(`[usage-api] Anthropic API returned 429 (rate limited)`);
             }
-            resolve37({ data: null, rateLimited: true });
+            resolve36({ data: null, rateLimited: true });
           } else {
-            resolve37({ data: null });
+            resolve36({ data: null });
           }
         });
       }
     );
-    req.on("error", () => resolve37({ data: null }));
+    req.on("error", () => resolve36({ data: null }));
     req.on("timeout", () => {
       req.destroy();
-      resolve37({ data: null });
+      resolve36({ data: null });
     });
     req.end();
   });
 }
 function fetchUsageFromZai() {
-  return new Promise((resolve37) => {
+  return new Promise((resolve36) => {
     const baseUrl = process.env.ANTHROPIC_BASE_URL;
     const authToken = process.env.ANTHROPIC_AUTH_TOKEN;
     if (!baseUrl || !authToken) {
-      resolve37({ data: null });
+      resolve36({ data: null });
       return;
     }
     const validation = validateAnthropicBaseUrl(baseUrl);
     if (!validation.allowed) {
       console.error(`[SSRF Guard] Blocking usage API call: ${validation.reason}`);
-      resolve37({ data: null });
+      resolve36({ data: null });
       return;
     }
     try {
@@ -58569,29 +58634,29 @@ function fetchUsageFromZai() {
           res.on("end", () => {
             if (res.statusCode === 200) {
               try {
-                resolve37({ data: JSON.parse(data) });
+                resolve36({ data: JSON.parse(data) });
               } catch {
-                resolve37({ data: null });
+                resolve36({ data: null });
               }
             } else if (res.statusCode === 429) {
               if (process.env.OMC_DEBUG) {
                 console.error(`[usage-api] z.ai API returned 429 (rate limited)`);
               }
-              resolve37({ data: null, rateLimited: true });
+              resolve36({ data: null, rateLimited: true });
             } else {
-              resolve37({ data: null });
+              resolve36({ data: null });
             }
           });
         }
       );
-      req.on("error", () => resolve37({ data: null }));
+      req.on("error", () => resolve36({ data: null }));
       req.on("timeout", () => {
         req.destroy();
-        resolve37({ data: null });
+        resolve36({ data: null });
       });
       req.end();
     } catch {
-      resolve37({ data: null });
+      resolve36({ data: null });
     }
   });
 }
@@ -58861,16 +58926,16 @@ function parseZaiResponse(response) {
   return result;
 }
 function fetchUsageFromMinimax(apiKey) {
-  return new Promise((resolve37) => {
+  return new Promise((resolve36) => {
     const baseUrl = process.env.ANTHROPIC_BASE_URL;
     if (!baseUrl) {
-      resolve37({ data: null });
+      resolve36({ data: null });
       return;
     }
     const validation = validateAnthropicBaseUrl(baseUrl);
     if (!validation.allowed) {
       console.error(`[SSRF Guard] Blocking usage API call: ${validation.reason}`);
-      resolve37({ data: null });
+      resolve36({ data: null });
       return;
     }
     try {
@@ -58897,29 +58962,29 @@ function fetchUsageFromMinimax(apiKey) {
           res.on("end", () => {
             if (res.statusCode === 200) {
               try {
-                resolve37({ data: JSON.parse(data) });
+                resolve36({ data: JSON.parse(data) });
               } catch {
-                resolve37({ data: null });
+                resolve36({ data: null });
               }
             } else if (res.statusCode === 429) {
               if (process.env.OMC_DEBUG) {
                 console.error(`[usage-api] MiniMax API returned 429 (rate limited)`);
               }
-              resolve37({ data: null, rateLimited: true });
+              resolve36({ data: null, rateLimited: true });
             } else {
-              resolve37({ data: null });
+              resolve36({ data: null });
             }
           });
         }
       );
-      req.on("error", () => resolve37({ data: null }));
+      req.on("error", () => resolve36({ data: null }));
       req.on("timeout", () => {
         req.destroy();
-        resolve37({ data: null });
+        resolve36({ data: null });
       });
       req.end();
     } catch {
-      resolve37({ data: null });
+      resolve36({ data: null });
     }
   });
 }
@@ -58959,16 +59024,16 @@ function parseMinimaxResponse(response) {
   };
 }
 function fetchUsageFromKimi(apiKey) {
-  return new Promise((resolve37) => {
+  return new Promise((resolve36) => {
     const baseUrl = process.env.ANTHROPIC_BASE_URL;
     if (!baseUrl) {
-      resolve37({ data: null });
+      resolve36({ data: null });
       return;
     }
     const validation = validateAnthropicBaseUrl(baseUrl);
     if (!validation.allowed) {
       console.error(`[SSRF Guard] Blocking usage API call: ${validation.reason}`);
-      resolve37({ data: null });
+      resolve36({ data: null });
       return;
     }
     try {
@@ -58979,7 +59044,7 @@ function fetchUsageFromKimi(apiKey) {
             `[usage-api] Refusing to send Kimi credentials to non-canonical host '${hostname4}'`
           );
         }
-        resolve37({ data: null });
+        resolve36({ data: null });
         return;
       }
       const req = import_https3.default.request(
@@ -58995,37 +59060,37 @@ function fetchUsageFromKimi(apiKey) {
         },
         (res) => {
           let data = "";
-          res.on("error", () => resolve37({ data: null }));
-          res.on("aborted", () => resolve37({ data: null }));
+          res.on("error", () => resolve36({ data: null }));
+          res.on("aborted", () => resolve36({ data: null }));
           res.on("data", (chunk) => {
             data += chunk;
           });
           res.on("end", () => {
             if (res.statusCode === 200) {
               try {
-                resolve37({ data: JSON.parse(data) });
+                resolve36({ data: JSON.parse(data) });
               } catch {
-                resolve37({ data: null });
+                resolve36({ data: null });
               }
             } else if (res.statusCode === 429) {
               if (process.env.OMC_DEBUG) {
                 console.error(`[usage-api] Kimi API returned 429 (rate limited)`);
               }
-              resolve37({ data: null, rateLimited: true });
+              resolve36({ data: null, rateLimited: true });
             } else {
-              resolve37({ data: null });
+              resolve36({ data: null });
             }
           });
         }
       );
-      req.on("error", () => resolve37({ data: null }));
+      req.on("error", () => resolve36({ data: null }));
       req.on("timeout", () => {
         req.destroy();
-        resolve37({ data: null });
+        resolve36({ data: null });
       });
       req.end();
     } catch {
-      resolve37({ data: null });
+      resolve36({ data: null });
     }
   });
 }
@@ -60312,7 +60377,7 @@ function isCacheValid2(cache) {
   return Date.now() - cache.timestamp < CACHE_TTL_MS2;
 }
 function spawnWithTimeout(cmd, timeoutMs) {
-  return new Promise((resolve37, reject) => {
+  return new Promise((resolve36, reject) => {
     const [executable, ...args] = Array.isArray(cmd) ? cmd : ["sh", "-c", cmd];
     const child = (0, import_child_process43.spawn)(executable, args, {
       stdio: ["ignore", "pipe", "pipe"],
@@ -60348,7 +60413,7 @@ function spawnWithTimeout(cmd, timeoutMs) {
       if (!timedOut && escalationTimer) clearTimeout(escalationTimer);
       if (!timedOut) {
         if (code === 0) {
-          resolve37(stdout);
+          resolve36(stdout);
         } else {
           reject(new Error(`Command exited with code ${code}`));
         }
@@ -64095,11 +64160,11 @@ var require_codegen = __commonJS2((exports2) => {
       const rhs = this.rhs === void 0 ? "" : ` = ${this.rhs}`;
       return `${varKind} ${this.name}${rhs};` + _n;
     }
-    optimizeNames(names, constants7) {
+    optimizeNames(names, constants8) {
       if (!names[this.name.str])
         return;
       if (this.rhs)
-        this.rhs = optimizeExpr(this.rhs, names, constants7);
+        this.rhs = optimizeExpr(this.rhs, names, constants8);
       return this;
     }
     get names() {
@@ -64116,10 +64181,10 @@ var require_codegen = __commonJS2((exports2) => {
     render({ _n }) {
       return `${this.lhs} = ${this.rhs};` + _n;
     }
-    optimizeNames(names, constants7) {
+    optimizeNames(names, constants8) {
       if (this.lhs instanceof code_1.Name && !names[this.lhs.str] && !this.sideEffects)
         return;
-      this.rhs = optimizeExpr(this.rhs, names, constants7);
+      this.rhs = optimizeExpr(this.rhs, names, constants8);
       return this;
     }
     get names() {
@@ -64180,8 +64245,8 @@ var require_codegen = __commonJS2((exports2) => {
     optimizeNodes() {
       return `${this.code}` ? this : void 0;
     }
-    optimizeNames(names, constants7) {
-      this.code = optimizeExpr(this.code, names, constants7);
+    optimizeNames(names, constants8) {
+      this.code = optimizeExpr(this.code, names, constants8);
       return this;
     }
     get names() {
@@ -64210,12 +64275,12 @@ var require_codegen = __commonJS2((exports2) => {
       }
       return nodes.length > 0 ? this : void 0;
     }
-    optimizeNames(names, constants7) {
+    optimizeNames(names, constants8) {
       const { nodes } = this;
       let i = nodes.length;
       while (i--) {
         const n = nodes[i];
-        if (n.optimizeNames(names, constants7))
+        if (n.optimizeNames(names, constants8))
           continue;
         subtractNames(names, n.names);
         nodes.splice(i, 1);
@@ -64268,12 +64333,12 @@ var require_codegen = __commonJS2((exports2) => {
         return;
       return this;
     }
-    optimizeNames(names, constants7) {
+    optimizeNames(names, constants8) {
       var _a;
-      this.else = (_a = this.else) === null || _a === void 0 ? void 0 : _a.optimizeNames(names, constants7);
-      if (!(super.optimizeNames(names, constants7) || this.else))
+      this.else = (_a = this.else) === null || _a === void 0 ? void 0 : _a.optimizeNames(names, constants8);
+      if (!(super.optimizeNames(names, constants8) || this.else))
         return;
-      this.condition = optimizeExpr(this.condition, names, constants7);
+      this.condition = optimizeExpr(this.condition, names, constants8);
       return this;
     }
     get names() {
@@ -64296,10 +64361,10 @@ var require_codegen = __commonJS2((exports2) => {
     render(opts) {
       return `for(${this.iteration})` + super.render(opts);
     }
-    optimizeNames(names, constants7) {
-      if (!super.optimizeNames(names, constants7))
+    optimizeNames(names, constants8) {
+      if (!super.optimizeNames(names, constants8))
         return;
-      this.iteration = optimizeExpr(this.iteration, names, constants7);
+      this.iteration = optimizeExpr(this.iteration, names, constants8);
       return this;
     }
     get names() {
@@ -64335,10 +64400,10 @@ var require_codegen = __commonJS2((exports2) => {
     render(opts) {
       return `for(${this.varKind} ${this.name} ${this.loop} ${this.iterable})` + super.render(opts);
     }
-    optimizeNames(names, constants7) {
-      if (!super.optimizeNames(names, constants7))
+    optimizeNames(names, constants8) {
+      if (!super.optimizeNames(names, constants8))
         return;
-      this.iterable = optimizeExpr(this.iterable, names, constants7);
+      this.iterable = optimizeExpr(this.iterable, names, constants8);
       return this;
     }
     get names() {
@@ -64380,11 +64445,11 @@ var require_codegen = __commonJS2((exports2) => {
       (_b = this.finally) === null || _b === void 0 || _b.optimizeNodes();
       return this;
     }
-    optimizeNames(names, constants7) {
+    optimizeNames(names, constants8) {
       var _a, _b;
-      super.optimizeNames(names, constants7);
-      (_a = this.catch) === null || _a === void 0 || _a.optimizeNames(names, constants7);
-      (_b = this.finally) === null || _b === void 0 || _b.optimizeNames(names, constants7);
+      super.optimizeNames(names, constants8);
+      (_a = this.catch) === null || _a === void 0 || _a.optimizeNames(names, constants8);
+      (_b = this.finally) === null || _b === void 0 || _b.optimizeNames(names, constants8);
       return this;
     }
     get names() {
@@ -64655,7 +64720,7 @@ var require_codegen = __commonJS2((exports2) => {
   function addExprNames(names, from) {
     return from instanceof code_1._CodeOrName ? addNames(names, from.names) : names;
   }
-  function optimizeExpr(expr, names, constants7) {
+  function optimizeExpr(expr, names, constants8) {
     if (expr instanceof code_1.Name)
       return replaceName(expr);
     if (!canOptimize(expr))
@@ -64670,14 +64735,14 @@ var require_codegen = __commonJS2((exports2) => {
       return items;
     }, []));
     function replaceName(n) {
-      const c = constants7[n.str];
+      const c = constants8[n.str];
       if (c === void 0 || names[n.str] !== 1)
         return n;
       delete names[n.str];
       return c;
     }
     function canOptimize(e) {
-      return e instanceof code_1._Code && e._items.some((c) => c instanceof code_1.Name && names[c.str] === 1 && constants7[c.str] !== void 0);
+      return e instanceof code_1._Code && e._items.some((c) => c instanceof code_1.Name && names[c.str] === 1 && constants8[c.str] !== void 0);
     }
   }
   function subtractNames(names, from) {
@@ -66544,7 +66609,7 @@ var require_compile = __commonJS2((exports2) => {
     const schOrFunc = root2.refs[ref];
     if (schOrFunc)
       return schOrFunc;
-    let _sch = resolve37.call(this, root2, ref);
+    let _sch = resolve36.call(this, root2, ref);
     if (_sch === void 0) {
       const schema = (_a = root2.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
       const { schemaId } = this.opts;
@@ -66571,7 +66636,7 @@ var require_compile = __commonJS2((exports2) => {
   function sameSchemaEnv(s1, s2) {
     return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
   }
-  function resolve37(root2, ref) {
+  function resolve36(root2, ref) {
     let sch;
     while (typeof (sch = this.refs[ref]) == "string")
       ref = sch;
@@ -67069,54 +67134,54 @@ var require_fast_uri = __commonJS2((exports2, module2) => {
     }
     return uri;
   }
-  function resolve37(baseURI, relativeURI, options) {
+  function resolve36(baseURI, relativeURI, options) {
     const schemelessOptions = Object.assign({ scheme: "null" }, options);
     const resolved = resolveComponents(parse62(baseURI, schemelessOptions), parse62(relativeURI, schemelessOptions), schemelessOptions, true);
     return serialize(resolved, { ...schemelessOptions, skipEscape: true });
   }
-  function resolveComponents(base, relative24, options, skipNormalization) {
+  function resolveComponents(base, relative25, options, skipNormalization) {
     const target = {};
     if (!skipNormalization) {
       base = parse62(serialize(base, options), options);
-      relative24 = parse62(serialize(relative24, options), options);
+      relative25 = parse62(serialize(relative25, options), options);
     }
     options = options || {};
-    if (!options.tolerant && relative24.scheme) {
-      target.scheme = relative24.scheme;
-      target.userinfo = relative24.userinfo;
-      target.host = relative24.host;
-      target.port = relative24.port;
-      target.path = removeDotSegments(relative24.path || "");
-      target.query = relative24.query;
+    if (!options.tolerant && relative25.scheme) {
+      target.scheme = relative25.scheme;
+      target.userinfo = relative25.userinfo;
+      target.host = relative25.host;
+      target.port = relative25.port;
+      target.path = removeDotSegments(relative25.path || "");
+      target.query = relative25.query;
     } else {
-      if (relative24.userinfo !== void 0 || relative24.host !== void 0 || relative24.port !== void 0) {
-        target.userinfo = relative24.userinfo;
-        target.host = relative24.host;
-        target.port = relative24.port;
-        target.path = removeDotSegments(relative24.path || "");
-        target.query = relative24.query;
+      if (relative25.userinfo !== void 0 || relative25.host !== void 0 || relative25.port !== void 0) {
+        target.userinfo = relative25.userinfo;
+        target.host = relative25.host;
+        target.port = relative25.port;
+        target.path = removeDotSegments(relative25.path || "");
+        target.query = relative25.query;
       } else {
-        if (!relative24.path) {
+        if (!relative25.path) {
           target.path = base.path;
-          if (relative24.query !== void 0) {
-            target.query = relative24.query;
+          if (relative25.query !== void 0) {
+            target.query = relative25.query;
           } else {
             target.query = base.query;
           }
         } else {
-          if (relative24.path.charAt(0) === "/") {
-            target.path = removeDotSegments(relative24.path);
+          if (relative25.path.charAt(0) === "/") {
+            target.path = removeDotSegments(relative25.path);
           } else {
             if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-              target.path = "/" + relative24.path;
+              target.path = "/" + relative25.path;
             } else if (!base.path) {
-              target.path = relative24.path;
+              target.path = relative25.path;
             } else {
-              target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative24.path;
+              target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative25.path;
             }
             target.path = removeDotSegments(target.path);
           }
-          target.query = relative24.query;
+          target.query = relative25.query;
         }
         target.userinfo = base.userinfo;
         target.host = base.host;
@@ -67124,7 +67189,7 @@ var require_fast_uri = __commonJS2((exports2, module2) => {
       }
       target.scheme = base.scheme;
     }
-    target.fragment = relative24.fragment;
+    target.fragment = relative25.fragment;
     return target;
   }
   function equal(uriA, uriB, options) {
@@ -67302,7 +67367,7 @@ var require_fast_uri = __commonJS2((exports2, module2) => {
   var fastUri = {
     SCHEMES,
     normalize: normalize13,
-    resolve: resolve37,
+    resolve: resolve36,
     resolveComponents,
     equal,
     serialize,
@@ -81669,7 +81734,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = (_c = (_a = task2.pollInterval) !== null && _a !== void 0 ? _a : (_b = this._options) === null || _b === void 0 ? void 0 : _b.defaultTaskPollInterval) !== null && _c !== void 0 ? _c : 1e3;
-        await new Promise((resolve37) => setTimeout(resolve37, pollInterval));
+        await new Promise((resolve36) => setTimeout(resolve36, pollInterval));
         (_d = options === null || options === void 0 ? void 0 : options.signal) === null || _d === void 0 || _d.throwIfAborted();
       }
     } catch (error2) {
@@ -81681,7 +81746,7 @@ var Protocol = class {
   }
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options !== null && options !== void 0 ? options : {};
-    return new Promise((resolve37, reject) => {
+    return new Promise((resolve36, reject) => {
       var _a, _b, _c, _d, _e, _f, _g;
       const earlyReject = (error2) => {
         reject(error2);
@@ -81762,7 +81827,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve37(parseResult.data);
+            resolve36(parseResult.data);
           }
         } catch (error2) {
           reject(error2);
@@ -81959,12 +82024,12 @@ var Protocol = class {
       }
     } catch (_d) {
     }
-    return new Promise((resolve37, reject) => {
+    return new Promise((resolve36, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve37, interval);
+      const timeoutId = setTimeout(resolve36, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -82763,7 +82828,7 @@ var McpServer = class {
     let task = createTaskResult.task;
     const pollInterval = (_a = task.pollInterval) !== null && _a !== void 0 ? _a : 5e3;
     while (task.status !== "completed" && task.status !== "failed" && task.status !== "cancelled") {
-      await new Promise((resolve37) => setTimeout(resolve37, pollInterval));
+      await new Promise((resolve36) => setTimeout(resolve36, pollInterval));
       const updatedTask = await extra.taskStore.getTask(taskId);
       if (!updatedTask) {
         throw new McpError(ErrorCode.InternalError, `Task ${taskId} not found during polling`);
@@ -87916,7 +87981,7 @@ var LspClient = class _LspClient {
 Install with: ${this.serverConfig.installHint}`
       );
     }
-    return new Promise((resolve37, reject) => {
+    return new Promise((resolve36, reject) => {
       const command = this.devContainerContext ? "docker" : this.serverConfig.command;
       const args = this.devContainerContext ? ["exec", "-i", "-w", this.devContainerContext.containerWorkspaceRoot, this.devContainerContext.containerId, this.serverConfig.command, ...this.serverConfig.args] : this.serverConfig.args;
       this.process = (0, import_child_process4.spawn)(command, args, {
@@ -87943,7 +88008,7 @@ Install with: ${this.serverConfig.installHint}`
       });
       this.initialize().then(() => {
         this.initialized = true;
-        resolve37();
+        resolve36();
       }).catch(reject);
     });
   }
@@ -88109,13 +88174,13 @@ ${content}`);
     const message2 = `Content-Length: ${Buffer.byteLength(content)}\r
 \r
 ${content}`;
-    return new Promise((resolve37, reject) => {
+    return new Promise((resolve36, reject) => {
       const timeoutHandle = setTimeout(() => {
         this.pendingRequests.delete(id);
         reject(new Error(`LSP request '${method}' timed out after ${effectiveTimeout}ms`));
       }, effectiveTimeout);
       this.pendingRequests.set(id, {
-        resolve: resolve37,
+        resolve: resolve36,
         reject,
         timeout: timeoutHandle
       });
@@ -88191,7 +88256,7 @@ ${content}`;
       }
     });
     this.openDocuments.add(hostUri);
-    await new Promise((resolve37) => setTimeout(resolve37, 100));
+    await new Promise((resolve36) => setTimeout(resolve36, 100));
   }
   /**
    * Close a document
@@ -88352,13 +88417,13 @@ ${content}`;
     if (this.diagnostics.has(uri)) {
       return Promise.resolve();
     }
-    return new Promise((resolve37) => {
+    return new Promise((resolve36) => {
       let resolved = false;
       const timer = setTimeout(() => {
         if (!resolved) {
           resolved = true;
           this.diagnosticWaiters.delete(uri);
-          resolve37();
+          resolve36();
         }
       }, timeoutMs);
       const existing = this.diagnosticWaiters.get(uri) || [];
@@ -88366,7 +88431,7 @@ ${content}`;
         if (!resolved) {
           resolved = true;
           clearTimeout(timer);
-          resolve37();
+          resolve36();
         }
       });
       this.diagnosticWaiters.set(uri, existing);
@@ -90310,7 +90375,7 @@ var SessionLock = class {
   }
 };
 function sleep(ms) {
-  return new Promise((resolve37) => setTimeout(resolve37, ms));
+  return new Promise((resolve36) => setTimeout(resolve36, ms));
 }
 
 // src/tools/python-repl/socket-client.ts
@@ -90340,7 +90405,7 @@ var JsonRpcError = class extends Error {
   }
 };
 async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
-  return new Promise((resolve37, reject) => {
+  return new Promise((resolve36, reject) => {
     const id = (0, import_crypto6.randomUUID)();
     const request = {
       jsonrpc: "2.0",
@@ -90430,7 +90495,7 @@ async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
           }
           if (!settled) {
             settled = true;
-            resolve37(response.result);
+            resolve36(response.result);
           }
         } catch (e) {
           if (!settled) {
@@ -94432,7 +94497,7 @@ function mergeArrays(fieldName, base, incoming) {
       return mergeScalarArray(base, incoming);
   }
 }
-function mergeByKey(base, incoming, keyFn, resolve37) {
+function mergeByKey(base, incoming, keyFn, resolve36) {
   const seen = /* @__PURE__ */ new Map();
   for (const item of base) {
     seen.set(keyFn(item), item);
@@ -94441,7 +94506,7 @@ function mergeByKey(base, incoming, keyFn, resolve37) {
     const key = keyFn(item);
     const existing = seen.get(key);
     if (existing) {
-      seen.set(key, resolve37(existing, item));
+      seen.set(key, resolve36(existing, item));
     } else {
       seen.set(key, item);
     }
@@ -101203,7 +101268,7 @@ async function runShadowObservation(hookType, legacyOutput, legacyDurationMs) {
       const dispatchResult = await Promise.race([
         dispatcher.dispatch(event, {}),
         new Promise(
-          (resolve37) => setTimeout(() => resolve37(null), SHADOW_OBSERVATION_BUDGET_MS)
+          (resolve36) => setTimeout(() => resolve36(null), SHADOW_OBSERVATION_BUDGET_MS)
         )
       ]);
       shadowDurationMs = performance.now() - started;
@@ -101248,6 +101313,28 @@ var import_node_path7 = require("node:path");
 init_worktree_paths();
 var DISPATCH_TELEMETRY_MAX_RECORDS = 500;
 var DISPATCH_TELEMETRY_MAX_BYTES = 256 * 1024;
+function hasHookProtocolDeny(output) {
+  if (!output || typeof output !== "object") return false;
+  const root2 = output;
+  const isDeny = (value) => typeof value === "string" && value.trim().toLowerCase() === "deny";
+  const isDecisionDeny = (value) => {
+    if (isDeny(value)) return true;
+    return value !== null && typeof value === "object" && isDeny(value.behavior);
+  };
+  if (isDeny(root2.permissionDecision) || isDeny(root2.permission_decision)) {
+    return true;
+  }
+  const hookSpecificOutput = root2.hookSpecificOutput;
+  if (!hookSpecificOutput || typeof hookSpecificOutput !== "object") {
+    return isDecisionDeny(root2.decision);
+  }
+  const specific = hookSpecificOutput;
+  if (isDeny(specific.permissionDecision) || isDeny(specific.permission_decision)) {
+    return true;
+  }
+  const decision = specific.decision ?? root2.decision;
+  return isDecisionDeny(decision);
+}
 function cutoverFlagRaw() {
   const v = process.env.OMC_HOOK_DISPATCHER ?? process.env.OMC_HOOK_CUTOVER;
   return v;
@@ -102873,7 +102960,7 @@ Command blocked: ${command}`
         durationMs: 0,
         verdict: "advisory-demoted",
         recordedAt: (/* @__PURE__ */ new Date()).toISOString()
-      });
+      }, directory);
     } else {
       return {
         continue: true,
@@ -103499,12 +103586,16 @@ async function processHookImpl(hookType, rawInput) {
 }
 async function processHook(hookType, rawInput) {
   const legacyStarted = performance.now();
+  const rawRecord = rawInput && typeof rawInput === "object" ? rawInput : {};
+  const inputDirectory = typeof rawRecord.cwd === "string" ? rawRecord.cwd : typeof rawRecord.directory === "string" ? rawRecord.directory : void 0;
+  const projectDirectory = resolveToWorktreeRoot(inputDirectory);
   const output = await processHookImpl(hookType, rawInput);
   try {
     const evt = hookType === "keyword-detector" ? "UserPromptSubmit" : hookType === "session-start" || hookType === "setup-init" || hookType === "setup-maintenance" ? "SessionStart" : hookType === "pre-tool-use" ? "PreToolUse" : hookType === "permission-request" ? "PermissionRequest" : hookType === "post-tool-use" ? "PostToolUse" : hookType === "subagent-start" ? "SubagentStart" : hookType === "subagent-stop" ? "SubagentStop" : hookType === "pre-compact" ? "PreCompact" : hookType === "stop-continuation" || hookType === "persistent-mode" || hookType === "ralph" || hookType === "code-simplifier" ? "Stop" : hookType === "session-end" ? "SessionEnd" : null;
     if (evt && isFamilyCutoverEnabled(evt)) {
       const hard = evt === "PermissionRequest" || evt === "PreToolUse";
-      const applied = output.continue === false ? hard ? "hard" : "advisory" : "none";
+      const hasHardDecision = output.continue === false || hasHookProtocolDeny(output);
+      const applied = hasHardDecision ? hard ? "hard" : "advisory" : "none";
       recordDispatchTelemetry({
         schemaVersion: 1,
         event: evt,
@@ -103512,7 +103603,7 @@ async function processHook(hookType, rawInput) {
         appliedDecision: applied,
         durationMs: performance.now() - legacyStarted,
         recordedAt: (/* @__PURE__ */ new Date()).toISOString()
-      });
+      }, projectDirectory);
     }
   } catch {
   }
@@ -103932,6 +104023,7 @@ var import_path124 = require("path");
 init_worktree_paths();
 var CHECKPOINT_MAX_AGE_MS = 24 * 60 * 60 * 1e3;
 var CHECKPOINT_MAX_BYTES = 256 * 1024;
+var RESTORE_MARKER_MAX_BYTES = 16 * 1024;
 
 // src/hooks/index.ts
 init_permission_handler();
@@ -106348,7 +106440,7 @@ async function pollLoop2(config2) {
       log2(`Poll error: ${state.lastError}`, config2);
       writeDaemonState2(state, config2);
     }
-    await new Promise((resolve37) => setTimeout(resolve37, config2.pollIntervalMs));
+    await new Promise((resolve36) => setTimeout(resolve36, config2.pollIntervalMs));
   }
 }
 function startDaemon(config2) {
@@ -109535,7 +109627,7 @@ async function ralphthonCommand(args) {
   console.log(source_default.gray("Orchestrator running. Press Ctrl+C to stop."));
 }
 function sleep6(ms) {
-  return new Promise((resolve37) => setTimeout(resolve37, ms));
+  return new Promise((resolve36) => setTimeout(resolve36, ms));
 }
 
 // src/cli/commands/ultragoal.ts
@@ -112785,15 +112877,15 @@ async function runHudWatchLoop(options) {
     if (shouldStop) {
       break;
     }
-    await new Promise((resolve37) => {
+    await new Promise((resolve36) => {
       const timer = setTimeout(() => {
         wakeSleep = null;
-        resolve37();
+        resolve36();
       }, options.intervalMs);
       wakeSleep = () => {
         clearTimeout(timer);
         wakeSleep = null;
-        resolve37();
+        resolve36();
       };
     });
   }

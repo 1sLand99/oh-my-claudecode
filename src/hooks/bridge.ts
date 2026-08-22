@@ -123,6 +123,7 @@ import {
 } from "./registry/index.js";
 import {
   isFamilyCutoverEnabled,
+  hasHookProtocolDeny,
   recordDispatchTelemetry,
   shouldLoosenOrdinaryEnforcement,
 } from "./registry/cutover.js";
@@ -2456,7 +2457,7 @@ function processPreToolUse(input: HookInput): HookOutput {
         durationMs: 0,
         verdict: 'advisory-demoted',
         recordedAt: new Date().toISOString(),
-      });
+      }, directory);
     } else {
       return {
         continue: true,
@@ -3388,6 +3389,17 @@ export async function processHook(
   rawInput: HookInput,
 ): Promise<HookOutput> {
   const legacyStarted = performance.now();
+  const rawRecord =
+    rawInput && typeof rawInput === "object"
+      ? rawInput as unknown as Record<string, unknown>
+      : {};
+  const inputDirectory =
+    typeof rawRecord.cwd === "string"
+      ? rawRecord.cwd
+      : typeof rawRecord.directory === "string"
+        ? rawRecord.directory
+        : undefined;
+  const projectDirectory = resolveToWorktreeRoot(inputDirectory);
   const output = await processHookImpl(hookType, rawInput);
   // Cutover telemetry: one bounded privacy-preserving record per invocation
   // when the hook's family is cut over (event-family cutover, advisory default).
@@ -3407,7 +3419,8 @@ export async function processHook(
     ) as unknown as string | null;
     if (evt && isFamilyCutoverEnabled(evt as never)) {
       const hard = evt === 'PermissionRequest' || evt === 'PreToolUse';
-      const applied = output.continue === false ? (hard ? 'hard' : 'advisory') : 'none';
+      const hasHardDecision = output.continue === false || hasHookProtocolDeny(output);
+      const applied = hasHardDecision ? (hard ? 'hard' : 'advisory') : 'none';
       recordDispatchTelemetry({
         schemaVersion: 1,
         event: evt as never,
@@ -3415,7 +3428,7 @@ export async function processHook(
         appliedDecision: applied as never,
         durationMs: performance.now() - legacyStarted,
         recordedAt: new Date().toISOString(),
-      });
+      }, projectDirectory);
     }
   } catch {
     // telemetry is bounded and advisory-only

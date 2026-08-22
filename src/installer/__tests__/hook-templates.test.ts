@@ -28,14 +28,23 @@ function runKeywordHook(scriptPath: string, prompt: string) {
 }
 
 function runPreToolHook(scriptPath: string, command: string) {
+  return runPreToolPayload(scriptPath, {
+    tool_name: 'Bash',
+    tool_input: { command },
+  });
+}
+
+function runPreToolPayload(
+  scriptPath: string,
+  payload: Record<string, unknown>,
+  env: Record<string, string | undefined> = {},
+) {
   return JSON.parse(
     execFileSync('node', [scriptPath], {
       cwd: packageRoot,
-      input: JSON.stringify({
-        tool_name: 'Bash',
-        tool_input: { command },
-      }),
+      input: JSON.stringify(payload),
       encoding: 'utf-8',
+      env: { ...process.env, ...env },
     }),
   ) as Record<string, unknown>;
 }
@@ -725,6 +734,39 @@ OMC Ultrawork = "특수부대 작전 반"
 });
 
 describe('pre-tool-use packaged artifacts', () => {
+  it('keeps cache occupancy path identity aligned across template and runtime helpers', async () => {
+    const helperPaths = [
+      join(packageRoot, 'templates', 'hooks', 'lib', 'cache-occupancy.mjs'),
+      join(packageRoot, 'scripts', 'lib', 'cache-occupancy.mjs'),
+    ];
+    const helpers = await Promise.all(helperPaths.map(async (helperPath) => import(pathToFileURL(helperPath).href)));
+    const originalPlatform = process.platform;
+    const tempDir = mkdtempSync(join(tmpdir(), 'cache-occupancy-template-parity-'));
+
+    try {
+      for (const [index, helper] of helpers.entries()) {
+        const configDir = join(tempDir, `config-${index}`);
+        const pluginRoot = join(tempDir, `MiXeD-Plugin-${index}`, 'Version-1');
+
+        Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+        expect(helper.pathIdentity(pluginRoot)).toBe(
+          originalPlatform === 'win32' ? pluginRoot.toLowerCase() : pluginRoot,
+        );
+        expect(helper.publishCacheOccupancy(pluginRoot, configDir, process.pid)).toBe(true);
+        expect(helper.readOccupiedPluginRoots(configDir).roots).toEqual(new Set([
+          originalPlatform === 'win32' ? pluginRoot.toLowerCase() : pluginRoot,
+        ]));
+
+        Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+        expect(helper.pathIdentity(pluginRoot)).toBe(pluginRoot.toLowerCase());
+        expect(helper.readOccupiedPluginRoots(configDir).roots).toEqual(new Set([pluginRoot.toLowerCase()]));
+      }
+    } finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('does not warn for .json commands just because .js is a substring', () => {
     const scriptPath = join(packageRoot, 'templates', 'hooks', 'pre-tool-use.mjs');
 
@@ -736,6 +778,109 @@ describe('pre-tool-use packaged artifacts', () => {
     expect(JSON.stringify(runPreToolHook(scriptPath, 'cat app.js > backup.txt'))).toContain(
       'Bash command may modify source files',
     );
+  });
+
+  it('keeps the Skill-vs-Agent guard in parity with the runtime enforcer', () => {
+    const templatePath = join(packageRoot, 'templates', 'hooks', 'pre-tool-use.mjs');
+    const runtimePath = join(packageRoot, 'scripts', 'pre-tool-enforcer.mjs');
+    const tempDir = mkdtempSync(join(tmpdir(), 'pre-tool-template-parity-'));
+    const fakeHome = mkdtempSync(join(tmpdir(), 'pre-tool-template-home-'));
+    const env = {
+      CLAUDE_PLUGIN_ROOT: packageRoot,
+      CLAUDE_CONFIG_DIR: join(fakeHome, '.claude'),
+      HOME: fakeHome,
+      USER_TYPE: '',
+    };
+
+    try {
+      for (const scriptPath of [templatePath, runtimePath]) {
+        const denied = runPreToolPayload(
+          scriptPath,
+          {
+            tool_name: 'Task',
+            cwd: tempDir,
+            directory: tempDir,
+            tool_input: {
+              subagent_type: 'OMC:AI-SLOP-CLEANER',
+              description: 'Run the cleaner',
+              prompt: 'Clean the changed files',
+            },
+          },
+          env,
+        );
+        const deniedHook = denied.hookSpecificOutput as Record<string, unknown>;
+        const reason = String(deniedHook.permissionDecisionReason ?? '');
+        expect(denied.continue).toBe(true);
+        expect(deniedHook.permissionDecision).toBe('deny');
+        expect(reason).toContain('[SKILL vs AGENT]');
+        expect(reason).toContain('Skill(skill="oh-my-claudecode:ai-slop-cleaner")');
+        expect(reason).toContain('closest match');
+
+        const allowed = runPreToolPayload(
+          scriptPath,
+          {
+            tool_name: 'Agent',
+            cwd: tempDir,
+            directory: tempDir,
+            tool_input: {
+              subagent_type: 'oh-my-claudecode:code-simplifier',
+              description: 'Simplify the change',
+              prompt: 'Review and simplify the changed files',
+            },
+          },
+          env,
+        );
+        expect(allowed.continue).toBe(true);
+        expect((allowed.hookSpecificOutput as Record<string, unknown> | undefined)?.permissionDecision).toBeUndefined();
+        expect(JSON.stringify(allowed)).not.toContain('[SKILL vs AGENT]');
+      }
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+      rmSync(fakeHome, { recursive: true, force: true });
+    }
+  });
+
+  it('preserves real-agent precedence when a plugin agent collides with a skill', () => {
+    const templatePath = join(packageRoot, 'templates', 'hooks', 'pre-tool-use.mjs');
+    const runtimePath = join(packageRoot, 'scripts', 'pre-tool-enforcer.mjs');
+    const tempDir = mkdtempSync(join(tmpdir(), 'pre-tool-template-collision-'));
+    const fakeHome = mkdtempSync(join(tmpdir(), 'pre-tool-template-collision-home-'));
+    const pluginRoot = join(tempDir, 'plugin');
+    mkdirSync(join(pluginRoot, 'agents'), { recursive: true });
+    mkdirSync(join(pluginRoot, 'skills', 'wiki'), { recursive: true });
+    writeFileSync(join(pluginRoot, 'agents', 'wiki.md'), '---\nname: wiki\n---\nagent body\n');
+    writeFileSync(join(pluginRoot, 'skills', 'wiki', 'SKILL.md'), '---\nname: wiki\n---\nskill body\n');
+    const env = {
+      CLAUDE_PLUGIN_ROOT: pluginRoot,
+      CLAUDE_CONFIG_DIR: join(fakeHome, '.claude'),
+      HOME: fakeHome,
+      USER_TYPE: '',
+    };
+
+    try {
+      for (const scriptPath of [templatePath, runtimePath]) {
+        const output = runPreToolPayload(
+          scriptPath,
+          {
+            tool_name: 'Task',
+            cwd: tempDir,
+            directory: tempDir,
+            tool_input: {
+              subagent_type: 'oh-my-claudecode:WIKI',
+              description: 'Use the colliding agent',
+              prompt: 'Run the agent',
+            },
+          },
+          env,
+        );
+        expect(output.continue).toBe(true);
+        expect((output.hookSpecificOutput as Record<string, unknown> | undefined)?.permissionDecision).toBeUndefined();
+        expect(JSON.stringify(output)).not.toContain('[SKILL vs AGENT]');
+      }
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+      rmSync(fakeHome, { recursive: true, force: true });
+    }
   });
 });
 

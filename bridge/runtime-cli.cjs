@@ -3694,7 +3694,7 @@ function withFileLockSync(lockPath, fn, opts) {
   }
 }
 function sleep(ms) {
-  return new Promise((resolve13) => setTimeout(resolve13, ms));
+  return new Promise((resolve12) => setTimeout(resolve12, ms));
 }
 async function acquireFileLock(lockPath, opts) {
   const staleLockMs = opts?.staleLockMs ?? DEFAULT_STALE_LOCK_MS;
@@ -3769,7 +3769,7 @@ function canonicalAuthorityDigest(input) {
   return (0, import_node_crypto2.createHash)("sha256").update(payload, "utf8").digest("hex");
 }
 function sleep2(ms) {
-  return new Promise((resolve13) => setTimeout(resolve13, ms));
+  return new Promise((resolve12) => setTimeout(resolve12, ms));
 }
 function isExactText(value) {
   return typeof value === "string" && value.length > 0 && value === value.trim();
@@ -4715,11 +4715,11 @@ async function runWorkerLaunchBootstrap(value) {
       let resolveCompletion;
       let resolveWindowsReady;
       let resolveWindowsTerminal;
-      const windowsReady = new Promise((resolve13) => {
-        resolveWindowsReady = resolve13;
+      const windowsReady = new Promise((resolve12) => {
+        resolveWindowsReady = resolve12;
       });
-      const windowsTerminal = new Promise((resolve13) => {
-        resolveWindowsTerminal = resolve13;
+      const windowsTerminal = new Promise((resolve12) => {
+        resolveWindowsTerminal = resolve12;
       });
       if (process.platform === "win32" && child.stdout) {
         let buffered = "";
@@ -4768,8 +4768,8 @@ async function runWorkerLaunchBootstrap(value) {
           }
         });
       }
-      const completion = new Promise((resolve13) => {
-        resolveCompletion = resolve13;
+      const completion = new Promise((resolve12) => {
+        resolveCompletion = resolve12;
         child.once("exit", async (exitCode, signal) => {
           if (settled) return;
           settled = true;
@@ -4793,7 +4793,7 @@ async function runWorkerLaunchBootstrap(value) {
             written_at: (/* @__PURE__ */ new Date()).toISOString()
           }).catch(() => void 0);
           await invocation.cleanup().catch(() => void 0);
-          resolve13(cleanupVerified ? { outcome: "ran", exitCode: effectiveExitCode, signal: effectiveSignal } : { outcome: "provider_cleanup_unverified" });
+          resolve12(cleanupVerified ? { outcome: "ran", exitCode: effectiveExitCode, signal: effectiveSignal } : { outcome: "provider_cleanup_unverified" });
         });
         child.once("error", async () => {
           if (settled) return;
@@ -4811,7 +4811,7 @@ async function runWorkerLaunchBootstrap(value) {
             written_at: (/* @__PURE__ */ new Date()).toISOString()
           }).catch(() => void 0);
           await invocation.cleanup().catch(() => void 0);
-          resolve13({ outcome: "provider_spawn_failed" });
+          resolve12({ outcome: "provider_spawn_failed" });
         });
       });
       const terminateProvider = async () => {
@@ -4829,7 +4829,7 @@ async function runWorkerLaunchBootstrap(value) {
 `);
           return await Promise.race([
             windowsTerminal,
-            new Promise((resolve13) => setTimeout(() => resolve13(false), 5e3))
+            new Promise((resolve12) => setTimeout(() => resolve12(false), 5e3))
           ]);
         }
         if (child.pid && providerStartIdentity && launchGroup) {
@@ -4841,11 +4841,11 @@ async function runWorkerLaunchBootstrap(value) {
             force: true
           });
           const terminated = ["terminated", "already-dead", "identity-mismatch"].includes(await terminationResult);
-          const completed = await new Promise((resolve13) => {
-            const timer = setTimeout(() => resolve13(false), 2e3);
+          const completed = await new Promise((resolve12) => {
+            const timer = setTimeout(() => resolve12(false), 2e3);
             void completion.then((result) => {
               clearTimeout(timer);
-              resolve13(result.outcome !== "provider_cleanup_unverified");
+              resolve12(result.outcome !== "provider_cleanup_unverified");
             });
           });
           return terminated && completed;
@@ -4865,9 +4865,9 @@ async function runWorkerLaunchBootstrap(value) {
           for (const signal of cleanupSignals) process.removeListener(signal, onBootstrapSignal);
         });
       }
-      const spawned = await new Promise((resolve13) => {
-        child.once("spawn", () => resolve13(true));
-        child.once("error", () => resolve13(false));
+      const spawned = await new Promise((resolve12) => {
+        child.once("spawn", () => resolve12(true));
+        child.once("error", () => resolve12(false));
       });
       if (!spawned) {
         await completion;
@@ -4876,7 +4876,7 @@ async function runWorkerLaunchBootstrap(value) {
       if (process.platform === "win32") {
         const ready = await Promise.race([
           windowsReady,
-          new Promise((resolve13) => setTimeout(() => resolve13(false), 1e4))
+          new Promise((resolve12) => setTimeout(() => resolve12(false), 1e4))
         ]);
         if (!ready || !providerPid || !providerStartIdentity || settled) {
           if (!await terminateProvider()) return { outcome: "provider_cleanup_unverified" };
@@ -4894,7 +4894,7 @@ async function runWorkerLaunchBootstrap(value) {
           if (!await terminateProvider()) return { outcome: "provider_cleanup_unverified" };
           return { outcome: "provider_spawn_failed" };
         }
-        if (!spec.release_after_spawn) await new Promise((resolve13) => setTimeout(resolve13, 75));
+        if (!spec.release_after_spawn) await new Promise((resolve12) => setTimeout(resolve12, 75));
         if (settled) return { completion };
         const reboundIdentity = getProcessStartIdentitySync(child.pid);
         if (!reboundIdentity || reboundIdentity !== providerStartIdentity || !isProcessAlive(child.pid)) {
@@ -8130,7 +8130,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
           continue;
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve13) => setTimeout(resolve13, 25));
+        await new Promise((resolve12) => setTimeout(resolve12, 25));
         continue;
       }
       try {
@@ -8151,7 +8151,7 @@ async function withProcessIdentityFileLock(lockPath, fn, timeoutMs = 1e4) {
           }
         }
         if (Date.now() >= deadline) throw new Error("process_identity_lock_timeout");
-        await new Promise((resolve13) => setTimeout(resolve13, 25));
+        await new Promise((resolve12) => setTimeout(resolve12, 25));
       }
     }
     return await fn();
@@ -9031,7 +9031,7 @@ async function withDispatchLock(teamName, cwd, fn) {
         );
       }
       const jitter = 0.5 + Math.random() * 0.5;
-      await new Promise((resolve13) => setTimeout(resolve13, Math.floor(pollMs * jitter)));
+      await new Promise((resolve12) => setTimeout(resolve12, Math.floor(pollMs * jitter)));
       pollMs = Math.min(pollMs * 2, DISPATCH_LOCK_MAX_POLL_MS);
     }
   }
@@ -11075,8 +11075,8 @@ ${dirtyFiles.map((f) => `- \`${f}\``).join("\n")}`;
               return false;
             }
           })(),
-          new Promise((resolve13) => {
-            const t = setTimeout(() => resolve13(false), remaining);
+          new Promise((resolve12) => {
+            const t = setTimeout(() => resolve12(false), remaining);
             if (typeof t.unref === "function") t.unref();
           })
         ]);
@@ -11659,7 +11659,7 @@ async function waitForRecoveryGateRecord(path4, expected, timeoutMs, pollInterva
       if (value.recovery_id === expected.recovery_id && value.worker_name === expected.worker_name && value.replacement_generation === expected.replacement_generation && value.pane_attempt_id === expected.pane_attempt_id && value.launch_attempt_id === expected.launch_attempt_id && value.launch_nonce === expected.launch_nonce) return true;
     } catch {
     }
-    await new Promise((resolve13) => setTimeout(resolve13, pollIntervalMs));
+    await new Promise((resolve12) => setTimeout(resolve12, pollIntervalMs));
   }
   return false;
 }
@@ -11705,7 +11705,7 @@ async function runWorkerActivationGate(gate) {
     let supervisorTimer;
     let terminationResult = null;
     let finishCompletion;
-    const completion = new Promise((resolve13) => {
+    const completion = new Promise((resolve12) => {
       const finish = async (result, terminal) => {
         if (settled) return;
         settled = true;
@@ -11720,7 +11720,7 @@ async function runWorkerActivationGate(gate) {
         } catch {
         }
         await invocation.cleanup().catch(() => void 0);
-        resolve13(result);
+        resolve12(result);
       };
       finishCompletion = finish;
       child.once("exit", async (exitCode, signal) => {
@@ -11751,11 +11751,11 @@ async function runWorkerActivationGate(gate) {
           force: true
         });
         const terminated = await terminationResult === "terminated";
-        const completed2 = await new Promise((resolve13) => {
-          const timer = setTimeout(() => resolve13(false), 2e3);
+        const completed2 = await new Promise((resolve12) => {
+          const timer = setTimeout(() => resolve12(false), 2e3);
           void completion.then((result) => {
             clearTimeout(timer);
-            resolve13(result.outcome !== "provider_cleanup_unverified");
+            resolve12(result.outcome !== "provider_cleanup_unverified");
           });
         });
         return terminated && completed2;
@@ -11772,15 +11772,15 @@ async function runWorkerActivationGate(gate) {
         }
       } catch {
       }
-      const completed = await new Promise((resolve13) => {
-        const timer = setTimeout(() => resolve13(false), 2e3);
+      const completed = await new Promise((resolve12) => {
+        const timer = setTimeout(() => resolve12(false), 2e3);
         void completion.then(() => {
           clearTimeout(timer);
-          resolve13(true);
+          resolve12(true);
         });
         if (settled) {
           clearTimeout(timer);
-          resolve13(true);
+          resolve12(true);
         }
       });
       return completed;
@@ -11796,9 +11796,9 @@ async function runWorkerActivationGate(gate) {
         for (const signal of cleanupSignals) process.removeListener(signal, onGateSignal);
       });
     }
-    const spawned = await new Promise((resolve13) => {
-      child.once("spawn", () => resolve13(true));
-      child.once("error", () => resolve13(false));
+    const spawned = await new Promise((resolve12) => {
+      child.once("spawn", () => resolve12(true));
+      child.once("error", () => resolve12(false));
     });
     if (!spawned) {
       const failed = await completion;
@@ -11812,7 +11812,7 @@ async function runWorkerActivationGate(gate) {
         if (!await terminateProvider()) return { outcome: "provider_cleanup_unverified" };
         return { outcome: "provider_spawn_failed" };
       }
-      await new Promise((resolve13) => setTimeout(resolve13, 150));
+      await new Promise((resolve12) => setTimeout(resolve12, 150));
       if (settled) return await completion;
       const reboundIdentity = getProcessStartIdentitySync(providerPid);
       if (!reboundIdentity || reboundIdentity !== providerStartIdentity || !isProcessAlive(providerPid)) {
@@ -12264,7 +12264,7 @@ async function hasCurrentWorkerStartupEvidence(teamName, workerName2, taskId, cw
 async function waitForWorkerStartupEvidence(teamName, workerName2, taskId, cwd, baseline, launchAttemptId, attempts = 3, delayMs = 250) {
   for (let attempt = 1; attempt <= attempts; attempt++) {
     if (await hasCurrentWorkerStartupEvidence(teamName, workerName2, taskId, cwd, baseline, launchAttemptId)) return true;
-    if (attempt < attempts) await new Promise((resolve13) => setTimeout(resolve13, delayMs));
+    if (attempt < attempts) await new Promise((resolve12) => setTimeout(resolve12, delayMs));
   }
   return false;
 }
@@ -12272,7 +12272,7 @@ async function waitForWorkerStatusTransition(teamName, workerName2, cwd, baselin
   for (let attempt = 1; attempt <= attempts; attempt++) {
     const status = await readWorkerStatus(teamName, workerName2, cwd);
     if (status.state !== "unknown" && status.launch_attempt_id === launchAttemptId && workerStatusStartupFingerprint(status) !== baselineFingerprint) return true;
-    if (attempt < attempts) await new Promise((resolve13) => setTimeout(resolve13, delayMs));
+    if (attempt < attempts) await new Promise((resolve12) => setTimeout(resolve12, delayMs));
   }
   return false;
 }
@@ -12831,14 +12831,14 @@ async function readOrCreateRecoveryAttempt(input, recoveryId, replacementGenerat
   }
 }
 function waitForBootstrapRecoveryEvidence(delayMs, signal) {
-  return new Promise((resolve13, reject) => {
+  return new Promise((resolve12, reject) => {
     if (signal?.aborted) {
       reject(signal.reason ?? new Error("bootstrap_recovery_evidence_aborted"));
       return;
     }
     const timer = setTimeout(() => {
       signal?.removeEventListener("abort", onAbort);
-      resolve13();
+      resolve12();
     }, delayMs);
     const onAbort = () => {
       clearTimeout(timer);
@@ -15440,7 +15440,7 @@ async function readJsonSafe(filePath) {
         return null;
       }
     }
-    await new Promise((resolve13) => setTimeout(resolve13, 25));
+    await new Promise((resolve12) => setTimeout(resolve12, 25));
   }
   return null;
 }
@@ -15558,7 +15558,7 @@ async function nextPendingTaskIndex(runtime) {
     let task = await readTask(root, taskId);
     if (!task) {
       for (let attempt = 1; attempt < transientReadRetryAttempts; attempt++) {
-        await new Promise((resolve13) => setTimeout(resolve13, transientReadRetryDelayMs));
+        await new Promise((resolve12) => setTimeout(resolve12, transientReadRetryDelayMs));
         task = await readTask(root, taskId);
         if (task) break;
       }
@@ -16566,7 +16566,7 @@ async function waitForSentinelReadiness(options = {}) {
   }
   const deadline = startedAt + timeoutMs;
   while (Date.now() < deadline) {
-    await new Promise((resolve13) => setTimeout(resolve13, pollIntervalMs));
+    await new Promise((resolve12) => setTimeout(resolve12, pollIntervalMs));
     attempts += 1;
     latest = checkSentinelReadiness(options);
     if (latest.ready) {
@@ -16855,7 +16855,7 @@ async function runPersistentRecoveryOwnerLoop(input, options = {}) {
   const reconcileServices = options.reconcileServices ?? reconcileCommittedTeamServices;
   const monitor = options.monitor ?? monitorTeamV2;
   const sleep4 = options.sleep ?? (async (ms) => {
-    await new Promise((resolve13) => setTimeout(resolve13, ms));
+    await new Promise((resolve12) => setTimeout(resolve12, ms));
   });
   const shutdown = options.shutdown ?? shutdownTeamV2;
   let iteration = 0;
@@ -17158,8 +17158,8 @@ function createRuntimeStartupShutdownBarrier() {
   let settled = false;
   let requested = false;
   let resolveCompletion;
-  const completion = new Promise((resolve13) => {
-    resolveCompletion = resolve13;
+  const completion = new Promise((resolve12) => {
+    resolveCompletion = resolve12;
   });
   return {
     requestShutdown: () => {

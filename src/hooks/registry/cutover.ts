@@ -48,6 +48,45 @@ export interface DispatchTelemetryRecord {
   recordedAt: string;
 }
 
+/**
+ * Return true when a hook output carries an explicit protocol-level deny.
+ *
+ * Claude Code's hook protocol keeps `continue: true` for several hard
+ * decisions (for example, PreToolUse's `permissionDecision: "deny"`), so
+ * callers must inspect the decision fields instead of treating `continue` as
+ * the complete verdict.
+ */
+export function hasHookProtocolDeny(output: unknown): boolean {
+  if (!output || typeof output !== 'object') return false;
+
+  const root = output as Record<string, unknown>;
+  const isDeny = (value: unknown): boolean =>
+    typeof value === 'string' && value.trim().toLowerCase() === 'deny';
+  const isDecisionDeny = (value: unknown): boolean => {
+    if (isDeny(value)) return true;
+    return value !== null
+      && typeof value === 'object'
+      && isDeny((value as Record<string, unknown>).behavior);
+  };
+
+  if (isDeny(root.permissionDecision) || isDeny(root.permission_decision)) {
+    return true;
+  }
+
+  const hookSpecificOutput = root.hookSpecificOutput;
+  if (!hookSpecificOutput || typeof hookSpecificOutput !== 'object') {
+    return isDecisionDeny(root.decision);
+  }
+
+  const specific = hookSpecificOutput as Record<string, unknown>;
+  if (isDeny(specific.permissionDecision) || isDeny(specific.permission_decision)) {
+    return true;
+  }
+
+  const decision = specific.decision ?? root.decision;
+  return isDecisionDeny(decision);
+}
+
 function cutoverFlagRaw(): string | undefined {
   const v = process.env.OMC_HOOK_DISPATCHER ?? process.env.OMC_HOOK_CUTOVER;
   return v;

@@ -777,6 +777,7 @@ describe('assert-marketplace-consistency', () => {
     }));
 
     writeFileSync(join(root, 'docs', 'CLAUDE.md'), `<!-- OMC:VERSION:${opts.claudeMdVersion ?? version} -->\n`);
+    writeFileSync(join(root, 'runtime.js'), 'module.exports = "release";\n');
 
     execFileSync('git', ['init'], { cwd: root, stdio: 'ignore' });
     execFileSync('git', ['config', 'user.name', 'Promotion Test'], { cwd: root, stdio: 'ignore' });
@@ -886,7 +887,7 @@ describe('assert-marketplace-consistency', () => {
   });
 
   it('fails when docs/CLAUDE.md has duplicate version markers', () => {
-    const { root, sha } = createPromotionRepository();
+    const { root } = createPromotionRepository();
     writeFileSync(
       join(root, 'docs', 'CLAUDE.md'),
       `<!-- OMC:VERSION:4.15.0 -->\n<!-- OMC:VERSION:${VERSION} -->\n`,
@@ -897,7 +898,6 @@ describe('assert-marketplace-consistency', () => {
     expect(() => assertMarketplaceConsistency({
       ref: 'main',
       version: VERSION,
-      sha,
       cwd: root,
     })).toThrow('exactly one OMC version marker');
   });
@@ -923,11 +923,9 @@ describe('assert-marketplace-consistency', () => {
     })).toThrow('does not contain released commit');
   });
 
-  it('passes when a protected-main merge commit contains the released commit', () => {
+  it('passes when a descendant commit has an identical released tree', () => {
     const { root, sha } = createPromotionRepository();
-    writeFileSync(join(root, '.gitignore'), 'node_modules\n');
-    execFileSync('git', ['add', '.'], { cwd: root, stdio: 'ignore' });
-    execFileSync('git', ['commit', '-m', 'protected-main merge closure'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'protected-main promotion closure'], { cwd: root, stdio: 'ignore' });
 
     expect(assertMarketplaceConsistency({
       ref: 'main',
@@ -935,6 +933,37 @@ describe('assert-marketplace-consistency', () => {
       sha,
       cwd: root,
     })).toEqual({ version: VERSION, ref: 'main', promoted: true });
+  });
+
+  it('passes when a protected-main merge commit has an identical released tree', () => {
+    const { root, sha } = createPromotionRepository();
+    execFileSync('git', ['checkout', '-b', 'promotion-side'], { cwd: root, stdio: 'ignore' });
+    writeFileSync(join(root, 'runtime.js'), 'module.exports = "side";\n');
+    execFileSync('git', ['add', 'runtime.js'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', 'side runtime change'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['checkout', 'main'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['merge', '--no-ff', '-s', 'ours', 'promotion-side', '-m', 'protected-main merge closure'], { cwd: root, stdio: 'ignore' });
+
+    expect(assertMarketplaceConsistency({
+      ref: 'main',
+      version: VERSION,
+      sha,
+      cwd: root,
+    })).toEqual({ version: VERSION, ref: 'main', promoted: true });
+  });
+
+  it('fails when a descendant changes a non-metadata file despite matching release metadata', () => {
+    const { root, sha } = createPromotionRepository();
+    writeFileSync(join(root, 'runtime.js'), 'module.exports = "descendant";\n');
+    execFileSync('git', ['add', 'runtime.js'], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-m', 'descendant runtime change'], { cwd: root, stdio: 'ignore' });
+
+    expect(() => assertMarketplaceConsistency({
+      ref: 'main',
+      version: VERSION,
+      sha,
+      cwd: root,
+    })).toThrow('does not match released commit');
   });
 
   it('fails when ref does not exist', () => {

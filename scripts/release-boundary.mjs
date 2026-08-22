@@ -695,8 +695,8 @@ export function assertMarketplaceConsistency({ ref, version, sha, cwd = process.
   const refCommit = git(cwd, ['rev-parse', ref]);
 
   // A protected-main promotion normally creates a merge commit. Require the
-  // released commit to be reachable from the ref rather than requiring it to
-  // remain the tip after that merge.
+  // released commit to be reachable from the ref and require the promoted
+  // ref to preserve the released tree rather than only matching its metadata.
   if (sha !== undefined) {
     const expectedSha = requireSha(sha);
     try {
@@ -706,6 +706,11 @@ export function assertMarketplaceConsistency({ ref, version, sha, cwd = process.
       });
     } catch {
       fail(`main ref ${ref} at ${refCommit} does not contain released commit ${expectedSha}; main has not been promoted to v${expectedVersion}`);
+    }
+    const releasedTree = git(cwd, ['rev-parse', `${expectedSha}^{tree}`]);
+    const refTree = git(cwd, ['rev-parse', `${ref}^{tree}`]);
+    if (refTree !== releasedTree) {
+      fail(`main ref ${ref} at ${refCommit} has tree ${refTree}, which does not match released commit ${expectedSha} tree ${releasedTree}`);
     }
   }
 

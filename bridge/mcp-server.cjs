@@ -2994,7 +2994,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve15.call(this, root, ref);
+      let _sch = resolve14.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -3021,7 +3021,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve15(root, ref) {
+    function resolve14(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -3652,7 +3652,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve15(baseURI, relativeURI, options) {
+    function resolve14(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse9(baseURI, schemelessOptions), parse9(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
@@ -3910,7 +3910,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize: normalize8,
-      resolve: resolve15,
+      resolve: resolve14,
       resolveComponent,
       equal,
       serialize,
@@ -16761,7 +16761,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve15) => setTimeout(resolve15, pollInterval));
+        await new Promise((resolve14) => setTimeout(resolve14, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error2) {
@@ -16778,7 +16778,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve15, reject) => {
+    return new Promise((resolve14, reject) => {
       const earlyReject = (error2) => {
         reject(error2);
       };
@@ -16856,7 +16856,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve15(parseResult.data);
+            resolve14(parseResult.data);
           }
         } catch (error2) {
           reject(error2);
@@ -17117,12 +17117,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve15, reject) => {
+    return new Promise((resolve14, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve15, interval);
+      const timeoutId = setTimeout(resolve14, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -17851,12 +17851,12 @@ var StdioServerTransport = class {
     this.onclose?.();
   }
   send(message) {
-    return new Promise((resolve15) => {
+    return new Promise((resolve14) => {
       const json = serializeMessage(message);
       if (this._stdout.write(json)) {
-        resolve15();
+        resolve14();
       } else {
-        this._stdout.once("drain", resolve15);
+        this._stdout.once("drain", resolve14);
       }
     });
   }
@@ -18963,7 +18963,7 @@ async function removeFileIfExists(filePath) {
   }
 }
 function sleep(ms) {
-  return new Promise((resolve15) => setTimeout(resolve15, ms));
+  return new Promise((resolve14) => setTimeout(resolve14, ms));
 }
 
 // src/tools/lsp/client.ts
@@ -19536,7 +19536,7 @@ var LspClient = class _LspClient {
 Install with: ${this.serverConfig.installHint}`
       );
     }
-    return new Promise((resolve15, reject) => {
+    return new Promise((resolve14, reject) => {
       const command = this.devContainerContext ? "docker" : this.serverConfig.command;
       const args = this.devContainerContext ? ["exec", "-i", "-w", this.devContainerContext.containerWorkspaceRoot, this.devContainerContext.containerId, this.serverConfig.command, ...this.serverConfig.args] : this.serverConfig.args;
       this.process = (0, import_child_process6.spawn)(command, args, {
@@ -19563,7 +19563,7 @@ Install with: ${this.serverConfig.installHint}`
       });
       this.initialize().then(() => {
         this.initialized = true;
-        resolve15();
+        resolve14();
       }).catch(reject);
     });
   }
@@ -19729,13 +19729,13 @@ ${content}`);
     const message = `Content-Length: ${Buffer.byteLength(content)}\r
 \r
 ${content}`;
-    return new Promise((resolve15, reject) => {
+    return new Promise((resolve14, reject) => {
       const timeoutHandle = setTimeout(() => {
         this.pendingRequests.delete(id);
         reject(new Error(`LSP request '${method}' timed out after ${effectiveTimeout}ms`));
       }, effectiveTimeout);
       this.pendingRequests.set(id, {
-        resolve: resolve15,
+        resolve: resolve14,
         reject,
         timeout: timeoutHandle
       });
@@ -19811,7 +19811,7 @@ ${content}`;
       }
     });
     this.openDocuments.add(hostUri);
-    await new Promise((resolve15) => setTimeout(resolve15, 100));
+    await new Promise((resolve14) => setTimeout(resolve14, 100));
   }
   /**
    * Close a document
@@ -19972,13 +19972,13 @@ ${content}`;
     if (this.diagnostics.has(uri)) {
       return Promise.resolve();
     }
-    return new Promise((resolve15) => {
+    return new Promise((resolve14) => {
       let resolved = false;
       const timer = setTimeout(() => {
         if (!resolved) {
           resolved = true;
           this.diagnosticWaiters.delete(uri);
-          resolve15();
+          resolve14();
         }
       }, timeoutMs);
       const existing = this.diagnosticWaiters.get(uri) || [];
@@ -19986,7 +19986,7 @@ ${content}`;
         if (!resolved) {
           resolved = true;
           clearTimeout(timer);
-          resolve15();
+          resolve14();
         }
       });
       this.diagnosticWaiters.set(uri, existing);
@@ -22389,7 +22389,7 @@ var SessionLock = class {
   }
 };
 function sleep2(ms) {
-  return new Promise((resolve15) => setTimeout(resolve15, ms));
+  return new Promise((resolve14) => setTimeout(resolve14, ms));
 }
 
 // src/tools/python-repl/socket-client.ts
@@ -22419,7 +22419,7 @@ var JsonRpcError = class extends Error {
   }
 };
 async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
-  return new Promise((resolve15, reject) => {
+  return new Promise((resolve14, reject) => {
     const id = (0, import_crypto3.randomUUID)();
     const request = {
       jsonrpc: "2.0",
@@ -22509,7 +22509,7 @@ async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
           }
           if (!settled) {
             settled = true;
-            resolve15(response.result);
+            resolve14(response.result);
           }
         } catch (e) {
           if (!settled) {
@@ -27513,7 +27513,7 @@ function withFileLockSync(lockPath, fn, opts) {
   }
 }
 function sleep3(ms) {
-  return new Promise((resolve15) => setTimeout(resolve15, ms));
+  return new Promise((resolve14) => setTimeout(resolve14, ms));
 }
 async function acquireFileLock(lockPath, opts) {
   const staleLockMs = opts?.staleLockMs ?? DEFAULT_STALE_LOCK_MS;
@@ -28407,7 +28407,7 @@ function mergeArrays(fieldName, base, incoming) {
       return mergeScalarArray(base, incoming);
   }
 }
-function mergeByKey(base, incoming, keyFn, resolve15) {
+function mergeByKey(base, incoming, keyFn, resolve14) {
   const seen = /* @__PURE__ */ new Map();
   for (const item of base) {
     seen.set(keyFn(item), item);
@@ -28416,7 +28416,7 @@ function mergeByKey(base, incoming, keyFn, resolve15) {
     const key = keyFn(item);
     const existing = seen.get(key);
     if (existing) {
-      seen.set(key, resolve15(existing, item));
+      seen.set(key, resolve14(existing, item));
     } else {
       seen.set(key, item);
     }

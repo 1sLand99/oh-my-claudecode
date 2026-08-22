@@ -3,8 +3,8 @@
 // the JSON evidence document consumed by scripts/verify-epic-3698-closure.mjs
 // (--evidence). Read-only against GitHub; never mutates PRs, branches, or
 // releases. Each check is attested at the PR head OID reported by gh at
-// collection time (exactHead: true); the verifier rejects checks whose
-// recorded sha disagrees with the PR head.
+// collection time; the verifier re-queries GitHub and rejects checks whose
+// recorded SHA or status disagrees with the live PR head.
 //
 // Usage:
 //   node scripts/collect-epic-3698-ci-evidence.mjs --prs 3715,3716,3719,3720,3721,3723,3724,3725,3729 --out <path>
@@ -52,6 +52,8 @@ function ghJson(args) {
 }
 
 function collectPr(issue, number) {
+  const childIssue = ghJson(['issue', 'view', String(issue), '--json', 'number,state']);
+  if (childIssue.number !== issue || childIssue.state !== 'CLOSED') fail(`expected child issue #${issue} is not live and CLOSED while collecting PR #${number}`);
   const pr = ghJson(['pr', 'view', String(number), '--json', 'number,headRefOid,mergeCommit,state,statusCheckRollup']);
   if (pr.number !== number) fail(`gh returned PR #${pr.number} while collecting expected PR #${number} for child issue #${issue}`);
   if (pr.state !== 'MERGED') fail(`expected PR #${number} for child issue #${issue} is not merged (state: ${pr.state ?? 'missing'})`);
@@ -65,6 +67,10 @@ function collectPr(issue, number) {
       conclusion: String(c.conclusion ?? c.status).toLowerCase(),
       sha: pr.headRefOid,
     }));
+  if (checks.length === 0) fail(`merged PR #${number} for child issue #${issue} has no completed status checks`);
+  if (checks.some((check) => !['success', 'skipped', 'neutral'].includes(check.conclusion))) {
+    fail(`merged PR #${number} for child issue #${issue} has a non-successful status check`);
+  }
   const mergeCommitSha = pr.mergeCommit?.oid;
   if (typeof mergeCommitSha !== 'string' || !/^[0-9a-f]{40}$/.test(mergeCommitSha)) {
     fail(`merged PR #${number} for child issue #${issue} has no valid merge commit SHA`);
@@ -102,6 +108,7 @@ function collectDirectIssue(issue, repository) {
     commit: { sha: commit.sha },
     status: { sha: status.sha, state: status.state },
     source: {
+      repository,
       issue: `repos/${repository}/issues/${issue}`,
       commit: `repos/${repository}/issues/${issue}/timeline`,
       status: `repos/${repository}/commits/${commit.sha}/status`,
@@ -129,10 +136,10 @@ const args = parseArgs(process.argv.slice(2));
 const numbers = args.allChildren ? findChildPrs() : args.prs;
 if (numbers.length === 0) fail('no child PRs found');
 validateRequestedPrs(numbers);
-const issueByPr = new Map(EXPECTED_CHILD_PR_ENTRIES.map(({ issue, number }) => [number, issue]));
-const pullRequests = numbers.map((number) => collectPr(issueByPr.get(number), number));
 const repository = ghJson(['repo', 'view', '--json', 'nameWithOwner']).nameWithOwner;
 if (typeof repository !== 'string' || repository.length === 0) fail('unable to determine repository name for direct issue evidence');
+const issueByPr = new Map(EXPECTED_CHILD_PR_ENTRIES.map(({ issue, number }) => [number, issue]));
+const pullRequests = numbers.map((number) => collectPr(issueByPr.get(number), number));
 const directIssues = [collectDirectIssue(3709, repository)];
 const evidence = {
   schemaVersion: 1,
@@ -141,6 +148,7 @@ const evidence = {
   createdAt: new Date().toISOString(),
   payload: {
     collector: 'scripts/collect-epic-3698-ci-evidence.mjs (gh pr view statusCheckRollup at headRefOid)',
+    repository,
     expectedChildPullRequests: EPIC_CONTRACT.childPullRequests,
     pullRequests,
     directIssues,

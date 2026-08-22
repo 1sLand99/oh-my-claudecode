@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -18,8 +18,18 @@ interface RunResult {
   };
 }
 
-function runVerifier(args: string[], cwd = REPO_ROOT): RunResult {
-  const result = spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8' });
+function runVerifier(args: string[], cwd = REPO_ROOT, options: { fakeGh?: boolean } = {}): RunResult {
+  const env = { ...process.env };
+  const rootIndex = args.indexOf('--root');
+  const fixtureRoot = rootIndex >= 0 && args[rootIndex + 1] ? args[rootIndex + 1] : cwd;
+  const fakeGh = join(fixtureRoot, 'fake-gh', 'gh');
+  if (options.fakeGh !== false && existsSync(fakeGh)) {
+    env.PATH = `${dirname(fakeGh)}${delimiter}${env.PATH ?? ''}`;
+    env.EPIC_GH_FIXTURE = join(fixtureRoot, 'gh-fixture.json');
+  } else if (options.fakeGh === false) {
+    env.PATH = '';
+  }
+  const result = spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8', env });
   const report = JSON.parse(result.stdout);
   return { status: result.status ?? -1, report };
 }
@@ -55,6 +65,33 @@ function gitFixture(root: string, args: string[]) {
   const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
   if (result.status !== 0) throw new Error(`git ${args.join(' ')} failed: ${result.stderr}`);
   return result.stdout.trim();
+}
+
+function installFakeGh(root: string, data: unknown) {
+  const fakeGhDir = join(root, 'fake-gh');
+  mkdirSync(fakeGhDir, { recursive: true });
+  writeJson(join(root, 'gh-fixture.json'), data);
+  const script = [
+    '#!/usr/bin/env node',
+    "const { readFileSync } = require('node:fs');",
+    "const data = JSON.parse(readFileSync(process.env.EPIC_GH_FIXTURE, 'utf8'));",
+    'const args = process.argv.slice(2);',
+    "const out = (value) => process.stdout.write(JSON.stringify(value ?? null) + '\\n');",
+    "if (args[0] === 'repo' && args[1] === 'view') out({ nameWithOwner: data.repository });",
+    "else if (args[0] === 'pr' && args[1] === 'view') out(data.prs[args[2]]);",
+    "else if (args[0] === 'issue' && args[1] === 'view') out(data.issues[args[2]]);",
+    "else if (args[0] === 'api') {",
+    '  const path = args[1];',
+    '  const timeline = path.match(/^repos\\/[^/]+\\/[^/]+\\/issues\\/(\\d+)\\/timeline/);',
+    '  const status = path.match(/^repos\\/[^/]+\\/[^/]+\\/commits\\/([0-9a-f]{40})\\/status$/);',
+    '  if (timeline) out(data.timelines[timeline[1]] ?? []);',
+    '  else if (status) out(data.statuses[status[1]]);',
+    "  else { process.stderr.write('unknown fake gh api: ' + path + '\\n'); process.exit(2); }",
+    "} else { process.stderr.write('unknown fake gh args: ' + args.join(' ') + '\\n'); process.exit(2); }",
+    '',
+  ].join('\n');
+  writeFileSync(join(fakeGhDir, 'gh'), script);
+  chmodSync(join(fakeGhDir, 'gh'), 0o755);
 }
 
 function commitFixture(root: string, message: string) {
@@ -148,12 +185,13 @@ function buildCompleteFixture(root: string) {
     createdAt: '2026-08-12T00:00:00Z',
     payload: {
       collector: 'test-fixture-collector',
+      repository: 'fixture/example',
       directIssues: [{
         issue: 3709,
         state: 'CLOSED',
         commit: { sha: 'b'.repeat(40) },
         status: { sha: 'b'.repeat(40), state: 'success' },
-        source: { issue: 'fixture issue', commit: 'fixture commit', status: 'fixture status' },
+        source: { repository: 'fixture/example', issue: 'fixture issue', commit: 'fixture commit', status: 'fixture status' },
       }],
       pullRequests: ALL_CHILDREN.filter((issue) => EXPECTED_CHILD_PRS[issue] !== null).map((issue) => ({
         childIssue: issue,
@@ -163,10 +201,28 @@ function buildCompleteFixture(root: string) {
         state: 'MERGED',
         checks: [
           { name: 'CI / Test', conclusion: 'success', sha: head },
-          { name: 'CI / Lint', conclusion: 'skipped', exactHead: true },
+          { name: 'CI / Lint', conclusion: 'skipped', sha: head },
         ],
       })),
     },
+  });
+  installFakeGh(root, {
+    repository: 'fixture/example',
+    prs: Object.fromEntries(ALL_CHILDREN
+      .filter((issue) => EXPECTED_CHILD_PRS[issue] !== null)
+      .map((issue) => [String(EXPECTED_CHILD_PRS[issue]), {
+        number: EXPECTED_CHILD_PRS[issue],
+        state: 'MERGED',
+        headRefOid: head,
+        mergeCommit: { oid: 'b'.repeat(40) },
+        statusCheckRollup: [
+          { workflowName: 'CI', name: 'Test', conclusion: 'success' },
+          { workflowName: 'CI', name: 'Lint', conclusion: 'skipped' },
+        ],
+      }])),
+    issues: Object.fromEntries(ALL_CHILDREN.map((issue) => [String(issue), { number: issue, state: 'CLOSED' }])),
+    timelines: { '3709': [{ event: 'committed', sha: 'b'.repeat(40) }] },
+    statuses: { ['b'.repeat(40)]: { sha: 'b'.repeat(40), state: 'success' } },
   });
   writeFileSync(join(root, 'changed-files.txt'), 'scripts/verify-epic-3698-closure.mjs\nreceipts/epic-3698/README.md\n');
   return head;
@@ -187,15 +243,17 @@ describe('epic-3698 closure verifier (#3712)', () => {
     buildCompleteFixture(fixture);
     writeFileSync(join(fixture, 'tracked.txt'), 'base\n');
     commitFixture(fixture, 'base');
+    gitFixture(fixture, ['branch', 'base']);
     writeFileSync(join(fixture, 'tracked.txt'), 'head\n');
     commitFixtureHead(fixture, 'head');
     writeFileSync(join(fixture, 'changed-files.txt'), 'tracked.txt\n');
     const run = runVerifier([
       '--root', fixture,
       '--evidence', join(fixture, 'ci-evidence.json'),
+      '--base', 'base',
       '--changed-files', join(fixture, 'changed-files.txt'),
     ]);
-    expect(run.report.verdict).toBe('PASS');
+    expect(run.report.verdict, JSON.stringify(run.report.checks, null, 2)).toBe('PASS');
     expect(run.status).toBe(0);
     for (const c of run.report.checks) expect(c.status, `${c.id}: ${c.problems.join('; ')}`).toBe('pass');
   });
@@ -222,7 +280,38 @@ describe('epic-3698 closure verifier (#3712)', () => {
     expect(check(run, 'exactHeadCi').problems.join(' ')).toContain(stale);
   });
 
-  it('rejects checks without exact-head binding and non-green conclusions', () => {
+  it('rejects caller-controlled valid SHA evidence that disagrees with live GitHub', () => {
+    buildCompleteFixture(fixture);
+    const evidencePath = join(fixture, 'ci-evidence.json');
+    const evidence = JSON.parse(readFileSync(evidencePath, 'utf8'));
+    const forged = 'c'.repeat(40);
+    evidence.payload.pullRequests[0].headSha = forged;
+    evidence.payload.pullRequests[0].mergeCommitSha = forged;
+    evidence.payload.pullRequests[0].checks = [{ name: 'CI / Test', conclusion: 'success', sha: forged }];
+    writeJson(evidencePath, evidence);
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', evidencePath,
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'exactHeadCi').status).toBe('fail');
+    expect(check(run, 'exactHeadCi').problems.join(' ')).toContain('does not match live PR head');
+  });
+
+  it('never passes caller evidence when live GitHub verification is unavailable', () => {
+    buildCompleteFixture(fixture);
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ], fixture, { fakeGh: false });
+    expect(run.status).toBe(2);
+    expect(check(run, 'exactHeadCi').status).toBe('pending');
+    expect(run.report.verdict).not.toBe('PASS');
+  });
+
+  it('rejects checks without live-head binding and non-green conclusions', () => {
     buildCompleteFixture(fixture);
     writeJson(join(fixture, 'ci-evidence.json'), {
       schemaVersion: 1,
@@ -239,8 +328,23 @@ describe('epic-3698 closure verifier (#3712)', () => {
     ]);
     const problems = check(run, 'exactHeadCi').problems.join(' ');
     expect(run.status).toBe(1);
-    expect(problems).toContain('exact head');
+    expect(problems).toContain('.sha must be a 40-char lowercase hex SHA');
     expect(problems).toContain('failure');
+  });
+
+  it('rejects unsigned exactHead attestations', () => {
+    buildCompleteFixture(fixture);
+    const evidencePath = join(fixture, 'ci-evidence.json');
+    const evidence = JSON.parse(readFileSync(evidencePath, 'utf8'));
+    evidence.payload.pullRequests[0].checks = [{ name: 'CI / Test', conclusion: 'success', exactHead: true }];
+    writeJson(evidencePath, evidence);
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', evidencePath,
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'exactHeadCi').problems.join(' ')).toContain('exactHead is unsupported');
   });
 
   it('rejects forged child-terminal receipts that provide only free-form evidence', () => {
@@ -319,9 +423,41 @@ describe('epic-3698 closure verifier (#3712)', () => {
       '--evidence', join(fixture, 'ci-evidence.json'),
       '--changed-files', join(fixture, 'changed-files.txt'),
     ]);
-    expect(run.status).toBe(1);
+    expect(run.status).not.toBe(0);
     expect(check(run, 'childTerminality').status).toBe('fail');
     expect(check(run, 'childTerminality').problems.join(' ')).toContain('independently collected direct issue artifact');
+  });
+
+  it('rejects forged direct issue commit/status evidence even when receipt and CI JSON agree', () => {
+    buildCompleteFixture(fixture);
+    const evidencePath = join(fixture, 'ci-evidence.json');
+    const evidence = JSON.parse(readFileSync(evidencePath, 'utf8'));
+    const forged = 'c'.repeat(40);
+    evidence.payload.directIssues[0].commit.sha = forged;
+    evidence.payload.directIssues[0].status.sha = forged;
+    writeJson(evidencePath, evidence);
+    writeJson(join(fixture, 'receipts', 'epic-3698', 'child-3709-terminal.receipt.json'), {
+      schemaVersion: 1,
+      kind: 'child-terminal',
+      issue: 3709,
+      createdAt: '2026-08-12T00:00:00Z',
+      payload: {
+        state: 'closed',
+        evidence: {
+          issue: { number: 3709, state: 'CLOSED' },
+          commit: { sha: forged },
+          status: { state: 'success', sha: forged },
+        },
+      },
+    });
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', evidencePath,
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).not.toBe(0);
+    expect(check(run, 'exactHeadCi').status, JSON.stringify(check(run, 'exactHeadCi'), null, 2)).toBe('fail');
+    expect(check(run, 'exactHeadCi').problems.join(' ')).toContain('live issue timeline commit');
   });
 
   it('does not let --changed-files bypass package.json version-diff inspection', () => {
@@ -387,6 +523,29 @@ describe('epic-3698 closure verifier (#3712)', () => {
     expect(check(run, 'releaseSecurityParity').problems.join(' ')).toContain('1.0.0 -> 2.0.0');
   });
 
+  it('does not trust a shallow-history HEAD^ fallback when the requested base is unavailable', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(join(fixture, '.github', 'workflows', 'release.yml'), 'on: push\n');
+    commitFixture(fixture, 'protected change before HEAD');
+    writeFileSync(join(fixture, 'head.txt'), 'head\n');
+    commitFixtureHead(fixture, 'head');
+
+    // Model a depth-2 checkout: the protected change is in the shallow parent,
+    // while the requested base and its origin equivalent are both unavailable.
+    const shallowParent = gitFixture(fixture, ['rev-parse', 'HEAD^']);
+    writeFileSync(join(fixture, '.git', 'shallow'), `${shallowParent}\n`);
+
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--base', 'missing-base',
+    ]);
+    expect(run.status).toBe(2);
+    expect(check(run, 'releaseSecurityParity').status).toBe('pending');
+    expect(check(run, 'releaseSecurityParity').details).toContain('change set unavailable');
+    expect(check(run, 'releaseSecurityParity').details).not.toContain('HEAD^');
+  });
+
   it('fails closed on release/publish authority mutation in the change set', () => {
     buildCompleteFixture(fixture);
     writeFileSync(join(fixture, 'changed-files.txt'), '.github/workflows/release.yml\n');
@@ -398,6 +557,42 @@ describe('epic-3698 closure verifier (#3712)', () => {
     expect(run.status).toBe(1);
     expect(check(run, 'releaseSecurityParity').status).toBe('fail');
     expect(check(run, 'releaseSecurityParity').problems.join(' ')).toContain('release.yml');
+  });
+
+  it('allows only the exact v5 release smoke skill-path correction', () => {
+    buildCompleteFixture(fixture);
+    const workflowPath = join(fixture, '.github', 'workflows', 'release.yml');
+    writeFileSync(workflowPath, [
+      'jobs:',
+      '  smoke:',
+      '    steps:',
+      '      - run: |',
+      '          test -s "$SMOKE_PACKAGE_ROOT/skills/omc-reference/SKILL.md"',
+      '          test -f "$SMOKE_PACKAGE_ROOT/skills/setup/SKILL.md"',
+      '          cmp "$SMOKE_PACKAGE_ROOT/skills/omc-reference/SKILL.md" "$SMOKE_PROJECT/.claude/skills/omc-reference/SKILL.md"',
+      '',
+    ].join('\n'));
+    commitFixture(fixture, 'base release smoke');
+    gitFixture(fixture, ['branch', 'base']);
+    writeFileSync(workflowPath, [
+      'jobs:',
+      '  smoke:',
+      '    steps:',
+      '      - run: |',
+      '          test -s "$SMOKE_PACKAGE_ROOT/skills/wiki/SKILL.md"',
+      '          cmp "$SMOKE_PACKAGE_ROOT/skills/wiki/SKILL.md" "$SMOKE_PROJECT/.claude/skills/wiki/SKILL.md"',
+      '',
+    ].join('\n'));
+    commitFixtureHead(fixture, 'correct release smoke');
+    writeFileSync(join(fixture, 'changed-files.txt'), '.github/workflows/release.yml\n');
+
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--base', 'base',
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(check(run, 'releaseSecurityParity').status).toBe('pass');
   });
 
   it('fails on schema-invalid migration receipts', () => {
@@ -483,6 +678,22 @@ describe('epic-3698 closure verifier (#3712)', () => {
     writeFileSync(
       join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
       '# design\n[escape][out\\]side]\n\n[out\\]side]: ../../../../outside.md\n',
+    );
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'docsLinks').status).toBe('fail');
+    expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
+  });
+
+  it('rejects escaped inline-label destinations that traverse outside the repository root', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n[escape\\]label](../../../outside.md)\n',
     );
     const run = runVerifier([
       '--root', fixture,
