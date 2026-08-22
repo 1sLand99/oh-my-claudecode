@@ -10,18 +10,27 @@
  *    checkpoint to the same session twice.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   mkdtempSync,
   mkdirSync,
   existsSync,
   rmSync,
   readdirSync,
+  renameSync,
+  symlinkSync,
+  unlinkSync,
   writeFileSync,
   readFileSync,
 } from 'fs';
+import * as nodeFs from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
+
+vi.mock('fs', async () => {
+  const actual = await vi.importActual<typeof import('fs')>('fs');
+  return { ...actual };
+});
 
 import {
   processPreCompact,
@@ -334,6 +343,202 @@ describe('PreCompact restore (issue #3730)', () => {
 
     const candidate = await findLatestCheckpointForRestore(tempDir, 'test-session');
     expect(candidate.ok).toBe(false);
+  });
+
+  it('rejects an in-directory symlink to external JSON without restoring or marking it', async () => {
+    const checkpointDir = join(getOmcRootForTest(tempDir), 'state', 'checkpoints');
+    mkdirSync(checkpointDir, { recursive: true });
+    const marker = 'EXTERNAL_SYMLINK_CHECKPOINT_MARKER';
+    const externalPath = join(tempDir, 'external-checkpoint.json');
+    writeFileSync(
+      externalPath,
+      JSON.stringify({
+        created_at: new Date().toISOString(),
+        trigger: 'auto',
+        active_modes: {},
+        todo_summary: { pending: 1, in_progress: 0, completed: 0 },
+        wisdom_exported: false,
+        plan_refs: { prd: { title: marker } },
+      }),
+      'utf-8',
+    );
+    const linkedPath = join(checkpointDir, 'checkpoint-external.json');
+    symlinkSync(externalPath, linkedPath);
+
+    const candidate = await findLatestCheckpointForRestore(tempDir, 'test-session');
+    expect(candidate.ok).toBe(false);
+    expect(candidate.ok ? formatCheckpointRestoreContext(candidate.checkpoint, candidate.path) : '')
+      .not.toContain(marker);
+    if (candidate.ok) {
+      markCheckpointRestored(tempDir, 'test-session', candidate.path);
+    }
+    expect(
+      existsSync(
+        join(
+          getOmcRootForTest(tempDir),
+          'state',
+          'checkpoints-restored',
+          'test-session',
+          'restored.json',
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  it('rejects a symlinked .omc/state ancestor before reading external checkpoints', async () => {
+    const omcRoot = getOmcRootForTest(tempDir);
+    const statePath = join(omcRoot, 'state');
+    rmSync(statePath, { recursive: true, force: true });
+
+    const marker = 'EXTERNAL_STATE_SYMLINK_CHECKPOINT_MARKER';
+    const externalState = join(tempDir, 'external-state');
+    const externalCheckpointDir = join(externalState, 'checkpoints');
+    mkdirSync(externalCheckpointDir, { recursive: true });
+    writeFileSync(
+      join(externalCheckpointDir, 'checkpoint-external.json'),
+      JSON.stringify({
+        created_at: new Date().toISOString(),
+        trigger: 'auto',
+        active_modes: {},
+        todo_summary: { pending: 1, in_progress: 0, completed: 0 },
+        wisdom_exported: false,
+        plan_refs: { prd: { title: marker } },
+      }),
+      'utf-8',
+    );
+    symlinkSync(externalState, statePath, 'dir');
+
+    const candidate = await findLatestCheckpointForRestore(tempDir, 'test-session');
+    expect(candidate.ok).toBe(false);
+    expect(
+      existsSync(join(externalState, 'checkpoints-restored', 'test-session', 'restored.json')),
+    ).toBe(false);
+    expect(candidate.ok ? formatCheckpointRestoreContext(candidate.checkpoint, candidate.path) : '')
+      .not.toContain(marker);
+  });
+
+  it('keeps reading the opened checkpoint when its pathname is swapped during read', async () => {
+    const checkpointPath = writeCheckpoint(tempDir, new Date().toISOString(), {
+      plan_refs: {
+        prd: {
+          path: '/repo/prd.json',
+          title: 'IN_ROOT_CHECKPOINT',
+          status: 'in_progress',
+          stories_total: 1,
+          stories_completed: 0,
+        },
+      },
+    });
+    const backupPath = `${checkpointPath}.original`;
+    const externalPath = join(tempDir, 'external-mutated-checkpoint.json');
+    const marker = 'EXTERNAL_MUTATION_CHECKPOINT_MARKER';
+    writeFileSync(
+      externalPath,
+      JSON.stringify({
+        created_at: new Date().toISOString(),
+        trigger: 'auto',
+        active_modes: {},
+        todo_summary: { pending: 1, in_progress: 0, completed: 0 },
+        wisdom_exported: false,
+        plan_refs: { prd: { title: marker } },
+      }),
+      'utf-8',
+    );
+
+    let swapped = false;
+    const originalReadSync = nodeFs.readSync;
+    const readSpy = vi.spyOn(nodeFs, 'readSync').mockImplementation(((
+      fd: number,
+      buffer: NodeJS.ArrayBufferView,
+      offset: number,
+      length: number,
+      position: number | null,
+    ) => {
+      if (!swapped) {
+        swapped = true;
+        renameSync(checkpointPath, backupPath);
+        symlinkSync(externalPath, checkpointPath);
+      }
+      return originalReadSync(fd, buffer, offset, length, position);
+    }) as never);
+    try {
+      const candidate = await findLatestCheckpointForRestore(tempDir, 'test-session');
+      expect(swapped).toBe(true);
+      expect(candidate.ok).toBe(true);
+      if (candidate.ok) {
+        const context = formatCheckpointRestoreContext(candidate.checkpoint, candidate.path);
+        expect(context).toContain('IN_ROOT_CHECKPOINT');
+        expect(context).not.toContain(marker);
+      }
+    } finally {
+      readSpy.mockRestore();
+      rmSync(checkpointPath, { force: true });
+      renameSync(backupPath, checkpointPath);
+    }
+  });
+
+  it('rejects an ancestor redirect between verification and open', async () => {
+    const checkpointPath = writeCheckpoint(tempDir, new Date().toISOString());
+    const checkpointName = checkpointPath.slice(checkpointPath.lastIndexOf('/') + 1);
+    const omcRoot = getOmcRootForTest(tempDir);
+    const statePath = join(omcRoot, 'state');
+    const stateBackupPath = `${statePath}.verified-backup`;
+    const externalState = join(tempDir, 'external-state-redirect');
+    const externalCheckpointDir = join(externalState, 'checkpoints');
+    const marker = 'EXTERNAL_ANCESTOR_REDIRECT_CHECKPOINT_MARKER';
+    mkdirSync(externalCheckpointDir, { recursive: true });
+    writeFileSync(
+      join(externalCheckpointDir, checkpointName),
+      JSON.stringify({
+        created_at: new Date().toISOString(),
+        trigger: 'auto',
+        active_modes: {},
+        todo_summary: { pending: 1, in_progress: 0, completed: 0 },
+        wisdom_exported: false,
+        plan_refs: { prd: { title: marker } },
+      }),
+      'utf-8',
+    );
+
+    let redirected = false;
+    const originalOpenSync = nodeFs.openSync;
+    const openSpy = vi.spyOn(nodeFs, 'openSync').mockImplementation((path, flags, mode) => {
+      if (!redirected && String(path) === checkpointPath) {
+        redirected = true;
+        renameSync(statePath, stateBackupPath);
+        symlinkSync(externalState, statePath, 'dir');
+        try {
+          return originalOpenSync(path, flags, mode);
+        } finally {
+          unlinkSync(statePath);
+          renameSync(stateBackupPath, statePath);
+        }
+      }
+      return originalOpenSync(path, flags, mode);
+    });
+    try {
+      const candidate = await findLatestCheckpointForRestore(tempDir, 'test-session');
+      expect(redirected).toBe(true);
+      expect(candidate.ok).toBe(false);
+      expect(
+        existsSync(
+          join(omcRoot, 'state', 'checkpoints-restored', 'test-session', 'restored.json'),
+        ),
+      ).toBe(false);
+      expect(
+        existsSync(
+          join(externalState, 'checkpoints-restored', 'test-session', 'restored.json'),
+        ),
+      ).toBe(false);
+      expect(candidate.ok ? formatCheckpointRestoreContext(candidate.checkpoint, candidate.path) : '')
+        .not.toContain(marker);
+    } finally {
+      openSpy.mockRestore();
+      if (existsSync(stateBackupPath)) {
+        if (existsSync(statePath)) unlinkSync(statePath);
+        renameSync(stateBackupPath, statePath);
+      }
+    }
   });
 
   it('formats a bounded restore context containing plan anchors', async () => {

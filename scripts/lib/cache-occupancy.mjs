@@ -5,6 +5,12 @@ import { spawnSync } from 'child_process';
 
 const NAME = /^[a-f0-9]{64}\.json$/;
 
+/** Resolve paths for identity comparisons; only Windows has case-insensitive paths. */
+export function pathIdentity(path) {
+  const normalized = resolve(path);
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
+
 function identity(pid) {
   if (!Number.isSafeInteger(pid) || pid <= 0) return null;
   if (process.platform === 'linux') {
@@ -40,7 +46,7 @@ function registryDir(configDir) { return join(configDir, '.omc', 'cache-occupanc
 function fileName(root, pid, start) { return `${createHash('sha256').update(`${root}\0${pid}\0${start}`).digest('hex')}.json`; }
 
 export function publishCacheOccupancy(pluginRoot, configDir, pid = process.ppid) {
-  const root = resolve(pluginRoot || '');
+  const root = pathIdentity(pluginRoot || '');
   const start = identity(pid);
   if (!root || !start) return false;
   const dir = registryDir(configDir);
@@ -69,7 +75,7 @@ export function readOccupiedPluginRoots(configDir) {
       try { unlinkSync(path); } catch {}
       continue;
     }
-    roots.add(resolve(record.pluginRoot));
+    roots.add(pathIdentity(record.pluginRoot));
   }
   return { roots, unavailable: false };
 }

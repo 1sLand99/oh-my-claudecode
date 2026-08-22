@@ -6,12 +6,18 @@
  * Claude Code does (stdin JSON payload), against a built dist tree.
  */
 
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
+import * as nodeFs from 'fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+
+vi.mock('fs', async () => {
+  const actual = await vi.importActual<typeof import('fs')>('fs');
+  return { ...actual };
+});
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const SCRIPT_PATH = join(__dirname, '..', '..', 'scripts', 'session-start.mjs');
@@ -47,7 +53,12 @@ interface RunResult {
   stdout: string;
 }
 
-function runHook(payload: Record<string, unknown>, project: string, home: string): RunResult {
+function runHook(
+  payload: Record<string, unknown>,
+  project: string,
+  home: string,
+  extraEnv: Record<string, string> = {},
+): RunResult {
   const stdout = execFileSync(NODE, [SCRIPT_PATH], {
     input: JSON.stringify(payload),
     encoding: 'utf-8',
@@ -55,12 +66,50 @@ function runHook(payload: Record<string, unknown>, project: string, home: string
       ...process.env,
       HOME: home,
       USERPROFILE: home,
+      ...extraEnv,
       // No plugin root: the restore import is skipped when unset, which is
       // covered separately; with it unset this returns the baseline output.
     },
     timeout: 15000,
   });
   return { stdout };
+}
+
+function writeAncestorRedirectPreload(tempDir: string): string {
+  const preloadPath = join(tempDir, 'precompact-ancestor-redirect-preload.mjs');
+  writeFileSync(
+    preloadPath,
+    `import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+
+const checkpointPath = process.env.OMC_REDIRECT_CHECKPOINT;
+const statePath = process.env.OMC_REDIRECT_STATE;
+const stateBackupPath = process.env.OMC_REDIRECT_STATE_BACKUP;
+const externalState = process.env.OMC_REDIRECT_EXTERNAL_STATE;
+const signalPath = process.env.OMC_REDIRECT_SIGNAL;
+const originalOpenSync = fs.openSync;
+let redirected = false;
+
+fs.openSync = function(path, flags, mode) {
+  if (!redirected && String(path) === checkpointPath) {
+    redirected = true;
+    fs.renameSync(statePath, stateBackupPath);
+    fs.symlinkSync(externalState, statePath, 'dir');
+    try {
+      return originalOpenSync.call(fs, path, flags, mode);
+    } finally {
+      fs.unlinkSync(statePath);
+      fs.renameSync(stateBackupPath, statePath);
+      fs.writeFileSync(signalPath, 'redirected');
+    }
+  }
+  return originalOpenSync.call(fs, path, flags, mode);
+};
+syncBuiltinESMExports();
+`,
+    'utf-8',
+  );
+  return preloadPath;
 }
 
 function runHookWithPlugin(
@@ -344,12 +393,178 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
       expect(parseContext(stdout)).not.toContain('PRECOMPACT CHECKPOINT RESTORED');
     }
   });
+
+  it('installed SessionStart helper rejects an in-directory symlink to external JSON', () => {
+    const checkpointDir = join(project, '.omc', 'state', 'checkpoints');
+    mkdirSync(checkpointDir, { recursive: true });
+    const marker = 'EXTERNAL_INSTALLED_SYMLINK_CHECKPOINT_MARKER';
+    const externalPath = join(tempDir, 'external-installed-checkpoint.json');
+    writeFileSync(
+      externalPath,
+      JSON.stringify({
+        created_at: new Date().toISOString(),
+        trigger: 'auto',
+        active_modes: {},
+        todo_summary: { pending: 1, in_progress: 0, completed: 0 },
+        wisdom_exported: false,
+        plan_refs: { prd: { title: marker } },
+      }),
+      'utf-8',
+    );
+    symlinkSync(externalPath, join(checkpointDir, 'checkpoint-external.json'));
+
+    const { stdout } = runHook(
+      {
+        hook_event_name: 'SessionStart',
+        source: 'compact',
+        session_id: 'installed-symlink-session',
+        cwd: project,
+      },
+      project,
+      home,
+    );
+
+    expect(parseContext(stdout)).not.toContain('PRECOMPACT CHECKPOINT RESTORED');
+    expect(parseContext(stdout)).not.toContain(marker);
+    expect(
+      existsSync(
+        join(
+          project,
+          '.omc',
+          'state',
+          'checkpoints-restored',
+          'installed-symlink-session',
+          'restored.json',
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  it('installed SessionStart helper rejects a symlinked .omc/state ancestor', () => {
+    const omcRoot = join(project, '.omc');
+    const statePath = join(omcRoot, 'state');
+    rmSync(statePath, { recursive: true, force: true });
+    mkdirSync(omcRoot, { recursive: true });
+
+    const marker = 'EXTERNAL_INSTALLED_STATE_SYMLINK_CHECKPOINT_MARKER';
+    const externalState = join(tempDir, 'external-installed-state');
+    const externalCheckpointDir = join(externalState, 'checkpoints');
+    mkdirSync(externalCheckpointDir, { recursive: true });
+    writeFileSync(
+      join(externalCheckpointDir, 'checkpoint-external.json'),
+      JSON.stringify({
+        created_at: new Date().toISOString(),
+        trigger: 'auto',
+        active_modes: {},
+        todo_summary: { pending: 1, in_progress: 0, completed: 0 },
+        wisdom_exported: false,
+        plan_refs: { prd: { title: marker } },
+      }),
+      'utf-8',
+    );
+    symlinkSync(externalState, statePath, 'dir');
+
+    const { stdout } = runHook(
+      {
+        hook_event_name: 'SessionStart',
+        source: 'compact',
+        session_id: 'installed-state-symlink-session',
+        cwd: project,
+      },
+      project,
+      home,
+    );
+
+    expect(parseContext(stdout)).not.toContain('PRECOMPACT CHECKPOINT RESTORED');
+    expect(parseContext(stdout)).not.toContain(marker);
+    expect(
+      existsSync(
+        join(
+          externalState,
+          'checkpoints-restored',
+          'installed-state-symlink-session',
+          'restored.json',
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  it('installed SessionStart rejects an ancestor redirect between verification and open', () => {
+    const checkpointPath = writeCheckpoint(project, new Date().toISOString());
+    const checkpointName = checkpointPath.slice(checkpointPath.lastIndexOf('/') + 1);
+    const statePath = join(project, '.omc', 'state');
+    const stateBackupPath = `${statePath}.verified-backup`;
+    const externalState = join(tempDir, 'external-installed-redirect-state');
+    const externalCheckpointDir = join(externalState, 'checkpoints');
+    const signalPath = join(tempDir, 'installed-redirect-signal');
+    const marker = 'EXTERNAL_INSTALLED_ANCESTOR_REDIRECT_CHECKPOINT_MARKER';
+    mkdirSync(externalCheckpointDir, { recursive: true });
+    writeFileSync(
+      join(externalCheckpointDir, checkpointName),
+      JSON.stringify({
+        created_at: new Date().toISOString(),
+        trigger: 'auto',
+        active_modes: {},
+        todo_summary: { pending: 1, in_progress: 0, completed: 0 },
+        wisdom_exported: false,
+        plan_refs: { prd: { title: marker } },
+      }),
+      'utf-8',
+    );
+    const preloadPath = writeAncestorRedirectPreload(tempDir);
+
+    const { stdout } = runHook(
+      {
+        hook_event_name: 'SessionStart',
+        source: 'compact',
+        session_id: 'installed-ancestor-redirect-session',
+        cwd: project,
+      },
+      project,
+      home,
+      {
+        NODE_OPTIONS: `--import=${preloadPath}`,
+        OMC_REDIRECT_CHECKPOINT: checkpointPath,
+        OMC_REDIRECT_STATE: statePath,
+        OMC_REDIRECT_STATE_BACKUP: stateBackupPath,
+        OMC_REDIRECT_EXTERNAL_STATE: externalState,
+        OMC_REDIRECT_SIGNAL: signalPath,
+      },
+    );
+
+    expect(existsSync(signalPath)).toBe(true);
+    expect(parseContext(stdout)).not.toContain('PRECOMPACT CHECKPOINT RESTORED');
+    expect(parseContext(stdout)).not.toContain(marker);
+    expect(
+      existsSync(
+        join(
+          project,
+          '.omc',
+          'state',
+          'checkpoints-restored',
+          'installed-ancestor-redirect-session',
+          'restored.json',
+        ),
+      ),
+    ).toBe(false);
+    expect(
+      existsSync(
+        join(
+          externalState,
+          'checkpoints-restored',
+          'installed-ancestor-redirect-session',
+          'restored.json',
+        ),
+      ),
+    ).toBe(false);
+  });
 });
 
-// Template parity: the templates/hooks/lib/precompact-restore.mjs helper must
-// reject the same traversal payloads as the scripts/ copy.
-describe('templates/hooks/lib/precompact-restore.mjs parity (issue #3730 security)', () => {
+// Template/installed parity: both self-contained helper copies must reject
+// the same traversal and TOCTOU payloads.
+describe('precompact-restore helper parity (issue #3730 security)', () => {
   const TEMPLATE_HELPER = join(__dirname, '..', '..', 'templates', 'hooks', 'lib', 'precompact-restore.mjs');
+  const INSTALLED_HELPER = join(__dirname, '..', '..', 'scripts', 'lib', 'precompact-restore.mjs');
 
   let tempDir: string;
   let project: string;
@@ -375,6 +590,254 @@ describe('templates/hooks/lib/precompact-restore.mjs parity (issue #3730 securit
     const result = mod.restorePreCompactCheckpoint(omcRoot, '../../../../../../tmp/escaped-3730-template-trav');
     expect(result).toBeNull();
     expect(existsSync('/tmp/escaped-3730-template-trav/restored.json')).toBe(false);
+  });
+
+  it('rejects an in-directory symlink to external JSON without restoring or marking it', async () => {
+    const checkpointDir = join(project, '.omc', 'state', 'checkpoints');
+    rmSync(join(checkpointDir, 'checkpoint-now.json'));
+    const marker = 'EXTERNAL_TEMPLATE_SYMLINK_CHECKPOINT_MARKER';
+    const externalPath = join(tempDir, 'external-checkpoint.json');
+    writeFileSync(
+      externalPath,
+      JSON.stringify({
+        created_at: new Date().toISOString(),
+        trigger: 'auto',
+        active_modes: {},
+        todo_summary: { pending: 1, in_progress: 0, completed: 0 },
+        wisdom_exported: false,
+        plan_refs: { prd: { title: marker } },
+      }),
+      'utf-8',
+    );
+    const linkedPath = join(checkpointDir, 'checkpoint-external.json');
+    symlinkSync(externalPath, linkedPath);
+
+    const mod = await import(pathToFileURL(TEMPLATE_HELPER).href) as {
+      restorePreCompactCheckpoint: (root: string, sid: string) => { text: string } | null;
+    };
+    const omcRoot = join(project, '.omc');
+    const result = mod.restorePreCompactCheckpoint(omcRoot, 'template-symlink-session');
+    expect(result).toBeNull();
+    expect(result?.text ?? '').not.toContain(marker);
+    expect(
+      existsSync(
+        join(
+          omcRoot,
+          'state',
+          'checkpoints-restored',
+          'template-symlink-session',
+          'restored.json',
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  it('rejects a symlinked .omc/state ancestor in the template helper', async () => {
+    const omcRoot = join(project, '.omc');
+    const statePath = join(omcRoot, 'state');
+    rmSync(statePath, { recursive: true, force: true });
+
+    const marker = 'EXTERNAL_TEMPLATE_STATE_SYMLINK_CHECKPOINT_MARKER';
+    const externalState = join(tempDir, 'external-template-state');
+    const externalCheckpointDir = join(externalState, 'checkpoints');
+    mkdirSync(externalCheckpointDir, { recursive: true });
+    writeFileSync(
+      join(externalCheckpointDir, 'checkpoint-external.json'),
+      JSON.stringify({
+        created_at: new Date().toISOString(),
+        trigger: 'auto',
+        active_modes: {},
+        todo_summary: { pending: 1, in_progress: 0, completed: 0 },
+        wisdom_exported: false,
+        plan_refs: { prd: { title: marker } },
+      }),
+      'utf-8',
+    );
+    symlinkSync(externalState, statePath, 'dir');
+
+    const mod = await import(pathToFileURL(TEMPLATE_HELPER).href);
+    const result = mod.restorePreCompactCheckpoint(omcRoot, 'template-state-symlink-session');
+    expect(result).toBeNull();
+    expect(result?.text ?? '').not.toContain(marker);
+    expect(
+      existsSync(
+        join(
+          externalState,
+          'checkpoints-restored',
+          'template-state-symlink-session',
+          'restored.json',
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  it('rejects a template ancestor redirect between verification and open', async () => {
+    const checkpointPath = join(project, '.omc', 'state', 'checkpoints', 'checkpoint-now.json');
+    const checkpointName = checkpointPath.slice(checkpointPath.lastIndexOf('/') + 1);
+    const omcRoot = join(project, '.omc');
+    const statePath = join(omcRoot, 'state');
+    const stateBackupPath = `${statePath}.verified-backup`;
+    const externalState = join(tempDir, 'external-template-redirect-state');
+    const externalCheckpointDir = join(externalState, 'checkpoints');
+    const marker = 'EXTERNAL_TEMPLATE_ANCESTOR_REDIRECT_CHECKPOINT_MARKER';
+    mkdirSync(externalCheckpointDir, { recursive: true });
+    writeFileSync(
+      join(externalCheckpointDir, checkpointName),
+      JSON.stringify({
+        created_at: new Date().toISOString(),
+        trigger: 'auto',
+        active_modes: {},
+        todo_summary: { pending: 1, in_progress: 0, completed: 0 },
+        wisdom_exported: false,
+        plan_refs: { prd: { title: marker } },
+      }),
+      'utf-8',
+    );
+
+    let redirected = false;
+    const originalOpenSync = nodeFs.openSync;
+    const openSpy = vi.spyOn(nodeFs, 'openSync').mockImplementation((path, flags, mode) => {
+      if (!redirected && String(path) === checkpointPath) {
+        redirected = true;
+        renameSync(statePath, stateBackupPath);
+        symlinkSync(externalState, statePath, 'dir');
+        try {
+          return originalOpenSync(path, flags, mode);
+        } finally {
+          unlinkSync(statePath);
+          renameSync(stateBackupPath, statePath);
+        }
+      }
+      return originalOpenSync(path, flags, mode);
+    });
+    try {
+      const mod = await import(`${pathToFileURL(TEMPLATE_HELPER).href}?template-ancestor-redirect`);
+      const result = mod.restorePreCompactCheckpoint(omcRoot, 'template-ancestor-redirect-session');
+      expect(redirected).toBe(true);
+      expect(result).toBeNull();
+      expect(result?.text ?? '').not.toContain(marker);
+      expect(
+        existsSync(
+          join(
+            omcRoot,
+            'state',
+            'checkpoints-restored',
+            'template-ancestor-redirect-session',
+            'restored.json',
+          ),
+        ),
+      ).toBe(false);
+      expect(
+        existsSync(
+          join(
+            externalState,
+            'checkpoints-restored',
+            'template-ancestor-redirect-session',
+            'restored.json',
+          ),
+        ),
+      ).toBe(false);
+    } finally {
+      openSpy.mockRestore();
+      if (existsSync(stateBackupPath)) {
+        if (existsSync(statePath)) unlinkSync(statePath);
+        renameSync(stateBackupPath, statePath);
+      }
+    }
+  });
+
+  it('keeps the template helper bound to the opened file when its pathname is swapped during read', async () => {
+    const checkpointPath = join(project, '.omc', 'state', 'checkpoints', 'checkpoint-now.json');
+    const backupPath = `${checkpointPath}.original`;
+    const externalPath = join(tempDir, 'external-template-mutated-checkpoint.json');
+    const marker = 'EXTERNAL_TEMPLATE_MUTATION_CHECKPOINT_MARKER';
+    writeFileSync(
+      externalPath,
+      JSON.stringify({
+        created_at: new Date().toISOString(),
+        trigger: 'auto',
+        active_modes: {},
+        todo_summary: { pending: 1, in_progress: 0, completed: 0 },
+        wisdom_exported: false,
+        plan_refs: { prd: { title: marker } },
+      }),
+      'utf-8',
+    );
+
+    let swapped = false;
+    const originalReadSync = nodeFs.readSync;
+    const readSpy = vi.spyOn(nodeFs, 'readSync').mockImplementation(((
+      fd: number,
+      buffer: NodeJS.ArrayBufferView,
+      offset: number,
+      length: number,
+      position: number | null,
+    ) => {
+      if (!swapped) {
+        swapped = true;
+        renameSync(checkpointPath, backupPath);
+        symlinkSync(externalPath, checkpointPath);
+      }
+      return originalReadSync(fd, buffer, offset, length, position);
+    }) as never);
+    try {
+      const mod = await import(`${pathToFileURL(TEMPLATE_HELPER).href}?template-mutation`);
+      const result = mod.restorePreCompactCheckpoint(join(project, '.omc'), 'template-mutation-session');
+      expect(swapped).toBe(true);
+      expect(result).not.toBeNull();
+      expect(result?.text ?? '').not.toContain(marker);
+    } finally {
+      readSpy.mockRestore();
+      rmSync(checkpointPath, { force: true });
+      renameSync(backupPath, checkpointPath);
+    }
+  });
+
+  it('keeps the installed helper bound to the opened file when its pathname is swapped during read', async () => {
+    const checkpointPath = join(project, '.omc', 'state', 'checkpoints', 'checkpoint-now.json');
+    const backupPath = `${checkpointPath}.original`;
+    const externalPath = join(tempDir, 'external-installed-mutated-checkpoint.json');
+    const marker = 'EXTERNAL_INSTALLED_MUTATION_CHECKPOINT_MARKER';
+    writeFileSync(
+      externalPath,
+      JSON.stringify({
+        created_at: new Date().toISOString(),
+        trigger: 'auto',
+        active_modes: {},
+        todo_summary: { pending: 1, in_progress: 0, completed: 0 },
+        wisdom_exported: false,
+        plan_refs: { prd: { title: marker } },
+      }),
+      'utf-8',
+    );
+
+    let swapped = false;
+    const originalReadSync = nodeFs.readSync;
+    const readSpy = vi.spyOn(nodeFs, 'readSync').mockImplementation(((
+      fd: number,
+      buffer: NodeJS.ArrayBufferView,
+      offset: number,
+      length: number,
+      position: number | null,
+    ) => {
+      if (!swapped) {
+        swapped = true;
+        renameSync(checkpointPath, backupPath);
+        symlinkSync(externalPath, checkpointPath);
+      }
+      return originalReadSync(fd, buffer, offset, length, position);
+    }) as never);
+    try {
+      const mod = await import(`${pathToFileURL(INSTALLED_HELPER).href}?installed-mutation`);
+      const result = mod.restorePreCompactCheckpoint(join(project, '.omc'), 'installed-mutation-session');
+      expect(swapped).toBe(true);
+      expect(result).not.toBeNull();
+      expect(result?.text ?? '').not.toContain(marker);
+    } finally {
+      readSpy.mockRestore();
+      rmSync(checkpointPath, { force: true });
+      renameSync(backupPath, checkpointPath);
+    }
   });
 
   it('restores a valid session ID in the template helper (parity with scripts/)', async () => {

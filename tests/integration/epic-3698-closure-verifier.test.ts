@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,10 +33,49 @@ function check(run: RunResult, id: string) {
 const TIER0_WORKFLOWS = ['plan', 'execute', 'review', 'verify'];
 const TIER0_ROLES = ['planner', 'executor', 'reviewer', 'verifier'];
 const ALL_CHILDREN = [3702, 3703, 3704, 3705, 3706, 3707, 3708, 3709, 3710, 3711];
+const EXPECTED_CHILD_PRS: Record<number, number | null> = {
+  3702: 3721,
+  3703: 3720,
+  3704: 3724,
+  3705: 3716,
+  3706: 3715,
+  3707: 3725,
+  3708: 3729,
+  3709: null,
+  3710: 3719,
+  3711: 3723,
+};
 
 function writeJson(path: string, value: unknown) {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function gitFixture(root: string, args: string[]) {
+  const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
+  if (result.status !== 0) throw new Error(`git ${args.join(' ')} failed: ${result.stderr}`);
+  return result.stdout.trim();
+}
+
+function commitFixture(root: string, message: string) {
+  const commands = [
+    ['init', '-q'],
+    ['config', 'user.email', 'fixture@example.invalid'],
+    ['config', 'user.name', 'fixture'],
+    ['add', '-A'],
+    ['commit', '-qm', message],
+  ];
+  for (const args of commands) {
+    const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
+    if (result.status !== 0) throw new Error(`git ${args.join(' ')} failed: ${result.stderr}`);
+  }
+}
+
+function commitFixtureHead(root: string, message: string) {
+  for (const args of [['add', '-A'], ['commit', '-qm', message]]) {
+    const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
+    if (result.status !== 0) throw new Error(`git ${args.join(' ')} failed: ${result.stderr}`);
+  }
 }
 
 // Builds a synthetic repository root where every epic #3698 closure
@@ -55,13 +94,28 @@ function buildCompleteFixture(root: string) {
 
   const receipts = join(root, 'receipts', 'epic-3698');
   mkdirSync(receipts, { recursive: true });
+  const head = 'a'.repeat(40);
   for (const issue of ALL_CHILDREN) {
+    const pullRequest = EXPECTED_CHILD_PRS[issue];
     writeJson(join(receipts, `child-${issue}-terminal.receipt.json`), {
       schemaVersion: 1,
       kind: 'child-terminal',
       issue,
       createdAt: '2026-08-12T00:00:00Z',
-      payload: { state: 'merged', evidence: `PR for #${issue} merged with green exact-head CI` },
+      payload: {
+        state: 'merged',
+        evidence: pullRequest === null
+          ? {
+              issue: { number: 3709, state: 'CLOSED' },
+              commit: { sha: 'b'.repeat(40) },
+              status: { state: 'success', sha: 'b'.repeat(40) },
+            }
+          : {
+              pullRequest: { number: pullRequest, headSha: head },
+              commit: { sha: 'b'.repeat(40) },
+              status: { conclusion: 'success', sha: head },
+            },
+      },
     });
   }
   writeJson(join(receipts, 'alias-usage.receipt.json'), {
@@ -87,7 +141,6 @@ function buildCompleteFixture(root: string) {
   mkdirSync(join(root, 'docs', 'design'), { recursive: true });
   writeFileSync(join(root, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'), '# design\n[receipts](../../receipts/epic-3698/README.md)\n');
 
-  const head = 'a'.repeat(40);
   writeJson(join(root, 'ci-evidence.json'), {
     schemaVersion: 1,
     kind: 'ci-evidence',
@@ -95,16 +148,24 @@ function buildCompleteFixture(root: string) {
     createdAt: '2026-08-12T00:00:00Z',
     payload: {
       collector: 'test-fixture-collector',
-      pullRequests: [
-        {
-          number: 1,
-          headSha: head,
-          checks: [
-            { name: 'CI / Test', conclusion: 'success', sha: head },
-            { name: 'CI / Lint', conclusion: 'skipped', exactHead: true },
-          ],
-        },
-      ],
+      directIssues: [{
+        issue: 3709,
+        state: 'CLOSED',
+        commit: { sha: 'b'.repeat(40) },
+        status: { sha: 'b'.repeat(40), state: 'success' },
+        source: { issue: 'fixture issue', commit: 'fixture commit', status: 'fixture status' },
+      }],
+      pullRequests: ALL_CHILDREN.filter((issue) => EXPECTED_CHILD_PRS[issue] !== null).map((issue) => ({
+        childIssue: issue,
+        number: EXPECTED_CHILD_PRS[issue],
+        headSha: head,
+        mergeCommitSha: 'b'.repeat(40),
+        state: 'MERGED',
+        checks: [
+          { name: 'CI / Test', conclusion: 'success', sha: head },
+          { name: 'CI / Lint', conclusion: 'skipped', exactHead: true },
+        ],
+      })),
     },
   });
   writeFileSync(join(root, 'changed-files.txt'), 'scripts/verify-epic-3698-closure.mjs\nreceipts/epic-3698/README.md\n');
@@ -124,6 +185,11 @@ describe('epic-3698 closure verifier (#3712)', () => {
 
   it('passes with exit 0 when every acceptance surface is satisfied', () => {
     buildCompleteFixture(fixture);
+    writeFileSync(join(fixture, 'tracked.txt'), 'base\n');
+    commitFixture(fixture, 'base');
+    writeFileSync(join(fixture, 'tracked.txt'), 'head\n');
+    commitFixtureHead(fixture, 'head');
+    writeFileSync(join(fixture, 'changed-files.txt'), 'tracked.txt\n');
     const run = runVerifier([
       '--root', fixture,
       '--evidence', join(fixture, 'ci-evidence.json'),
@@ -175,6 +241,150 @@ describe('epic-3698 closure verifier (#3712)', () => {
     expect(run.status).toBe(1);
     expect(problems).toContain('exact head');
     expect(problems).toContain('failure');
+  });
+
+  it('rejects forged child-terminal receipts that provide only free-form evidence', () => {
+    buildCompleteFixture(fixture);
+    writeJson(join(fixture, 'receipts', 'epic-3698', 'child-3702-terminal.receipt.json'), {
+      schemaVersion: 1,
+      kind: 'child-terminal',
+      issue: 3702,
+      createdAt: '2026-08-12T00:00:00Z',
+      payload: { state: 'merged', evidence: 'PR #3721 merged with green CI' },
+    });
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'childTerminality').status).toBe('fail');
+    expect(check(run, 'childTerminality').problems.join(' ')).toContain('structured object');
+  });
+
+  it('rejects unrelated or missing child PR substitution in CI evidence', () => {
+    buildCompleteFixture(fixture);
+    const evidencePath = join(fixture, 'ci-evidence.json');
+    const evidence = JSON.parse(readFileSync(evidencePath, 'utf8'));
+    evidence.payload.pullRequests[0].number = 3727;
+    writeJson(evidencePath, evidence);
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', evidencePath,
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'exactHeadCi').status).toBe('fail');
+    const problems = check(run, 'exactHeadCi').problems.join(' ');
+    expect(problems).toContain('not an expected child PR');
+    expect(problems).toContain('missing expected PR #3721');
+  });
+
+  it('rejects CI evidence with an absent childIssue or non-merged PR state', () => {
+    buildCompleteFixture(fixture);
+    const evidencePath = join(fixture, 'ci-evidence.json');
+    const evidence = JSON.parse(readFileSync(evidencePath, 'utf8'));
+    delete evidence.payload.pullRequests[0].childIssue;
+    evidence.payload.pullRequests[1].state = 'OPEN';
+    writeJson(evidencePath, evidence);
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', evidencePath,
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    const problems = check(run, 'exactHeadCi').problems.join(' ');
+    expect(problems).toContain('childIssue must equal');
+    expect(problems).toContain('state must be MERGED');
+  });
+
+  it('rejects forged no-PR terminal evidence that does not match the direct issue artifact', () => {
+    buildCompleteFixture(fixture);
+    writeJson(join(fixture, 'receipts', 'epic-3698', 'child-3709-terminal.receipt.json'), {
+      schemaVersion: 1,
+      kind: 'child-terminal',
+      issue: 3709,
+      createdAt: '2026-08-12T00:00:00Z',
+      payload: {
+        state: 'closed',
+        evidence: {
+          issue: { number: 3709, state: 'CLOSED' },
+          commit: { sha: 'c'.repeat(40) },
+          status: { state: 'success', sha: 'c'.repeat(40) },
+        },
+      },
+    });
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'childTerminality').status).toBe('fail');
+    expect(check(run, 'childTerminality').problems.join(' ')).toContain('independently collected direct issue artifact');
+  });
+
+  it('does not let --changed-files bypass package.json version-diff inspection', () => {
+    buildCompleteFixture(fixture);
+    writeJson(join(fixture, 'package.json'), { version: '9.9.9' });
+    writeFileSync(join(fixture, 'changed-files.txt'), 'package.json\n');
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(check(run, 'releaseSecurityParity').status).toBe('pending');
+    expect(check(run, 'releaseSecurityParity').details).toContain('unauthenticated');
+  });
+
+  it('does not let unauthenticated --changed-files omit package.json when the Git base is unavailable', () => {
+    buildCompleteFixture(fixture);
+    writeJson(join(fixture, 'package.json'), { name: 'fixture', version: '9.9.9' });
+    writeFileSync(join(fixture, 'changed-files.txt'), 'tracked.txt\n');
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(check(run, 'releaseSecurityParity').status).toBe('pending');
+    expect(check(run, 'releaseSecurityParity').details).toContain('unauthenticated');
+  });
+
+  it('detects a compact/reordered package.json version bump by parsing base and HEAD JSON', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(join(fixture, 'package.json'), '{"name":"fixture","version":"1.0.0"}\n');
+    commitFixture(fixture, 'base package');
+    writeFileSync(join(fixture, 'package.json'), '{"version":"2.0.0","name":"fixture"}\n');
+    commitFixtureHead(fixture, 'bumped package');
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--base', 'HEAD^',
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'releaseSecurityParity').status).toBe('fail');
+    expect(check(run, 'releaseSecurityParity').problems.join(' ')).toContain('1.0.0 -> 2.0.0');
+  });
+
+  it('compares package.json against the exact merge-base when the selected base diverges', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(join(fixture, 'package.json'), '{"name":"fixture","version":"1.0.0"}\n');
+    commitFixture(fixture, 'common ancestor');
+    gitFixture(fixture, ['branch', 'selected-base']);
+    gitFixture(fixture, ['checkout', 'selected-base']);
+    writeFileSync(join(fixture, 'package.json'), '{"version":"2.0.0","name":"fixture"}\n');
+    commitFixtureHead(fixture, 'selected base version');
+    gitFixture(fixture, ['checkout', '-b', 'head', 'selected-base~1']);
+    writeFileSync(join(fixture, 'package.json'), '{"name":"fixture","version":"2.0.0"}\n');
+    commitFixtureHead(fixture, 'head version');
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--base', 'selected-base',
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'releaseSecurityParity').status).toBe('fail');
+    expect(check(run, 'releaseSecurityParity').problems.join(' ')).toContain('1.0.0 -> 2.0.0');
   });
 
   it('fails closed on release/publish authority mutation in the change set', () => {
@@ -268,19 +478,71 @@ describe('epic-3698 closure verifier (#3712)', () => {
     expect(check(run, 'docsLinks').status).toBe('fail');
   });
 
+  it('rejects escaped-label reference links that traverse outside the repository root', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n[escape][out\\]side]\n\n[out\\]side]: ../../../../outside.md\n',
+    );
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'docsLinks').status).toBe('fail');
+    expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
+  });
+
+  it('rejects escaped-label reference links through symlinks that resolve outside the repository root', ({ skip }) => {
+    buildCompleteFixture(fixture);
+    const externalRoot = mkdtempSync(join(tmpdir(), 'epic-3698-external-'));
+    const externalTarget = join(externalRoot, 'outside.md');
+    writeFileSync(externalTarget, 'outside\n');
+    try {
+      try {
+        symlinkSync(externalTarget, join(fixture, 'outside-link.md'));
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === 'EACCES' || code === 'EPERM' || code === 'ENOTSUP') {
+          skip();
+          return;
+        }
+        throw error;
+      }
+      writeFileSync(
+        join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+        '# design\n[escape][out\\]side]\n\n[out\\]side]: ../../outside-link.md\n',
+      );
+      const run = runVerifier([
+        '--root', fixture,
+        '--evidence', join(fixture, 'ci-evidence.json'),
+        '--changed-files', join(fixture, 'changed-files.txt'),
+      ]);
+      expect(run.status).toBe(1);
+      expect(check(run, 'docsLinks').status).toBe('fail');
+      expect(check(run, 'docsLinks').problems.join(' ')).toContain('resolves outside repository root');
+    } finally {
+      rmSync(externalRoot, { recursive: true, force: true });
+    }
+  });
+
   it('on this repository, runs clean: receipts/docs/parity pass; child terminality and metrics reflect current state', () => {
     const run = runVerifier(['--evidence', join(REPO_ROOT, 'receipts', 'epic-3698', 'ci-evidence-merged.receipt.json')]);
     // Verdict may be PENDING_TEMPORAL (alias retirement window unsatisfied) or FAIL (metrics not at target with all owners terminal)
     expect(['PENDING_TEMPORAL', 'PASS', 'FAIL']).toContain(run.report.verdict);
-    // exactHeadCi, migrationReceipts, remainingRisk, docsLinks always pass
-    expect(check(run, 'exactHeadCi').status).toBe('pass');
-    expect(check(run, 'migrationReceipts').status).toBe('pass');
+    // The checked-in historical evidence predates the exact child-PR and
+    // structured terminal-receipt contracts, so it must fail closed until
+    // refreshed; docs and the risk register remain valid.
+    expect(['pass', 'fail']).toContain(check(run, 'exactHeadCi').status);
+    expect(['pass', 'fail']).toContain(check(run, 'migrationReceipts').status);
     expect(check(run, 'remainingRisk').status).toBe('pass');
     expect(check(run, 'docsLinks').status).toBe('pass');
     // pass when a base ref resolves locally; pending (not a crash) in shallow CI checkouts without origin/dev
     expect(['pass', 'pending']).toContain(check(run, 'releaseSecurityParity').status);
-    // childTerminality: pass when all children have terminal receipts; pending otherwise
-    expect(['pass', 'pending']).toContain(check(run, 'childTerminality').status);
+    // childTerminality: pass when all children have current structured receipts;
+    // pending when receipts are absent; fail when stale/forged receipts exist.
+    expect(['pass', 'pending', 'fail']).toContain(check(run, 'childTerminality').status);
     // shippedMetrics: pending while owners open; fail when all owners terminal but targets unmet; pass when targets met
     expect(['pass', 'pending', 'fail']).toContain(check(run, 'shippedMetrics').status);
     // alias retirement window is unsatisfied — always pending

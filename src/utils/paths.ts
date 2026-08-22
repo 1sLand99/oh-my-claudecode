@@ -6,11 +6,11 @@
  * (which work universally) and handle platform-specific directory conventions.
  */
 
-import { join, dirname, resolve } from 'path';
+import { join, dirname } from 'path';
 import { existsSync, readFileSync, readdirSync, statSync, lstatSync, unlinkSync, rmSync, renameSync, symlinkSync } from 'fs';
 import { homedir } from 'os';
 import { getClaudeConfigDir } from './config-dir.js';
-import { readOccupiedPluginRoots } from './cache-occupancy.js';
+import { pathIdentity, readOccupiedPluginRoots } from './cache-occupancy.js';
 
 /**
  * Convert a path to use forward slashes (for JSON/config files)
@@ -466,6 +466,15 @@ function stripTrailing(p: string): string {
   return toForwardSlash(p).replace(/\/+$/, '');
 }
 
+/**
+ * Identity used for cache-path comparisons. Keep the historical lexical path
+ * handling on non-Windows; Windows comparisons must resolve and case-fold.
+ */
+function comparisonPath(p: string): string {
+  if (process.platform !== 'win32') return stripTrailing(p);
+  return toForwardSlash(pathIdentity(p)).replace(/\/+$/, '');
+}
+
 /** Short install/update race guard. Session occupancy is the liveness source. */
 const STALE_THRESHOLD_MS = 10 * 60 * 1000;
 
@@ -535,6 +544,7 @@ export function purgeStalePluginCacheVersions(options?: { skipGracePeriod?: bool
   const now = Date.now();
   const occupancy = readOccupiedPluginRoots(configDir);
   const activePathsArray = [...activePaths];
+  const activePathIdentities = [...new Set(activePathsArray.map(comparisonPath))];
 
   for (const marketplace of marketplaces) {
     const marketDir = join(cacheDir, marketplace);
@@ -617,11 +627,11 @@ export function purgeStalePluginCacheVersions(options?: { skipGracePeriod?: bool
 
       for (const version of plainVersions) {
         const versionDir = join(pluginDir, version);
-        const normalised = stripTrailing(versionDir);
+        const normalised = comparisonPath(versionDir);
 
         // Check if this version or any of its subdirectories are referenced
-        const isActive = activePaths.has(normalised) ||
-          activePathsArray.some(ap => ap.startsWith(normalised + '/'));
+        const isActive = activePathIdentities.includes(normalised) ||
+          activePathIdentities.some(ap => ap.startsWith(normalised + '/'));
 
         if (isActive) continue;
 
@@ -637,9 +647,9 @@ export function purgeStalePluginCacheVersions(options?: { skipGracePeriod?: bool
         // When an active version exists in the same plugin namespace, replace the
         // stale directory with a symlink rather than deleting it.  This keeps any
         // running session whose CLAUDE_PLUGIN_ROOT still points to this path working.
-        const pluginDirNorm = stripTrailing(pluginDir);
+        const pluginDirNorm = comparisonPath(pluginDir);
         const activeVersionDirsHere = dedupePaths(
-          activePathsArray
+          activePathIdentities
             .filter(ap => ap.startsWith(pluginDirNorm + '/'))
             .map(ap => join(pluginDir, ap.slice(pluginDirNorm.length + 1).split('/')[0])),
         );
@@ -670,7 +680,7 @@ export function purgeStalePluginCacheVersions(options?: { skipGracePeriod?: bool
           // A no-sibling directory is the only destructive cleanup path.  A
           // session-start occupancy record protects it; registry failures also
           // fail closed rather than treating mtime as a liveness signal.
-          if (occupancy.unavailable || occupancy.roots.has(resolve(versionDir))) {
+          if (occupancy.unavailable || occupancy.roots.has(pathIdentity(versionDir))) {
             result.skipped++;
             result.skippedPaths.push(versionDir);
             continue;

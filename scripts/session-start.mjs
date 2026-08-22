@@ -13,7 +13,7 @@ import { homedir } from 'os';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { getClaudeConfigDir, getUpdateCheckCachePath } from './lib/config-dir.mjs';
 import { resolveOmcStateRoot } from './lib/state-root.mjs';
-import { publishCacheOccupancy, readOccupiedPluginRoots } from './lib/cache-occupancy.mjs';
+import { pathIdentity, publishCacheOccupancy, readOccupiedPluginRoots } from './lib/cache-occupancy.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1181,7 +1181,7 @@ ${cleanContent}
                   }
                 }
               } else if (stat.isDirectory()) {
-                if (occupancy.unavailable || occupancy.roots.has(resolve(versionPath))) continue;
+                if (occupancy.unavailable || occupancy.roots.has(pathIdentity(versionPath))) continue;
                 // Directory → symlink: cannot be atomic, but run.cjs now
                 // handles missing targets gracefully (issue #1007).
                 rmSync(versionPath, { recursive: true, force: true });

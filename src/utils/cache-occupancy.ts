@@ -8,6 +8,12 @@ import { getClaudeConfigDir } from './config-dir.js';
 const REGISTRY_VERSION = 1;
 const RECORD_PATTERN = /^[a-f0-9]{64}\.json$/;
 
+/** Resolve paths for identity comparisons; only Windows has case-insensitive paths. */
+export function pathIdentity(path: string): string {
+  const normalized = resolve(path);
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
+
 function processStartIdentity(pid: number): string | null {
   if (!Number.isSafeInteger(pid) || pid <= 0) return null;
   if (process.platform === 'linux') {
@@ -58,7 +64,7 @@ function recordPath(pluginRoot: string, pid: number, identity: string, configDir
 }
 
 export async function publishCacheOccupancy(pluginRoot: string, configDir?: string): Promise<boolean> {
-  const normalizedRoot = resolve(pluginRoot);
+  const normalizedRoot = pathIdentity(pluginRoot);
   const identity = processStartIdentity(process.pid);
   if (!identity) return false;
   const record: CacheOccupancyRecord = {
@@ -113,7 +119,7 @@ export function readOccupiedPluginRoots(configDir = getClaudeConfigDir()): { roo
     if (currentIdentity && currentIdentity !== record.processStartIdentity) { try { unlinkSync(path); } catch { /* best effort */ } continue; }
     // A live process whose identity cannot be read (including EPERM) is retained
     // conservatively; only a proven-dead PID or proven mismatch self-invalidates.
-    roots.add(resolve(record.pluginRoot));
+    roots.add(pathIdentity(record.pluginRoot));
   }
   return { roots, unavailable: false };
 }
