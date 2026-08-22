@@ -14,6 +14,7 @@ const paneMocks = vi.hoisted(() => ({
   spawnOwnedWorkerInPane: vi.fn(),
   killTeamPane: vi.fn(async (_paneId: string) => { throw new Error('pane still alive'); }),
   killOwnedWorkerPane: vi.fn(),
+  applyMainVerticalLayout: vi.fn(async () => undefined),
   workerPaneBelongsToProviderTarget: vi.fn(async () => true),
   adoptWorkerPaneOwnership: vi.fn(async (input: { provider: 'tmux' | 'cmux'; providerTarget: string; paneId: string }) => ({
     ok: true as const,
@@ -157,6 +158,9 @@ describe('recovery pane rollback evidence', () => {
       expect.objectContaining({ paneId: '%2' }),
       expect.objectContaining({ cwd: workerCwd, launchStateCwd: cwd }),
     );
+    expect(paneMocks.applyMainVerticalLayout).toHaveBeenCalledWith(`${teamName}:0`, { required: true });
+    expect(paneMocks.applyMainVerticalLayout.mock.invocationCallOrder[0])
+      .toBeLessThan(paneMocks.spawnOwnedWorkerInPane.mock.invocationCallOrder[0]);
     expect(paneMocks.killTeamPane).toHaveBeenCalledTimes(2);
     const evidenceRoot = absPath(cwd, `.omc/state/team/${teamName}/recovery/rollback-failures/${recoveryId}`);
     const evidenceFiles = readdirSync(evidenceRoot);

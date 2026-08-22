@@ -947,6 +947,30 @@ export function promptModeRecoveryRequiresProgressEvidence(
   return promptMode && continuationCount > 0;
 }
 
+async function applyRequiredLayoutBeforeOwnedLaunch(
+  sessionName: string,
+  ownership: WorkerPaneOwnership,
+  workerName: string,
+): Promise<void> {
+  try {
+    await applyMainVerticalLayout(sessionName, { required: true });
+  } catch (error) {
+    let cleaned = false;
+    try {
+      await killOwnedWorkerPane(ownership);
+      cleaned = await getWorkerPaneLiveness(ownership.paneId) === 'dead';
+    } catch {
+      // Preserve the layout failure unless pane cleanup cannot be verified.
+    }
+    if (!cleaned) {
+      const cleanupError = new Error(`worker_layout_cleanup_unverified:${workerName}:${ownership.paneId}`);
+      (cleanupError as Error & { cause?: unknown }).cause = error;
+      throw cleanupError;
+    }
+    throw error;
+  }
+}
+
 /**
  * Spawn a single v2 worker in a tmux pane.
  * Writes CLI API inbox (no done.json), waits for ready, sends inbox path.
@@ -978,6 +1002,9 @@ async function spawnV2Worker(opts: SpawnV2WorkerOptions): Promise<SpawnV2WorkerR
   })) throw new Error(`worker_pane_membership_unverified:${ownershipResult.ownership.paneId}`);
   const ownership = ownershipResult.ownership;
   const paneId = ownership.paneId;
+  if (launchProvider === 'tmux') {
+    await applyRequiredLayoutBeforeOwnedLaunch(opts.sessionName, ownership, opts.workerName);
+  }
   const usePromptMode = isPromptModeAgent(opts.agentType);
 
   const injectContract = shouldInjectContract(opts.role ?? null, opts.agentType);
@@ -1037,12 +1064,11 @@ async function spawnV2Worker(opts: SpawnV2WorkerOptions): Promise<SpawnV2WorkerR
     launchStateCwd: opts.cwd,
     launchContext: { kind: 'initial' },
   };
-  let startupContext: StartupPaneContext;
-  try {
-    startupContext = await spawnOwnedWorkerInPane(opts.sessionName, ownership, paneConfig);
-  } catch (error) {
-    throw error;
-  }
+  const startupContext: StartupPaneContext = await spawnOwnedWorkerInPane(
+    opts.sessionName,
+    ownership,
+    paneConfig,
+  );
   const inboxTriggerMessage = `${generateTriggerMessage(opts.teamName, opts.workerName, instructionStateRoot)} ` +
     `[launch:${startupContext.attempt.attempt_id.slice(0, 12)}]`;
   const cleanupStartedLaunch = async (reason: string): Promise<void> => {
@@ -1057,13 +1083,6 @@ async function spawnV2Worker(opts: SpawnV2WorkerOptions): Promise<SpawnV2WorkerR
     }).catch(() => false);
     if (!cleaned) throw new Error(`worker_startup_cleanup_unverified:${opts.workerName}:${paneId}`);
   };
-  try {
-    await applyMainVerticalLayout(opts.sessionName);
-  } catch (error) {
-    await cleanupStartedLaunch('startup_layout_failed');
-    throw error;
-  }
-
   const waitForCurrentEvidence = (attempts = 12) => waitForWorkerStartupEvidence(
     opts.teamName,
     opts.workerName,
@@ -2527,6 +2546,22 @@ export async function executeRecoverDeadWorkerV2Owner(
             split,
           );
           return { ok: false, error: 'worker_activation_failed' };
+        }
+        if (recoveryProvider === 'tmux') {
+          try {
+            await applyRequiredLayoutBeforeOwnedLaunch(
+              owner.config.tmux_session!,
+              ownershipResult.ownership,
+              sagaInput.workerName,
+            );
+          } catch (error) {
+            return {
+              ok: false,
+              error: error instanceof Error && error.message.startsWith('worker_layout_cleanup_unverified:')
+                ? 'worker_cleanup_incomplete'
+                : 'spawn_failed',
+            };
+          }
         }
         let pending: PendingRecoveryPane;
         try {
