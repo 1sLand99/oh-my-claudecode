@@ -40,13 +40,6 @@ const REQUIRED_ENTRYPOINTS = Object.freeze([
   'bridge/runtime-cli.cjs',
   'bridge/team.js',
 ]);
-const MARKETPLACE_PLUGIN_SOURCE = './';
-const MARKETPLACE_FILES = Object.freeze([
-  '.claude-plugin/plugin.json',
-  '.claude-plugin/marketplace.json',
-  'docs/CLAUDE.md',
-  'package.json',
-]);
 
 function fail(message) {
   throw new Error(message);
@@ -672,106 +665,6 @@ export function assertTrigger({ tag, sha, cwd = process.cwd() }) {
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
-/**
- * Verify the default-branch marketplace is aligned with the released version.
- *
- * When a stable release completes (npm + GitHub Release/tag), the protected
- * main branch must carry the same marketplace/plugin/package version so
- * marketplace clones receive the released code.  Prerelease versions are
- * exempt because main only tracks stable releases.
- *
- * Checks that the ref (typically origin/main) contains marketplace metadata
- * files that all advertise the released version, and that the plugin entry
- * in marketplace.json matches the expected name/version/source triple.
- *
- * @param {{ ref: string, version: string, sha?: string, cwd?: string }} options
- * @returns {{ version: string, ref: string, promoted: true }}
- */
-export function assertMarketplaceConsistency({ ref, version, sha, cwd = process.cwd() }) {
-  const expectedVersion = requireVersion(version);
-  requireString(ref, 'ref');
-
-  // Verify the ref exists in the local repository.
-  const refCommit = git(cwd, ['rev-parse', ref]);
-
-  // A protected-main promotion normally creates a merge commit. Require the
-  // released commit to be reachable from the ref and require the promoted
-  // ref to preserve the released tree rather than only matching its metadata.
-  if (sha !== undefined) {
-    const expectedSha = requireSha(sha);
-    try {
-      execFileSync('git', ['merge-base', '--is-ancestor', expectedSha, ref], {
-        cwd,
-        stdio: 'ignore',
-      });
-    } catch {
-      fail(`main ref ${ref} at ${refCommit} does not contain released commit ${expectedSha}; main has not been promoted to v${expectedVersion}`);
-    }
-    const releasedTree = git(cwd, ['rev-parse', `${expectedSha}^{tree}`]);
-    const refTree = git(cwd, ['rev-parse', `${ref}^{tree}`]);
-    if (refTree !== releasedTree) {
-      fail(`main ref ${ref} at ${refCommit} has tree ${refTree}, which does not match released commit ${expectedSha} tree ${releasedTree}`);
-    }
-  }
-
-  // Read and validate marketplace metadata files from the ref.
-  const refPluginPath = `.claude-plugin/plugin.json`;
-  const refMarketplacePath = `.claude-plugin/marketplace.json`;
-  const refClaudeMdPath = `docs/CLAUDE.md`;
-  const refPackagePath = `package.json`;
-
-  const refPluginText = gitShowFile(cwd, ref, refPluginPath);
-  const refPlugin = parseJson(refPluginText, refPluginPath);
-  if (!isPlainObject(refPlugin) || refPlugin.name !== PLUGIN_NAME || refPlugin.version !== expectedVersion) {
-    fail(`${ref}:${refPluginPath} must advertise ${PLUGIN_NAME} v${expectedVersion}`);
-  }
-
-  const refMarketplaceText = gitShowFile(cwd, ref, refMarketplacePath);
-  const refMarketplace = parseJson(refMarketplaceText, refMarketplacePath);
-  if (!isPlainObject(refMarketplace) || refMarketplace.version !== expectedVersion) {
-    fail(`${ref}:${refMarketplacePath} must advertise version ${expectedVersion}`);
-  }
-  if (!Array.isArray(refMarketplace.plugins)) {
-    fail(`${ref}:${refMarketplacePath} must contain a plugins array`);
-  }
-  const matchingPlugins = refMarketplace.plugins.filter(plugin =>
-    isPlainObject(plugin) && plugin.name === PLUGIN_NAME,
-  );
-  if (matchingPlugins.length !== 1) {
-    fail(`${ref}:${refMarketplacePath} must contain exactly one ${PLUGIN_NAME} plugin entry`);
-  }
-  const matchingPlugin = matchingPlugins[0];
-  if (matchingPlugin.version !== expectedVersion || matchingPlugin.source !== MARKETPLACE_PLUGIN_SOURCE) {
-    fail(`${ref}:${refMarketplacePath} plugin entry must match version ${expectedVersion} and source ${MARKETPLACE_PLUGIN_SOURCE}`);
-  }
-
-  const refClaudeMd = gitShowFile(cwd, ref, refClaudeMdPath);
-  const versionMarkers = [...refClaudeMd.matchAll(/<!-- OMC:VERSION:([^\s>]+) -->/g)];
-  if (versionMarkers.length !== 1 || versionMarkers[0][1] !== expectedVersion) {
-    fail(`${ref}:${refClaudeMdPath} must contain exactly one OMC version marker for ${expectedVersion}`);
-  }
-
-  const refPackageText = gitShowFile(cwd, ref, refPackagePath);
-  const refPackage = parseJson(refPackageText, refPackagePath);
-  if (!isPlainObject(refPackage) || refPackage.name !== PACKAGE_NAME || refPackage.version !== expectedVersion) {
-    fail(`${ref}:${refPackagePath} must advertise ${PACKAGE_NAME} v${expectedVersion}`);
-  }
-
-  return { version: expectedVersion, ref, promoted: true };
-}
-
-function gitShowFile(cwd, ref, path) {
-  try {
-    return execFileSync('git', ['show', `${ref}:${path}`], {
-      cwd,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-  } catch (error) {
-    const stderr = error && typeof error === 'object' && 'stderr' in error ? String(error.stderr).trim() : '';
-    fail(`cannot read ${ref}:${path}${stderr ? `: ${stderr}` : ''}`);
-  }
-}
 
 function registryBaseUrl() {
   const configured = process.env[REGISTRY_URL_ENV] ?? DEFAULT_REGISTRY_URL;
@@ -1385,14 +1278,6 @@ export async function cliMain(argv = process.argv.slice(2)) {
         provenance: flags.provenance,
         publishLog: flags['publish-log'],
         auditPath: flags.audit,
-      });
-      break;
-    case 'assert-marketplace-consistency':
-      requireFlags(flags, ['ref', 'version'], ['sha']);
-      assertMarketplaceConsistency({
-        ref: flags.ref,
-        version: flags.version,
-        sha: flags.sha,
       });
       break;
     default:

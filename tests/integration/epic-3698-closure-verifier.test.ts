@@ -1521,6 +1521,35 @@ describe('epic-3698 closure verifier (#3712)', () => {
     }
   });
 
+  it('masks fences after alternating list and blockquote prefixes', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n- > ```md\n  > [example](../../../outside.md)\n  > ```\n',
+    );
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(check(run, 'docsLinks').status, JSON.stringify(check(run, 'docsLinks'))).toBe('pass');
+  });
+
+  it('parses HTML tags with greater-than characters inside quoted attributes', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n<a title=">" href="../../../outside.md">outside</a>\n',
+    );
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
+  });
+
   it('rejects escaped-label reference links through symlinks that resolve outside the repository root', ({ skip }) => {
     buildCompleteFixture(fixture);
     const externalRoot = mkdtempSync(join(tmpdir(), 'epic-3698-external-'));

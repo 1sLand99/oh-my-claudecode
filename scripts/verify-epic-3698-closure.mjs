@@ -903,35 +903,61 @@ function maskCommonMarkCodeBlocks(text) {
   const listIndents = [];
   for (let partIndex = 0; partIndex < parts.length; partIndex += 2) {
     const line = parts[partIndex];
-    const quote = blockQuotePrefix(line);
-    let content = line.slice(quote.offset);
-    if (fence && quote.depth < fence.quoteDepth) fence = null;
+    if (line.trim() === '') {
+      if (fence) parts[partIndex] = ' '.repeat(line.length);
+      continue;
+    }
+    let quoteDepth = 0;
+    let content = line;
+    let contentOffset = 0;
+    let baseIndent = 0;
+    const activeListIndent = listIndents[listIndents.length - 1] ?? 0;
+    if (activeListIndent > 0 && indentation(content).columns >= activeListIndent) {
+      const baseIndex = indexAfterColumns(content, activeListIndent);
+      contentOffset += baseIndex;
+      content = content.slice(baseIndex);
+      baseIndent = activeListIndent;
+    } else {
+      const initialQuote = blockQuotePrefix(content);
+      quoteDepth += initialQuote.depth;
+      contentOffset += initialQuote.offset;
+      content = content.slice(initialQuote.offset);
+
+      const leading = indentation(content);
+      while (listIndents.length > 0 && leading.columns < listIndents[listIndents.length - 1]) listIndents.pop();
+      baseIndent = listIndents[listIndents.length - 1] ?? 0;
+      if (baseIndent > 0) {
+        const baseIndex = indexAfterColumns(content, baseIndent);
+        if (baseIndex > 0) {
+          contentOffset += baseIndex;
+          content = content.slice(baseIndex);
+        }
+      }
+    }
 
     if (content.trim() === '') {
       if (fence) parts[partIndex] = ' '.repeat(line.length);
       continue;
     }
 
-    const leading = indentation(content);
-    while (listIndents.length > 0 && leading.columns < listIndents[listIndents.length - 1]) listIndents.pop();
-    if (fence && listIndents.length < fence.listDepth) fence = null;
-    const baseIndent = listIndents[listIndents.length - 1] ?? 0;
-    let contentOffset = quote.offset;
-    if (baseIndent > 0) {
-      const baseIndex = indexAfterColumns(content, baseIndent);
-      if (baseIndex > 0) {
-        contentOffset += baseIndex;
-        content = content.slice(baseIndex);
+    for (;;) {
+      const list = content.match(/^([ \t]{0,3})(?:[-+*]|\d{1,9}[.)])([ \t]+)/);
+      if (list) {
+        const markerColumns = columnWidth(list[0]);
+        const parentIndent = listIndents[listIndents.length - 1] ?? baseIndent;
+        listIndents.push(parentIndent + markerColumns);
+        contentOffset += list[0].length;
+        content = content.slice(list[0].length);
       }
+      const nestedQuote = blockQuotePrefix(content);
+      if (nestedQuote.offset > 0) {
+        quoteDepth += nestedQuote.depth;
+        contentOffset += nestedQuote.offset;
+        content = content.slice(nestedQuote.offset);
+      }
+      if (!list && nestedQuote.offset === 0) break;
     }
-
-    const list = content.match(/^([ \t]{0,3})(?:[-+*]|\d{1,9}[.)])([ \t]+)/);
-    if (list) {
-      const markerColumns = columnWidth(list[0]);
-      listIndents.push(baseIndent + markerColumns);
-      contentOffset += list[0].length;
-      content = content.slice(list[0].length);
-    }
+    if (fence && (quoteDepth < fence.quoteDepth || listIndents.length < fence.listDepth)) fence = null;
 
     const fenceMatch = content.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
     if (fence) {
@@ -948,7 +974,7 @@ function maskCommonMarkCodeBlocks(text) {
       fence = {
         char: fenceMatch[1][0],
         length: fenceMatch[1].length,
-        quoteDepth: quote.depth,
+        quoteDepth,
         listDepth: listIndents.length,
       };
       parts[partIndex] = ' '.repeat(line.length);
@@ -992,11 +1018,28 @@ function maskCommonMarkInlineCode(text) {
   return chars.join('');
 }
 
-function rawHtmlUrlTargets(text) {
+function rawHtmlUrlTargets(text, problems, docPath) {
   const targets = [];
   const urlAttributes = new Set(['href', 'src', 'action', 'formaction', 'poster', 'cite', 'data', 'srcset']);
-  for (const tag of text.matchAll(/<[A-Za-z][^<>]*>/g)) {
-    const body = tag[0];
+  for (let opening = 0; opening < text.length; opening += 1) {
+    if (text[opening] !== '<' || !/[A-Za-z]/.test(text[opening + 1] ?? '')) continue;
+    let quote = null;
+    let closing = opening + 2;
+    for (; closing < text.length; closing += 1) {
+      const char = text[closing];
+      if (quote) {
+        if (char === quote) quote = null;
+      } else if (char === '"' || char === "'") {
+        quote = char;
+      } else if (char === '>') {
+        break;
+      }
+    }
+    if (closing >= text.length || quote) {
+      problems.push(`${docPath}: unterminated raw HTML tag is unsupported`);
+      break;
+    }
+    const body = text.slice(opening, closing + 1);
     const attributes = body.matchAll(/\b([A-Za-z_:][A-Za-z0-9_.:-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g);
     for (const attribute of attributes) {
       const name = attribute[1].toLowerCase();
@@ -1011,6 +1054,7 @@ function rawHtmlUrlTargets(text) {
         targets.push(value);
       }
     }
+    opening = closing;
   }
   return targets;
 }
@@ -1089,7 +1133,7 @@ function parseMarkdownDestinations(text, problems, docPath) {
   }
   for (const target of definitions.values()) targets.push(target);
   for (const target of potentialDefinitionTargets) targets.push(target);
-  targets.push(...rawHtmlUrlTargets(definitionText));
+  targets.push(...rawHtmlUrlTargets(definitionText, problems, docPath));
   return targets;
 }
 
