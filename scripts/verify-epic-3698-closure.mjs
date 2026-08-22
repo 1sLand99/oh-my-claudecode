@@ -899,6 +899,7 @@ function columnWidth(value) {
 function maskCommonMarkCodeBlocks(text) {
   const parts = text.split(/(\r\n?|\n)/);
   let fence = null;
+  let htmlBlockTag = null;
   const listIndents = [];
   const listItemIds = [];
   let nextListItemId = 1;
@@ -972,6 +973,12 @@ function maskCommonMarkCodeBlocks(text) {
       continue;
     }
 
+    if (htmlBlockTag) {
+      parts[partIndex] = ' '.repeat(line.length);
+      if (new RegExp(`</${htmlBlockTag}[ \\t\\r\\n]*>`, 'i').test(content)) htmlBlockTag = null;
+      continue;
+    }
+
     const fenceMatch = content.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
     if (fence) {
       parts[partIndex] = ' '.repeat(line.length);
@@ -982,6 +989,26 @@ function maskCommonMarkCodeBlocks(text) {
         fenceMatch[2].trim() === ''
       ) fence = null;
       continue;
+    }
+    const htmlBlockStart = content.match(/^ {0,3}<(script|pre|style|textarea)(?:[ \t\r\n]|>)/i);
+    if (htmlBlockStart) {
+      const tagName = htmlBlockStart[1].toLowerCase();
+      let quote = null;
+      let openingEnd = content.indexOf('<') + 1 + tagName.length;
+      for (; openingEnd < content.length; openingEnd += 1) {
+        const char = content[openingEnd];
+        if (quote) {
+          if (char === quote) quote = null;
+        } else if (char === '"' || char === "'") quote = char;
+        else if (char === '>') break;
+      }
+      if (openingEnd < content.length && !quote) {
+        const before = line.slice(0, contentOffset + openingEnd + 1);
+        parts[partIndex] = before + ' '.repeat(line.length - before.length);
+        const afterOpening = content.slice(openingEnd + 1);
+        if (!new RegExp(`</${tagName}[ \\t\\r\\n]*>`, 'i').test(afterOpening)) htmlBlockTag = tagName;
+        continue;
+      }
     }
     if (fenceMatch && !(fenceMatch[1][0] === '`' && fenceMatch[2].includes('`'))) {
       fence = {
@@ -1080,39 +1107,9 @@ function maskInlineCodeAndExtractHtml(text, problems, docPath) {
   return { text: chars.join(''), targets };
 }
 
-function maskCommonMarkRawHtmlBlockBodies(text) {
-  const chars = text.split('');
-  const blockTags = new Set(['script', 'pre', 'style', 'textarea']);
-  for (let opening = 0; opening < chars.length; opening += 1) {
-    if (chars[opening] !== '<' || isEscaped(text, opening)) continue;
-    const nameMatch = text.slice(opening + 1).match(/^([A-Za-z][A-Za-z0-9-]*)/);
-    const tagName = nameMatch?.[1]?.toLowerCase();
-    if (!tagName || !blockTags.has(tagName)) continue;
-    let quote = null;
-    let openingEnd = opening + 1 + nameMatch[1].length;
-    for (; openingEnd < chars.length; openingEnd += 1) {
-      const char = chars[openingEnd];
-      if (quote) {
-        if (char === quote) quote = null;
-      } else if (char === '"' || char === "'") quote = char;
-      else if (char === '>') break;
-    }
-    if (openingEnd >= chars.length || quote) continue;
-    const closingPattern = new RegExp(`</${tagName}[ \\t\\r\\n]*>`, 'ig');
-    closingPattern.lastIndex = openingEnd + 1;
-    const closing = closingPattern.exec(text);
-    if (!closing) continue;
-    for (let cursor = openingEnd + 1; cursor < closing.index; cursor += 1) {
-      if (chars[cursor] !== '\r' && chars[cursor] !== '\n') chars[cursor] = ' ';
-    }
-    opening = closing.index + closing[0].length - 1;
-  }
-  return chars.join('');
-}
-
 function parseMarkdownDestinations(text, problems, docPath) {
   const definitions = new Map();
-  const blockMaskedText = maskCommonMarkCodeBlocks(maskCommonMarkRawHtmlBlockBodies(text));
+  const blockMaskedText = maskCommonMarkCodeBlocks(text);
   const inline = maskInlineCodeAndExtractHtml(blockMaskedText, problems, docPath);
   const htmlTargets = inline.targets;
   const definitionText = inline.text;

@@ -324,6 +324,19 @@ describe('inventory-graph drift enforcement (#3702)', () => {
     expect(b.provenance.planningHead).toBe(EXPECTED_PLANNING_HEAD);
   });
 
+  it('intentionally accepts an older ancestor as a lineage provenance anchor', () => {
+    const result = spawnSync('node', [GENERATOR], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+      maxBuffer: 20 * 1024 * 1024,
+      env: { ...process.env, ISSUE_3702_HEAD: EXPECTED_BASE },
+    });
+    expect(result.status, result.stderr).toBe(0);
+    const generated = JSON.parse(result.stdout) as Manifest;
+    expect(generated.head).toBe(EXPECTED_BASE);
+    expect(generated.provenance.head).toBe(EXPECTED_BASE);
+  });
+
   it('verify mode passes when baseline is current (drift closed)', () => {
     const r = spawnSync('node', [GENERATOR, '--verify'], { cwd: REPO_ROOT, encoding: 'utf8' as const, maxBuffer: 20 * 1024 * 1024 });
     expect(r.status, `verify failed — stdout:\n${r.stdout}\nstderr:\n${r.stderr}`).toBe(0);

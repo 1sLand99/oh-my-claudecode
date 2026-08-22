@@ -8,8 +8,8 @@
 // ancestors are trusted only when they are stable non-symlink directories,
 // and checkpoint bytes are read through an O_NOFOLLOW descriptor.
 
-import { closeSync, constants, fstatSync, fsyncSync, lstatSync, linkSync, openSync, readSync, readdirSync, realpathSync, renameSync, unlinkSync, writeSync, mkdirSync } from 'fs';
-import { randomUUID } from 'crypto';
+import { closeSync, constants, fstatSync, ftruncateSync, fsyncSync, lstatSync, linkSync, openSync, readSync, readdirSync, realpathSync, renameSync, unlinkSync, writeSync, mkdirSync } from 'fs';
+import { createHash, randomUUID } from 'crypto';
 import { basename, isAbsolute, join, relative, sep } from 'path';
 
 const CHECKPOINT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -57,22 +57,12 @@ function reclaimStaleLock(lockPath, stale, parentFd) {
   }
 }
 
-function releaseOwnedLock(lockPath, identity, parentFd) {
-  if (parentFd === null) return;
-  const quarantinePath = descriptorChildPath(parentFd, `.${basename(lockPath)}.release-${randomUUID()}`);
-  if (quarantinePath === null) return;
+function isReleasedLock(lockPath, lock) {
   try {
-    renameSync(lockPath, quarantinePath);
-    const moved = lstatSync(quarantinePath);
-    if (
-      moved.dev !== identity.dev || moved.ino !== identity.ino ||
-      moved.mtimeMs !== identity.mtimeMs || moved.size !== identity.size
-    ) {
-      try { linkSync(quarantinePath, lockPath); } catch { /* preserve any newer pathname owner */ }
-    }
-    unlinkSync(quarantinePath);
+    const resolved = realpathSync(lockPath);
+    return readBoundedFile(lockPath, { path: resolved, dev: lock.dev, ino: lock.ino }, 64) === 'released';
   } catch {
-    try { unlinkSync(quarantinePath); } catch { /* ignore */ }
+    return false;
   }
 }
 
@@ -93,6 +83,61 @@ function checkpointOrderForSession(omcRoot, checkpointPath, sessionId) {
   } catch {
     return null;
   }
+}
+
+function compareCheckpointOrder(a, b) {
+  const aTime = Date.parse(a.createdAt);
+  const bTime = Date.parse(b.createdAt);
+  if (aTime !== bTime) return aTime - bTime;
+  if (a.mtimeMs !== b.mtimeMs) return a.mtimeMs - b.mtimeMs;
+  return compareCheckpointNames(a.name, b.name);
+}
+
+function publishImmutableMarkerClaim(target, parentFd, sessionId, checkpointPath, bytes) {
+  const digest = createHash('sha256').update(`${sessionId}\0${checkpointPath}`).digest('hex');
+  const finalPath = descriptorChildPath(parentFd, `restored-${digest}.json`);
+  const tempPath = descriptorChildPath(parentFd, `.restored-${digest}.${randomUUID()}.tmp`);
+  if (!finalPath || !tempPath) return 'failed';
+  let fd = null;
+  try {
+    const flags = constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | (constants.O_NOFOLLOW ?? 0);
+    fd = openSync(tempPath, flags, 0o600);
+    let offset = 0;
+    while (offset < bytes.length) offset += writeSync(fd, bytes, offset, bytes.length - offset);
+    fsyncSync(fd);
+    closeSync(fd);
+    fd = null;
+    try { linkSync(tempPath, finalPath); } catch (error) {
+      if (error?.code === 'EEXIST') return 'existing';
+      return 'failed';
+    }
+    return 'written';
+  } finally {
+    if (fd !== null) try { closeSync(fd); } catch { /* ignore */ }
+    try { unlinkSync(tempPath); } catch { /* ignore */ }
+  }
+}
+
+function newestSessionMarkerClaim(omcRoot, target, sessionId) {
+  let newest = null;
+  try {
+    const names = readdirSync(target.parent.path).filter((name) => name === 'restored.json' || /^restored-[0-9a-f]{64}\.json$/.test(name));
+    for (const name of names) {
+      const path = join(target.parent.path, name);
+      const stat = lstatSync(path);
+      if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1) continue;
+      const resolved = realpathSync(path);
+      if (!isPathWithin(target.context.omcRoot.path, resolved)) continue;
+      const raw = readBoundedFile(path, { path: resolved, dev: stat.dev, ino: stat.ino }, RESTORE_MARKER_MAX_BYTES);
+      if (raw === null) continue;
+      const marker = JSON.parse(raw);
+      if (marker?.session_id !== sessionId || typeof marker?.checkpoint !== 'string') continue;
+      const order = checkpointOrderForSession(omcRoot, marker.checkpoint, sessionId);
+      if (!order) continue;
+      if (!newest || compareCheckpointOrder(order, newest.order) > 0) newest = { checkpoint: marker.checkpoint, order };
+    }
+  } catch { /* fail closed */ }
+  return newest;
 }
 
 function getCheckpointDir(omcRoot) {
@@ -400,6 +445,9 @@ function isCheckpointRestored(omcRoot, sessionId, checkpointPath) {
     if (!isValidSessionId(sessionId)) return false;
     const target = getRestoreMarkerTarget(omcRoot, sessionId, false);
     if (!target) return false;
+    const newest = newestSessionMarkerClaim(omcRoot, target, sessionId);
+    const candidateOrder = checkpointOrderForSession(omcRoot, checkpointPath, sessionId);
+    if (newest && candidateOrder && compareCheckpointOrder(newest.order, candidateOrder) >= 0) return true;
     const stat = lstatSync(target.path);
     if (!stat.isFile() || stat.isSymbolicLink()) return false;
     const markerPath = realpathSync(target.path);
@@ -414,7 +462,7 @@ function isCheckpointRestored(omcRoot, sessionId, checkpointPath) {
     );
     if (raw === null || !isStableRestoreMarkerTarget(target)) return false;
     const marker = JSON.parse(raw);
-    return marker?.checkpoint === checkpointPath;
+    return marker?.session_id === sessionId && marker?.checkpoint === checkpointPath;
   } catch {
     return false;
   }
@@ -466,6 +514,7 @@ function markCheckpointRestored(omcRoot, sessionId, checkpointPath, checkpointCr
     const bytes = Buffer.from(
       JSON.stringify({
         restored_at: new Date().toISOString(),
+        session_id: sessionId,
         checkpoint: checkpointPath,
         checkpoint_created_at: Number.isFinite(Date.parse(checkpointCreatedAt ?? '')) ? checkpointCreatedAt : null,
         checkpoint_mtime_ms: Number.isFinite(checkpointMtimeMs) ? checkpointMtimeMs : null,
@@ -509,7 +558,8 @@ function markCheckpointRestored(omcRoot, sessionId, checkpointPath, checkpointCr
         try { stale = lstatSync(lockPath); } catch { continue; }
         if (
           attempt === 0 && stale.isFile() && !stale.isSymbolicLink() && stale.nlink === 1 &&
-          Date.now() - stale.mtimeMs > RESTORE_LOCK_STALE_MS && isStableRestoreMarkerTarget(target, parentFd)
+          (isReleasedLock(lockPath, stale) || Date.now() - stale.mtimeMs > RESTORE_LOCK_STALE_MS) &&
+          isStableRestoreMarkerTarget(target, parentFd)
         ) {
           if (reclaimStaleLock(lockPath, stale, parentFd)) continue;
         }
@@ -524,8 +574,14 @@ function markCheckpointRestored(omcRoot, sessionId, checkpointPath, checkpointCr
           current.dev === lockIdentity.dev && current.ino === lockIdentity.ino &&
           current.mtimeMs === lockIdentity.mtimeMs && current.size === lockIdentity.size &&
           isStableRestoreMarkerTarget(target, parentFd);
-      } catch { return false; }
+      } catch {
+        return false;
+      }
     };
+    const claimStatus = publishImmutableMarkerClaim(target, parentFd, sessionId, checkpointPath, bytes);
+    if (claimStatus === 'failed') return 'failed';
+    const authoritative = newestSessionMarkerClaim(omcRoot, target, sessionId);
+    if (authoritative && authoritative.checkpoint !== checkpointPath) return 'existing';
 
     // Publish complete bytes atomically. The initial link+unlink path keeps
     // O_EXCL semantics without exposing a partially written final file;
@@ -565,6 +621,7 @@ function markCheckpointRestored(omcRoot, sessionId, checkpointPath, checkpointCr
       if (raw !== null) {
         try {
           const marker = JSON.parse(raw);
+          if (marker?.session_id !== sessionId) throw new Error('marker session mismatch');
           if (marker?.checkpoint === checkpointPath) return 'existing';
           const existingOrder = typeof marker?.checkpoint === 'string'
             ? checkpointOrderForSession(omcRoot, marker.checkpoint, sessionId)
@@ -595,13 +652,15 @@ function markCheckpointRestored(omcRoot, sessionId, checkpointPath, checkpointCr
           // Replace malformed marker content with complete new bytes.
         }
       }
+      const latestClaim = newestSessionMarkerClaim(omcRoot, target, sessionId);
+      if (latestClaim && latestClaim.checkpoint !== checkpointPath) return 'existing';
       if (!ownsLock()) return 'failed';
       renameSync(tempPath, markerPath);
       tempPath = null;
       if (!ownsLock()) {
-        const latest = preparePreCompactCheckpointRestoreOnce(omcRoot, sessionId);
-        if (latest && latest.path !== checkpointPath) {
-          markCheckpointRestored(omcRoot, sessionId, latest.path, latest.created_at, latest.mtime_ms);
+        const latest = newestSessionMarkerClaim(omcRoot, target, sessionId);
+        if (latest && latest.checkpoint !== checkpointPath) {
+          markCheckpointRestored(omcRoot, sessionId, latest.checkpoint, latest.order.createdAt, latest.order.mtimeMs);
         }
         return 'failed';
       }
@@ -627,10 +686,20 @@ function markCheckpointRestored(omcRoot, sessionId, checkpointPath, checkpointCr
       try { closeSync(markerFd); } catch { /* ignore */ }
     }
     if (lockFd !== null) {
+      try {
+        if (lockPath !== null && lockIdentity !== null) {
+          const current = lstatSync(lockPath);
+          if (
+            current.dev === lockIdentity.dev && current.ino === lockIdentity.ino &&
+            current.mtimeMs === lockIdentity.mtimeMs && current.size === lockIdentity.size
+          ) {
+            ftruncateSync(lockFd, 0);
+            writeSync(lockFd, Buffer.from('released', 'utf8'));
+            fsyncSync(lockFd);
+          }
+        }
+      } catch { /* replacement owners remain untouched */ }
       try { closeSync(lockFd); } catch { /* ignore */ }
-    }
-    if (lockPath !== null && lockIdentity !== null) {
-      releaseOwnedLock(lockPath, lockIdentity, parentFd);
     }
     if (tempPath !== null) {
       try { unlinkSync(tempPath); } catch { /* ignore */ }
@@ -793,6 +862,7 @@ function hasLiveRestoreLock(omcRoot, sessionId) {
     const lockPath = join(target.parent.path, `.${basename(target.path)}.lock`);
     const lock = lstatSync(lockPath);
     return lock.isFile() && !lock.isSymbolicLink() && lock.nlink === 1 &&
+      !isReleasedLock(lockPath, lock) &&
       Date.now() - lock.mtimeMs <= RESTORE_LOCK_STALE_MS;
   } catch {
     return false;

@@ -103,6 +103,8 @@ function stableStringify(v) {
 function getHeadSha() {
   const override = process.env.ISSUE_3702_HEAD ?? process.env.ISSUE_3698_HEAD;
   if (override !== undefined) {
+    // Overrides are intentional lineage anchors for the source commit bound by
+    // a later inventory-only commit; they must be ancestors, not necessarily HEAD.
     const value = override.trim();
     if (!/^[0-9a-f]{40}$/.test(value)) throw new Error('ISSUE_3702_HEAD must be a 40-character lowercase Git SHA');
     if (!isAncestorCommit(REPO_ROOT, value)) throw new Error('ISSUE_3702_HEAD must identify a commit that is an ancestor of the current HEAD');
