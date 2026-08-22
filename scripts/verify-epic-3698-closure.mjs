@@ -763,10 +763,15 @@ function unescapeReferenceLabel(value) {
 }
 
 function referenceLabel(value) {
-  return unescapeReferenceLabel(value).trim().replace(/\s+/g, ' ').toLowerCase();
+  return value
+    .trim()
+    .replace(/[ \t\r\n]+/g, ' ')
+    .normalize('NFKC')
+    .replace(/[ßẞ]/g, 'ss')
+    .toLowerCase();
 }
 
-function markdownDestination(value, label, problems) {
+function commonMarkDestination(value, label, problems, decodePercent) {
   const trimmed = value.trim();
   const unwrapped = trimmed.startsWith('<') && trimmed.endsWith('>') ? trimmed.slice(1, -1) : trimmed;
   try {
@@ -778,11 +783,19 @@ function markdownDestination(value, label, problems) {
         return ({ period: '.', sol: '/', bsol: '\\', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" })[named.toLowerCase()] ?? entity;
       },
     );
-    return decodeURIComponent(unescaped);
+    return decodePercent ? decodeURIComponent(unescaped) : unescaped;
   } catch {
     problems.push(`${label} contains malformed escaped bytes`);
     return null;
   }
+}
+
+function markdownDestination(value, label, problems) {
+  return commonMarkDestination(value, label, problems, true);
+}
+
+function markdownStructuralDestination(value, label, problems) {
+  return commonMarkDestination(value, label, problems, false);
 }
 
 function isReferenceDefinitionPosition(text, opening, closing) {
@@ -835,9 +848,71 @@ function stripMarkdownContainerPrefix(line) {
   return content;
 }
 
+function stripMarkdownBlockQuotePrefix(line) {
+  let content = line;
+  for (;;) {
+    const blockQuote = content.match(/^ {0,3}>[ \t]?/);
+    if (!blockQuote) return content;
+    content = content.slice(blockQuote[0].length);
+  }
+}
+
+function maskCommonMarkCodeBlocks(text) {
+  const parts = text.split(/(\r\n?|\n)/);
+  let fence = null;
+  let listIndent = 0;
+  for (let index = 0; index < parts.length; index += 2) {
+    const line = parts[index];
+    const blockQuoteStripped = stripMarkdownBlockQuotePrefix(line);
+    const quoteOffset = line.length - blockQuoteStripped.length;
+    let content = blockQuoteStripped;
+    let contentOffset = quoteOffset;
+    const leading = content.match(/^ */)?.[0].length ?? 0;
+
+    if (listIndent > 0) {
+      if (content.trim() === '') continue;
+      if (leading >= listIndent) {
+        contentOffset += listIndent;
+        content = content.slice(listIndent);
+      } else {
+        listIndent = 0;
+      }
+    }
+
+    const list = content.match(/^ {0,3}(?:[-+*]|\d{1,9}[.)])([ \t]+)/);
+    if (list) {
+      const markerWidth = list[0].length;
+      listIndent = contentOffset - quoteOffset + markerWidth;
+      contentOffset += markerWidth;
+      content = content.slice(markerWidth);
+    }
+
+    const fenceMatch = content.match(/^ {0,3}(`{3,}|~{3,})/);
+    if (fence) {
+      parts[index] = ' '.repeat(line.length);
+      if (fenceMatch && fenceMatch[1][0] === fence.char && fenceMatch[1].length >= fence.length) fence = null;
+      continue;
+    }
+    if (fenceMatch) {
+      fence = { char: fenceMatch[1][0], length: fenceMatch[1].length };
+      parts[index] = ' '.repeat(line.length);
+      continue;
+    }
+    if (listIndent === 0 && /^ {4}/.test(content)) {
+      parts[index] = ' '.repeat(line.length);
+      continue;
+    }
+    if (contentOffset > 0) {
+      parts[index] = ' '.repeat(contentOffset) + line.slice(contentOffset);
+    }
+  }
+  return parts.join('');
+}
+
 function parseMarkdownDestinations(text, problems, docPath) {
   const definitions = new Map();
-  const lines = text.split(/\r?\n/);
+  const definitionText = maskCommonMarkCodeBlocks(text);
+  const lines = definitionText.split(/\r\n?|\n/);
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
     const line = stripMarkdownContainerPrefix(lines[lineIndex]);
     const leading = line.match(/^ {0,3}/)?.[0].length ?? 0;
@@ -861,6 +936,18 @@ function parseMarkdownDestinations(text, problems, docPath) {
     if (!definitions.has(label)) definitions.set(label, destination.target);
   }
   const targets = [];
+  const potentialDefinitionTargets = new Set();
+  for (let opening = 0; opening < definitionText.length; opening += 1) {
+    if (definitionText[opening] !== '[' || isEscaped(definitionText, opening)) continue;
+    const closing = findClosingBracket(definitionText, opening);
+    if (closing < 0 || definitionText[closing + 1] !== ':') continue;
+    const destination = readInlineDestination(definitionText, closing + 2);
+    if (!destination) {
+      problems.push(`${docPath}: unsupported or missing destination for potential reference definition`);
+      continue;
+    }
+    potentialDefinitionTargets.add(destination.target);
+  }
   for (let index = 0; index < text.length; index += 1) {
     if (text[index] !== '[' || isEscaped(text, index)) continue;
     const firstClosing = findClosingBracket(text, index);
@@ -893,6 +980,7 @@ function parseMarkdownDestinations(text, problems, docPath) {
     index = firstClosing;
   }
   for (const target of definitions.values()) targets.push(target);
+  for (const target of potentialDefinitionTargets) targets.push(target);
   return targets;
 }
 
@@ -954,11 +1042,13 @@ function checkDocsLinks(root, docPaths) {
     }
     const targets = parseMarkdownDestinations(text, problems, docPath);
     for (const rawTarget of targets) {
+      const structuralTarget = markdownStructuralDestination(rawTarget, `${docPath}: link ${rawTarget}`, problems);
+      if (structuralTarget === null) continue;
+      if (/^[a-z][a-z0-9+.-]*:/i.test(structuralTarget) || structuralTarget.startsWith('#')) continue;
+      if (structuralTarget.startsWith('//')) continue;
       const target = markdownDestination(rawTarget, `${docPath}: link ${rawTarget}`, problems);
       if (target === null) continue;
-      if (/^[a-z][a-z0-9+.-]*:/i.test(target) || target.startsWith('#')) continue; // external or anchor
-      if (target.startsWith('//')) continue;
-      const cleaned = target.split('#')[0];
+      const cleaned = structuralTarget.includes('#') ? target.split('#')[0] : target;
       if (!cleaned) continue;
       const resolved = resolve(join(canonicalDoc, '..'), cleaned);
       const canonicalTarget = canonicalPathWithinRoot(canonicalRoot, resolved, `${docPath}: link ${target}`, problems);

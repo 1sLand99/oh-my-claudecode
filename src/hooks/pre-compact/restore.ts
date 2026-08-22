@@ -335,17 +335,17 @@ export function markCheckpointRestored(
                 if (existingMtime > checkpointMtimeMs!) return 'existing';
                 if (existingMtime === checkpointMtimeMs) {
                   const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
-                  if (!CHECKPOINT_FILE_PATTERN.test(existingName) || existingName >= basename(checkpointPath)) return 'existing';
+                  if (!CHECKPOINT_FILE_PATTERN.test(existingName) || compareCheckpointNames(existingName, basename(checkpointPath)) >= 0) return 'existing';
                 }
               } else {
                 const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
-                if (!CHECKPOINT_FILE_PATTERN.test(existingName) || existingName >= basename(checkpointPath)) return 'existing';
+                if (!CHECKPOINT_FILE_PATTERN.test(existingName) || compareCheckpointNames(existingName, basename(checkpointPath)) >= 0) return 'existing';
               }
             }
           } else {
             const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
             const candidateName = basename(checkpointPath);
-            if (!CHECKPOINT_FILE_PATTERN.test(existingName) || existingName >= candidateName) return 'existing';
+            if (!CHECKPOINT_FILE_PATTERN.test(existingName) || compareCheckpointNames(existingName, candidateName) >= 0) return 'existing';
           }
         } catch {
           // Replace malformed marker content with the complete new marker.
@@ -957,6 +957,10 @@ interface ScoredCandidate {
   checkpoint: CompactCheckpoint;
 }
 
+function compareCheckpointNames(a: string, b: string): number {
+  return Buffer.compare(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'));
+}
+
 /**
  * Sort candidates newest-first. The authoritative order key is the
  * checkpoint's `created_at` field (parsed from JSON). File mtime is a
@@ -971,7 +975,7 @@ function sortNewestFirst(candidates: ScoredCandidate[]): ScoredCandidate[] {
       return tb - ta;
     }
     if (a.mtimeMs !== b.mtimeMs) return b.mtimeMs - a.mtimeMs;
-    return b.name.localeCompare(a.name);
+    return compareCheckpointNames(b.name, a.name);
   });
 }
 

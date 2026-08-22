@@ -47458,7 +47458,7 @@ async function startTeamV2(config2) {
         ...prepared.role ? { role: prepared.role } : {}
       });
       if (workerLaunch.paneId) {
-        workerPaneIds.push(workerLaunch.paneId);
+        if (workerLaunch.startupAssigned) workerPaneIds.push(workerLaunch.paneId);
         launchedWorkers.push({
           name: wName,
           paneId: workerLaunch.paneId,
@@ -58399,7 +58399,7 @@ function createRateLimitedCacheEntry(source, data, pollIntervalMs, previousCount
 function getKeychainServiceName() {
   const configDir = process.env.CLAUDE_CONFIG_DIR;
   if (configDir) {
-    const hash = (0, import_crypto34.createHash)("sha256").update(configDir).digest("hex").slice(0, 8);
+    const hash = (0, import_crypto35.createHash)("sha256").update(configDir).digest("hex").slice(0, 8);
     return `Claude Code-credentials-${hash}`;
   }
   return "Claude Code-credentials";
@@ -59336,7 +59336,7 @@ async function getUsage() {
     return { rateLimits: null, error: "network" };
   }
 }
-var import_fs119, import_path138, import_child_process37, import_crypto34, import_os20, import_https3, CACHE_TTL_FAILURE_MS, CACHE_TTL_TRANSIENT_NETWORK_MS, MAX_RATE_LIMITED_BACKOFF_MS, API_TIMEOUT_MS2, MAX_STALE_DATA_MS, TOKEN_REFRESH_URL_HOSTNAME, USAGE_CACHE_LOCK_OPTS, TOKEN_REFRESH_URL_PATH, DEFAULT_OAUTH_CLIENT_ID, ZAI_UNIT_WEEK, KIMI_USAGE_HOSTNAMES, KIMI_USAGE_PATH, KIMI_FIVE_HOUR_WINDOW_MINUTES;
+var import_fs119, import_path138, import_child_process37, import_crypto35, import_os20, import_https3, CACHE_TTL_FAILURE_MS, CACHE_TTL_TRANSIENT_NETWORK_MS, MAX_RATE_LIMITED_BACKOFF_MS, API_TIMEOUT_MS2, MAX_STALE_DATA_MS, TOKEN_REFRESH_URL_HOSTNAME, USAGE_CACHE_LOCK_OPTS, TOKEN_REFRESH_URL_PATH, DEFAULT_OAUTH_CLIENT_ID, ZAI_UNIT_WEEK, KIMI_USAGE_HOSTNAMES, KIMI_USAGE_PATH, KIMI_FIVE_HOUR_WINDOW_MINUTES;
 var init_usage_api = __esm({
   "src/hud/usage-api.ts"() {
     "use strict";
@@ -59344,7 +59344,7 @@ var init_usage_api = __esm({
     init_config_dir();
     import_path138 = require("path");
     import_child_process37 = require("child_process");
-    import_crypto34 = require("crypto");
+    import_crypto35 = require("crypto");
     import_os20 = require("os");
     import_https3 = __toESM(require("https"), 1);
     init_ssrf_guard();
@@ -104019,6 +104019,7 @@ init_pre_compact();
 
 // src/hooks/pre-compact/restore.ts
 var import_fs105 = require("fs");
+var import_crypto34 = require("crypto");
 var import_path124 = require("path");
 init_worktree_paths();
 var CHECKPOINT_MAX_AGE_MS = 24 * 60 * 60 * 1e3;
@@ -107492,7 +107493,7 @@ ${missing.length} provider${missing.length === 1 ? "" : "s"} missing (warn only 
 }
 
 // src/cli/commands/capabilities.ts
-var import_crypto35 = require("crypto");
+var import_crypto36 = require("crypto");
 var import_fs122 = require("fs");
 var import_path141 = require("path");
 init_definitions();
@@ -107521,7 +107522,7 @@ function sortJson(value) {
   return value;
 }
 function sha2562(value) {
-  return (0, import_crypto35.createHash)("sha256").update(value).digest("hex");
+  return (0, import_crypto36.createHash)("sha256").update(value).digest("hex");
 }
 function resolveLockfilePath(lockfile) {
   return (0, import_path141.resolve)(process.cwd(), lockfile ?? DEFAULT_CAPABILITIES_LOCKFILE);
@@ -112432,7 +112433,7 @@ async function launchCommand(args) {
 
 // src/cli/interop.ts
 var import_child_process41 = require("child_process");
-var import_crypto36 = require("crypto");
+var import_crypto37 = require("crypto");
 init_tmux_utils();
 function readInteropRuntimeFlags(env2 = process.env) {
   const rawMode = (env2.OMX_OMC_INTEROP_MODE || "off").toLowerCase();
@@ -112490,7 +112491,7 @@ function launchInteropSession(cwd2 = process.cwd()) {
     console.error("Start tmux first: tmux new-session -s myproject");
     process.exit(1);
   }
-  const sessionId = `interop-${(0, import_crypto36.randomUUID)().split("-")[0]}`;
+  const sessionId = `interop-${(0, import_crypto37.randomUUID)().split("-")[0]}`;
   const _config = initInteropSession(sessionId, cwd2, hasCodex ? cwd2 : void 0);
   console.log(`Initializing interop session: ${sessionId}`);
   console.log(`Working directory: ${cwd2}`);

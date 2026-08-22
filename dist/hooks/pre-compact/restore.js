@@ -254,13 +254,13 @@ export function markCheckpointRestored(directory, sessionId, checkpointPath, che
                                     return 'existing';
                                 if (existingMtime === checkpointMtimeMs) {
                                     const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
-                                    if (!CHECKPOINT_FILE_PATTERN.test(existingName) || existingName >= basename(checkpointPath))
+                                    if (!CHECKPOINT_FILE_PATTERN.test(existingName) || compareCheckpointNames(existingName, basename(checkpointPath)) >= 0)
                                         return 'existing';
                                 }
                             }
                             else {
                                 const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
-                                if (!CHECKPOINT_FILE_PATTERN.test(existingName) || existingName >= basename(checkpointPath))
+                                if (!CHECKPOINT_FILE_PATTERN.test(existingName) || compareCheckpointNames(existingName, basename(checkpointPath)) >= 0)
                                     return 'existing';
                             }
                         }
@@ -268,7 +268,7 @@ export function markCheckpointRestored(directory, sessionId, checkpointPath, che
                     else {
                         const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
                         const candidateName = basename(checkpointPath);
-                        if (!CHECKPOINT_FILE_PATTERN.test(existingName) || existingName >= candidateName)
+                        if (!CHECKPOINT_FILE_PATTERN.test(existingName) || compareCheckpointNames(existingName, candidateName) >= 0)
                             return 'existing';
                     }
                 }
@@ -755,6 +755,9 @@ function isWithinAgeBound(createdAt) {
     const age = Date.now() - created;
     return age >= 0 && age <= CHECKPOINT_MAX_AGE_MS;
 }
+function compareCheckpointNames(a, b) {
+    return Buffer.compare(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'));
+}
 /**
  * Sort candidates newest-first. The authoritative order key is the
  * checkpoint's `created_at` field (parsed from JSON). File mtime is a
@@ -770,7 +773,7 @@ function sortNewestFirst(candidates) {
         }
         if (a.mtimeMs !== b.mtimeMs)
             return b.mtimeMs - a.mtimeMs;
-        return b.name.localeCompare(a.name);
+        return compareCheckpointNames(b.name, a.name);
     });
 }
 /**

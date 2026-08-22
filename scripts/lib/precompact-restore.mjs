@@ -29,6 +29,10 @@ function isValidSessionId(sessionId) {
   return typeof sessionId === 'string' && SESSION_ID_ALLOWLIST.test(sessionId);
 }
 
+function compareCheckpointNames(a, b) {
+  return Buffer.compare(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'));
+}
+
 function getCheckpointDir(omcRoot) {
   return join(omcRoot, 'state', 'checkpoints');
 }
@@ -510,17 +514,17 @@ function markCheckpointRestored(omcRoot, sessionId, checkpointPath, checkpointCr
                 if (existingMtime > checkpointMtimeMs) return 'existing';
                 if (existingMtime === checkpointMtimeMs) {
                   const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
-                  if (!CHECKPOINT_FILE_PATTERN.test(existingName) || existingName >= basename(checkpointPath)) return 'existing';
+                  if (!CHECKPOINT_FILE_PATTERN.test(existingName) || compareCheckpointNames(existingName, basename(checkpointPath)) >= 0) return 'existing';
                 }
               } else {
                 const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
-                if (!CHECKPOINT_FILE_PATTERN.test(existingName) || existingName >= basename(checkpointPath)) return 'existing';
+                if (!CHECKPOINT_FILE_PATTERN.test(existingName) || compareCheckpointNames(existingName, basename(checkpointPath)) >= 0) return 'existing';
               }
             }
           } else {
             const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
             const candidateName = basename(checkpointPath);
-            if (!CHECKPOINT_FILE_PATTERN.test(existingName) || existingName >= candidateName) return 'existing';
+            if (!CHECKPOINT_FILE_PATTERN.test(existingName) || compareCheckpointNames(existingName, candidateName) >= 0) return 'existing';
           }
         } catch {
           // Replace malformed marker content with complete new bytes.
@@ -690,7 +694,7 @@ export function preparePreCompactCheckpointRestore(omcRoot, sessionId) {
       const tb = Date.parse(b.checkpoint.created_at);
       if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return tb - ta;
       if (a.mtimeMs !== b.mtimeMs) return b.mtimeMs - a.mtimeMs;
-      return b.name.localeCompare(a.name);
+      return compareCheckpointNames(b.name, a.name);
     });
 
     // The marker is a monotonic cursor: an exact newest match suppresses all

@@ -472,10 +472,10 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
       todo_summary: { pending: 1, in_progress: 0, completed: 0 },
       wisdom_exported: false,
     });
-    const checkpointA = join(checkpointDir, 'checkpoint-concurrent-a.json');
+    const checkpointA = join(checkpointDir, 'checkpoint-é.json');
     writeFileSync(checkpointA, payload);
-    const older = new Date(Date.now() - 2_000);
-    utimesSync(checkpointA, older, older);
+    const sameTime = new Date(Date.now() - 2_000);
+    utimesSync(checkpointA, sameTime, sameTime);
     const signal = join(tempDir, `marker-lock-signal-${_label}`);
     const release = join(tempDir, `marker-lock-release-${_label}`);
     const preload = join(tempDir, `marker-lock-preload-${_label}.mjs`);
@@ -518,10 +518,9 @@ process.stdout.write(JSON.stringify(result));`;
     }
     expect(existsSync(signal)).toBe(true);
 
-    const checkpointB = join(checkpointDir, 'checkpoint-concurrent-b.json');
+    const checkpointB = join(checkpointDir, 'checkpoint-é.json');
     writeFileSync(checkpointB, payload);
-    const newer = new Date();
-    utimesSync(checkpointB, newer, newer);
+    utimesSync(checkpointB, sameTime, sameTime);
     const winner = execFileSync(NODE, ['--input-type=module', '-e', code], {
       encoding: 'utf8',
       env: {
@@ -530,7 +529,7 @@ process.stdout.write(JSON.stringify(result));`;
         MARKER_SESSION: `marker-process-${_label}`,
       },
     });
-    expect(JSON.parse(winner)?.text).toContain('checkpoint-concurrent-b.json');
+    expect(JSON.parse(winner)?.text).toContain('checkpoint-é.json');
     writeFileSync(release, 'release');
     const delayedStatus = await new Promise<number | null>((resolve) => delayed.on('close', resolve));
     expect(delayedStatus, delayedStderr).toBe(0);
