@@ -19,6 +19,7 @@ import { tmuxExec, tmuxExecAsync, tmuxShell, tmuxCmdAsync } from '../cli/tmux-ut
 import { configureTmuxClipboardForSession, configureTmuxClipboardForSessionAsync } from '../cli/tmux-clipboard.js';
 import type { MailboxNotificationTarget, MailboxTargetOwnership } from './mailbox-notification-guard.js';
 import type { CliAgentType } from './model-contract.js';
+import { paneLineLooksLikeIdlePrompt } from './pane-readiness.js';
 import {
   awaitWorkerLaunchAcknowledgement,
   awaitWorkerLaunchProviderStarted,
@@ -1602,13 +1603,13 @@ export function paneHasTrustPrompt(captured: string): boolean {
   return detectPaneTrustPromptKind(captured) !== null;
 }
 
-function paneHasClaudeStartupBanner(captured: string): boolean {
+function paneHasClaudeStartupBanner(captured: string, provider?: CliAgentType): boolean {
   const lines = captured
     .split('\n')
     .map((line) => line.replace(/\r/g, '').trim())
     .filter((line) => line.length > 0)
     .slice(-20);
-  const lastPromptIndex = lines.findLastIndex(paneLineLooksLikeIdlePrompt);
+  const lastPromptIndex = lines.findLastIndex(line => paneLineLooksLikeIdlePrompt(line, provider));
   // Claude Code v2.1.x renders the permission-mode indicator
   // ("⏵⏵ bypass permissions on (shift+tab to cycle)") *below* the prompt
   // as a persistent idle-state UI element. If a prompt is present anywhere
@@ -1623,8 +1624,8 @@ function paneHasClaudeStartupBanner(captured: string): boolean {
   return lastStartupBannerIndex >= 0;
 }
 
-function paneIsBootstrapping(captured: string): boolean {
-  if (paneHasClaudeStartupBanner(captured)) return true;
+function paneIsBootstrapping(captured: string, provider?: CliAgentType): boolean {
+  if (paneHasClaudeStartupBanner(captured, provider)) return true;
   const lines = captured
     .split('\n')
     .map((line) => line.replace(/\r/g, '').trim())
@@ -1636,9 +1637,10 @@ function paneIsBootstrapping(captured: string): boolean {
   );
 }
 
-export function paneHasActiveTask(captured: string): boolean {
+export function paneHasActiveTask(captured: string, provider?: CliAgentType): boolean {
   const lines = captured.split('\n').map(l => l.replace(/\r/g, '').trim()).filter(l => l.length > 0);
   const tail = lines.slice(-40);
+  if (provider === 'cursor' && tail.some(l => /ctrl\+c\s+to\s+stop/i.test(l))) return true;
   if (tail.some(l => /\b\d+\s+background terminal running\b/i.test(l))) return true;
   if (tail.some(l => /esc to interrupt/i.test(l))) return true;
   if (tail.some(l => /\bbackground terminal running\b/i.test(l))) return true;
@@ -1646,15 +1648,7 @@ export function paneHasActiveTask(captured: string): boolean {
   return false;
 }
 
-function paneLineLooksLikeIdlePrompt(line: string): boolean {
-  // Claude Code can render its idle input prompt inside a box/left gutter
-  // (for example "│ ❯"). Treat that as ready while still requiring the prompt
-  // glyph to be at the visual start of the line, not embedded in arbitrary
-  // output text.
-  return /^\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?[›>❯]\s*/u.test(line);
-}
-
-export function paneLooksReady(captured: string): boolean {
+export function paneLooksReady(captured: string, provider?: CliAgentType): boolean {
   const content = captured.trimEnd();
   if (content === '') return false;
   const lines = content
@@ -1663,17 +1657,18 @@ export function paneLooksReady(captured: string): boolean {
     .filter(line => line.trim() !== '');
   if (lines.length === 0) return false;
   if (paneHasTrustPrompt(content)) return true;
-  if (paneIsBootstrapping(content)) return false;
+  if (paneIsBootstrapping(content, provider)) return false;
 
   const lastLine = lines[lines.length - 1]!;
-  if (paneLineLooksLikeIdlePrompt(lastLine)) return true;
-  return lines.some(paneLineLooksLikeIdlePrompt);
+  if (paneLineLooksLikeIdlePrompt(lastLine, provider)) return true;
+  return lines.some(line => paneLineLooksLikeIdlePrompt(line, provider));
 }
 
 export interface WaitForPaneReadyOptions {
   timeoutMs?: number;
   pollIntervalMs?: number;
   attemptAlreadyFenced?: boolean;
+  provider?: CliAgentType;
 }
 
 export async function waitForPaneReady(
@@ -1691,7 +1686,7 @@ export async function waitForPaneReady(
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const captured = await capturePaneAsync(paneId);
-    if (paneLooksReady(captured) && !paneHasActiveTask(captured)) {
+    if (paneLooksReady(captured, opts.provider) && !paneHasActiveTask(captured, opts.provider)) {
       return true;
     }
     await sleep(pollIntervalMs);
@@ -1777,8 +1772,8 @@ export async function waitForStartupPaneReady(
       await sleep(pollIntervalMs);
       continue;
     }
-    if (paneHasActiveTask(captured)) return { ok: false, reason: 'pane_busy' };
-    if (paneLooksReady(captured)) return { ok: true };
+    if (paneHasActiveTask(captured, context.provider)) return { ok: false, reason: 'pane_busy' };
+    if (paneLooksReady(captured, context.provider)) return { ok: true };
     await sleep(pollIntervalMs);
   }
   return { ok: false, reason: 'readiness_timeout' };
