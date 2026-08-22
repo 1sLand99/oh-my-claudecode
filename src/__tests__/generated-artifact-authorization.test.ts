@@ -90,7 +90,12 @@ type MutableInput = {
     merge_base_commit: { sha: string };
     files?: unknown;
   };
-  commit: { sha: string; commit: { verification: { verified: boolean } }; author: { login: string } };
+  commit: {
+    sha: string;
+    commit: { verification: { verified: boolean } };
+    author: { login: string };
+    committer: { login: string };
+  };
   signature: { oid: string; signature: { isValid: boolean; signer: { login: string } } };
   files: ApiFile[];
 };
@@ -191,6 +196,7 @@ function authorizedInput(): MutableInput {
       sha: HEAD_SHA,
       commit: { verification: { verified: true } },
       author: { login: OWNER },
+      committer: { login: OWNER },
     },
     signature: {
       oid: HEAD_SHA,
@@ -507,6 +513,18 @@ describe('generated-artifact base-owned authorization decision', () => {
     expectDenied(input => {
       input.signature.signature.signer.login = 'attacker';
     }, 'signature signer');
+  });
+
+  it('accepts GitHub web-flow signatures only for matching GitHub-committed owner heads', () => {
+    const input = authorizedInput();
+    input.signature.signature.signer.login = 'web-flow';
+    input.commit.committer.login = 'web-flow';
+    expect(verifier.evaluateGeneratedArtifactAuthorization(input)).toMatchObject({ allowed: true });
+
+    expectDenied(candidate => {
+      candidate.signature.signature.signer.login = 'web-flow';
+      candidate.commit.committer.login = 'attacker';
+    }, 'web-flow signature does not match');
   });
 
   it('rejects missing base authorization and any generated closure or digest violation', () => {
