@@ -253,7 +253,7 @@ export function markCheckpointRestored(directory, sessionId, checkpointPath, che
                             const recordedMtime = Number(marker?.checkpoint_mtime_ms);
                             const existingMtime = Number.isFinite(recordedMtime)
                                 ? recordedMtime
-                                : legacyCheckpointMtime(directory, marker?.checkpoint);
+                                : legacyCheckpointMtime(directory, marker?.checkpoint, sessionId);
                             if (Number.isFinite(existingMtime) && Number.isFinite(checkpointMtimeMs)) {
                                 if (existingMtime > checkpointMtimeMs)
                                     return 'existing';
@@ -263,7 +263,7 @@ export function markCheckpointRestored(directory, sessionId, checkpointPath, che
                                         return 'existing';
                                 }
                             }
-                            else {
+                            else if (!Number.isFinite(checkpointMtimeMs)) {
                                 const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
                                 if (!CHECKPOINT_FILE_PATTERN.test(existingName) || compareCheckpointNames(existingName, basename(checkpointPath)) >= 0)
                                     return 'existing';
@@ -790,7 +790,7 @@ function reclaimStaleLock(lockPath, stale, parentFd) {
         return false;
     }
 }
-function legacyCheckpointMtime(directory, checkpointPath) {
+function legacyCheckpointMtime(directory, checkpointPath, sessionId) {
     try {
         const omcRoot = getOmcRoot(directory);
         const context = getCanonicalCheckpointContext(omcRoot);
@@ -798,6 +798,9 @@ function legacyCheckpointMtime(directory, checkpointPath) {
             return null;
         const resolved = resolveContainedRegularPath(context, omcRoot, checkpointPath);
         if (!resolved || !isStableCheckpointContext(omcRoot, context))
+            return null;
+        const raw = readBoundedCheckpoint(resolved.path, resolved);
+        if (raw === null || JSON.parse(raw)?.session_id !== sessionId)
             return null;
         const stat = lstatSync(resolved.path);
         return stat.isFile() && !stat.isSymbolicLink() && stat.nlink === 1 ? stat.mtimeMs : null;

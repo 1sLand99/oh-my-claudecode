@@ -906,7 +906,8 @@ function maskCommonMarkCodeBlocks(text) {
   for (let partIndex = 0; partIndex < parts.length; partIndex += 2) {
     const line = parts[partIndex];
     if (line.trim() === '') {
-      if (fence) parts[partIndex] = ' '.repeat(line.length);
+      if (fence?.containerChain.split('/').includes('quote')) fence = null;
+      else if (fence) parts[partIndex] = ' '.repeat(line.length);
       continue;
     }
     let quoteDepth = 0;
@@ -1007,7 +1008,7 @@ function maskCommonMarkCodeBlocks(text) {
 function maskInlineCodeAndExtractHtml(text, problems, docPath) {
   const chars = text.split('');
   const targets = [];
-  const urlAttributes = new Set(['href', 'src', 'action', 'formaction', 'poster', 'cite', 'data', 'srcset']);
+  const urlAttributes = new Set(['href', 'xlink:href', 'src', 'action', 'formaction', 'poster', 'cite', 'data', 'srcset']);
   for (let opening = 0; opening < chars.length; opening += 1) {
     if (chars[opening] === '`' && !isEscaped(text, opening)) {
       let runLength = 1;
@@ -1033,7 +1034,11 @@ function maskInlineCodeAndExtractHtml(text, problems, docPath) {
       opening = closing + runLength - 1;
       continue;
     }
-    if (chars[opening] !== '<' || !/[A-Za-z]/.test(chars[opening + 1] ?? '')) continue;
+    if (
+      chars[opening] !== '<' ||
+      isEscaped(text, opening) ||
+      !/[A-Za-z]/.test(chars[opening + 1] ?? '')
+    ) continue;
     let quote = null;
     let closing = opening + 2;
     for (; closing < chars.length; closing += 1) {
@@ -1051,6 +1056,10 @@ function maskInlineCodeAndExtractHtml(text, problems, docPath) {
       break;
     }
     const body = chars.slice(opening, closing + 1).join('');
+    if (!/^<[A-Za-z][A-Za-z0-9-]*(?:\s+[A-Za-z_:][A-Za-z0-9_.:-]*(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*\s*\/?>$/s.test(body)) {
+      problems.push(`${docPath}: malformed raw HTML tag is unsupported`);
+      continue;
+    }
     const attributes = body.matchAll(/\b([A-Za-z_:][A-Za-z0-9_.:-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g);
     for (const attribute of attributes) {
       const name = attribute[1].toLowerCase();

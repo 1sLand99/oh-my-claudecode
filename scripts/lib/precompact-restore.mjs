@@ -57,12 +57,14 @@ function reclaimStaleLock(lockPath, stale, parentFd) {
   }
 }
 
-function legacyCheckpointMtime(omcRoot, checkpointPath) {
+function legacyCheckpointMtime(omcRoot, checkpointPath, sessionId) {
   try {
     const context = getCanonicalCheckpointContext(omcRoot);
     if (!context) return null;
     const resolved = resolveContainedRegularPath(context, omcRoot, checkpointPath);
     if (!resolved || !isStableCheckpointContext(omcRoot, context)) return null;
+    const raw = readBoundedCheckpoint(resolved.path, resolved);
+    if (raw === null || JSON.parse(raw)?.session_id !== sessionId) return null;
     const stat = lstatSync(resolved.path);
     return stat.isFile() && !stat.isSymbolicLink() && stat.nlink === 1 ? stat.mtimeMs : null;
   } catch {
@@ -548,14 +550,14 @@ function markCheckpointRestored(omcRoot, sessionId, checkpointPath, checkpointCr
               const recordedMtime = Number(marker?.checkpoint_mtime_ms);
               const existingMtime = Number.isFinite(recordedMtime)
                 ? recordedMtime
-                : legacyCheckpointMtime(omcRoot, marker?.checkpoint);
+                : legacyCheckpointMtime(omcRoot, marker?.checkpoint, sessionId);
               if (Number.isFinite(existingMtime) && Number.isFinite(checkpointMtimeMs)) {
                 if (existingMtime > checkpointMtimeMs) return 'existing';
                 if (existingMtime === checkpointMtimeMs) {
                   const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
                   if (!CHECKPOINT_FILE_PATTERN.test(existingName) || compareCheckpointNames(existingName, basename(checkpointPath)) >= 0) return 'existing';
                 }
-              } else {
+              } else if (!Number.isFinite(checkpointMtimeMs)) {
                 const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
                 if (!CHECKPOINT_FILE_PATTERN.test(existingName) || compareCheckpointNames(existingName, basename(checkpointPath)) >= 0) return 'existing';
               }
@@ -688,7 +690,7 @@ function formatRestoreContext(checkpoint, path) {
 }
 
 /** Find the newest checkpoint without publishing its replay marker. */
-export function preparePreCompactCheckpointRestore(omcRoot, sessionId) {
+function preparePreCompactCheckpointRestoreOnce(omcRoot, sessionId) {
   try {
     // Session ID is used to build the replay-marker path. Reject anything the
     // canonical session-ID contract rejects so a malicious ID cannot traverse
@@ -754,6 +756,30 @@ export function preparePreCompactCheckpointRestore(omcRoot, sessionId) {
     // Restore is advisory: never break session start.
     return null;
   }
+}
+
+function hasLiveRestoreLock(omcRoot, sessionId) {
+  try {
+    const target = getRestoreMarkerTarget(omcRoot, sessionId, false);
+    if (!target) return false;
+    const lockPath = join(target.parent.path, `.${basename(target.path)}.lock`);
+    const lock = lstatSync(lockPath);
+    return lock.isFile() && !lock.isSymbolicLink() && lock.nlink === 1 &&
+      Date.now() - lock.mtimeMs <= RESTORE_LOCK_STALE_MS;
+  } catch {
+    return false;
+  }
+}
+
+/** Wait out a live marker owner, then reselect the newest session-bound checkpoint. */
+export function preparePreCompactCheckpointRestore(omcRoot, sessionId) {
+  const waitCell = new Int32Array(new SharedArrayBuffer(4));
+  for (let attempt = 0; attempt < RESTORE_LOCK_RETRY_ATTEMPTS; attempt += 1) {
+    const prepared = preparePreCompactCheckpointRestoreOnce(omcRoot, sessionId);
+    if (!prepared || !hasLiveRestoreLock(omcRoot, sessionId)) return prepared;
+    Atomics.wait(waitCell, 0, 0, RESTORE_LOCK_RETRY_MS);
+  }
+  return null;
 }
 
 /** Publish the replay marker after SessionStart confirms the complete context was selected. */

@@ -1465,6 +1465,50 @@ describe('epic-3698 closure verifier (#3712)', () => {
     expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
   });
 
+  it('contains namespaced SVG xlink:href destinations', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n<svg><use XLINK:HREF="%2e%2e/%2e%2e/%2e%2e/outside.svg"></use></svg>\n',
+    );
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
+  });
+
+  it('does not mask Markdown inside malformed non-CommonMark HTML', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n<a title=` [escape](../../../outside.md)>\n',
+    );
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
+  });
+
+  it('treats a backslash-escaped less-than sign as literal text, not raw HTML', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n\\<a href="../../../outside.md">literal</a>\n',
+    );
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(check(run, 'docsLinks').status).toBe('pass');
+  });
+
   it('allows raw HTML anchors and external schemes', () => {
     buildCompleteFixture(fixture);
     writeFileSync(
@@ -1630,6 +1674,21 @@ describe('epic-3698 closure verifier (#3712)', () => {
     writeFileSync(
       join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
       '# design\n- ```md\n  fenced\n- [escape]: ../../../outside.md\n',
+    );
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
+  });
+
+  it('ends a blockquote fence when an unquoted blank separates a sibling quote', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n> ```md\n> fenced\n\n> <a href="../../../outside.md">outside</a>\n',
     );
     const run = runVerifier([
       '--root', fixture,

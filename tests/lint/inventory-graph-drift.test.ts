@@ -353,6 +353,43 @@ describe('inventory-graph drift enforcement (#3702)', () => {
     const unreachableOverride = spawnSync('node', [GENERATOR], { ...opts, env: { ...process.env, ISSUE_3702_HEAD: '0'.repeat(40) } });
     expect(unreachableOverride.status).not.toBe(0);
 
+    const detached = spawnSync('git', ['commit-tree', 'HEAD^{tree}', '-m', 'detached inventory provenance'], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: 'Inventory Test',
+        GIT_AUTHOR_EMAIL: 'inventory@example.invalid',
+        GIT_COMMITTER_NAME: 'Inventory Test',
+        GIT_COMMITTER_EMAIL: 'inventory@example.invalid',
+      },
+    });
+    expect(detached.status, detached.stderr).toBe(0);
+    const nonAncestor = detached.stdout.trim();
+    expect(nonAncestor).toMatch(/^[0-9a-f]{40}$/);
+    const nonAncestorOverride = spawnSync('node', [GENERATOR], {
+      ...opts,
+      env: { ...process.env, ISSUE_3702_HEAD: nonAncestor },
+    });
+    expect(nonAncestorOverride.status).not.toBe(0);
+    expect(nonAncestorOverride.stderr).toContain('ancestor of the current HEAD');
+
+    const nonAncestorBaseline = join(REPO_ROOT, `.tmp-inventory-non-ancestor-${process.pid}.json`);
+    const nonAncestorManifest = JSON.parse(JSON.stringify(manifest)) as Manifest;
+    nonAncestorManifest.head = nonAncestor;
+    nonAncestorManifest.provenance.head = nonAncestor;
+    const withoutManifestSha = { ...(nonAncestorManifest as unknown as Record<string, unknown>) };
+    delete withoutManifestSha.manifestSha256;
+    nonAncestorManifest.manifestSha256 = sha256Hex(stableStringify(withoutManifestSha));
+    writeFileSync(nonAncestorBaseline, `${JSON.stringify(nonAncestorManifest, null, 2)}\n`);
+    try {
+      const result = spawnSync('node', [GENERATOR, '--verify', '--out', nonAncestorBaseline], opts);
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('ancestor of the current HEAD');
+    } finally {
+      unlinkSync(nonAncestorBaseline);
+    }
+
     const outsideOut = resolve(REPO_ROOT, '..', `.tmp-inventory-outside-${process.pid}.json`);
     const outsideWrite = spawnSync('node', [GENERATOR, '--write', '--out', outsideOut], opts);
     expect(outsideWrite.status).not.toBe(0);

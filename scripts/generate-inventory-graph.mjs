@@ -105,7 +105,7 @@ function getHeadSha() {
   if (override !== undefined) {
     const value = override.trim();
     if (!/^[0-9a-f]{40}$/.test(value)) throw new Error('ISSUE_3702_HEAD must be a 40-character lowercase Git SHA');
-    if (!isReachableCommit(REPO_ROOT, value)) throw new Error('ISSUE_3702_HEAD must identify a commit reachable from the current HEAD');
+    if (!isAncestorCommit(REPO_ROOT, value)) throw new Error('ISSUE_3702_HEAD must identify a commit that is an ancestor of the current HEAD');
     return value;
   }
   try {
@@ -122,9 +122,9 @@ function getGeneratedAt() {
   return v;
 }
 
-function isReachableCommit(root, sha) {
+function isAncestorCommit(root, sha) {
   try {
-    execFileSync('git', ['cat-file', '-e', `${sha}^{commit}`], { cwd: root, stdio: 'ignore' });
+    execFileSync('git', ['merge-base', '--is-ancestor', sha, 'HEAD'], { cwd: root, stdio: 'ignore' });
     return true;
   } catch {
     return false;
@@ -586,6 +586,10 @@ async function main() {
     }
     if (!/^[0-9a-f]{40}$/.test(onDisk.head ?? '') || onDisk.provenance?.head !== onDisk.head) {
       console.error('[inventory-graph] provenance.head must be one consistent 40-character lowercase Git SHA');
+      process.exit(2);
+    }
+    if (!isAncestorCommit(REPO_ROOT, onDisk.head)) {
+      console.error('[inventory-graph] committed provenance.head must be an ancestor of the current HEAD');
       process.exit(2);
     }
     if (!/^[0-9a-f]{64}$/.test(onDisk.sourceSha256 ?? '') || onDisk.provenance?.sourceSha256 !== onDisk.sourceSha256 || onDisk.sourceSha256 !== fresh.sourceSha256) {

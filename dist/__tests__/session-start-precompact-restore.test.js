@@ -292,6 +292,44 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
         expect(existsSync(join(project, '.omc', 'state', 'checkpoints-restored', 'budgeted-restore-template', 'restored.json'))).toBe(true);
     });
     it.each([
+        ['installed', SCRIPT_PATH, true],
+        ['template', TEMPLATE_SCRIPT_PATH, false],
+    ])('waits out a live lock and reselects in the actual %s SessionStart entrypoint', async (_label, scriptPath, needsPluginRoot) => {
+        if (!SECURE_MARKER_SUPPORTED)
+            return;
+        const sessionId = `entrypoint-live-lock-${_label}`;
+        writeCheckpoint(project, new Date().toISOString(), { session_id: sessionId });
+        const markerParent = join(project, '.omc', 'state', 'checkpoints-restored', sessionId);
+        mkdirSync(markerParent, { recursive: true });
+        const lockPath = join(markerParent, '.restored.json.lock');
+        writeFileSync(lockPath, 'live');
+        const env = {
+            ...process.env,
+            HOME: home,
+            USERPROFILE: home,
+            ...(needsPluginRoot ? { CLAUDE_PLUGIN_ROOT: join(__dirname, '..', '..') } : {}),
+        };
+        const child = spawn(NODE, [scriptPath], { env, stdio: ['pipe', 'pipe', 'pipe'] });
+        let stdout = '';
+        let stderr = '';
+        child.stdout.setEncoding('utf8');
+        child.stderr.setEncoding('utf8');
+        child.stdout.on('data', (chunk) => { stdout += chunk; });
+        child.stderr.on('data', (chunk) => { stderr += chunk; });
+        const startedAt = Date.now();
+        child.stdin.end(JSON.stringify({
+            hook_event_name: 'SessionStart',
+            source: 'compact',
+            session_id: sessionId,
+            cwd: project,
+        }));
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        unlinkSync(lockPath);
+        expect(await new Promise((resolve) => child.on('close', resolve)), stderr).toBe(0);
+        expect(Date.now() - startedAt).toBeGreaterThanOrEqual(100);
+        expect(parseContext(stdout)).toContain('PRECOMPACT CHECKPOINT RESTORED');
+    }, 15_000);
+    it.each([
         ['installed', join(__dirname, '..', '..', 'scripts', 'lib', 'precompact-restore.mjs'), true],
         ['template', join(__dirname, '..', '..', 'templates', 'hooks', 'lib', 'precompact-restore.mjs'), true],
         ['dist', join(__dirname, '..', '..', 'dist', 'hooks', 'pre-compact', 'restore.js'), false],

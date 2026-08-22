@@ -893,6 +893,36 @@ describe('PreCompact restore (issue #3730)', () => {
     expect(restorePreCompactCheckpoint(tempDir, 'legacy-marker-order')?.text).toContain('checkpoint-a.json');
   });
 
+  it('does not let a foreign-session legacy marker suppress the current session', () => {
+    if (!SECURE_MARKER_SUPPORTED) return;
+    const createdAt = new Date().toISOString();
+    const checkpointDir = join(getOmcRootForTest(tempDir), 'state', 'checkpoints');
+    mkdirSync(checkpointDir, { recursive: true });
+    const foreignPath = join(checkpointDir, 'checkpoint-z.json');
+    writeFileSync(foreignPath, JSON.stringify({
+      created_at: createdAt,
+      session_id: 'foreign-session',
+      trigger: 'auto', active_modes: {},
+      todo_summary: { pending: 0, in_progress: 0, completed: 0 }, wisdom_exported: false,
+    }));
+    const currentPath = join(checkpointDir, 'checkpoint-a.json');
+    writeFileSync(currentPath, JSON.stringify({
+      created_at: createdAt,
+      session_id: 'current-session',
+      trigger: 'auto', active_modes: {},
+      todo_summary: { pending: 0, in_progress: 0, completed: 0 }, wisdom_exported: false,
+    }));
+    const markerParent = join(getOmcRootForTest(tempDir), 'state', 'checkpoints-restored', 'current-session');
+    mkdirSync(markerParent, { recursive: true });
+    writeFileSync(join(markerParent, 'restored.json'), JSON.stringify({
+      restored_at: new Date().toISOString(),
+      checkpoint: foreignPath,
+      checkpoint_created_at: createdAt,
+    }));
+
+    expect(restorePreCompactCheckpoint(tempDir, 'current-session')?.text).toContain('checkpoint-a.json');
+  });
+
   it('does not unlink a replacement lock after inspecting a stale inode', () => {
     if (!SECURE_MARKER_SUPPORTED) return;
     const createdAt = new Date().toISOString();
