@@ -1008,6 +1008,23 @@ describe('epic-3698 closure verifier (#3712)', () => {
     expect(check(run, 'docsLinks').status).toBe('fail');
   });
 
+  it('keeps mandatory closure documents when --docs adds an extra path', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(join(fixture, 'docs', 'safe.md'), 'safe\n');
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n[escape](../../../outside.md)\n',
+    );
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+      '--docs', 'docs/safe.md',
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
+  });
+
   it('rejects escaped-label reference links that traverse outside the repository root', () => {
     buildCompleteFixture(fixture);
     writeFileSync(
@@ -1291,6 +1308,65 @@ describe('epic-3698 closure verifier (#3712)', () => {
     writeFileSync(
       join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
       '# design\n[a]\n\n```md\n[a]: ../../../outside.md\n```\n\n[a]: ../safe.md\n',
+    );
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(check(run, 'docsLinks').status).toBe('pass');
+  });
+
+  it('does not treat a backtick-bearing info string as a valid fence opener', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n``` info `\n\n[escape]: ../../../outside.md\n\n[escape]\n',
+    );
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
+  });
+
+  it('decodes named percent entities before containment', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n[escape](&percnt;2e&percnt;2e/&percnt;2e&percnt;2e/&percnt;2e&percnt;2e/outside.md)\n',
+    );
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
+  });
+
+  it('resolves safe multiline, ordered-list, and blockquote definitions', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(join(fixture, 'docs', 'safe.md'), 'safe\n');
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n[a][safe label]\n[b][ordered]\n[c][quoted]\n\n[safe\n label]: ../safe.md\n\n10. item\n\n    [ordered]: ../safe.md\n\n> [quoted]:\n> ../safe.md\n',
+    );
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(check(run, 'docsLinks').status, JSON.stringify(check(run, 'docsLinks'))).toBe('pass');
+  });
+
+  it('ignores inline and fenced code link examples', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n`[inline](../../../outside.md)`\n\n```md\n[fenced](../../../outside.md)\n```\n',
     );
     const run = runVerifier([
       '--root', fixture,

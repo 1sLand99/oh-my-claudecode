@@ -738,7 +738,8 @@ function isEscaped(text, index) {
 
 function findClosingBracket(text, opening) {
   let depth = 1;
-  for (let index = opening + 1; index < text.length; index += 1) {
+  const limit = Math.min(text.length, opening + 1001);
+  for (let index = opening + 1; index < limit; index += 1) {
     if (isEscaped(text, index)) continue;
     if (text[index] === '[') depth += 1;
     if (text[index] === ']') {
@@ -768,6 +769,7 @@ function referenceLabel(value) {
     .replace(/[ \t\r\n]+/g, ' ')
     .normalize('NFKC')
     .replace(/[ßẞ]/g, 'ss')
+    .replace(/ς/g, 'σ')
     .toLowerCase();
 }
 
@@ -776,13 +778,17 @@ function commonMarkDestination(value, label, problems, decodePercent) {
   const unwrapped = trimmed.startsWith('<') && trimmed.endsWith('>') ? trimmed.slice(1, -1) : trimmed;
   try {
     const unescaped = unescapeReferenceLabel(unwrapped).replace(
-      /&(?:#(\d+)|#x([0-9a-f]+)|(period|sol|bsol|amp|lt|gt|quot|apos));/gi,
+      /&(?:#(\d+)|#x([0-9a-f]+)|(period|sol|bsol|amp|lt|gt|quot|apos|percnt|num|colon));/gi,
       (entity, decimal, hexadecimal, named) => {
         if (decimal !== undefined) return String.fromCodePoint(Number(decimal));
         if (hexadecimal !== undefined) return String.fromCodePoint(Number.parseInt(hexadecimal, 16));
-        return ({ period: '.', sol: '/', bsol: '\\', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" })[named.toLowerCase()] ?? entity;
+        return ({ period: '.', sol: '/', bsol: '\\', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", percnt: '%', num: '#', colon: ':' })[named.toLowerCase()] ?? entity;
       },
     );
+    if (/&[A-Za-z][A-Za-z0-9]+;/.test(unescaped)) {
+      problems.push(`${label} contains an unsupported named character reference`);
+      return null;
+    }
     return decodePercent ? decodeURIComponent(unescaped) : unescaped;
   } catch {
     problems.push(`${label} contains malformed escaped bytes`);
@@ -887,18 +893,23 @@ function maskCommonMarkCodeBlocks(text) {
       content = content.slice(markerWidth);
     }
 
-    const fenceMatch = content.match(/^ {0,3}(`{3,}|~{3,})/);
+    const fenceMatch = content.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
     if (fence) {
       parts[index] = ' '.repeat(line.length);
-      if (fenceMatch && fenceMatch[1][0] === fence.char && fenceMatch[1].length >= fence.length) fence = null;
+      if (
+        fenceMatch &&
+        fenceMatch[1][0] === fence.char &&
+        fenceMatch[1].length >= fence.length &&
+        fenceMatch[2].trim() === ''
+      ) fence = null;
       continue;
     }
-    if (fenceMatch) {
+    if (fenceMatch && !(fenceMatch[1][0] === '`' && fenceMatch[2].includes('`'))) {
       fence = { char: fenceMatch[1][0], length: fenceMatch[1].length };
       parts[index] = ' '.repeat(line.length);
       continue;
     }
-    if (listIndent === 0 && /^ {4}/.test(content)) {
+    if (/^ {4}/.test(content)) {
       parts[index] = ' '.repeat(line.length);
       continue;
     }
@@ -909,9 +920,38 @@ function maskCommonMarkCodeBlocks(text) {
   return parts.join('');
 }
 
+function maskCommonMarkInlineCode(text) {
+  const chars = [...text];
+  for (let index = 0; index < chars.length; index += 1) {
+    if (chars[index] !== '`') continue;
+    let runLength = 1;
+    while (chars[index + runLength] === '`') runLength += 1;
+    let closing = index + runLength;
+    while (closing < chars.length) {
+      if (chars[closing] !== '`') {
+        closing += 1;
+        continue;
+      }
+      let closingLength = 1;
+      while (chars[closing + closingLength] === '`') closingLength += 1;
+      if (closingLength === runLength) break;
+      closing += closingLength;
+    }
+    if (closing >= chars.length) {
+      index += runLength - 1;
+      continue;
+    }
+    for (let cursor = index; cursor < closing + runLength; cursor += 1) {
+      if (chars[cursor] !== '\r' && chars[cursor] !== '\n') chars[cursor] = ' ';
+    }
+    index = closing + runLength - 1;
+  }
+  return chars.join('');
+}
+
 function parseMarkdownDestinations(text, problems, docPath) {
   const definitions = new Map();
-  const definitionText = maskCommonMarkCodeBlocks(text);
+  const definitionText = maskCommonMarkInlineCode(maskCommonMarkCodeBlocks(text));
   const lines = definitionText.split(/\r\n?|\n/);
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
     const line = stripMarkdownContainerPrefix(lines[lineIndex]);
@@ -946,28 +986,30 @@ function parseMarkdownDestinations(text, problems, docPath) {
       problems.push(`${docPath}: unsupported or missing destination for potential reference definition`);
       continue;
     }
+    const label = referenceLabel(definitionText.slice(opening + 1, closing));
+    if (!definitions.has(label)) definitions.set(label, destination.target);
     potentialDefinitionTargets.add(destination.target);
   }
-  for (let index = 0; index < text.length; index += 1) {
-    if (text[index] !== '[' || isEscaped(text, index)) continue;
-    const firstClosing = findClosingBracket(text, index);
+  for (let index = 0; index < definitionText.length; index += 1) {
+    if (definitionText[index] !== '[' || isEscaped(definitionText, index)) continue;
+    const firstClosing = findClosingBracket(definitionText, index);
     if (firstClosing < 0) continue;
-    if (isReferenceDefinitionPosition(text, index, firstClosing)) {
+    if (isReferenceDefinitionPosition(definitionText, index, firstClosing)) {
       index = firstClosing;
       continue;
     }
-    const firstLabel = text.slice(index + 1, firstClosing);
-    const next = text[firstClosing + 1];
+    const firstLabel = definitionText.slice(index + 1, firstClosing);
+    const next = definitionText[firstClosing + 1];
     if (next === '(') {
-      const destination = readInlineDestination(text, firstClosing + 2);
+      const destination = readInlineDestination(definitionText, firstClosing + 2);
       if (destination) targets.push(destination.target);
       index = destination?.end ?? firstClosing;
       continue;
     }
     if (next === '[') {
-      const secondClosing = findClosingBracket(text, firstClosing + 1);
+      const secondClosing = findClosingBracket(definitionText, firstClosing + 1);
       if (secondClosing < 0) continue;
-      const secondLabel = text.slice(firstClosing + 2, secondClosing);
+      const secondLabel = definitionText.slice(firstClosing + 2, secondClosing);
       const label = referenceLabel(secondLabel || firstLabel);
       const target = definitions.get(label);
       if (target === undefined) problems.push(`${docPath}: missing reference definition [${secondLabel || firstLabel}]`);
@@ -1632,11 +1674,12 @@ export function runVerification(args) {
   const ciCheck = checkExactHeadCi(root, args.evidence);
   const childCheck = checkChildTerminality(receiptsDir, ciCheck);
   const terminalChildren = new Set(childCheck.terminal ?? []);
-  const docPaths = args.docPaths ?? [
+  const requiredDocPaths = [
     EPIC_CONTRACT.planningDoc,
     'docs/design/ISSUE-3712-RELEASE-VERIFICATION.md',
     'receipts/epic-3698/README.md',
   ];
+  const docPaths = [...new Set([...requiredDocPaths, ...(args.docPaths ?? [])])];
 
   const checks = [
     ciCheck,
