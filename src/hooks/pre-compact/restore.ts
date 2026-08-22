@@ -68,6 +68,7 @@ export const RESTORE_CONTEXT_MAX_CHARS = 1200;
 
 /** Replay markers are tiny, but bound reads before parsing untrusted bytes. */
 const RESTORE_MARKER_MAX_BYTES = 16 * 1024;
+const RESTORE_LOCK_STALE_MS = 30_000;
 
 /** Only files matching this pattern are checkpoint candidates. */
 const CHECKPOINT_FILE_PATTERN = /^checkpoint-.+\.json$/;
@@ -129,12 +130,16 @@ export function markCheckpointRestored(
   directory: string,
   sessionId: string,
   checkpointPath: string,
+  checkpointCreatedAt?: string,
 ): RestoreMarkerStatus {
   if (!isValidSessionId(sessionId)) {
     return 'invalid_session_id'; // never write a marker for an unvalidated session ID
   }
   let parentFd: number | null = null;
   let markerFd: number | null = null;
+  let lockFd: number | null = null;
+  let lockPath: string | null = null;
+  let lockIdentity: { dev: number; ino: number } | null = null;
   let tempPath: string | null = null;
   try {
     const omcRoot = getOmcRoot(directory);
@@ -191,7 +196,13 @@ export function markCheckpointRestored(
     }
 
     const bytes = Buffer.from(
-      JSON.stringify({ restored_at: new Date().toISOString(), checkpoint: checkpointPath }),
+      JSON.stringify({
+        restored_at: new Date().toISOString(),
+        checkpoint: checkpointPath,
+        checkpoint_created_at: Number.isFinite(Date.parse(checkpointCreatedAt ?? ''))
+          ? checkpointCreatedAt
+          : null,
+      }),
       'utf-8',
     );
     let offset = 0;
@@ -222,6 +233,49 @@ export function markCheckpointRestored(
     closeSync(markerFd);
     markerFd = null;
 
+    lockPath = descriptorChildPath(parentFd, `.${basename(target.path)}.lock`);
+    if (lockPath === null) return 'unsupported';
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        lockFd = openSync(lockPath, flags, 0o600);
+        const lockStat = fstatSync(lockFd);
+        if (!lockStat.isFile() || lockStat.isSymbolicLink() || lockStat.nlink !== 1) return 'failed';
+        lockIdentity = { dev: lockStat.dev, ino: lockStat.ino };
+        break;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') return 'failed';
+        let stale;
+        try {
+          stale = lstatSync(lockPath);
+        } catch {
+          continue;
+        }
+        if (
+          attempt === 0 &&
+          stale.isFile() &&
+          !stale.isSymbolicLink() &&
+          stale.nlink === 1 &&
+          Date.now() - stale.mtimeMs > RESTORE_LOCK_STALE_MS &&
+          isStableRestoreMarkerTarget(target, parentFd)
+        ) {
+          unlinkSync(lockPath);
+          continue;
+        }
+        return 'failed';
+      }
+    }
+    if (lockFd === null || lockIdentity === null) return 'failed';
+    const ownsLock = () => {
+      try {
+        const current = lstatSync(lockPath!);
+        return current.isFile() && !current.isSymbolicLink() && current.nlink === 1 &&
+          current.dev === lockIdentity!.dev && current.ino === lockIdentity!.ino &&
+          isStableRestoreMarkerTarget(target, parentFd!);
+      } catch {
+        return false;
+      }
+    };
+
     // Publish the complete marker atomically. link+unlink gives the initial
     // publication O_EXCL semantics without exposing a partially written final
     // path; an existing validated regular marker is replaced with rename.
@@ -233,6 +287,7 @@ export function markCheckpointRestored(
     }
 
     if (!existing) {
+      if (!ownsLock()) return 'failed';
       try {
         linkSync(tempPath, markerPath);
         unlinkSync(tempPath);
@@ -265,11 +320,22 @@ export function markCheckpointRestored(
       );
       if (raw !== null) {
         try {
-          if (JSON.parse(raw)?.checkpoint === checkpointPath) return 'existing';
+          const marker = JSON.parse(raw);
+          if (marker?.checkpoint === checkpointPath) return 'existing';
+          const existingTime = Date.parse(marker?.checkpoint_created_at ?? '');
+          const candidateTime = Date.parse(checkpointCreatedAt ?? '');
+          if (Number.isFinite(existingTime) && Number.isFinite(candidateTime)) {
+            if (existingTime >= candidateTime) return 'existing';
+          } else {
+            const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
+            const candidateName = basename(checkpointPath);
+            if (!CHECKPOINT_FILE_PATTERN.test(existingName) || existingName >= candidateName) return 'existing';
+          }
         } catch {
           // Replace malformed marker content with the complete new marker.
         }
       }
+      if (!ownsLock()) return 'failed';
       renameSync(tempPath!, markerPath);
       tempPath = null;
     }
@@ -300,6 +366,21 @@ export function markCheckpointRestored(
         closeSync(markerFd);
       } catch {
         // Ignore close failures; marker publication has already failed.
+      }
+    }
+    if (lockFd !== null) {
+      try {
+        closeSync(lockFd);
+      } catch {
+        // Ignore close failures; ownership is checked before cleanup.
+      }
+    }
+    if (lockPath !== null && lockIdentity !== null) {
+      try {
+        const current = lstatSync(lockPath);
+        if (current.dev === lockIdentity.dev && current.ino === lockIdentity.ino) unlinkSync(lockPath);
+      } catch {
+        // Ignore cleanup failures; stale locks are reclaimed after the bound.
       }
     }
     if (tempPath !== null) {
@@ -985,12 +1066,13 @@ export function restorePreCompactCheckpoint(
       return null;
     }
 
-    const marker_status = markCheckpointRestored(directory, sessionId, candidate.path);
-    if (
-      marker_status !== 'written' &&
-      !(marker_status === 'existing' &&
-        isCheckpointRestored(directory, sessionId, candidate.path))
-    ) {
+    const marker_status = markCheckpointRestored(
+      directory,
+      sessionId,
+      candidate.path,
+      candidate.checkpoint.created_at,
+    );
+    if (marker_status !== 'written') {
       return null;
     }
 

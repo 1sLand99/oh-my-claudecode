@@ -50,7 +50,7 @@ const EXPECTED_CHILD_PR_ENTRIES = Object.entries(EPIC_CONTRACT.childPullRequests
 const EXPECTED_PR_NUMBERS = new Set(EXPECTED_CHILD_PR_ENTRIES.map(({ number }) => number));
 
 function ghJson(args) {
-  const out = execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const out = execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 32 * 1024 * 1024 });
   return JSON.parse(out);
 }
 
@@ -115,7 +115,7 @@ function collectPr(issue, number, repository) {
   };
 }
 
-function collectDirectIssue(issue, repository) {
+function collectDirectIssue(issue, repository, verificationHead) {
   const issueData = ghJson(['issue', 'view', String(issue), '--json', 'number,state']);
   if (issueData.number !== issue) fail(`gh returned issue #${issueData.number} while collecting expected issue #${issue}`);
   if (issueData.state !== 'CLOSED') fail(`expected direct issue #${issue} is not closed (state: ${issueData.state ?? 'missing'})`);
@@ -179,6 +179,8 @@ function collectDirectIssue(issue, repository) {
   if (status.state !== 'success' && !(status.state === 'pending' && statuses.length === 0)) {
     fail(`direct issue #${issue} commit ${commitEvent.sha} is not green (status: ${status.state ?? 'missing'})`);
   }
+  const shippingPath = `repos/${repository}/compare/${commitEvent.sha}...${verificationHead}`;
+  const shipping = ghJson(['api', `${shippingPath}?per_page=1&page=1`, '--header', 'Accept: application/vnd.github+json']);
   return {
     issue,
     state: issueData.state,
@@ -187,6 +189,13 @@ function collectDirectIssue(issue, repository) {
     statuses,
     checks,
     workflows,
+    shipping: {
+      headSha: verificationHead,
+      status: shipping.status,
+      aheadBy: shipping.ahead_by,
+      behindBy: shipping.behind_by,
+      mergeBaseSha: shipping.merge_base_commit?.sha,
+    },
     source: {
       repository,
       issue: `repos/${repository}/issues/${issue}`,
@@ -198,6 +207,7 @@ function collectDirectIssue(issue, repository) {
       statuses: statusesPath,
       checks: checksPath,
       workflows: workflowsPath,
+      shipping: shippingPath,
     },
   };
 }
@@ -226,9 +236,11 @@ if (!args.directOnly) {
 }
 const repository = ghJson(['repo', 'view', '--json', 'nameWithOwner']).nameWithOwner;
 if (typeof repository !== 'string' || repository.length === 0) fail('unable to determine repository name for direct issue evidence');
+const verificationHead = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+if (!/^[0-9a-f]{40}$/.test(verificationHead)) fail('unable to determine exact verification HEAD');
 const issueByPr = new Map(EXPECTED_CHILD_PR_ENTRIES.map(({ issue, number }) => [number, issue]));
 const pullRequests = numbers.map((number) => collectPr(issueByPr.get(number), number, repository));
-const directIssues = [collectDirectIssue(3709, repository)];
+const directIssues = [collectDirectIssue(3709, repository, verificationHead)];
 const evidence = {
   schemaVersion: 1,
   kind: 'ci-evidence',

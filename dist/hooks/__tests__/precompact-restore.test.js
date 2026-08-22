@@ -546,7 +546,7 @@ describe('PreCompact restore (issue #3730)', () => {
             expect(other.ok).toBe(true);
         }
     });
-    it('a newer checkpoint is restorable after an older one was consumed', async () => {
+    it('does not fall back to an older checkpoint after the newest was consumed', async () => {
         const t1 = new Date(Date.now() - 30_000).toISOString();
         const t2 = new Date(Date.now() - 1_000).toISOString();
         writeCheckpoint(tempDir, t1);
@@ -557,12 +557,41 @@ describe('PreCompact restore (issue #3730)', () => {
             expect(first.checkpoint.created_at).toBe(t2);
             markCheckpointRestored(tempDir, 'test-session', first.path);
         }
-        // Newest is consumed; the older one is still valid (not replay, different file)
+        // The marker is a monotonic cursor; consuming the newest checkpoint also
+        // prevents older state from replaying into the same session afterward.
         const second = await findLatestCheckpointForRestore(tempDir, 'test-session');
-        expect(second.ok).toBe(true);
-        if (second.ok) {
-            expect(second.checkpoint.created_at).toBe(t1);
-        }
+        expect(second.ok).toBe(false);
+        if (!second.ok)
+            expect(second.reason).toBe('already_restored');
+    });
+    it('advances the session marker from checkpoint A to newer B and suppresses B replay', async () => {
+        if (!SECURE_MARKER_SUPPORTED)
+            return;
+        const t1 = new Date(Date.now() - 2_000).toISOString();
+        const checkpointA = writeCheckpoint(tempDir, t1);
+        const first = restorePreCompactCheckpoint(tempDir, 'marker-advance-session');
+        expect(first?.marker_status).toBe('written');
+        const markerPath = join(getOmcRootForTest(tempDir), 'state', 'checkpoints-restored', 'marker-advance-session', 'restored.json');
+        expect(JSON.parse(readFileSync(markerPath, 'utf-8')).checkpoint).toBe(checkpointA);
+        const t2 = new Date().toISOString();
+        const checkpointB = writeCheckpoint(tempDir, t2);
+        const second = restorePreCompactCheckpoint(tempDir, 'marker-advance-session');
+        expect(second?.marker_status).toBe('written');
+        expect(second?.text).toContain(t2);
+        expect(JSON.parse(readFileSync(markerPath, 'utf-8')).checkpoint).toBe(checkpointB);
+        expect(restorePreCompactCheckpoint(tempDir, 'marker-advance-session')).toBeNull();
+    });
+    it('does not let a delayed older marker claim overwrite a newer checkpoint', () => {
+        if (!SECURE_MARKER_SUPPORTED)
+            return;
+        const t1 = new Date(Date.now() - 2_000).toISOString();
+        const t2 = new Date().toISOString();
+        const checkpointA = writeCheckpoint(tempDir, t1);
+        const checkpointB = writeCheckpoint(tempDir, t2);
+        expect(markCheckpointRestored(tempDir, 'marker-monotonic-session', checkpointB, t2)).toBe('written');
+        expect(markCheckpointRestored(tempDir, 'marker-monotonic-session', checkpointA, t1)).toBe('existing');
+        const markerPath = join(getOmcRootForTest(tempDir), 'state', 'checkpoints-restored', 'marker-monotonic-session', 'restored.json');
+        expect(JSON.parse(readFileSync(markerPath, 'utf-8')).checkpoint).toBe(checkpointB);
     });
 });
 // ============================================================================

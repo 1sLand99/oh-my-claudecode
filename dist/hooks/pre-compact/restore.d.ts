@@ -58,7 +58,7 @@ export interface RestoredCheckpointContext {
  * Session-scoped: different sessions may restore the same checkpoint.
  * Never throws — replay protection must not break restore.
  */
-export declare function markCheckpointRestored(directory: string, sessionId: string, checkpointPath: string): RestoreMarkerStatus;
+export declare function markCheckpointRestored(directory: string, sessionId: string, checkpointPath: string, checkpointCreatedAt?: string): RestoreMarkerStatus;
 /**
  * Find the newest checkpoint eligible for restore in this directory/session.
  *

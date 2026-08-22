@@ -336,7 +336,7 @@ function checkKey(check) {
 }
 
 function ghJson(root, args) {
-  const out = execFileSync('gh', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const out = execFileSync('gh', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 32 * 1024 * 1024 });
   return JSON.parse(out);
 }
 
@@ -436,6 +436,9 @@ function verifyLiveGitHubEvidence(root, evidence, prs, directIssues) {
       const expectedStatusesPath = `${expectedCommitPath}/statuses`;
       const expectedChecksPath = `${expectedCommitPath}/check-runs`;
       const expectedWorkflowsPath = `repos/${repository}/actions/runs`;
+      const expectedShippingPath = isSha(verificationHead)
+        ? `repos/${repository}/compare/${commitSha}...${verificationHead}`
+        : null;
       if (!isObject(source) || source.repository !== repository) {
         return { problems: [`${label}.source.repository must match the live repository`] };
       }
@@ -451,6 +454,9 @@ function verifyLiveGitHubEvidence(root, evidence, prs, directIssues) {
         if (!apiPathMatches(source[field], expected)) {
           return { problems: [`${label}.source.${field} must identify ${expected}`] };
         }
+      }
+      if (expectedShippingPath && !apiPathMatches(source.shipping, expectedShippingPath)) {
+        return { problems: [`${label}.source.shipping must identify ${expectedShippingPath}`] };
       }
       const timeline = ghPaginated(root, expectedTimelinePath, 'timeline');
       let liveCommitEvent = null;
@@ -544,6 +550,25 @@ function verifyLiveGitHubEvidence(root, evidence, prs, directIssues) {
       if (!directChecksAreGreen(liveStatus, liveChecks, liveWorkflows, liveStatuses) || !directChecksAreGreen(direct.status, evidenceChecks, evidenceWorkflows, evidenceStatuses)) {
         return { problems: [`${label}.status/check/workflow provenance is not green for commit ${commitSha}`] };
       }
+      if (expectedShippingPath) {
+        const shipping = ghJson(root, ['api', `${expectedShippingPath}?per_page=1&page=1`, '--header', 'Accept: application/vnd.github+json']);
+        const liveShipping = {
+          headSha: verificationHead,
+          status: shipping?.status,
+          aheadBy: shipping?.ahead_by,
+          behindBy: shipping?.behind_by,
+          mergeBaseSha: shipping?.merge_base_commit?.sha,
+        };
+        if (
+          !isObject(direct.shipping) ||
+          JSON.stringify(direct.shipping) !== JSON.stringify(liveShipping) ||
+          !['ahead', 'identical'].includes(liveShipping.status) ||
+          liveShipping.behindBy !== 0 ||
+          liveShipping.mergeBaseSha !== commitSha
+        ) {
+          return { problems: [`${label}.commit is not proven reachable from exact verification HEAD ${verificationHead}`] };
+        }
+      }
       liveDirectIssues.push({
         issue: liveIssue.number,
         state: liveIssue.state,
@@ -552,6 +577,7 @@ function verifyLiveGitHubEvidence(root, evidence, prs, directIssues) {
         statuses: liveStatuses,
         checks: liveChecks,
         workflows: liveWorkflows,
+        shipping: direct.shipping,
         source: direct.source,
       });
     }
@@ -676,8 +702,20 @@ function checkExactHeadCi(root, evidencePath) {
         || !isNonEmptyString(direct.source.issue) || !isNonEmptyString(direct.source.timeline)
         || !isNonEmptyString(direct.source.commit) || !isNonEmptyString(direct.source.status)
         || !isNonEmptyString(direct.source.statuses) || !isNonEmptyString(direct.source.checks) || !isNonEmptyString(direct.source.workflows)
+        || !isNonEmptyString(direct.source.shipping)
         || direct.source.eventType !== 'referenced' || direct.source.commitId !== direct.commit?.sha) {
         problems.push(`${label}.source must identify repository, issue, timeline, commit, status, check, and workflow API evidence`);
+      }
+      if (!isObject(direct.shipping) || !isSha(direct.shipping.headSha) || !isSha(direct.shipping.mergeBaseSha)
+        || !Number.isSafeInteger(direct.shipping.aheadBy) || !Number.isSafeInteger(direct.shipping.behindBy)
+        || !isNonEmptyString(direct.shipping.status)) {
+        problems.push(`${label}.shipping must identify the exact verification head and compare result`);
+      } else {
+        const repository = evidence.repository ?? evidence.payload?.repository;
+        const expectedShipping = `repos/${repository}/compare/${direct.commit?.sha}...${direct.shipping.headSha}`;
+        if (!apiPathMatches(direct.source?.shipping, expectedShipping)) {
+          problems.push(`${label}.source.shipping must identify ${expectedShipping}`);
+        }
       }
     }
   }
@@ -790,7 +828,8 @@ function parseMarkdownDestinations(text, problems, docPath) {
     const rest = line.slice(closing + 2).trimStart();
     if (!rest) continue;
     const destination = readInlineDestination(rest, 0);
-    if (destination) definitions.set(referenceLabel(line.slice(leading + 1, closing)), destination.target);
+    const label = referenceLabel(line.slice(leading + 1, closing));
+    if (destination && !definitions.has(label)) definitions.set(label, destination.target);
   }
   const targets = [];
   for (let index = 0; index < text.length; index += 1) {

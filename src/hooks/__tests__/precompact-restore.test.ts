@@ -783,6 +783,25 @@ describe('PreCompact restore (issue #3730)', () => {
     expect(JSON.parse(readFileSync(markerPath, 'utf-8')).checkpoint).toBe(checkpointB);
     expect(restorePreCompactCheckpoint(tempDir, 'marker-advance-session')).toBeNull();
   });
+
+  it('does not let a delayed older marker claim overwrite a newer checkpoint', () => {
+    if (!SECURE_MARKER_SUPPORTED) return;
+    const t1 = new Date(Date.now() - 2_000).toISOString();
+    const t2 = new Date().toISOString();
+    const checkpointA = writeCheckpoint(tempDir, t1);
+    const checkpointB = writeCheckpoint(tempDir, t2);
+    expect(markCheckpointRestored(tempDir, 'marker-monotonic-session', checkpointB, t2)).toBe('written');
+    expect(markCheckpointRestored(tempDir, 'marker-monotonic-session', checkpointA, t1)).toBe('existing');
+
+    const markerPath = join(
+      getOmcRootForTest(tempDir),
+      'state',
+      'checkpoints-restored',
+      'marker-monotonic-session',
+      'restored.json',
+    );
+    expect(JSON.parse(readFileSync(markerPath, 'utf-8')).checkpoint).toBe(checkpointB);
+  });
 });
 
 // ============================================================================

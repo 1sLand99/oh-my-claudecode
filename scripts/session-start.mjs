@@ -1278,6 +1278,7 @@ ${cleanContent}
           omcRoot,
           sessionId,
           pendingRestore.path,
+          pendingRestore.created_at,
         );
         if (!markerStatus) {
           messages = messages.filter((message) => message !== pendingRestoreMessage);

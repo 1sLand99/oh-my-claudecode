@@ -31,7 +31,8 @@
  * - Restore is read-only with respect to the checkpoint file itself; only a
  *   small session-scoped marker records that a restore happened.
  */
-import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readSync, realpathSync, writeSync, } from 'fs';
+import { closeSync, constants, fstatSync, fsyncSync, lstatSync, linkSync, mkdirSync, openSync, readdirSync, readSync, realpathSync, renameSync, unlinkSync, writeSync, } from 'fs';
+import { randomUUID } from 'crypto';
 import { basename, isAbsolute, join, relative, sep } from 'path';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 // ============================================================================
@@ -45,6 +46,7 @@ export const CHECKPOINT_MAX_BYTES = 256 * 1024;
 export const RESTORE_CONTEXT_MAX_CHARS = 1200;
 /** Replay markers are tiny, but bound reads before parsing untrusted bytes. */
 const RESTORE_MARKER_MAX_BYTES = 16 * 1024;
+const RESTORE_LOCK_STALE_MS = 30_000;
 /** Only files matching this pattern are checkpoint candidates. */
 const CHECKPOINT_FILE_PATTERN = /^checkpoint-.+\.json$/;
 const RESTORE_MARKER_DIR = 'checkpoints-restored';
@@ -62,12 +64,16 @@ function isValidSessionId(sessionId) {
  * Session-scoped: different sessions may restore the same checkpoint.
  * Never throws — replay protection must not break restore.
  */
-export function markCheckpointRestored(directory, sessionId, checkpointPath) {
+export function markCheckpointRestored(directory, sessionId, checkpointPath, checkpointCreatedAt) {
     if (!isValidSessionId(sessionId)) {
         return 'invalid_session_id'; // never write a marker for an unvalidated session ID
     }
     let parentFd = null;
     let markerFd = null;
+    let lockFd = null;
+    let lockPath = null;
+    let lockIdentity = null;
+    let tempPath = null;
     try {
         const omcRoot = getOmcRoot(directory);
         const target = getRestoreMarkerTarget(omcRoot, sessionId, true);
@@ -99,19 +105,28 @@ export function markCheckpointRestored(directory, sessionId, checkpointPath) {
         if (markerPath === null) {
             return 'unsupported';
         }
-        markerFd = openSync(markerPath, flags, 0o600);
+        tempPath = descriptorChildPath(parentFd, `.${basename(target.path)}.${randomUUID()}.tmp`);
+        if (tempPath === null) {
+            return 'unsupported';
+        }
+        markerFd = openSync(tempPath, flags, 0o600);
         const before = fstatSync(markerFd);
-        const openedPath = realpathSync(markerPath);
+        const openedPath = realpathSync(tempPath);
         if (!before.isFile() ||
             before.isSymbolicLink() ||
-            before.nlink > 1 ||
+            before.nlink !== 1 ||
             before.size !== 0 ||
             !isPathWithin(target.context.omcRoot.path, openedPath) ||
-            openedPath !== target.path ||
             !isStableRestoreMarkerTarget(target, parentFd)) {
             return 'failed';
         }
-        const bytes = Buffer.from(JSON.stringify({ restored_at: new Date().toISOString(), checkpoint: checkpointPath }), 'utf-8');
+        const bytes = Buffer.from(JSON.stringify({
+            restored_at: new Date().toISOString(),
+            checkpoint: checkpointPath,
+            checkpoint_created_at: Number.isFinite(Date.parse(checkpointCreatedAt ?? ''))
+                ? checkpointCreatedAt
+                : null,
+        }), 'utf-8');
         let offset = 0;
         while (offset < bytes.length) {
             const count = writeSync(markerFd, bytes, offset, bytes.length - offset);
@@ -120,15 +135,143 @@ export function markCheckpointRestored(directory, sessionId, checkpointPath) {
             }
             offset += count;
         }
+        fsyncSync(markerFd);
         const after = fstatSync(markerFd);
-        const afterPath = realpathSync(markerPath);
+        const afterPath = realpathSync(tempPath);
         if (!after.isFile() ||
             after.isSymbolicLink() ||
-            after.nlink > 1 ||
+            after.nlink !== 1 ||
             after.dev !== before.dev ||
             after.ino !== before.ino ||
             after.size !== bytes.length ||
-            afterPath !== target.path ||
+            afterPath !== openedPath ||
+            !isStableRestoreMarkerTarget(target, parentFd)) {
+            return 'failed';
+        }
+        closeSync(markerFd);
+        markerFd = null;
+        lockPath = descriptorChildPath(parentFd, `.${basename(target.path)}.lock`);
+        if (lockPath === null)
+            return 'unsupported';
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+            try {
+                lockFd = openSync(lockPath, flags, 0o600);
+                const lockStat = fstatSync(lockFd);
+                if (!lockStat.isFile() || lockStat.isSymbolicLink() || lockStat.nlink !== 1)
+                    return 'failed';
+                lockIdentity = { dev: lockStat.dev, ino: lockStat.ino };
+                break;
+            }
+            catch (error) {
+                if (error.code !== 'EEXIST')
+                    return 'failed';
+                let stale;
+                try {
+                    stale = lstatSync(lockPath);
+                }
+                catch {
+                    continue;
+                }
+                if (attempt === 0 &&
+                    stale.isFile() &&
+                    !stale.isSymbolicLink() &&
+                    stale.nlink === 1 &&
+                    Date.now() - stale.mtimeMs > RESTORE_LOCK_STALE_MS &&
+                    isStableRestoreMarkerTarget(target, parentFd)) {
+                    unlinkSync(lockPath);
+                    continue;
+                }
+                return 'failed';
+            }
+        }
+        if (lockFd === null || lockIdentity === null)
+            return 'failed';
+        const ownsLock = () => {
+            try {
+                const current = lstatSync(lockPath);
+                return current.isFile() && !current.isSymbolicLink() && current.nlink === 1 &&
+                    current.dev === lockIdentity.dev && current.ino === lockIdentity.ino &&
+                    isStableRestoreMarkerTarget(target, parentFd);
+            }
+            catch {
+                return false;
+            }
+        };
+        // Publish the complete marker atomically. link+unlink gives the initial
+        // publication O_EXCL semantics without exposing a partially written final
+        // path; an existing validated regular marker is replaced with rename.
+        let existing = null;
+        try {
+            existing = lstatSync(markerPath);
+        }
+        catch (error) {
+            if (error.code !== 'ENOENT')
+                return 'failed';
+        }
+        if (!existing) {
+            if (!ownsLock())
+                return 'failed';
+            try {
+                linkSync(tempPath, markerPath);
+                unlinkSync(tempPath);
+                tempPath = null;
+            }
+            catch (error) {
+                if (error.code !== 'EEXIST')
+                    return 'failed';
+                existing = lstatSync(markerPath);
+            }
+        }
+        if (existing) {
+            // Never read through or overwrite a symlink, hard link, or other
+            // untrusted marker entry. Keep the historical `existing` status so the
+            // caller will withhold restore text unless an exact marker is proven.
+            if (!existing.isFile() || existing.isSymbolicLink() || existing.nlink !== 1) {
+                return 'existing';
+            }
+            const existingPath = realpathSync(markerPath);
+            if (existingPath !== target.path ||
+                !isPathWithin(target.context.omcRoot.path, existingPath) ||
+                !isStableRestoreMarkerTarget(target, parentFd)) {
+                return 'existing';
+            }
+            const raw = readBoundedFile(markerPath, { path: existingPath, dev: existing.dev, ino: existing.ino }, RESTORE_MARKER_MAX_BYTES);
+            if (raw !== null) {
+                try {
+                    const marker = JSON.parse(raw);
+                    if (marker?.checkpoint === checkpointPath)
+                        return 'existing';
+                    const existingTime = Date.parse(marker?.checkpoint_created_at ?? '');
+                    const candidateTime = Date.parse(checkpointCreatedAt ?? '');
+                    if (Number.isFinite(existingTime) && Number.isFinite(candidateTime)) {
+                        if (existingTime >= candidateTime)
+                            return 'existing';
+                    }
+                    else {
+                        const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
+                        const candidateName = basename(checkpointPath);
+                        if (!CHECKPOINT_FILE_PATTERN.test(existingName) || existingName >= candidateName)
+                            return 'existing';
+                    }
+                }
+                catch {
+                    // Replace malformed marker content with the complete new marker.
+                }
+            }
+            if (!ownsLock())
+                return 'failed';
+            renameSync(tempPath, markerPath);
+            tempPath = null;
+        }
+        const published = lstatSync(markerPath);
+        const publishedPath = realpathSync(markerPath);
+        if (!published.isFile() ||
+            published.isSymbolicLink() ||
+            published.nlink !== 1 ||
+            published.dev !== before.dev ||
+            published.ino !== before.ino ||
+            published.size !== bytes.length ||
+            publishedPath !== target.path ||
             !isStableRestoreMarkerTarget(target, parentFd)) {
             return 'failed';
         }
@@ -136,7 +279,8 @@ export function markCheckpointRestored(directory, sessionId, checkpointPath) {
     }
     catch (error) {
         // Marker publication is advisory, but must never follow an untrusted
-        // parent or overwrite a raced file. Restore itself remains fail-open.
+        // parent or expose a partially written final path. Restore itself remains
+        // fail-open.
         return error.code === 'EEXIST' ? 'existing' : 'failed';
     }
     finally {
@@ -146,6 +290,32 @@ export function markCheckpointRestored(directory, sessionId, checkpointPath) {
             }
             catch {
                 // Ignore close failures; marker publication has already failed.
+            }
+        }
+        if (lockFd !== null) {
+            try {
+                closeSync(lockFd);
+            }
+            catch {
+                // Ignore close failures; ownership is checked before cleanup.
+            }
+        }
+        if (lockPath !== null && lockIdentity !== null) {
+            try {
+                const current = lstatSync(lockPath);
+                if (current.dev === lockIdentity.dev && current.ino === lockIdentity.ino)
+                    unlinkSync(lockPath);
+            }
+            catch {
+                // Ignore cleanup failures; stale locks are reclaimed after the bound.
+            }
+        }
+        if (tempPath !== null) {
+            try {
+                unlinkSync(tempPath);
+            }
+            catch {
+                // Ignore cleanup failures; marker publication has already failed.
             }
         }
         if (parentFd !== null) {
@@ -629,17 +799,21 @@ export function findLatestCheckpointForRestore(directory, sessionId) {
         };
     }
     sortNewestFirst(scored);
-    // Walk newest-to-oldest. The replay guard is per-file-per-session: a
-    // checkpoint already injected to this session is skipped, but a different
-    // (older) checkpoint is a legitimate restore target — it represents state
-    // the session has not yet seen injected.
+    // Walk newest-to-oldest. The session marker is a monotonic checkpoint
+    // cursor: once the newest candidate matches it, older checkpoints must not
+    // replay. A newer candidate can still advance the marker atomically.
     //
     // Age and malformed candidates are graded failure modes that report the
     // relevant checkpoint path so callers get actionable diagnostics.
     const newestOverall = scored[0];
     for (const candidate of scored) {
         if (sessionId && isCheckpointRestored(directory, sessionId, candidate.path)) {
-            continue;
+            return {
+                ok: false,
+                reason: 'already_restored',
+                path: candidate.path,
+                detail: `newest eligible checkpoint already restored for session ${sessionId}`,
+            };
         }
         // First non-restored candidate.
         if (!isWithinAgeBound(candidate.checkpoint.created_at)) {
@@ -652,7 +826,7 @@ export function findLatestCheckpointForRestore(directory, sessionId) {
         }
         return { ok: true, checkpoint: candidate.checkpoint, path: candidate.path };
     }
-    // Every parseable candidate was already restored for this session.
+    // No parseable candidate was eligible for restoration.
     return {
         ok: false,
         reason: 'already_restored',
@@ -672,10 +846,8 @@ export function restorePreCompactCheckpoint(directory, sessionId) {
         if (!candidate.ok) {
             return null;
         }
-        const marker_status = markCheckpointRestored(directory, sessionId, candidate.path);
-        if (marker_status !== 'written' &&
-            !(marker_status === 'existing' &&
-                isCheckpointRestored(directory, sessionId, candidate.path))) {
+        const marker_status = markCheckpointRestored(directory, sessionId, candidate.path, candidate.checkpoint.created_at);
+        if (marker_status !== 'written') {
             return null;
         }
         return {
