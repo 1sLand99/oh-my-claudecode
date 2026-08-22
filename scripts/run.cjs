@@ -323,7 +323,7 @@ function superviseGenericChild(targetPath, extraArgs) {
   let terminal = false;
   const child = spawn(process.execPath, [targetPath, ...extraArgs], {
     stdio: 'inherit',
-    env: process.env,
+    env: { ...process.env, OMC_SESSION_OWNER_PID: String(process.ppid) },
     windowsHide: true,
     detached: process.platform !== 'win32',
   });
@@ -355,7 +355,7 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
     let timer;
     const child = spawn(process.execPath, resolveGenericChildCommand(targetPath, extraArgs), {
       stdio: process.platform === 'win32' ? ['inherit', 'inherit', 'inherit', 'ipc'] : 'inherit',
-      env: process.env,
+      env: { ...process.env, OMC_SESSION_OWNER_PID: String(process.ppid) },
       windowsHide: true,
       detached: true,
     });

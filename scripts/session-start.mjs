@@ -941,7 +941,12 @@ async function main() {
 
     writeSessionStartedMarker(omcRoot, directory, sessionId);
     if (process.env.CLAUDE_PLUGIN_ROOT) {
-      publishCacheOccupancy(process.env.CLAUDE_PLUGIN_ROOT, configDir);
+      const configuredOwnerPid = Number(process.env.OMC_SESSION_OWNER_PID);
+      publishCacheOccupancy(
+        process.env.CLAUDE_PLUGIN_ROOT,
+        configDir,
+        Number.isSafeInteger(configuredOwnerPid) && configuredOwnerPid > 1 ? configuredOwnerPid : process.ppid,
+      );
     }
     reconcileAbandonedSessionStarts(omcRoot, sessionId);
     reconcileSessionEndJobsInBackground(getRuntimeBaseDir(), directory);

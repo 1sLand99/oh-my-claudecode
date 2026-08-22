@@ -9,7 +9,6 @@
 // Usage:
 //   node scripts/collect-epic-3698-ci-evidence.mjs --prs 3715,3716,3719,3720,3721,3723,3724,3725,3729 --out <path>
 //   node scripts/collect-epic-3698-ci-evidence.mjs --all-children --out <path>
-//   node scripts/collect-epic-3698-ci-evidence.mjs --direct-only --out <path>
 
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
@@ -21,7 +20,7 @@ function fail(message) {
 }
 
 function parseArgs(argv) {
-  const args = { prs: null, allChildren: false, directOnly: false, out: null };
+  const args = { prs: null, allChildren: false, out: null };
   for (let i = 0; i < argv.length; i += 1) {
     switch (argv[i]) {
       case '--prs': {
@@ -33,14 +32,13 @@ function parseArgs(argv) {
         break;
       }
       case '--all-children': args.allChildren = true; break;
-      case '--direct-only': args.directOnly = true; break;
       case '--out': args.out = argv[++i]; break;
       default: fail(`unknown argument: ${argv[i]}`);
     }
   }
   if (!args.out) fail('--out is required');
-  const modes = Number(args.allChildren) + Number(args.directOnly) + Number(Array.isArray(args.prs));
-  if (modes !== 1) fail('choose exactly one of --prs, --all-children, or --direct-only');
+  const modes = Number(args.allChildren) + Number(Array.isArray(args.prs));
+  if (modes !== 1) fail('choose exactly one of --prs or --all-children');
   return args;
 }
 
@@ -229,11 +227,9 @@ function validateRequestedPrs(numbers) {
 }
 
 const args = parseArgs(process.argv.slice(2));
-const numbers = args.directOnly ? [] : args.allChildren ? findChildPrs() : args.prs;
-if (!args.directOnly) {
-  if (numbers.length === 0) fail('no child PRs found');
-  validateRequestedPrs(numbers);
-}
+const numbers = args.allChildren ? findChildPrs() : args.prs;
+if (numbers.length === 0) fail('no child PRs found');
+validateRequestedPrs(numbers);
 const repository = ghJson(['repo', 'view', '--json', 'nameWithOwner']).nameWithOwner;
 if (typeof repository !== 'string' || repository.length === 0) fail('unable to determine repository name for direct issue evidence');
 const verificationHead = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -255,6 +251,4 @@ const evidence = {
   },
 };
 writeFileSync(args.out, `${JSON.stringify(evidence, null, 2)}\n`);
-process.stdout.write(args.directOnly
-  ? 'collected independently authenticated direct evidence for issue #3709\n'
-  : `collected exact-head CI evidence for PR(s): ${numbers.join(', ')}\n`);
+process.stdout.write(`collected exact-head CI evidence for PR(s): ${numbers.join(', ')}\n`);

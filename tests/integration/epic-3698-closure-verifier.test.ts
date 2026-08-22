@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..', '..');
 const SCRIPT = join(REPO_ROOT, 'scripts', 'verify-epic-3698-closure.mjs');
+const COLLECTOR = join(REPO_ROOT, 'scripts', 'collect-epic-3698-ci-evidence.mjs');
 
 interface RunResult {
   status: number;
@@ -320,6 +321,15 @@ function buildCompleteFixture(root: string) {
 
 describe('epic-3698 closure verifier (#3712)', () => {
   let fixture: string;
+
+  it('rejects the unverifiable direct-only collector mode before invoking GitHub', () => {
+    const result = spawnSync(process.execPath, [COLLECTOR, '--direct-only', '--out', join(tmpdir(), 'unused-direct.json')], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('unknown argument: --direct-only');
+  });
 
   beforeEach(() => {
     fixture = mkdtempSync(join(tmpdir(), 'epic-3698-fixture-'));
@@ -891,6 +901,27 @@ describe('epic-3698 closure verifier (#3712)', () => {
     ]);
     expect(run.status).toBe(1);
     expect(check(run, 'releaseSecurityParity').status).toBe('fail');
+    expect(check(run, 'releaseSecurityParity').problems.join(' ')).toContain('release.yml');
+  });
+
+  it('checks both sides when a protected release workflow is renamed', () => {
+    buildCompleteFixture(fixture);
+    const workflowPath = join(fixture, '.github', 'workflows', 'release.yml');
+    mkdirSync(join(fixture, '.github', 'workflows'), { recursive: true });
+    writeFileSync(workflowPath, 'name: release\n');
+    commitFixture(fixture, 'base release workflow');
+    gitFixture(fixture, ['branch', 'base']);
+    const renamedPath = join(fixture, '.github', 'workflows', 'ordinary.yml');
+    renameSync(workflowPath, renamedPath);
+    commitFixtureHead(fixture, 'rename release workflow');
+    writeFileSync(join(fixture, 'changed-files.txt'), '.github/workflows/ordinary.yml\n');
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--base', 'base',
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
     expect(check(run, 'releaseSecurityParity').problems.join(' ')).toContain('release.yml');
   });
 
@@ -1480,6 +1511,21 @@ describe('epic-3698 closure verifier (#3712)', () => {
     expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
   });
 
+  it('contains legacy background URL attributes', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n<table background="../../../outside.png"></table>\n',
+    );
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
+  });
+
   it('does not mask Markdown inside malformed non-CommonMark HTML', () => {
     buildCompleteFixture(fixture);
     writeFileSync(
@@ -1539,6 +1585,21 @@ describe('epic-3698 closure verifier (#3712)', () => {
     expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
   });
 
+  it('ends an unterminated HTML block when its blockquote container closes', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n> <script>\n> inert\n[escape](../../../outside.md)\n',
+    );
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
+  });
+
   it('does not treat inline script tags as CommonMark HTML block starts', () => {
     buildCompleteFixture(fixture);
     writeFileSync(
@@ -1583,6 +1644,40 @@ describe('epic-3698 closure verifier (#3712)', () => {
     ]);
     expect(run.status).toBe(1);
     expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
+  });
+
+  it('does not treat four-space indentation as code when it continues a paragraph', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\nparagraph\n    [escape](../../../outside.md)\n',
+    );
+    const run = runVerifier(['--root', fixture, '--evidence', join(fixture, 'ci-evidence.json'), '--changed-files', join(fixture, 'changed-files.txt')]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
+  });
+
+  it('does not let an ordered list starting above one interrupt a paragraph', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\nparagraph\n2. [escape](../../../outside.md)\n',
+    );
+    const run = runVerifier(['--root', fixture, '--evidence', join(fixture, 'ci-evidence.json'), '--changed-files', join(fixture, 'changed-files.txt')]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
+  });
+
+  it('does not treat NBSP or ideographic space as inline destination whitespace', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n[x](safe /../../../outside.md)\n[y](safe　/../../../outside.md)\n',
+    );
+    const run = runVerifier(['--root', fixture, '--evidence', join(fixture, 'ci-evidence.json'), '--changed-files', join(fixture, 'changed-files.txt')]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'docsLinks').problems.join(' ')).toContain('broken relative link safe /../../../outside.md');
+    expect(check(run, 'docsLinks').problems.join(' ')).toContain('broken relative link safe　/../../../outside.md');
   });
 
   it('allows raw HTML anchors and external schemes', () => {

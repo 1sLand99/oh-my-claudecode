@@ -527,7 +527,7 @@ describe('PreCompact restore (issue #3730)', () => {
   });
 
   it('fails closed when the marker parent is replaced after descriptor validation', async () => {
-    const checkpointPath = writeCheckpoint(tempDir, new Date().toISOString());
+    const checkpointPath = writeCheckpoint(tempDir, new Date().toISOString(), { session_id: 'marker-parent-race' });
     const markerParent = join(
       getOmcRootForTest(tempDir),
       'state',
@@ -558,7 +558,7 @@ describe('PreCompact restore (issue #3730)', () => {
       expect(existsSync(join(externalMarkerParent, 'restored.json'))).toBe(false);
     } finally {
       openSpy.mockRestore();
-      if (existsSync(markerParent)) unlinkSync(markerParent);
+      if (existsSync(markerParent)) rmSync(markerParent, { recursive: true, force: true });
       if (existsSync(markerParentBackup)) renameSync(markerParentBackup, markerParent);
     }
   });
@@ -941,6 +941,67 @@ describe('PreCompact restore (issue #3730)', () => {
     expect(JSON.parse(readFileSync(join(markerParent, 'restored.json'), 'utf8')).session_id).toBe('session-b');
   });
 
+  it('skips a newer JSON-valid checkpoint with malformed active mode shapes', async () => {
+    const sessionId = 'malformed-mode-fallback';
+    const older = writeCheckpoint(tempDir, new Date(Date.now() - 2_000).toISOString(), { session_id: sessionId });
+    const checkpointDir = join(getOmcRootForTest(tempDir), 'state', 'checkpoints');
+    const newer = join(checkpointDir, 'checkpoint-malformed-mode.json');
+    writeFileSync(newer, JSON.stringify({
+      created_at: new Date().toISOString(), session_id: sessionId, trigger: 'auto',
+      active_modes: { ralph: 'bad' },
+      todo_summary: { pending: 0, in_progress: 0, completed: 0 }, wisdom_exported: false,
+    }));
+    const found = await findLatestCheckpointForRestore(tempDir, sessionId);
+    expect(found.ok).toBe(true);
+    if (found.ok) expect(found.path).toBe(older);
+  });
+
+  it('treats a same-path checkpoint replacement as a new immutable claim', () => {
+    if (!SECURE_MARKER_SUPPORTED) return;
+    const sessionId = 'same-path-replacement';
+    const checkpointDir = join(getOmcRootForTest(tempDir), 'state', 'checkpoints');
+    mkdirSync(checkpointDir, { recursive: true });
+    const checkpoint = join(checkpointDir, 'checkpoint-fixed.json');
+    const writeVersion = (createdAt: string, pending: number) => writeFileSync(checkpoint, JSON.stringify({
+      created_at: createdAt, session_id: sessionId, trigger: 'auto', active_modes: {},
+      todo_summary: { pending, in_progress: 0, completed: 0 }, wisdom_exported: false,
+    }));
+    const firstCreatedAt = new Date(Date.now() - 2_000).toISOString();
+    writeVersion(firstCreatedAt, 1);
+    expect(restorePreCompactCheckpoint(tempDir, sessionId)?.text).toContain(firstCreatedAt);
+    const secondCreatedAt = new Date().toISOString();
+    writeVersion(secondCreatedAt, 2);
+    const newerTime = new Date();
+    utimesSync(checkpoint, newerTime, newerTime);
+    const restored = restorePreCompactCheckpoint(tempDir, sessionId);
+    expect(restored?.marker_status).toBe('written');
+    expect(restored?.text).toContain(secondCreatedAt);
+  });
+
+  it('does not publish an authoritative claim when projection publication fails', () => {
+    if (!SECURE_MARKER_SUPPORTED) return;
+    const sessionId = 'projection-failure-retry';
+    const createdAt = new Date().toISOString();
+    const checkpoint = writeCheckpoint(tempDir, createdAt, { session_id: sessionId });
+    const originalLinkSync = nodeFs.linkSync;
+    let failedProjection = false;
+    const linkSpy = vi.spyOn(nodeFs, 'linkSync').mockImplementation((source, destination) => {
+      if (!failedProjection && String(destination).endsWith('/restored.json')) {
+        failedProjection = true;
+        const error = new Error('projection failure') as NodeJS.ErrnoException;
+        error.code = 'EIO';
+        throw error;
+      }
+      return originalLinkSync(source, destination);
+    });
+    try {
+      expect(markCheckpointRestored(tempDir, sessionId, checkpoint, createdAt, statSync(checkpoint).mtimeMs)).toBe('failed');
+    } finally {
+      linkSpy.mockRestore();
+    }
+    expect(restorePreCompactCheckpoint(tempDir, sessionId)?.marker_status).toBe('written');
+  });
+
   it('does not unlink a replacement lock after inspecting a stale inode', () => {
     if (!SECURE_MARKER_SUPPORTED) return;
     const createdAt = new Date().toISOString();
@@ -1043,7 +1104,7 @@ describe('PreCompact restore (issue #3730)', () => {
       return originalRenameSync(source, destination);
     });
     try {
-      expect(markCheckpointRestored(tempDir, sessionId, checkpointA, t1, statSync(checkpointA).mtimeMs)).toBe('failed');
+      expect(['existing', 'failed']).toContain(markCheckpointRestored(tempDir, sessionId, checkpointA, t1, statSync(checkpointA).mtimeMs));
       expect(reclaimed).toBe(true);
       expect(JSON.parse(readFileSync(markerPath, 'utf8')).checkpoint).toBe(checkpointB);
     } finally {

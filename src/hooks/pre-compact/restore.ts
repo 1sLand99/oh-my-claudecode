@@ -153,6 +153,8 @@ export function markCheckpointRestored(
     if (!target) {
       return 'unsupported';
     }
+    const candidateOrder = checkpointOrderForSession(directory, checkpointPath, sessionId);
+    if (!candidateOrder) return 'failed';
 
     // A directory descriptor binds creation to the already-validated marker
     // parent. Without O_DIRECTORY + O_NOFOLLOW + /proc/self/fd there is no
@@ -206,10 +208,9 @@ export function markCheckpointRestored(
         restored_at: new Date().toISOString(),
         session_id: sessionId,
         checkpoint: checkpointPath,
-        checkpoint_created_at: Number.isFinite(Date.parse(checkpointCreatedAt ?? ''))
-          ? checkpointCreatedAt
-          : null,
-        checkpoint_mtime_ms: Number.isFinite(checkpointMtimeMs) ? checkpointMtimeMs : null,
+        checkpoint_created_at: candidateOrder.createdAt,
+        checkpoint_mtime_ms: candidateOrder.mtimeMs,
+        checkpoint_sha256: candidateOrder.contentSha256,
       }),
       'utf-8',
     );
@@ -283,10 +284,8 @@ export function markCheckpointRestored(
         return false;
       }
     };
-    const claimStatus = publishImmutableMarkerClaim(target, parentFd, sessionId, checkpointPath, bytes);
-    if (claimStatus === 'failed') return 'failed';
     const authoritative = newestSessionMarkerClaim(directory, target, sessionId);
-    if (authoritative && authoritative.checkpoint !== checkpointPath) return 'existing';
+    if (authoritative && compareCheckpointOrder(authoritative.order, candidateOrder) > 0) return 'existing';
 
     // Publish the complete marker atomically. link+unlink gives the initial
     // publication O_EXCL semantics without exposing a partially written final
@@ -334,10 +333,14 @@ export function markCheckpointRestored(
         try {
           const marker = JSON.parse(raw);
           if (marker?.session_id !== sessionId) throw new Error('marker session mismatch');
-          if (marker?.checkpoint === checkpointPath) return 'existing';
           const existingOrder = typeof marker?.checkpoint === 'string'
             ? checkpointOrderForSession(directory, marker.checkpoint, sessionId)
             : null;
+          if (
+            !existingOrder || marker?.checkpoint_created_at !== existingOrder.createdAt ||
+            marker?.checkpoint_mtime_ms !== existingOrder.mtimeMs || marker?.checkpoint_sha256 !== existingOrder.contentSha256
+          ) throw new Error('marker checkpoint identity mismatch');
+          if (marker?.checkpoint === checkpointPath) return 'existing';
           const existingTime = Date.parse(existingOrder?.createdAt ?? '');
           const candidateTime = Date.parse(checkpointCreatedAt ?? '');
           if (Number.isFinite(existingTime) && Number.isFinite(candidateTime)) {
@@ -365,7 +368,7 @@ export function markCheckpointRestored(
         }
       }
       const latestClaim = newestSessionMarkerClaim(directory, target, sessionId);
-      if (latestClaim && latestClaim.checkpoint !== checkpointPath) return 'existing';
+      if (latestClaim && compareCheckpointOrder(latestClaim.order, candidateOrder) > 0) return 'existing';
       if (!ownsLock()) return 'failed';
       renameSync(tempPath!, markerPath);
       tempPath = null;
@@ -392,6 +395,7 @@ export function markCheckpointRestored(
     ) {
       return 'failed';
     }
+    if (publishImmutableMarkerClaim(target, parentFd, sessionId, checkpointPath, bytes) === 'failed') return 'failed';
     return 'written';
   } catch (error) {
     // Marker publication is advisory, but must never follow an untrusted
@@ -480,7 +484,12 @@ function isCheckpointRestored(
       return false;
     }
     const marker = JSON.parse(raw);
-    return marker?.session_id === sessionId && marker?.checkpoint === checkpointPath;
+    const markerOrder = typeof marker?.checkpoint === 'string'
+      ? checkpointOrderForSession(directory, marker.checkpoint, sessionId)
+      : null;
+    return marker?.session_id === sessionId && marker?.checkpoint === checkpointPath && !!markerOrder &&
+      marker?.checkpoint_created_at === markerOrder.createdAt &&
+      marker?.checkpoint_mtime_ms === markerOrder.mtimeMs && marker?.checkpoint_sha256 === markerOrder.contentSha256;
   } catch {
     return false;
   }
@@ -963,6 +972,11 @@ function parseCheckpoint(
     if (typeof parsed?.created_at !== 'string' || !isValidSessionId(parsed?.session_id ?? '')) {
       return null;
     }
+    if (
+      parsed.active_modes !== undefined &&
+      (parsed.active_modes === null || typeof parsed.active_modes !== 'object' || Array.isArray(parsed.active_modes) ||
+        Object.values(parsed.active_modes).some((mode) => mode !== null && (typeof mode !== 'object' || Array.isArray(mode))))
+    ) return null;
     return parsed;
   } catch {
     return null;
@@ -1024,7 +1038,7 @@ function checkpointOrderForSession(
   directory: string,
   checkpointPath: string,
   sessionId: string,
-): { createdAt: string; mtimeMs: number; name: string } | null {
+): { createdAt: string; mtimeMs: number; name: string; contentSha256: string } | null {
   try {
     const omcRoot = getOmcRoot(directory);
     const context = getCanonicalCheckpointContext(omcRoot);
@@ -1037,7 +1051,12 @@ function checkpointOrderForSession(
     if (checkpoint?.session_id !== sessionId || typeof checkpoint?.created_at !== 'string') return null;
     const stat = lstatSync(resolved.path);
     return stat.isFile() && !stat.isSymbolicLink() && stat.nlink === 1
-      ? { createdAt: checkpoint.created_at, mtimeMs: stat.mtimeMs, name: basename(resolved.path) }
+      ? {
+          createdAt: checkpoint.created_at,
+          mtimeMs: stat.mtimeMs,
+          name: basename(resolved.path),
+          contentSha256: createHash('sha256').update(raw).digest('hex'),
+        }
       : null;
   } catch {
     return null;
@@ -1045,8 +1064,8 @@ function checkpointOrderForSession(
 }
 
 function compareCheckpointOrder(
-  a: { createdAt: string; mtimeMs: number; name: string },
-  b: { createdAt: string; mtimeMs: number; name: string },
+  a: { createdAt: string; mtimeMs: number; name: string; contentSha256: string },
+  b: { createdAt: string; mtimeMs: number; name: string; contentSha256: string },
 ): number {
   const aTime = Date.parse(a.createdAt);
   const bTime = Date.parse(b.createdAt);
@@ -1062,7 +1081,10 @@ function publishImmutableMarkerClaim(
   checkpointPath: string,
   bytes: Buffer,
 ): 'written' | 'existing' | 'failed' {
-  const digest = createHash('sha256').update(`${sessionId}\0${checkpointPath}`).digest('hex');
+  const digest = createHash('sha256')
+    .update(`${sessionId}\0${checkpointPath}\0`)
+    .update(bytes)
+    .digest('hex');
   const finalPath = descriptorChildPath(parentFd, `restored-${digest}.json`);
   const tempPath = descriptorChildPath(parentFd, `.restored-${digest}.${randomUUID()}.tmp`);
   if (!finalPath || !tempPath) return 'failed';
@@ -1090,8 +1112,8 @@ function newestSessionMarkerClaim(
   directory: string,
   target: RestoreMarkerTarget,
   sessionId: string,
-): { checkpoint: string; order: { createdAt: string; mtimeMs: number; name: string } } | null {
-  let newest: { checkpoint: string; order: { createdAt: string; mtimeMs: number; name: string } } | null = null;
+): { checkpoint: string; order: { createdAt: string; mtimeMs: number; name: string; contentSha256: string } } | null {
+  let newest: { checkpoint: string; order: { createdAt: string; mtimeMs: number; name: string; contentSha256: string } } | null = null;
   try {
     const names = readdirSync(target.parent.path).filter((name) => name === 'restored.json' || /^restored-[0-9a-f]{64}\.json$/.test(name));
     for (const name of names) {
@@ -1105,7 +1127,10 @@ function newestSessionMarkerClaim(
       const marker = JSON.parse(raw);
       if (marker?.session_id !== sessionId || typeof marker?.checkpoint !== 'string') continue;
       const order = checkpointOrderForSession(directory, marker.checkpoint, sessionId);
-      if (!order) continue;
+      if (
+        !order || marker?.checkpoint_created_at !== order.createdAt ||
+        marker?.checkpoint_mtime_ms !== order.mtimeMs || marker?.checkpoint_sha256 !== order.contentSha256
+      ) continue;
       if (!newest || compareCheckpointOrder(order, newest.order) > 0) newest = { checkpoint: marker.checkpoint, order };
     }
   } catch { /* fail closed to no authoritative claim */ }
@@ -1294,6 +1319,7 @@ export function formatCheckpointRestoreContext(
   if (modeEntries.length > 0) {
     lines.push('', 'Active modes at compaction time:');
     for (const [name, mode] of modeEntries) {
+      if (mode === null || typeof mode !== 'object' || Array.isArray(mode)) continue;
       if ('iteration' in mode && typeof mode.iteration === 'number') {
         lines.push(`- ${name} (iteration ${mode.iteration})`);
       } else if ('cycle' in mode && typeof mode.cycle === 'number') {

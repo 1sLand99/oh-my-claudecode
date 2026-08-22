@@ -811,7 +811,7 @@ function isReferenceDefinitionPosition(text, opening, closing) {
 
 function readInlineDestination(text, start) {
   let index = start;
-  while (/\s/.test(text[index] ?? '')) index += 1;
+  while (/[ \t\r\n]/.test(text[index] ?? '')) index += 1;
   if (text[index] === '<') {
     for (let end = index + 1; end < text.length; end += 1) {
       if (text[end] === '>' && !isEscaped(text, end)) {
@@ -828,7 +828,7 @@ function readInlineDestination(text, start) {
     else if (text[index] === ')') {
       if (depth === 0) break;
       depth -= 1;
-    } else if (/\s/.test(text[index]) && depth === 0) {
+    } else if (/[ \t\r\n]/.test(text[index]) && depth === 0) {
       break;
     }
   }
@@ -896,16 +896,18 @@ function columnWidth(value) {
   return columns;
 }
 
-function maskCommonMarkCodeBlocks(text) {
+export function maskCommonMarkCodeBlocks(text) {
   const parts = text.split(/(\r\n?|\n)/);
   let fence = null;
-  let htmlBlockTag = null;
+  let htmlBlock = null;
   const listIndents = [];
   const listItemIds = [];
   let nextListItemId = 1;
+  let paragraphChain = null;
   for (let partIndex = 0; partIndex < parts.length; partIndex += 2) {
     const line = parts[partIndex];
     if (line.trim() === '') {
+      paragraphChain = null;
       if (fence?.containerChain.split('/').includes('quote')) fence = null;
       else if (fence) parts[partIndex] = ' '.repeat(line.length);
       continue;
@@ -946,7 +948,10 @@ function maskCommonMarkCodeBlocks(text) {
     }
 
     for (;;) {
-      const list = content.match(/^([ \t]{0,3})(?:[-+*]|\d{1,9}[.)])([ \t]+)/);
+      const currentChain = containerChain.join('/');
+      const paragraphActive = paragraphChain === currentChain;
+      const list = content.match(/^([ \t]{0,3})([-+*]|(\d{1,9})[.)])([ \t]+)/);
+      if (list && paragraphActive && list[3] !== undefined && list[3] !== '1') break;
       if (list) {
         const markerColumns = columnWidth(list[0]);
         const parentIndent = listIndents[listIndents.length - 1] ?? baseIndent;
@@ -968,19 +973,24 @@ function maskCommonMarkCodeBlocks(text) {
       if (!list && nestedQuote.offset === 0) break;
     }
     if (fence && containerChain.join('/') !== fence.containerChain) fence = null;
+    if (htmlBlock && containerChain.join('/') !== htmlBlock.containerChain) htmlBlock = null;
+    const currentChain = containerChain.join('/');
+    const paragraphActive = paragraphChain === currentChain;
     if (content.trim() === '') {
       if (fence) parts[partIndex] = ' '.repeat(line.length);
       continue;
     }
 
-    if (htmlBlockTag) {
+    if (htmlBlock) {
+      paragraphChain = null;
       parts[partIndex] = ' '.repeat(line.length);
-      if (new RegExp(`</${htmlBlockTag}[ \\t\\r\\n]*>`, 'i').test(content)) htmlBlockTag = null;
+      if (new RegExp(`</${htmlBlock.tag}[ \\t\\r\\n]*>`, 'i').test(content)) htmlBlock = null;
       continue;
     }
 
     const fenceMatch = content.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
     if (fence) {
+      paragraphChain = null;
       parts[partIndex] = ' '.repeat(line.length);
       if (
         fenceMatch &&
@@ -1003,14 +1013,18 @@ function maskCommonMarkCodeBlocks(text) {
         else if (char === '>') break;
       }
       if (openingEnd < content.length && !quote) {
+        paragraphChain = null;
         const before = line.slice(0, contentOffset + openingEnd + 1);
         parts[partIndex] = before + ' '.repeat(line.length - before.length);
         const afterOpening = content.slice(openingEnd + 1);
-        if (!new RegExp(`</${tagName}[ \\t\\r\\n]*>`, 'i').test(afterOpening)) htmlBlockTag = tagName;
+        if (!new RegExp(`</${tagName}[ \\t\\r\\n]*>`, 'i').test(afterOpening)) {
+          htmlBlock = { tag: tagName, containerChain: containerChain.join('/') };
+        }
         continue;
       }
     }
     if (fenceMatch && !(fenceMatch[1][0] === '`' && fenceMatch[2].includes('`'))) {
+      paragraphChain = null;
       fence = {
         char: fenceMatch[1][0],
         length: fenceMatch[1].length,
@@ -1021,11 +1035,13 @@ function maskCommonMarkCodeBlocks(text) {
       parts[partIndex] = ' '.repeat(line.length);
       continue;
     }
-    if (indentation(content).columns >= 4) {
+    if (indentation(content).columns >= 4 && !paragraphActive) {
+      paragraphChain = null;
       parts[partIndex] = ' '.repeat(line.length);
       continue;
     }
     if (contentOffset > 0) parts[partIndex] = ' '.repeat(contentOffset) + line.slice(contentOffset);
+    paragraphChain = /^ {0,3}#{1,6}(?:[ \t]+|$)/.test(content) ? null : currentChain;
   }
   return parts.join('');
 }
@@ -1033,7 +1049,10 @@ function maskCommonMarkCodeBlocks(text) {
 function maskInlineCodeAndExtractHtml(text, problems, docPath) {
   const chars = text.split('');
   const targets = [];
-  const urlAttributes = new Set(['href', 'xlink:href', 'src', 'action', 'formaction', 'poster', 'cite', 'data', 'srcset']);
+  const urlAttributes = new Set([
+    'href', 'xlink:href', 'src', 'srcset', 'action', 'formaction', 'poster', 'cite', 'data',
+    'background', 'longdesc', 'usemap', 'manifest', 'profile',
+  ]);
   for (let opening = 0; opening < chars.length; opening += 1) {
     if (chars[opening] === '`' && !isEscaped(text, opening)) {
       let runLength = 1;
@@ -1510,9 +1529,16 @@ function gitDiffNames(root, base) {
     try {
       const mergeBase = execFileSync('git', ['merge-base', candidate, 'HEAD'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
       if (!isSha(mergeBase)) continue;
-      const out = execFileSync('git', ['diff', '--name-only', mergeBase, 'HEAD'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+      const out = execFileSync('git', ['diff', '--name-status', '-M', mergeBase, 'HEAD'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+      const files = [];
+      for (const line of out.split('\n').filter(Boolean)) {
+        const fields = line.split('\t');
+        const status = fields.shift() ?? '';
+        if (/^[RC]/.test(status) && fields.length >= 2) files.push(fields[0], fields[1]);
+        else if (fields.length >= 1) files.push(fields[0]);
+      }
       return {
-        files: out.split('\n').map((line) => line.trim()).filter(Boolean).map(normalizeChangedFile),
+        files: files.map(normalizeChangedFile),
         resolvedBase: candidate,
         mergeBase,
       };
