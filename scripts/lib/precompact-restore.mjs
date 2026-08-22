@@ -57,16 +57,39 @@ function reclaimStaleLock(lockPath, stale, parentFd) {
   }
 }
 
-function legacyCheckpointMtime(omcRoot, checkpointPath, sessionId) {
+function releaseOwnedLock(lockPath, identity, parentFd) {
+  if (parentFd === null) return;
+  const quarantinePath = descriptorChildPath(parentFd, `.${basename(lockPath)}.release-${randomUUID()}`);
+  if (quarantinePath === null) return;
+  try {
+    renameSync(lockPath, quarantinePath);
+    const moved = lstatSync(quarantinePath);
+    if (
+      moved.dev !== identity.dev || moved.ino !== identity.ino ||
+      moved.mtimeMs !== identity.mtimeMs || moved.size !== identity.size
+    ) {
+      try { linkSync(quarantinePath, lockPath); } catch { /* preserve any newer pathname owner */ }
+    }
+    unlinkSync(quarantinePath);
+  } catch {
+    try { unlinkSync(quarantinePath); } catch { /* ignore */ }
+  }
+}
+
+function checkpointOrderForSession(omcRoot, checkpointPath, sessionId) {
   try {
     const context = getCanonicalCheckpointContext(omcRoot);
     if (!context) return null;
     const resolved = resolveContainedRegularPath(context, omcRoot, checkpointPath);
     if (!resolved || !isStableCheckpointContext(omcRoot, context)) return null;
     const raw = readBoundedCheckpoint(resolved.path, resolved);
-    if (raw === null || JSON.parse(raw)?.session_id !== sessionId) return null;
+    if (raw === null) return null;
+    const checkpoint = JSON.parse(raw);
+    if (checkpoint?.session_id !== sessionId || typeof checkpoint?.created_at !== 'string') return null;
     const stat = lstatSync(resolved.path);
-    return stat.isFile() && !stat.isSymbolicLink() && stat.nlink === 1 ? stat.mtimeMs : null;
+    return stat.isFile() && !stat.isSymbolicLink() && stat.nlink === 1
+      ? { createdAt: checkpoint.created_at, mtimeMs: stat.mtimeMs, name: basename(resolved.path) }
+      : null;
   } catch {
     return null;
   }
@@ -478,7 +501,7 @@ function markCheckpointRestored(omcRoot, sessionId, checkpointPath, checkpointCr
         lockFd = openSync(lockPath, flags, 0o600);
         const lockStat = fstatSync(lockFd);
         if (!lockStat.isFile() || lockStat.isSymbolicLink() || lockStat.nlink !== 1) return 'failed';
-        lockIdentity = { dev: lockStat.dev, ino: lockStat.ino };
+        lockIdentity = { dev: lockStat.dev, ino: lockStat.ino, mtimeMs: lockStat.mtimeMs, size: lockStat.size };
         break;
       } catch (error) {
         if (error?.code !== 'EEXIST') return 'failed';
@@ -499,6 +522,7 @@ function markCheckpointRestored(omcRoot, sessionId, checkpointPath, checkpointCr
         const current = lstatSync(lockPath);
         return current.isFile() && !current.isSymbolicLink() && current.nlink === 1 &&
           current.dev === lockIdentity.dev && current.ino === lockIdentity.ino &&
+          current.mtimeMs === lockIdentity.mtimeMs && current.size === lockIdentity.size &&
           isStableRestoreMarkerTarget(target, parentFd);
       } catch { return false; }
     };
@@ -542,27 +566,27 @@ function markCheckpointRestored(omcRoot, sessionId, checkpointPath, checkpointCr
         try {
           const marker = JSON.parse(raw);
           if (marker?.checkpoint === checkpointPath) return 'existing';
-          const existingTime = Date.parse(marker?.checkpoint_created_at ?? '');
+          const existingOrder = typeof marker?.checkpoint === 'string'
+            ? checkpointOrderForSession(omcRoot, marker.checkpoint, sessionId)
+            : null;
+          const existingTime = Date.parse(existingOrder?.createdAt ?? '');
           const candidateTime = Date.parse(checkpointCreatedAt ?? '');
           if (Number.isFinite(existingTime) && Number.isFinite(candidateTime)) {
             if (existingTime > candidateTime) return 'existing';
             if (existingTime === candidateTime) {
-              const recordedMtime = Number(marker?.checkpoint_mtime_ms);
-              const existingMtime = Number.isFinite(recordedMtime)
-                ? recordedMtime
-                : legacyCheckpointMtime(omcRoot, marker?.checkpoint, sessionId);
+              const existingMtime = existingOrder?.mtimeMs;
               if (Number.isFinite(existingMtime) && Number.isFinite(checkpointMtimeMs)) {
                 if (existingMtime > checkpointMtimeMs) return 'existing';
                 if (existingMtime === checkpointMtimeMs) {
-                  const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
+                  const existingName = existingOrder?.name ?? '';
                   if (!CHECKPOINT_FILE_PATTERN.test(existingName) || compareCheckpointNames(existingName, basename(checkpointPath)) >= 0) return 'existing';
                 }
-              } else if (!Number.isFinite(checkpointMtimeMs)) {
+              } else if (existingOrder && !Number.isFinite(checkpointMtimeMs)) {
                 const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
                 if (!CHECKPOINT_FILE_PATTERN.test(existingName) || compareCheckpointNames(existingName, basename(checkpointPath)) >= 0) return 'existing';
               }
             }
-          } else {
+          } else if (existingOrder) {
             const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
             const candidateName = basename(checkpointPath);
             if (!CHECKPOINT_FILE_PATTERN.test(existingName) || compareCheckpointNames(existingName, candidateName) >= 0) return 'existing';
@@ -574,6 +598,13 @@ function markCheckpointRestored(omcRoot, sessionId, checkpointPath, checkpointCr
       if (!ownsLock()) return 'failed';
       renameSync(tempPath, markerPath);
       tempPath = null;
+      if (!ownsLock()) {
+        const latest = preparePreCompactCheckpointRestoreOnce(omcRoot, sessionId);
+        if (latest && latest.path !== checkpointPath) {
+          markCheckpointRestored(omcRoot, sessionId, latest.path, latest.created_at, latest.mtime_ms);
+        }
+        return 'failed';
+      }
     }
 
     const published = lstatSync(markerPath);
@@ -599,10 +630,7 @@ function markCheckpointRestored(omcRoot, sessionId, checkpointPath, checkpointCr
       try { closeSync(lockFd); } catch { /* ignore */ }
     }
     if (lockPath !== null && lockIdentity !== null) {
-      try {
-        const current = lstatSync(lockPath);
-        if (current.dev === lockIdentity.dev && current.ino === lockIdentity.ino) unlinkSync(lockPath);
-      } catch { /* ignore */ }
+      releaseOwnedLock(lockPath, lockIdentity, parentFd);
     }
     if (tempPath !== null) {
       try { unlinkSync(tempPath); } catch { /* ignore */ }
@@ -783,10 +811,17 @@ export function preparePreCompactCheckpointRestore(omcRoot, sessionId) {
 }
 
 /** Publish the replay marker after SessionStart confirms the complete context was selected. */
-export function commitPreCompactCheckpointRestore(omcRoot, sessionId, checkpointPath, checkpointCreatedAt, checkpointMtimeMs) {
-  const marker_status = sessionId
+export function claimPreCompactCheckpointRestore(omcRoot, sessionId, checkpointPath, checkpointCreatedAt, checkpointMtimeMs) {
+  return sessionId
     ? markCheckpointRestored(omcRoot, sessionId, checkpointPath, checkpointCreatedAt, checkpointMtimeMs)
     : 'unsupported';
+}
+
+/** Compatibility wrapper for callers that only accept a completed publication. */
+export function commitPreCompactCheckpointRestore(omcRoot, sessionId, checkpointPath, checkpointCreatedAt, checkpointMtimeMs) {
+  const marker_status = claimPreCompactCheckpointRestore(
+    omcRoot, sessionId, checkpointPath, checkpointCreatedAt, checkpointMtimeMs,
+  );
   return marker_status === 'written' ? marker_status : null;
 }
 

@@ -144,7 +144,7 @@ export function markCheckpointRestored(
   let markerFd: number | null = null;
   let lockFd: number | null = null;
   let lockPath: string | null = null;
-  let lockIdentity: { dev: number; ino: number } | null = null;
+  let lockIdentity: { dev: number; ino: number; mtimeMs: number; size: number } | null = null;
   let tempPath: string | null = null;
   try {
     const omcRoot = getOmcRoot(directory);
@@ -246,7 +246,7 @@ export function markCheckpointRestored(
         lockFd = openSync(lockPath, flags, 0o600);
         const lockStat = fstatSync(lockFd);
         if (!lockStat.isFile() || lockStat.isSymbolicLink() || lockStat.nlink !== 1) return 'failed';
-        lockIdentity = { dev: lockStat.dev, ino: lockStat.ino };
+        lockIdentity = { dev: lockStat.dev, ino: lockStat.ino, mtimeMs: lockStat.mtimeMs, size: lockStat.size };
         break;
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'EEXIST') return 'failed';
@@ -275,6 +275,7 @@ export function markCheckpointRestored(
         const current = lstatSync(lockPath!);
         return current.isFile() && !current.isSymbolicLink() && current.nlink === 1 &&
           current.dev === lockIdentity!.dev && current.ino === lockIdentity!.ino &&
+          current.mtimeMs === lockIdentity!.mtimeMs && current.size === lockIdentity!.size &&
           isStableRestoreMarkerTarget(target, parentFd!);
       } catch {
         return false;
@@ -327,27 +328,27 @@ export function markCheckpointRestored(
         try {
           const marker = JSON.parse(raw);
           if (marker?.checkpoint === checkpointPath) return 'existing';
-          const existingTime = Date.parse(marker?.checkpoint_created_at ?? '');
+          const existingOrder = typeof marker?.checkpoint === 'string'
+            ? checkpointOrderForSession(directory, marker.checkpoint, sessionId)
+            : null;
+          const existingTime = Date.parse(existingOrder?.createdAt ?? '');
           const candidateTime = Date.parse(checkpointCreatedAt ?? '');
           if (Number.isFinite(existingTime) && Number.isFinite(candidateTime)) {
             if (existingTime > candidateTime) return 'existing';
             if (existingTime === candidateTime) {
-              const recordedMtime = Number(marker?.checkpoint_mtime_ms);
-              const existingMtime = Number.isFinite(recordedMtime)
-                ? recordedMtime
-                : legacyCheckpointMtime(directory, marker?.checkpoint, sessionId);
+              const existingMtime = existingOrder?.mtimeMs;
               if (Number.isFinite(existingMtime) && Number.isFinite(checkpointMtimeMs)) {
                 if (existingMtime! > checkpointMtimeMs!) return 'existing';
                 if (existingMtime === checkpointMtimeMs) {
-                  const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
+                  const existingName = existingOrder?.name ?? '';
                   if (!CHECKPOINT_FILE_PATTERN.test(existingName) || compareCheckpointNames(existingName, basename(checkpointPath)) >= 0) return 'existing';
                 }
-              } else if (!Number.isFinite(checkpointMtimeMs)) {
+              } else if (existingOrder && !Number.isFinite(checkpointMtimeMs)) {
                 const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
                 if (!CHECKPOINT_FILE_PATTERN.test(existingName) || compareCheckpointNames(existingName, basename(checkpointPath)) >= 0) return 'existing';
               }
             }
-          } else {
+          } else if (existingOrder) {
             const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
             const candidateName = basename(checkpointPath);
             if (!CHECKPOINT_FILE_PATTERN.test(existingName) || compareCheckpointNames(existingName, candidateName) >= 0) return 'existing';
@@ -359,6 +360,13 @@ export function markCheckpointRestored(
       if (!ownsLock()) return 'failed';
       renameSync(tempPath!, markerPath);
       tempPath = null;
+      if (!ownsLock()) {
+        const latest = findLatestCheckpointForRestore(directory, sessionId);
+        if (latest.ok && latest.path !== checkpointPath) {
+          markCheckpointRestored(directory, sessionId, latest.path, latest.checkpoint.created_at, latest.mtimeMs);
+        }
+        return 'failed';
+      }
     }
 
     const published = lstatSync(markerPath);
@@ -397,12 +405,7 @@ export function markCheckpointRestored(
       }
     }
     if (lockPath !== null && lockIdentity !== null) {
-      try {
-        const current = lstatSync(lockPath);
-        if (current.dev === lockIdentity.dev && current.ino === lockIdentity.ino) unlinkSync(lockPath);
-      } catch {
-        // Ignore cleanup failures; stale locks are reclaimed after the bound.
-      }
+      releaseOwnedLock(lockPath, lockIdentity, parentFd);
     }
     if (tempPath !== null) {
       try {
@@ -988,7 +991,34 @@ function reclaimStaleLock(lockPath: string, stale: Stats, parentFd: number): boo
   }
 }
 
-function legacyCheckpointMtime(directory: string, checkpointPath: string, sessionId: string): number | null {
+function releaseOwnedLock(
+  lockPath: string,
+  identity: { dev: number; ino: number; mtimeMs: number; size: number },
+  parentFd: number | null,
+): void {
+  if (parentFd === null) return;
+  const quarantinePath = descriptorChildPath(parentFd, `.${basename(lockPath)}.release-${randomUUID()}`);
+  if (quarantinePath === null) return;
+  try {
+    renameSync(lockPath, quarantinePath);
+    const moved = lstatSync(quarantinePath);
+    if (
+      moved.dev !== identity.dev || moved.ino !== identity.ino ||
+      moved.mtimeMs !== identity.mtimeMs || moved.size !== identity.size
+    ) {
+      try { linkSync(quarantinePath, lockPath); } catch { /* preserve any newer pathname owner */ }
+    }
+    unlinkSync(quarantinePath);
+  } catch {
+    try { unlinkSync(quarantinePath); } catch { /* ignore */ }
+  }
+}
+
+function checkpointOrderForSession(
+  directory: string,
+  checkpointPath: string,
+  sessionId: string,
+): { createdAt: string; mtimeMs: number; name: string } | null {
   try {
     const omcRoot = getOmcRoot(directory);
     const context = getCanonicalCheckpointContext(omcRoot);
@@ -996,9 +1026,13 @@ function legacyCheckpointMtime(directory: string, checkpointPath: string, sessio
     const resolved = resolveContainedRegularPath(context, omcRoot, checkpointPath);
     if (!resolved || !isStableCheckpointContext(omcRoot, context)) return null;
     const raw = readBoundedCheckpoint(resolved.path, resolved);
-    if (raw === null || JSON.parse(raw)?.session_id !== sessionId) return null;
+    if (raw === null) return null;
+    const checkpoint = JSON.parse(raw);
+    if (checkpoint?.session_id !== sessionId || typeof checkpoint?.created_at !== 'string') return null;
     const stat = lstatSync(resolved.path);
-    return stat.isFile() && !stat.isSymbolicLink() && stat.nlink === 1 ? stat.mtimeMs : null;
+    return stat.isFile() && !stat.isSymbolicLink() && stat.nlink === 1
+      ? { createdAt: checkpoint.created_at, mtimeMs: stat.mtimeMs, name: basename(resolved.path) }
+      : null;
   } catch {
     return null;
   }

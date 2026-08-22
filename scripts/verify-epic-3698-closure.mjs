@@ -738,8 +738,7 @@ function isEscaped(text, index) {
 
 function findClosingBracket(text, opening) {
   let depth = 1;
-  const limit = Math.min(text.length, opening + 1001);
-  for (let index = opening + 1; index < limit; index += 1) {
+  for (let index = opening + 1; index < text.length; index += 1) {
     if (isEscaped(text, index)) continue;
     if (text[index] === '[') depth += 1;
     if (text[index] === ']') {
@@ -945,11 +944,6 @@ function maskCommonMarkCodeBlocks(text) {
       }
     }
 
-    if (content.trim() === '') {
-      if (fence) parts[partIndex] = ' '.repeat(line.length);
-      continue;
-    }
-
     for (;;) {
       const list = content.match(/^([ \t]{0,3})(?:[-+*]|\d{1,9}[.)])([ \t]+)/);
       if (list) {
@@ -973,6 +967,10 @@ function maskCommonMarkCodeBlocks(text) {
       if (!list && nestedQuote.offset === 0) break;
     }
     if (fence && containerChain.join('/') !== fence.containerChain) fence = null;
+    if (content.trim() === '') {
+      if (fence) parts[partIndex] = ' '.repeat(line.length);
+      continue;
+    }
 
     const fenceMatch = content.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
     if (fence) {
@@ -1056,11 +1054,11 @@ function maskInlineCodeAndExtractHtml(text, problems, docPath) {
       break;
     }
     const body = chars.slice(opening, closing + 1).join('');
-    if (!/^<[A-Za-z][A-Za-z0-9-]*(?:\s+[A-Za-z_:][A-Za-z0-9_.:-]*(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*\s*\/?>$/s.test(body)) {
+    if (!/^<[A-Za-z][A-Za-z0-9-]*(?:[ \t\r\n]+[A-Za-z_:][A-Za-z0-9_.:-]*(?:[ \t\r\n]*=[ \t\r\n]*(?:"[^"]*"|'[^']*'|[^ \t\r\n"'=<>`]+))?)*[ \t\r\n]*\/?>$/s.test(body)) {
       problems.push(`${docPath}: malformed raw HTML tag is unsupported`);
       continue;
     }
-    const attributes = body.matchAll(/\b([A-Za-z_:][A-Za-z0-9_.:-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g);
+    const attributes = body.matchAll(/\b([A-Za-z_:][A-Za-z0-9_.:-]*)[ \t\r\n]*=[ \t\r\n]*(?:"([^"]*)"|'([^']*)'|([^ \t\r\n"'=<>`]+))/g);
     for (const attribute of attributes) {
       const name = attribute[1].toLowerCase();
       if (!urlAttributes.has(name)) continue;
@@ -1082,9 +1080,39 @@ function maskInlineCodeAndExtractHtml(text, problems, docPath) {
   return { text: chars.join(''), targets };
 }
 
+function maskCommonMarkRawHtmlBlockBodies(text) {
+  const chars = text.split('');
+  const blockTags = new Set(['script', 'pre', 'style', 'textarea']);
+  for (let opening = 0; opening < chars.length; opening += 1) {
+    if (chars[opening] !== '<' || isEscaped(text, opening)) continue;
+    const nameMatch = text.slice(opening + 1).match(/^([A-Za-z][A-Za-z0-9-]*)/);
+    const tagName = nameMatch?.[1]?.toLowerCase();
+    if (!tagName || !blockTags.has(tagName)) continue;
+    let quote = null;
+    let openingEnd = opening + 1 + nameMatch[1].length;
+    for (; openingEnd < chars.length; openingEnd += 1) {
+      const char = chars[openingEnd];
+      if (quote) {
+        if (char === quote) quote = null;
+      } else if (char === '"' || char === "'") quote = char;
+      else if (char === '>') break;
+    }
+    if (openingEnd >= chars.length || quote) continue;
+    const closingPattern = new RegExp(`</${tagName}[ \\t\\r\\n]*>`, 'ig');
+    closingPattern.lastIndex = openingEnd + 1;
+    const closing = closingPattern.exec(text);
+    if (!closing) continue;
+    for (let cursor = openingEnd + 1; cursor < closing.index; cursor += 1) {
+      if (chars[cursor] !== '\r' && chars[cursor] !== '\n') chars[cursor] = ' ';
+    }
+    opening = closing.index + closing[0].length - 1;
+  }
+  return chars.join('');
+}
+
 function parseMarkdownDestinations(text, problems, docPath) {
   const definitions = new Map();
-  const blockMaskedText = maskCommonMarkCodeBlocks(text);
+  const blockMaskedText = maskCommonMarkCodeBlocks(maskCommonMarkRawHtmlBlockBodies(text));
   const inline = maskInlineCodeAndExtractHtml(blockMaskedText, problems, docPath);
   const htmlTargets = inline.targets;
   const definitionText = inline.text;

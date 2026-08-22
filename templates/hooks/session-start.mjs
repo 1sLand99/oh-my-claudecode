@@ -550,13 +550,13 @@ async function main() {
     // (source === 'compact'); never on startup, resume, or clear.
     if (data.source === 'compact' && sessionId) {
       try {
-        const { preparePreCompactCheckpointRestore, commitPreCompactCheckpointRestore } = await import(
+        const { preparePreCompactCheckpointRestore, claimPreCompactCheckpointRestore } = await import(
           pathToFileURL(join(__dirname, 'lib', 'precompact-restore.mjs')).href
         );
         const restoreRoot = await resolveOmcStateRoot(directory);
         const prepared = preparePreCompactCheckpointRestore(restoreRoot, sessionId);
         if (prepared) {
-          pendingRestore = { ...prepared, restoreRoot, commitPreCompactCheckpointRestore };
+          pendingRestore = { ...prepared, restoreRoot, preparePreCompactCheckpointRestore, claimPreCompactCheckpointRestore };
           pendingRestoreMessage = `<session-restore>\n\n${prepared.text}\n\n</session-restore>\n\n---\n`;
           messages.push(pendingRestoreMessage);
         }
@@ -715,13 +715,43 @@ ${agentsContent}
     if (pendingRestore && pendingRestoreMessage) {
       additionalContext = buildSessionStartAdditionalContext(messages);
       if (additionalContext.includes(pendingRestoreMessage)) {
-        const markerStatus = pendingRestore.commitPreCompactCheckpointRestore(
-          pendingRestore.restoreRoot,
-          sessionId,
-          pendingRestore.path,
-          pendingRestore.created_at,
-          pendingRestore.mtime_ms,
-        );
+        let markerStatus = null;
+        const waitCell = new Int32Array(new SharedArrayBuffer(4));
+        for (let attempt = 0; attempt < 100; attempt += 1) {
+          const status = pendingRestore.claimPreCompactCheckpointRestore(
+            pendingRestore.restoreRoot,
+            sessionId,
+            pendingRestore.path,
+            pendingRestore.created_at,
+            pendingRestore.mtime_ms,
+          );
+          if (status === 'written') {
+            markerStatus = status;
+            break;
+          }
+          if (status !== 'contended') break;
+          Atomics.wait(waitCell, 0, 0, 10);
+          const refreshed = pendingRestore.preparePreCompactCheckpointRestore(
+            pendingRestore.restoreRoot,
+            sessionId,
+          );
+          if (!refreshed) break;
+          const refreshedMessage = `<session-restore>\n\n${refreshed.text}\n\n</session-restore>\n\n---\n`;
+          const refreshedMessages = messages.map((message) => (
+            message === pendingRestoreMessage ? refreshedMessage : message
+          ));
+          const refreshedContext = buildSessionStartAdditionalContext(refreshedMessages);
+          if (!refreshedContext.includes(refreshedMessage)) break;
+          pendingRestore = {
+            ...refreshed,
+            restoreRoot: pendingRestore.restoreRoot,
+            preparePreCompactCheckpointRestore: pendingRestore.preparePreCompactCheckpointRestore,
+            claimPreCompactCheckpointRestore: pendingRestore.claimPreCompactCheckpointRestore,
+          };
+          pendingRestoreMessage = refreshedMessage;
+          messages = refreshedMessages;
+          additionalContext = refreshedContext;
+        }
         if (!markerStatus) {
           messages = messages.filter((message) => message !== pendingRestoreMessage);
           additionalContext = buildSessionStartAdditionalContext(messages);

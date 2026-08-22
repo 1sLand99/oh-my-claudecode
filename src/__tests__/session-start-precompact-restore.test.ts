@@ -496,6 +496,65 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
   }, 30_000);
 
   it.each([
+    ['installed', SCRIPT_PATH, true],
+    ['template', TEMPLATE_SCRIPT_PATH, false],
+  ])('retries when a lock appears after prepare in the actual %s SessionStart entrypoint', async (_label, scriptPath, needsPluginRoot) => {
+    if (!SECURE_MARKER_SUPPORTED) return;
+    const sessionId = `entrypoint-commit-lock-${_label}`;
+    writeCheckpoint(project, new Date().toISOString(), { session_id: sessionId });
+    const markerParent = join(project, '.omc', 'state', 'checkpoints-restored', sessionId);
+    mkdirSync(markerParent, { recursive: true });
+    const lockPath = join(markerParent, '.restored.json.lock');
+    const signalPath = join(tempDir, `commit-lock-signal-${_label}`);
+    const preloadPath = join(tempDir, `commit-lock-preload-${_label}.mjs`);
+    writeFileSync(preloadPath, `import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+const originalOpenSync = fs.openSync;
+let injected = false;
+fs.openSync = function(path, flags, mode) {
+  if (!injected && String(path).includes('.restored.json.') && String(path).endsWith('.tmp')) {
+    injected = true;
+    fs.writeFileSync(process.env.MARKER_LOCK, 'live');
+    fs.writeFileSync(process.env.MARKER_SIGNAL, 'ready');
+  }
+  return originalOpenSync.call(fs, path, flags, mode);
+};
+syncBuiltinESMExports();
+`);
+    const env = {
+      ...process.env,
+      HOME: home,
+      USERPROFILE: home,
+      MARKER_LOCK: lockPath,
+      MARKER_SIGNAL: signalPath,
+      ...(needsPluginRoot ? { CLAUDE_PLUGIN_ROOT: join(__dirname, '..', '..') } : {}),
+    };
+    const child = spawn(NODE, ['--import', pathToFileURL(preloadPath).href, scriptPath], {
+      env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    const startedAt = Date.now();
+    child.stdin.end(JSON.stringify({
+      hook_event_name: 'SessionStart', source: 'compact', session_id: sessionId, cwd: project,
+    }));
+    for (let attempt = 0; attempt < 500 && !existsSync(signalPath); attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(existsSync(signalPath)).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    unlinkSync(lockPath);
+    expect(await new Promise<number | null>((resolve) => child.on('close', resolve)), stderr).toBe(0);
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(450);
+    expect(parseContext(stdout)).toContain('PRECOMPACT CHECKPOINT RESTORED');
+  }, 30_000);
+
+  it.each([
     ['installed', join(__dirname, '..', '..', 'scripts', 'lib', 'precompact-restore.mjs'), true],
     ['template', join(__dirname, '..', '..', 'templates', 'hooks', 'lib', 'precompact-restore.mjs'), true],
     ['dist', join(__dirname, '..', '..', 'dist', 'hooks', 'pre-compact', 'restore.js'), false],
@@ -703,6 +762,75 @@ process.stdout.write(JSON.stringify(restorePreCompactCheckpoint(process.env.OMC_
     const markerPath = join(project, '.omc', 'state', 'checkpoints-restored', sessionId, 'restored.json');
     expect(JSON.parse(readFileSync(markerPath, 'utf8')).checkpoint).toBe(newer);
   }, 15_000);
+
+  it.each([
+    ['installed', join(__dirname, '..', '..', 'scripts', 'lib', 'precompact-restore.mjs'), true],
+    ['template', join(__dirname, '..', '..', 'templates', 'hooks', 'lib', 'precompact-restore.mjs'), true],
+    ['dist', join(__dirname, '..', '..', 'dist', 'hooks', 'pre-compact', 'restore.js'), false],
+  ])('prevents a reclaimed stale %s owner from leaving an older marker', async (_label, helperPath, usesOmcRoot) => {
+    if (!SECURE_MARKER_SUPPORTED) return;
+    const sessionId = `stale-owner-${_label}`;
+    const checkpointDir = join(project, '.omc', 'state', 'checkpoints');
+    mkdirSync(checkpointDir, { recursive: true });
+    const write = (name: string, createdAt: string) => {
+      const path = join(checkpointDir, name);
+      writeFileSync(path, JSON.stringify({
+        created_at: createdAt, session_id: sessionId, trigger: 'auto', active_modes: {},
+        todo_summary: { pending: 1, in_progress: 0, completed: 0 }, wisdom_exported: false,
+      }));
+      return path;
+    };
+    const inputRoot = usesOmcRoot ? join(project, '.omc') : project;
+    const code = `import { restorePreCompactCheckpoint } from ${JSON.stringify(pathToFileURL(helperPath).href)};
+process.stdout.write(JSON.stringify(restorePreCompactCheckpoint(process.env.OMC_ROOT, process.env.MARKER_SESSION)));`;
+    const env = { ...process.env, OMC_ROOT: inputRoot, MARKER_SESSION: sessionId };
+    const checkpoint0 = write('checkpoint-stale-owner-0.json', new Date(Date.now() - 4_000).toISOString());
+    expect(JSON.parse(execFileSync(NODE, ['--input-type=module', '-e', code], { encoding: 'utf8', env }))?.text).toContain(basename(checkpoint0));
+    const checkpointA = write('checkpoint-stale-owner-a.json', new Date(Date.now() - 2_000).toISOString());
+    const signal = join(tempDir, `stale-owner-signal-${_label}`);
+    const release = join(tempDir, `stale-owner-release-${_label}`);
+    const preload = join(tempDir, `stale-owner-preload-${_label}.mjs`);
+    writeFileSync(preload, `import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+const originalRenameSync = fs.renameSync;
+let blocked = false;
+fs.renameSync = function(source, destination) {
+  if (!blocked && String(destination).endsWith('/restored.json') && String(source).endsWith('.tmp')) {
+    blocked = true;
+    fs.writeFileSync(process.env.MARKER_SIGNAL, 'ready');
+    const cell = new Int32Array(new SharedArrayBuffer(4));
+    while (!fs.existsSync(process.env.MARKER_RELEASE)) Atomics.wait(cell, 0, 0, 10);
+  }
+  return originalRenameSync.call(fs, source, destination);
+};
+syncBuiltinESMExports();
+`);
+    const first = spawn(NODE, ['--import', pathToFileURL(preload).href, '--input-type=module', '-e', code], {
+      env: { ...env, MARKER_SIGNAL: signal, MARKER_RELEASE: release }, stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let firstStdout = '';
+    let firstStderr = '';
+    first.stdout.setEncoding('utf8');
+    first.stderr.setEncoding('utf8');
+    first.stdout.on('data', (chunk) => { firstStdout += chunk; });
+    first.stderr.on('data', (chunk) => { firstStderr += chunk; });
+    for (let attempt = 0; attempt < 500 && !existsSync(signal); attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(existsSync(signal)).toBe(true);
+    const lockPath = join(project, '.omc', 'state', 'checkpoints-restored', sessionId, '.restored.json.lock');
+    const staleTime = new Date(Date.now() - 60_000);
+    utimesSync(lockPath, staleTime, staleTime);
+    const checkpointB = write('checkpoint-stale-owner-b.json', new Date().toISOString());
+    const winner = JSON.parse(execFileSync(NODE, ['--input-type=module', '-e', code], { encoding: 'utf8', env }));
+    expect(winner?.text).toContain(basename(checkpointB));
+    writeFileSync(release, 'release');
+    expect(await new Promise<number | null>((resolve) => first.on('close', resolve)), firstStderr).toBe(0);
+    expect(JSON.parse(firstStdout)).toBeNull();
+    const markerPath = join(project, '.omc', 'state', 'checkpoints-restored', sessionId, 'restored.json');
+    expect(JSON.parse(readFileSync(markerPath, 'utf8')).checkpoint).toBe(checkpointB);
+    expect(JSON.parse(readFileSync(markerPath, 'utf8')).checkpoint).not.toBe(checkpointA);
+  }, 30_000);
 
   it.each([
     ['installed', join(__dirname, '..', '..', 'scripts', 'lib', 'precompact-restore.mjs'), true],

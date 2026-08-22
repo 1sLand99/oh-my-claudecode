@@ -792,8 +792,8 @@ describe('PreCompact restore (issue #3730)', () => {
     if (!SECURE_MARKER_SUPPORTED) return;
     const t1 = new Date(Date.now() - 2_000).toISOString();
     const t2 = new Date().toISOString();
-    const checkpointA = writeCheckpoint(tempDir, t1);
-    const checkpointB = writeCheckpoint(tempDir, t2);
+    const checkpointA = writeCheckpoint(tempDir, t1, { session_id: 'marker-monotonic-session' });
+    const checkpointB = writeCheckpoint(tempDir, t2, { session_id: 'marker-monotonic-session' });
     expect(markCheckpointRestored(tempDir, 'marker-monotonic-session', checkpointB, t2)).toBe('written');
     expect(markCheckpointRestored(tempDir, 'marker-monotonic-session', checkpointA, t1)).toBe('existing');
 
@@ -896,11 +896,12 @@ describe('PreCompact restore (issue #3730)', () => {
   it('does not let a foreign-session legacy marker suppress the current session', () => {
     if (!SECURE_MARKER_SUPPORTED) return;
     const createdAt = new Date().toISOString();
+    const foreignCreatedAt = new Date(Date.now() + 10_000).toISOString();
     const checkpointDir = join(getOmcRootForTest(tempDir), 'state', 'checkpoints');
     mkdirSync(checkpointDir, { recursive: true });
     const foreignPath = join(checkpointDir, 'checkpoint-z.json');
     writeFileSync(foreignPath, JSON.stringify({
-      created_at: createdAt,
+      created_at: foreignCreatedAt,
       session_id: 'foreign-session',
       trigger: 'auto', active_modes: {},
       todo_summary: { pending: 0, in_progress: 0, completed: 0 }, wisdom_exported: false,
@@ -917,7 +918,7 @@ describe('PreCompact restore (issue #3730)', () => {
     writeFileSync(join(markerParent, 'restored.json'), JSON.stringify({
       restored_at: new Date().toISOString(),
       checkpoint: foreignPath,
-      checkpoint_created_at: createdAt,
+      checkpoint_created_at: foreignCreatedAt,
     }));
 
     expect(restorePreCompactCheckpoint(tempDir, 'current-session')?.text).toContain('checkpoint-a.json');
@@ -970,6 +971,67 @@ describe('PreCompact restore (issue #3730)', () => {
     expect(markCheckpointRestored(tempDir, 'genuine-stale-lock', checkpoint, createdAt, statSync(checkpoint).mtimeMs)).toBe('written');
     expect(existsSync(lockPath)).toBe(false);
     expect(existsSync(join(markerParent, 'restored.json'))).toBe(true);
+  });
+
+  it('does not unlink a replacement lock during final owner cleanup', () => {
+    if (!SECURE_MARKER_SUPPORTED) return;
+    const createdAt = new Date().toISOString();
+    const checkpoint = writeCheckpoint(tempDir, createdAt, { session_id: 'cleanup-lock-cas' });
+    const markerParent = join(getOmcRootForTest(tempDir), 'state', 'checkpoints-restored', 'cleanup-lock-cas');
+    const lockPath = join(markerParent, '.restored.json.lock');
+    const originalRenameSync = nodeFs.renameSync;
+    let replacementInode = 0;
+    let replaced = false;
+    const renameSpy = vi.spyOn(nodeFs, 'renameSync').mockImplementation((source, destination) => {
+      if (!replaced && String(destination).includes('.release-')) {
+        replaced = true;
+        unlinkSync(lockPath);
+        writeFileSync(lockPath, 'live-cleanup-replacement');
+        replacementInode = statSync(lockPath).ino;
+      }
+      return originalRenameSync(source, destination);
+    });
+    try {
+      expect(markCheckpointRestored(tempDir, 'cleanup-lock-cas', checkpoint, createdAt, statSync(checkpoint).mtimeMs)).toBe('written');
+      expect(replaced).toBe(true);
+      expect(statSync(lockPath).ino).toBe(replacementInode);
+      expect(readFileSync(lockPath, 'utf8')).toBe('live-cleanup-replacement');
+    } finally {
+      renameSpy.mockRestore();
+    }
+  });
+
+  it('repairs the newest marker when a reclaimed paused owner resumes publication', () => {
+    if (!SECURE_MARKER_SUPPORTED) return;
+    const sessionId = 'stale-owner-publication';
+    const t0 = new Date(Date.now() - 4_000).toISOString();
+    const t1 = new Date(Date.now() - 2_000).toISOString();
+    const t2 = new Date().toISOString();
+    const checkpoint0 = writeCheckpoint(tempDir, t0, { session_id: sessionId });
+    const checkpointA = writeCheckpoint(tempDir, t1, { session_id: sessionId });
+    const checkpointB = writeCheckpoint(tempDir, t2, { session_id: sessionId });
+    expect(markCheckpointRestored(tempDir, sessionId, checkpoint0, t0, statSync(checkpoint0).mtimeMs)).toBe('written');
+    const markerParent = join(getOmcRootForTest(tempDir), 'state', 'checkpoints-restored', sessionId);
+    const markerPath = join(markerParent, 'restored.json');
+    const lockPath = join(markerParent, '.restored.json.lock');
+    const originalRenameSync = nodeFs.renameSync;
+    let reclaimed = false;
+    const renameSpy = vi.spyOn(nodeFs, 'renameSync').mockImplementation((source, destination) => {
+      if (!reclaimed && String(destination).endsWith('/restored.json') && String(source).endsWith('.tmp')) {
+        reclaimed = true;
+        const staleTime = new Date(Date.now() - 60_000);
+        utimesSync(lockPath, staleTime, staleTime);
+        expect(markCheckpointRestored(tempDir, sessionId, checkpointB, t2, statSync(checkpointB).mtimeMs)).toBe('written');
+      }
+      return originalRenameSync(source, destination);
+    });
+    try {
+      expect(markCheckpointRestored(tempDir, sessionId, checkpointA, t1, statSync(checkpointA).mtimeMs)).toBe('failed');
+      expect(reclaimed).toBe(true);
+      expect(JSON.parse(readFileSync(markerPath, 'utf8')).checkpoint).toBe(checkpointB);
+    } finally {
+      renameSpy.mockRestore();
+    }
   });
 });
 
