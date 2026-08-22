@@ -18,12 +18,32 @@ interface RunResult {
   };
 }
 
-function runVerifier(args: string[], cwd = REPO_ROOT, options: { fakeGh?: boolean } = {}): RunResult {
+function runVerifier(args: string[], cwd = REPO_ROOT, options: { fakeGh?: boolean; bindHeadBase?: boolean } = {}): RunResult {
   const env = { ...process.env };
   const rootIndex = args.indexOf('--root');
   const fixtureRoot = rootIndex >= 0 && args[rootIndex + 1] ? args[rootIndex + 1] : cwd;
   const fakeGh = join(fixtureRoot, 'fake-gh', 'gh');
   if (options.fakeGh !== false && existsSync(fakeGh)) {
+    if (options.bindHeadBase !== false) {
+      const baseIndex = args.indexOf('--base');
+      const base = baseIndex >= 0 ? args[baseIndex + 1] : null;
+      if (base) {
+        const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: fixtureRoot, encoding: 'utf8' });
+        const mergeBase = spawnSync('git', ['merge-base', base, 'HEAD'], { cwd: fixtureRoot, encoding: 'utf8' });
+        if (head.status === 0 && mergeBase.status === 0) {
+          const fixturePath = join(fixtureRoot, 'gh-fixture.json');
+          const ghFixture = JSON.parse(readFileSync(fixturePath, 'utf8'));
+          const headSha = head.stdout.trim();
+          ghFixture.commitPulls ??= {};
+          ghFixture.commitPulls[headSha] = [{
+            state: 'open',
+            head: { sha: headSha },
+            base: { ref: base, sha: mergeBase.stdout.trim() },
+          }];
+          writeJson(fixturePath, ghFixture);
+        }
+      }
+    }
     env.PATH = `${dirname(fakeGh)}${delimiter}${env.PATH ?? ''}`;
     env.EPIC_GH_FIXTURE = join(fixtureRoot, 'gh-fixture.json');
   } else if (options.fakeGh === false) {
@@ -82,6 +102,8 @@ function installFakeGh(root: string, data: unknown) {
     "else if (args[0] === 'issue' && args[1] === 'view') out(data.issues[args[2]]);",
     "else if (args[0] === 'api') {",
     '  const path = args[1];',
+    "  const page = Number(new URL('https://fixture.invalid/' + path).searchParams.get('page') ?? '1');",
+    '  const pageRecords = (values) => values.slice((page - 1) * 100, page * 100);',
     '  const pull = path.match(/^repos\\/[^/]+\\/[^/]+\\/pulls\\/(\\d+)$/);',
     '  const timeline = path.match(/^repos\\/[^/]+\\/[^/]+\\/issues\\/(\\d+)\\/timeline/);',
     '  const status = path.match(/^repos\\/[^/]+\\/[^/]+\\/commits\\/([0-9a-f]{40})\\/status$/);',
@@ -92,10 +114,10 @@ function installFakeGh(root: string, data: unknown) {
     '  if (pull) { const pr = data.prs[pull[1]]; out({ number: pr.number, state: pr.state === "MERGED" ? "closed" : "open", merged_at: pr.state === "MERGED" ? "2026-08-12T00:00:00Z" : null, head: { sha: pr.headRefOid }, merge_commit_sha: pr.mergeCommit.oid, base: { ref: pr.baseRefName, sha: pr.baseRefOid } }); }',
     '  else if (timeline) out(data.timelines[timeline[1]] ?? []);',
     '  else if (status) out(data.statuses[status[1]]);',
-    '  else if (checks) out({ check_runs: data.checkRuns[checks[1]] ?? [] });',
+    '  else if (checks) { const values = data.checkRuns[checks[1]] ?? []; out({ total_count: values.length, check_runs: pageRecords(values) }); }',
     '  else if (commitPulls) out(data.commitPulls?.[commitPulls[1]] ?? []);',
     '  else if (commit) out(data.commits[commit[1]]);',
-    '  else if (workflows) out({ workflow_runs: data.workflowRuns ?? [] });',
+    '  else if (workflows) { const values = data.workflowRuns ?? []; out({ total_count: values.length, workflow_runs: pageRecords(values) }); }',
     "  else { process.stderr.write('unknown fake gh api: ' + path + '\\n'); process.exit(2); }",
     "} else { process.stderr.write('unknown fake gh args: ' + args.join(' ') + '\\n'); process.exit(2); }",
     '',
@@ -492,7 +514,63 @@ describe('epic-3698 closure verifier (#3712)', () => {
     ]);
     expect(run.status).not.toBe(0);
     expect(check(run, 'exactHeadCi').status, JSON.stringify(check(run, 'exactHeadCi'), null, 2)).toBe('fail');
-    expect(check(run, 'exactHeadCi').problems.join(' ')).toContain('live issue timeline commit');
+    expect(check(run, 'exactHeadCi').problems.join(' ')).toContain('live issue timeline referenced.commit_id');
+  });
+
+  it('rejects committed.sha-only timeline evidence for direct issue #3709', () => {
+    buildCompleteFixture(fixture);
+    const ghFixturePath = join(fixture, 'gh-fixture.json');
+    const ghFixture = JSON.parse(readFileSync(ghFixturePath, 'utf8'));
+    ghFixture.timelines['3709'] = [{ event: 'committed', sha: 'b'.repeat(40) }];
+    writeJson(ghFixturePath, ghFixture);
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'exactHeadCi').problems.join(' ')).toContain('referenced.commit_id');
+  });
+
+  it('rejects mixed green and failed live PR check rollups', () => {
+    buildCompleteFixture(fixture);
+    const ghFixturePath = join(fixture, 'gh-fixture.json');
+    const ghFixture = JSON.parse(readFileSync(ghFixturePath, 'utf8'));
+    ghFixture.prs['3721'].statusCheckRollup.push({ name: 'Failed attempt', status: 'COMPLETED', conclusion: 'FAILURE' });
+    writeJson(ghFixturePath, ghFixture);
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'exactHeadCi').problems.join(' ')).toContain('failure');
+  });
+
+  it('fails closed when direct check-run pagination contains a late failure', () => {
+    buildCompleteFixture(fixture);
+    const ghFixturePath = join(fixture, 'gh-fixture.json');
+    const ghFixture = JSON.parse(readFileSync(ghFixturePath, 'utf8'));
+    ghFixture.checkRuns['b'.repeat(40)] = Array.from({ length: 100 }, (_, index) => ({
+      name: `green-${index}`,
+      status: 'completed',
+      conclusion: 'success',
+      head_sha: 'b'.repeat(40),
+    }));
+    ghFixture.checkRuns['b'.repeat(40)].push({
+      name: 'late-failure',
+      status: 'completed',
+      conclusion: 'failure',
+      head_sha: 'b'.repeat(40),
+    });
+    writeJson(ghFixturePath, ghFixture);
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'exactHeadCi').problems.join(' ')).toContain('liveChecks[100].conclusion');
   });
 
   it('rejects HEAD as a valid-but-wrong base against the authenticated expected merge base', () => {
@@ -523,10 +601,26 @@ describe('epic-3698 closure verifier (#3712)', () => {
       '--evidence', join(fixture, 'ci-evidence.json'),
       '--base', 'HEAD',
       '--changed-files', join(fixture, 'changed-files.txt'),
-    ]);
+    ], fixture, { bindHeadBase: false });
     expect(run.status).toBe(1);
     expect(check(run, 'releaseSecurityParity').status).toBe('fail');
     expect(check(run, 'releaseSecurityParity').problems.join(' ')).toContain('authenticated expected merge base');
+  });
+
+  it('does not pass Git-backed release parity without an authenticated exact-head PR base', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(join(fixture, 'tracked.txt'), 'base\n');
+    commitFixture(fixture, 'base');
+    writeFileSync(join(fixture, 'tracked.txt'), 'head\n');
+    commitFixtureHead(fixture, 'head');
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--base', 'HEAD',
+    ], fixture, { bindHeadBase: false });
+    expect(run.status).toBe(2);
+    expect(check(run, 'releaseSecurityParity').status).toBe('pending');
+    expect(check(run, 'releaseSecurityParity').problems.join(' ')).toContain('authenticated expected merge base unavailable');
   });
 
   it('does not let --changed-files bypass package.json version-diff inspection', () => {
@@ -787,6 +881,21 @@ describe('epic-3698 closure verifier (#3712)', () => {
     ]);
     expect(run.status).toBe(1);
     expect(check(run, 'docsLinks').status).toBe('fail');
+    expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
+  });
+
+  it('canonicalizes CommonMark character references before containment', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n[escape](&#x2e;&#x2e;/&#46;&#46;/&period;&period;/outside.md)\n',
+    );
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
     expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
   });
 

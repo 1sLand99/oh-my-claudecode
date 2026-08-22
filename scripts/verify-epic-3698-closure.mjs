@@ -272,7 +272,7 @@ function apiPathMatches(value, expected) {
 function normalizeTimelineCommitEvent(event, repository, issue, label) {
   if (!isObject(event)) return null;
   const eventType = event.event;
-  const sha = eventType === 'referenced' ? event.commit_id : eventType === 'committed' ? event.sha : null;
+  const sha = eventType === 'referenced' ? event.commit_id : null;
   if (!isSha(sha)) return null;
   const expectedIssuePath = `repos/${repository}/issues/${issue}`;
   const expectedCommitPath = `repos/${repository}/commits/${sha}`;
@@ -298,6 +298,25 @@ function directChecksAreGreen(status, checks, workflows) {
     && workflows.length > 0
     && checks.every((check) => GREEN_CHECK_CONCLUSIONS.has(check.conclusion))
     && workflows.every((run) => GREEN_CHECK_CONCLUSIONS.has(run.conclusion));
+}
+
+function ghPaginated(root, path, field) {
+  const records = [];
+  let totalCount = null;
+  for (let page = 1; ; page += 1) {
+    const separator = path.includes('?') ? '&' : '?';
+    const response = ghJson(root, ['api', `${path}${separator}per_page=100&page=${page}`, '--header', 'Accept: application/vnd.github+json']);
+    const batch = Array.isArray(response) ? response : response?.[field] ?? [];
+    if (!Array.isArray(batch)) throw new VerificationError(`${path} did not return a ${field} array`);
+    if (Number.isSafeInteger(response?.total_count)) totalCount = response.total_count;
+    records.push(...batch);
+    if (batch.length < 100) break;
+    if (page >= 100) throw new VerificationError(`${path} exceeded the bounded pagination limit`);
+  }
+  if (totalCount !== null && records.length !== totalCount) {
+    throw new VerificationError(`${path} pagination returned ${records.length} of ${totalCount} records`);
+  }
+  return records;
 }
 
 function checkKey(check) {
@@ -372,7 +391,6 @@ function verifyLiveGitHubEvidence(root, evidence, prs, directIssues) {
       let liveChecks;
       try {
         liveChecks = (rollup.statusCheckRollup ?? [])
-          .filter((check) => GREEN_CHECK_CONCLUSIONS.has(String(check.conclusion ?? check.state ?? check.status ?? '').toLowerCase()))
           .map((check, checkIndex) => normalizeLiveCheck(check, live.head.sha, `${label}.liveChecks[${checkIndex}]`));
         liveChecks = [...new Map(liveChecks.map((check) => [checkKey(check), check])).values()];
       } catch (error) {
@@ -435,11 +453,11 @@ function verifyLiveGitHubEvidence(root, evidence, prs, directIssues) {
         }
         if (normalized?.sha === commitSha) liveCommitEvent = normalized;
       }
-      if (!liveCommitEvent) return { problems: [`${label}.commit.sha does not match a live issue timeline commit (referenced.commit_id or committed.sha)`] };
-      if (source.eventType !== undefined && source.eventType !== liveCommitEvent.event) {
-        return { problems: [`${label}.source.eventType does not match the live ${liveCommitEvent.event} timeline event`] };
+      if (!liveCommitEvent) return { problems: [`${label}.commit.sha does not match a live issue timeline referenced.commit_id`] };
+      if (source.eventType !== 'referenced') {
+        return { problems: [`${label}.source.eventType must be referenced`] };
       }
-      if (source.commitId !== undefined && source.commitId !== liveCommitEvent.sha) {
+      if (source.commitId !== liveCommitEvent.sha) {
         return { problems: [`${label}.source.commitId does not match the live issue timeline commit`] };
       }
       const liveCommit = ghJson(root, ['api', expectedCommitPath, '--header', 'Accept: application/vnd.github+json']);
@@ -458,8 +476,7 @@ function verifyLiveGitHubEvidence(root, evidence, prs, directIssues) {
       }
       let liveChecks;
       try {
-        const checksResponse = ghJson(root, ['api', `${expectedChecksPath}?per_page=100`, '--header', 'Accept: application/vnd.github+json']);
-        liveChecks = (Array.isArray(checksResponse) ? checksResponse : checksResponse?.check_runs ?? [])
+        liveChecks = ghPaginated(root, expectedChecksPath, 'check_runs')
           .map((check, checkIndex) => normalizeDirectCheck(check, commitSha, `${label}.liveChecks[${checkIndex}]`));
       } catch (error) {
         return { problems: [error.message] };
@@ -479,8 +496,7 @@ function verifyLiveGitHubEvidence(root, evidence, prs, directIssues) {
       }
       let liveWorkflows;
       try {
-        const workflowsResponse = ghJson(root, ['api', `${expectedWorkflowsPath}?head_sha=${commitSha}&per_page=100`, '--header', 'Accept: application/vnd.github+json']);
-        liveWorkflows = (Array.isArray(workflowsResponse) ? workflowsResponse : workflowsResponse?.workflow_runs ?? [])
+        liveWorkflows = ghPaginated(root, `${expectedWorkflowsPath}?head_sha=${commitSha}`, 'workflow_runs')
           .map((run, runIndex) => normalizeWorkflowRun(run, commitSha, `${label}.liveWorkflows[${runIndex}]`));
       } catch (error) {
         return { problems: [error.message] };
@@ -625,7 +641,8 @@ function checkExactHeadCi(root, evidencePath) {
       if (!isObject(direct.source) || !isNonEmptyString(direct.source.repository)
         || !isNonEmptyString(direct.source.issue) || !isNonEmptyString(direct.source.timeline)
         || !isNonEmptyString(direct.source.commit) || !isNonEmptyString(direct.source.status)
-        || !isNonEmptyString(direct.source.checks) || !isNonEmptyString(direct.source.workflows)) {
+        || !isNonEmptyString(direct.source.checks) || !isNonEmptyString(direct.source.workflows)
+        || direct.source.eventType !== 'referenced' || direct.source.commitId !== direct.commit?.sha) {
         problems.push(`${label}.source must identify repository, issue, timeline, commit, status, check, and workflow API evidence`);
       }
     }
@@ -680,11 +697,18 @@ function referenceLabel(value) {
 function markdownDestination(value, label, problems) {
   const trimmed = value.trim();
   const unwrapped = trimmed.startsWith('<') && trimmed.endsWith('>') ? trimmed.slice(1, -1) : trimmed;
-  const unescaped = unescapeReferenceLabel(unwrapped);
   try {
+    const unescaped = unescapeReferenceLabel(unwrapped).replace(
+      /&(?:#(\d+)|#x([0-9a-f]+)|(period|sol|bsol|amp|lt|gt|quot|apos));/gi,
+      (entity, decimal, hexadecimal, named) => {
+        if (decimal !== undefined) return String.fromCodePoint(Number(decimal));
+        if (hexadecimal !== undefined) return String.fromCodePoint(Number.parseInt(hexadecimal, 16));
+        return ({ period: '.', sol: '/', bsol: '\\', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" })[named.toLowerCase()] ?? entity;
+      },
+    );
     return decodeURIComponent(unescaped);
   } catch {
-    problems.push(`${label} contains malformed percent-escaped bytes`);
+    problems.push(`${label} contains malformed escaped bytes`);
     return null;
   }
 }
@@ -1152,6 +1176,14 @@ function checkReleaseSecurityParity(root, base, changedFilesArg, authenticatedBa
     };
   }
   if (changeSet.inputError) problems.push(changeSet.inputError);
+  if (changeSet.mergeBase && !authenticatedBase) {
+    return {
+      id,
+      status: 'pending',
+      details: 'authenticated exact-head pull-request base is unavailable; release/security parity cannot pass from a caller-selected Git base',
+      problems: ['authenticated expected merge base unavailable'],
+    };
+  }
   if (authenticatedBase) {
     let expectedMergeBase = null;
     try {
