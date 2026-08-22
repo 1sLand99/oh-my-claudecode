@@ -40,6 +40,7 @@ export interface PreCompactInput {
 
 export interface CompactCheckpoint {
   created_at: string;
+  session_id?: string;
   trigger: "manual" | "auto";
   active_modes: {
     autopilot?: { phase: string; originalIdea: string };
@@ -410,6 +411,7 @@ export async function createCompactCheckpoint(
 
   return {
     created_at: new Date().toISOString(),
+    session_id: sessionId,
     trigger,
     active_modes: activeModes as CompactCheckpoint["active_modes"],
     todo_summary: todoSummary,

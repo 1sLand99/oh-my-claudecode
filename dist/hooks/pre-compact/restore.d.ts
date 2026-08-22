@@ -49,7 +49,7 @@ export type RestoreCandidate = {
     path?: string;
     detail?: string;
 };
-export type RestoreMarkerStatus = 'written' | 'existing' | 'unsupported' | 'failed' | 'invalid_session_id';
+export type RestoreMarkerStatus = 'written' | 'existing' | 'contended' | 'unsupported' | 'failed' | 'invalid_session_id';
 export interface RestoredCheckpointContext {
     text: string;
     marker_status: RestoreMarkerStatus;

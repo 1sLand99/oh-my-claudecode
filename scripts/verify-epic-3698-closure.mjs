@@ -911,21 +911,25 @@ function maskCommonMarkCodeBlocks(text) {
     let content = line;
     let contentOffset = 0;
     let baseIndent = 0;
+    const containerChain = [];
     const activeListIndent = listIndents[listIndents.length - 1] ?? 0;
     if (activeListIndent > 0 && indentation(content).columns >= activeListIndent) {
       const baseIndex = indexAfterColumns(content, activeListIndent);
       contentOffset += baseIndex;
       content = content.slice(baseIndex);
       baseIndent = activeListIndent;
+      containerChain.push(...Array(listIndents.length).fill('list'));
     } else {
       const initialQuote = blockQuotePrefix(content);
       quoteDepth += initialQuote.depth;
+      containerChain.push(...Array(initialQuote.depth).fill('quote'));
       contentOffset += initialQuote.offset;
       content = content.slice(initialQuote.offset);
 
       const leading = indentation(content);
       while (listIndents.length > 0 && leading.columns < listIndents[listIndents.length - 1]) listIndents.pop();
       baseIndent = listIndents[listIndents.length - 1] ?? 0;
+      containerChain.push(...Array(listIndents.length).fill('list'));
       if (baseIndent > 0) {
         const baseIndex = indexAfterColumns(content, baseIndent);
         if (baseIndex > 0) {
@@ -946,18 +950,20 @@ function maskCommonMarkCodeBlocks(text) {
         const markerColumns = columnWidth(list[0]);
         const parentIndent = listIndents[listIndents.length - 1] ?? baseIndent;
         listIndents.push(parentIndent + markerColumns);
+        containerChain.push('list');
         contentOffset += list[0].length;
         content = content.slice(list[0].length);
       }
       const nestedQuote = blockQuotePrefix(content);
       if (nestedQuote.offset > 0) {
         quoteDepth += nestedQuote.depth;
+        containerChain.push(...Array(nestedQuote.depth).fill('quote'));
         contentOffset += nestedQuote.offset;
         content = content.slice(nestedQuote.offset);
       }
       if (!list && nestedQuote.offset === 0) break;
     }
-    if (fence && (quoteDepth < fence.quoteDepth || listIndents.length < fence.listDepth)) fence = null;
+    if (fence && containerChain.join('/') !== fence.containerChain) fence = null;
 
     const fenceMatch = content.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
     if (fence) {
@@ -976,6 +982,7 @@ function maskCommonMarkCodeBlocks(text) {
         length: fenceMatch[1].length,
         quoteDepth,
         listDepth: listIndents.length,
+        containerChain: containerChain.join('/'),
       };
       parts[partIndex] = ' '.repeat(line.length);
       continue;
@@ -989,44 +996,40 @@ function maskCommonMarkCodeBlocks(text) {
   return parts.join('');
 }
 
-function maskCommonMarkInlineCode(text) {
+function maskInlineCodeAndExtractHtml(text, problems, docPath) {
   const chars = [...text];
-  for (let index = 0; index < chars.length; index += 1) {
-    if (chars[index] !== '`') continue;
-    let runLength = 1;
-    while (chars[index + runLength] === '`') runLength += 1;
-    let closing = index + runLength;
-    while (closing < chars.length) {
-      if (chars[closing] !== '`') {
-        closing += 1;
-        continue;
-      }
-      let closingLength = 1;
-      while (chars[closing + closingLength] === '`') closingLength += 1;
-      if (closingLength === runLength) break;
-      closing += closingLength;
-    }
-    if (closing >= chars.length) {
-      index += runLength - 1;
-      continue;
-    }
-    for (let cursor = index; cursor < closing + runLength; cursor += 1) {
-      if (chars[cursor] !== '\r' && chars[cursor] !== '\n') chars[cursor] = ' ';
-    }
-    index = closing + runLength - 1;
-  }
-  return chars.join('');
-}
-
-function rawHtmlUrlTargets(text, problems, docPath) {
   const targets = [];
   const urlAttributes = new Set(['href', 'src', 'action', 'formaction', 'poster', 'cite', 'data', 'srcset']);
-  for (let opening = 0; opening < text.length; opening += 1) {
-    if (text[opening] !== '<' || !/[A-Za-z]/.test(text[opening + 1] ?? '')) continue;
+  for (let opening = 0; opening < chars.length; opening += 1) {
+    if (chars[opening] === '`') {
+      let runLength = 1;
+      while (chars[opening + runLength] === '`') runLength += 1;
+      let closing = opening + runLength;
+      while (closing < chars.length) {
+        if (chars[closing] !== '`') {
+          closing += 1;
+          continue;
+        }
+        let closingLength = 1;
+        while (chars[closing + closingLength] === '`') closingLength += 1;
+        if (closingLength === runLength) break;
+        closing += closingLength;
+      }
+      if (closing >= chars.length) {
+        opening += runLength - 1;
+        continue;
+      }
+      for (let cursor = opening; cursor < closing + runLength; cursor += 1) {
+        if (chars[cursor] !== '\r' && chars[cursor] !== '\n') chars[cursor] = ' ';
+      }
+      opening = closing + runLength - 1;
+      continue;
+    }
+    if (chars[opening] !== '<' || !/[A-Za-z]/.test(chars[opening + 1] ?? '')) continue;
     let quote = null;
     let closing = opening + 2;
-    for (; closing < text.length; closing += 1) {
-      const char = text[closing];
+    for (; closing < chars.length; closing += 1) {
+      const char = chars[closing];
       if (quote) {
         if (char === quote) quote = null;
       } else if (char === '"' || char === "'") {
@@ -1035,11 +1038,11 @@ function rawHtmlUrlTargets(text, problems, docPath) {
         break;
       }
     }
-    if (closing >= text.length || quote) {
+    if (closing >= chars.length || quote) {
       problems.push(`${docPath}: unterminated raw HTML tag is unsupported`);
       break;
     }
-    const body = text.slice(opening, closing + 1);
+    const body = chars.slice(opening, closing + 1).join('');
     const attributes = body.matchAll(/\b([A-Za-z_:][A-Za-z0-9_.:-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g);
     for (const attribute of attributes) {
       const name = attribute[1].toLowerCase();
@@ -1054,14 +1057,20 @@ function rawHtmlUrlTargets(text, problems, docPath) {
         targets.push(value);
       }
     }
+    for (let cursor = opening; cursor <= closing; cursor += 1) {
+      if (chars[cursor] !== '\r' && chars[cursor] !== '\n') chars[cursor] = ' ';
+    }
     opening = closing;
   }
-  return targets;
+  return { text: chars.join(''), targets };
 }
 
 function parseMarkdownDestinations(text, problems, docPath) {
   const definitions = new Map();
-  const definitionText = maskCommonMarkInlineCode(maskCommonMarkCodeBlocks(text));
+  const blockMaskedText = maskCommonMarkCodeBlocks(text);
+  const inline = maskInlineCodeAndExtractHtml(blockMaskedText, problems, docPath);
+  const htmlTargets = inline.targets;
+  const definitionText = inline.text;
   const lines = definitionText.split(/\r\n?|\n/);
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
     const line = stripMarkdownContainerPrefix(lines[lineIndex]);
@@ -1133,7 +1142,7 @@ function parseMarkdownDestinations(text, problems, docPath) {
   }
   for (const target of definitions.values()) targets.push(target);
   for (const target of potentialDefinitionTargets) targets.push(target);
-  targets.push(...rawHtmlUrlTargets(definitionText, problems, docPath));
+  targets.push(...htmlTargets);
   return targets;
 }
 

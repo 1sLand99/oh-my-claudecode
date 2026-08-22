@@ -69,6 +69,8 @@ export const RESTORE_CONTEXT_MAX_CHARS = 1200;
 /** Replay markers are tiny, but bound reads before parsing untrusted bytes. */
 const RESTORE_MARKER_MAX_BYTES = 16 * 1024;
 const RESTORE_LOCK_STALE_MS = 30_000;
+const RESTORE_LOCK_RETRY_ATTEMPTS = 100;
+const RESTORE_LOCK_RETRY_MS = 10;
 
 /** Only files matching this pattern are checkpoint candidates. */
 const CHECKPOINT_FILE_PATTERN = /^checkpoint-.+\.json$/;
@@ -115,7 +117,7 @@ export type RestoreCandidate =
 // Restore marker (replay guard)
 // ============================================================================
 
-export type RestoreMarkerStatus = 'written' | 'existing' | 'unsupported' | 'failed' | 'invalid_session_id';
+export type RestoreMarkerStatus = 'written' | 'existing' | 'contended' | 'unsupported' | 'failed' | 'invalid_session_id';
 
 export interface RestoredCheckpointContext {
   text: string;
@@ -264,7 +266,7 @@ export function markCheckpointRestored(
           unlinkSync(lockPath);
           continue;
         }
-        return 'failed';
+        return 'contended';
       }
     }
     if (lockFd === null || lockIdentity === null) return 'failed';
@@ -330,9 +332,12 @@ export function markCheckpointRestored(
           if (Number.isFinite(existingTime) && Number.isFinite(candidateTime)) {
             if (existingTime > candidateTime) return 'existing';
             if (existingTime === candidateTime) {
-              const existingMtime = Number(marker?.checkpoint_mtime_ms);
+              const recordedMtime = Number(marker?.checkpoint_mtime_ms);
+              const existingMtime = Number.isFinite(recordedMtime)
+                ? recordedMtime
+                : legacyCheckpointMtime(directory, marker?.checkpoint);
               if (Number.isFinite(existingMtime) && Number.isFinite(checkpointMtimeMs)) {
-                if (existingMtime > checkpointMtimeMs!) return 'existing';
+                if (existingMtime! > checkpointMtimeMs!) return 'existing';
                 if (existingMtime === checkpointMtimeMs) {
                   const existingName = typeof marker?.checkpoint === 'string' ? basename(marker.checkpoint) : '';
                   if (!CHECKPOINT_FILE_PATTERN.test(existingName) || compareCheckpointNames(existingName, basename(checkpointPath)) >= 0) return 'existing';
@@ -932,7 +937,7 @@ function parseCheckpoint(
 
   try {
     const parsed = JSON.parse(raw) as CompactCheckpoint;
-    if (typeof parsed?.created_at !== 'string') {
+    if (typeof parsed?.created_at !== 'string' || !isValidSessionId(parsed?.session_id ?? '')) {
       return null;
     }
     return parsed;
@@ -959,6 +964,20 @@ interface ScoredCandidate {
 
 function compareCheckpointNames(a: string, b: string): number {
   return Buffer.compare(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'));
+}
+
+function legacyCheckpointMtime(directory: string, checkpointPath: string): number | null {
+  try {
+    const omcRoot = getOmcRoot(directory);
+    const context = getCanonicalCheckpointContext(omcRoot);
+    if (!context) return null;
+    const resolved = resolveContainedRegularPath(context, omcRoot, checkpointPath);
+    if (!resolved || !isStableCheckpointContext(omcRoot, context)) return null;
+    const stat = lstatSync(resolved.path);
+    return stat.isFile() && !stat.isSymbolicLink() && stat.nlink === 1 ? stat.mtimeMs : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -1014,7 +1033,7 @@ export function findLatestCheckpointForRestore(
   let newestUnparseable: CandidateFile | null = null;
   for (const c of raw) {
     const checkpoint = parseCheckpoint(omcRoot, c, context);
-    if (checkpoint) {
+    if (checkpoint?.session_id === sessionId) {
       scored.push({ name: c.name, path: c.path, mtimeMs: c.mtimeMs, checkpoint });
     } else if (!newestUnparseable || c.mtimeMs > newestUnparseable.mtimeMs) {
       newestUnparseable = c;
@@ -1082,26 +1101,27 @@ export function restorePreCompactCheckpoint(
   sessionId: string,
 ): RestoredCheckpointContext | null {
   try {
-    const candidate = findLatestCheckpointForRestore(directory, sessionId);
-    if (!candidate.ok) {
-      return null;
+    const waitCell = new Int32Array(new SharedArrayBuffer(4));
+    for (let attempt = 0; attempt < RESTORE_LOCK_RETRY_ATTEMPTS; attempt += 1) {
+      const candidate = findLatestCheckpointForRestore(directory, sessionId);
+      if (!candidate.ok) return null;
+      const marker_status = markCheckpointRestored(
+        directory,
+        sessionId,
+        candidate.path,
+        candidate.checkpoint.created_at,
+        candidate.mtimeMs,
+      );
+      if (marker_status === 'written') {
+        return {
+          text: formatCheckpointRestoreContext(candidate.checkpoint, candidate.path),
+          marker_status,
+        };
+      }
+      if (marker_status !== 'contended') return null;
+      Atomics.wait(waitCell, 0, 0, RESTORE_LOCK_RETRY_MS);
     }
-
-    const marker_status = markCheckpointRestored(
-      directory,
-      sessionId,
-      candidate.path,
-      candidate.checkpoint.created_at,
-      candidate.mtimeMs,
-    );
-    if (marker_status !== 'written') {
-      return null;
-    }
-
-    return {
-      text: formatCheckpointRestoreContext(candidate.checkpoint, candidate.path),
-      marker_status,
-    };
+    return null;
   } catch {
     return null;
   }

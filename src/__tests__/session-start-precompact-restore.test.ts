@@ -40,6 +40,7 @@ function writeCheckpoint(project: string, createdAt: string, extra: Record<strin
     file,
     JSON.stringify({
       created_at: createdAt,
+      session_id: 'session-3730',
       trigger: 'auto',
       active_modes: {},
       todo_summary: { pending: 2, in_progress: 1, completed: 4 },
@@ -297,7 +298,7 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
   it('advances the installed SessionStart marker from checkpoint A to newer B', () => {
     if (!SECURE_MARKER_SUPPORTED) return;
     const t1 = new Date(Date.now() - 2_000).toISOString();
-    const checkpointA = writeCheckpoint(project, t1);
+    const checkpointA = writeCheckpoint(project, t1, { session_id: 'marker-advance-installed' });
     const first = runHook(
       { hook_event_name: 'SessionStart', source: 'compact', session_id: 'marker-advance-installed', cwd: project },
       project,
@@ -316,7 +317,7 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
     expect(JSON.parse(readFileSync(markerPath, 'utf-8')).checkpoint).toBe(checkpointA);
 
     const t2 = new Date().toISOString();
-    const checkpointB = writeCheckpoint(project, t2);
+    const checkpointB = writeCheckpoint(project, t2, { session_id: 'marker-advance-installed' });
     const second = runHook(
       { hook_event_name: 'SessionStart', source: 'compact', session_id: 'marker-advance-installed', cwd: project },
       project,
@@ -335,7 +336,7 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
 
   it('does not commit a restore marker when oversized Priority Context evicts the sentinel', () => {
     if (!SECURE_MARKER_SUPPORTED) return;
-    writeCheckpoint(project, new Date().toISOString());
+    writeCheckpoint(project, new Date().toISOString(), { session_id: 'budgeted-restore-installed' });
     const notepad = join(project, '.omc', 'notepad.md');
     writeFileSync(notepad, `## Priority Context\n${'P'.repeat(7000)}\n`, 'utf-8');
 
@@ -363,7 +364,7 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
 
   it('does not consume a checkpoint when the aggregate budget truncates the restore closing sentinel', () => {
     if (!SECURE_MARKER_SUPPORTED) return;
-    writeCheckpoint(project, new Date().toISOString());
+    writeCheckpoint(project, new Date().toISOString(), { session_id: 'partial-sentinel-installed' });
     const notepad = join(project, '.omc', 'notepad.md');
     writeFileSync(notepad, `## Priority Context\n${'P'.repeat(5450)}\n`, 'utf-8');
 
@@ -392,7 +393,7 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
   it('template SessionStart also delivers A then newer B and suppresses B replay', () => {
     if (!SECURE_MARKER_SUPPORTED) return;
     const t1 = new Date(Date.now() - 2_000).toISOString();
-    const checkpointA = writeCheckpoint(project, t1);
+    const checkpointA = writeCheckpoint(project, t1, { session_id: 'marker-advance-template' });
     const first = runTemplateHook(
       { hook_event_name: 'SessionStart', source: 'compact', session_id: 'marker-advance-template', cwd: project },
       project,
@@ -411,7 +412,7 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
     expect(JSON.parse(readFileSync(markerPath, 'utf-8')).checkpoint).toBe(checkpointA);
 
     const t2 = new Date().toISOString();
-    const checkpointB = writeCheckpoint(project, t2);
+    const checkpointB = writeCheckpoint(project, t2, { session_id: 'marker-advance-template' });
     const second = runTemplateHook(
       { hook_event_name: 'SessionStart', source: 'compact', session_id: 'marker-advance-template', cwd: project },
       project,
@@ -430,7 +431,7 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
 
   it('template SessionStart defers marker commit when Priority Context evicts restore', () => {
     if (!SECURE_MARKER_SUPPORTED) return;
-    writeCheckpoint(project, new Date().toISOString());
+    writeCheckpoint(project, new Date().toISOString(), { session_id: 'budgeted-restore-template' });
     const notepad = join(project, '.omc', 'notepad.md');
     writeFileSync(notepad, `## Priority Context\n${'P'.repeat(7000)}\n`, 'utf-8');
 
@@ -467,6 +468,7 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
     mkdirSync(checkpointDir, { recursive: true });
     const payload = JSON.stringify({
       created_at: createdAt,
+      session_id: `marker-process-${_label}`,
       trigger: 'auto',
       active_modes: {},
       todo_summary: { pending: 1, in_progress: 0, completed: 0 },
@@ -546,7 +548,7 @@ process.stdout.write(JSON.stringify(result));`;
     ['dist', join(__dirname, '..', '..', 'dist', 'hooks', 'pre-compact', 'restore.js'), false],
   ])('delivers only one restore for concurrent duplicate %s claims', async (_label, helperPath, usesOmcRoot) => {
     if (!SECURE_MARKER_SUPPORTED) return;
-    const checkpoint = writeCheckpoint(project, new Date().toISOString());
+    const checkpoint = writeCheckpoint(project, new Date().toISOString(), { session_id: `duplicate-${_label}` });
     const signal = join(tempDir, `duplicate-signal-${_label}`);
     const release = join(tempDir, `duplicate-release-${_label}`);
     const preload = join(tempDir, `duplicate-preload-${_label}.mjs`);
@@ -594,6 +596,80 @@ process.stdout.write(JSON.stringify(restorePreCompactCheckpoint(process.env.OMC_
     ['installed', join(__dirname, '..', '..', 'scripts', 'lib', 'precompact-restore.mjs'), true],
     ['template', join(__dirname, '..', '..', 'templates', 'hooks', 'lib', 'precompact-restore.mjs'), true],
     ['dist', join(__dirname, '..', '..', 'dist', 'hooks', 'pre-compact', 'restore.js'), false],
+  ])('reselects a newer checkpoint while a live %s marker lock is held', async (_label, helperPath, usesOmcRoot) => {
+    if (!SECURE_MARKER_SUPPORTED) return;
+    const sessionId = `live-lock-${_label}`;
+    const checkpointDir = join(project, '.omc', 'state', 'checkpoints');
+    mkdirSync(checkpointDir, { recursive: true });
+    const write = (name: string, createdAt: string) => {
+      const path = join(checkpointDir, name);
+      writeFileSync(path, JSON.stringify({
+        created_at: createdAt,
+        session_id: sessionId,
+        trigger: 'auto',
+        active_modes: {},
+        todo_summary: { pending: 1, in_progress: 0, completed: 0 },
+        wisdom_exported: false,
+      }));
+      return path;
+    };
+    const older = write('checkpoint-live-a.json', new Date(Date.now() - 2_000).toISOString());
+    const signal = join(tempDir, `live-lock-signal-${_label}`);
+    const release = join(tempDir, `live-lock-release-${_label}`);
+    const preload = join(tempDir, `live-lock-preload-${_label}.mjs`);
+    writeFileSync(preload, `import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+const originalLinkSync = fs.linkSync;
+let blocked = false;
+fs.linkSync = function(source, destination) {
+  if (!blocked && String(destination).endsWith('/restored.json')) {
+    blocked = true;
+    fs.writeFileSync(process.env.MARKER_SIGNAL, 'ready');
+    const cell = new Int32Array(new SharedArrayBuffer(4));
+    while (!fs.existsSync(process.env.MARKER_RELEASE)) Atomics.wait(cell, 0, 0, 10);
+  }
+  return originalLinkSync.call(fs, source, destination);
+};
+syncBuiltinESMExports();
+`);
+    const code = `import { restorePreCompactCheckpoint } from ${JSON.stringify(pathToFileURL(helperPath).href)};
+process.stdout.write(JSON.stringify(restorePreCompactCheckpoint(process.env.OMC_ROOT, process.env.MARKER_SESSION)));`;
+    const inputRoot = usesOmcRoot ? join(project, '.omc') : project;
+    const spawnClaim = (args: string[], env: NodeJS.ProcessEnv) => {
+      const child = spawn(NODE, args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.setEncoding('utf8');
+      child.stderr.setEncoding('utf8');
+      child.stdout.on('data', (chunk) => { stdout += chunk; });
+      child.stderr.on('data', (chunk) => { stderr += chunk; });
+      return { child, output: () => ({ stdout, stderr }) };
+    };
+    const env = { ...process.env, OMC_ROOT: inputRoot, MARKER_SESSION: sessionId };
+    const first = spawnClaim(
+      ['--import', pathToFileURL(preload).href, '--input-type=module', '-e', code],
+      { ...env, MARKER_SIGNAL: signal, MARKER_RELEASE: release },
+    );
+    for (let attempt = 0; attempt < 500 && !existsSync(signal); attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(existsSync(signal)).toBe(true);
+    const newer = write('checkpoint-live-b.json', new Date().toISOString());
+    const second = spawnClaim(['--input-type=module', '-e', code], env);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    writeFileSync(release, 'release');
+    expect(await new Promise<number | null>((resolve) => first.child.on('close', resolve)), first.output().stderr).toBe(0);
+    expect(await new Promise<number | null>((resolve) => second.child.on('close', resolve)), second.output().stderr).toBe(0);
+    expect(JSON.parse(first.output().stdout)?.text).toContain(basename(older));
+    expect(JSON.parse(second.output().stdout)?.text).toContain(basename(newer));
+    const markerPath = join(project, '.omc', 'state', 'checkpoints-restored', sessionId, 'restored.json');
+    expect(JSON.parse(readFileSync(markerPath, 'utf8')).checkpoint).toBe(newer);
+  }, 15_000);
+
+  it.each([
+    ['installed', join(__dirname, '..', '..', 'scripts', 'lib', 'precompact-restore.mjs'), true],
+    ['template', join(__dirname, '..', '..', 'templates', 'hooks', 'lib', 'precompact-restore.mjs'), true],
+    ['dist', join(__dirname, '..', '..', 'dist', 'hooks', 'pre-compact', 'restore.js'), false],
   ])('uses mtime to advance equal-created-at checkpoints in the %s helper', (_label, helperPath, usesOmcRoot) => {
     if (!SECURE_MARKER_SUPPORTED) return;
     const checkpointDir = join(project, '.omc', 'state', 'checkpoints');
@@ -601,6 +677,7 @@ process.stdout.write(JSON.stringify(restorePreCompactCheckpoint(process.env.OMC_
     const createdAt = new Date().toISOString();
     const payload = JSON.stringify({
       created_at: createdAt,
+      session_id: `equal-time-${_label}`,
       trigger: 'auto',
       active_modes: {},
       todo_summary: { pending: 1, in_progress: 0, completed: 0 },
@@ -942,7 +1019,7 @@ describe('precompact-restore helper parity (issue #3730 security)', () => {
     mkdirSync(join(project, '.omc', 'state', 'checkpoints'), { recursive: true });
     writeFileSync(
       join(project, '.omc', 'state', 'checkpoints', 'checkpoint-now.json'),
-      JSON.stringify({ created_at: new Date().toISOString(), trigger: 'auto', active_modes: {}, todo_summary: { pending: 1, in_progress: 0, completed: 0 }, wisdom_exported: false }),
+      JSON.stringify({ created_at: new Date().toISOString(), session_id: 'valid-session-3730', trigger: 'auto', active_modes: {}, todo_summary: { pending: 1, in_progress: 0, completed: 0 }, wisdom_exported: false }),
       'utf-8',
     );
   });
@@ -1057,6 +1134,10 @@ describe('precompact-restore helper parity (issue #3730 security)', () => {
       [TEMPLATE_HELPER, 'template-marker-file-symlink'],
       [INSTALLED_HELPER, 'installed-marker-file-symlink'],
     ] as const) {
+      writeFileSync(
+        join(project, '.omc', 'state', 'checkpoints', 'checkpoint-now.json'),
+        JSON.stringify({ created_at: new Date().toISOString(), session_id: suffix, trigger: 'auto', active_modes: {}, todo_summary: { pending: 1, in_progress: 0, completed: 0 }, wisdom_exported: false }),
+      );
       const markerParent = join(markerRoot, suffix);
       mkdirSync(markerParent, { recursive: true });
       const externalMarker = join(externalMarkerDir, `${suffix}.json`);
@@ -1083,6 +1164,10 @@ describe('precompact-restore helper parity (issue #3730 security)', () => {
       [TEMPLATE_HELPER, 'template-marker-parent-race'],
       [INSTALLED_HELPER, 'installed-marker-parent-race'],
     ] as const) {
+      writeFileSync(
+        join(project, '.omc', 'state', 'checkpoints', 'checkpoint-now.json'),
+        JSON.stringify({ created_at: new Date().toISOString(), session_id: suffix, trigger: 'auto', active_modes: {}, todo_summary: { pending: 1, in_progress: 0, completed: 0 }, wisdom_exported: false }),
+      );
       const markerParent = join(markerRoot, suffix);
       const markerParentBackup = `${markerParent}.backup`;
       const externalMarkerParent = join(tempDir, `${suffix}-external`);
@@ -1339,5 +1424,17 @@ describe('precompact-restore helper parity (issue #3730 security)', () => {
     } else {
       expect(result).toBeNull();
     }
+  });
+
+  it.each([
+    ['installed', INSTALLED_HELPER, true],
+    ['template', TEMPLATE_HELPER, true],
+    ['dist', join(__dirname, '..', '..', 'dist', 'hooks', 'pre-compact', 'restore.js'), false],
+  ])('does not restore a %s checkpoint into a different session', async (_label, helper, usesOmcRoot) => {
+    const mod = await import(`${pathToFileURL(helper).href}?cross-session`) as {
+      restorePreCompactCheckpoint: (root: string, sid: string) => { text: string } | null;
+    };
+    const root = usesOmcRoot ? join(project, '.omc') : project;
+    expect(mod.restorePreCompactCheckpoint(root, 'different-session')).toBeNull();
   });
 });

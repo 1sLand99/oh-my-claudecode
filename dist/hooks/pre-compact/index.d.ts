@@ -19,6 +19,7 @@ export interface PreCompactInput {
 }
 export interface CompactCheckpoint {
     created_at: string;
+    session_id?: string;
     trigger: "manual" | "auto";
     active_modes: {
         autopilot?: {

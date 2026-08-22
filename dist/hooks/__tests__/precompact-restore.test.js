@@ -47,6 +47,7 @@ function writeCheckpoint(dir, createdAt, overrides = {}) {
     const file = join(checkpointDir, `checkpoint-${stamp}.json`);
     writeFileSync(file, JSON.stringify({
         created_at: createdAt,
+        session_id: 'test-session',
         trigger: 'auto',
         active_modes: {},
         todo_summary: { pending: 0, in_progress: 0, completed: 0 },
@@ -104,6 +105,7 @@ describe('PreCompact writer - plan anchors (issue #3730)', () => {
             ],
         }), 'utf-8');
         const checkpoint = await createCompactCheckpoint(tempDir, 'auto', 'test-session');
+        expect(checkpoint.session_id).toBe('test-session');
         expect(checkpoint.plan_refs?.prd).toBeDefined();
         expect(checkpoint.plan_refs.prd.path).toContain('prd.json');
         expect(checkpoint.plan_refs.prd.title).toBe('Fix the login bug');
@@ -191,7 +193,7 @@ describe('PreCompact restore (issue #3730)', () => {
         }
     });
     it('returns restore text only after marker publication and suppresses repeats', async () => {
-        writeCheckpoint(tempDir, new Date().toISOString());
+        writeCheckpoint(tempDir, new Date().toISOString(), { session_id: 'marker-gated-session' });
         const first = restorePreCompactCheckpoint(tempDir, 'marker-gated-session');
         if (SECURE_MARKER_SUPPORTED) {
             expect(first).not.toBeNull();
@@ -327,7 +329,7 @@ describe('PreCompact restore (issue #3730)', () => {
             .not.toContain(marker);
     });
     it('does not write a replay marker through a symlinked marker parent', async () => {
-        const checkpointPath = writeCheckpoint(tempDir, new Date().toISOString());
+        const checkpointPath = writeCheckpoint(tempDir, new Date().toISOString(), { session_id: 'marker-parent-symlink' });
         const markerRoot = join(getOmcRootForTest(tempDir), 'state', 'checkpoints-restored');
         const externalMarkerRoot = join(tempDir, 'external-marker-root');
         mkdirSync(externalMarkerRoot, { recursive: true });
@@ -342,7 +344,7 @@ describe('PreCompact restore (issue #3730)', () => {
         expect(second.ok).toBe(true);
     });
     it('does not expose restore text when marker publication is unsupported, including repeats', async () => {
-        writeCheckpoint(tempDir, new Date().toISOString());
+        writeCheckpoint(tempDir, new Date().toISOString(), { session_id: 'unsupported-marker-session' });
         const markerRoot = join(getOmcRootForTest(tempDir), 'state', 'checkpoints-restored');
         const externalMarkerRoot = join(tempDir, 'external-unsupported-marker-root');
         mkdirSync(externalMarkerRoot, { recursive: true });
@@ -352,7 +354,7 @@ describe('PreCompact restore (issue #3730)', () => {
         expect(existsSync(join(externalMarkerRoot, 'unsupported-marker-session', 'restored.json'))).toBe(false);
     });
     it('rejects a symlinked replay marker file without reading or overwriting the target', async () => {
-        const checkpointPath = writeCheckpoint(tempDir, new Date().toISOString());
+        const checkpointPath = writeCheckpoint(tempDir, new Date().toISOString(), { session_id: 'marker-file-symlink' });
         const markerParent = join(getOmcRootForTest(tempDir), 'state', 'checkpoints-restored', 'marker-file-symlink');
         const externalMarker = join(tempDir, 'external-restored.json');
         mkdirSync(markerParent, { recursive: true });
@@ -536,14 +538,14 @@ describe('PreCompact restore (issue #3730)', () => {
             expect(second.ok).toBe(false);
         }
     });
-    it('replay guard is session-scoped: a different session still restores', async () => {
-        writeCheckpoint(tempDir, new Date().toISOString());
+    it('does not restore a checkpoint into a different session', async () => {
+        writeCheckpoint(tempDir, new Date().toISOString(), { session_id: 'session-a' });
         const first = await findLatestCheckpointForRestore(tempDir, 'session-a');
         expect(first.ok).toBe(true);
         if (first.ok) {
             markCheckpointRestored(tempDir, 'session-a', first.path);
             const other = await findLatestCheckpointForRestore(tempDir, 'session-b');
-            expect(other.ok).toBe(true);
+            expect(other.ok).toBe(false);
         }
     });
     it('does not fall back to an older checkpoint after the newest was consumed', async () => {
@@ -568,13 +570,13 @@ describe('PreCompact restore (issue #3730)', () => {
         if (!SECURE_MARKER_SUPPORTED)
             return;
         const t1 = new Date(Date.now() - 2_000).toISOString();
-        const checkpointA = writeCheckpoint(tempDir, t1);
+        const checkpointA = writeCheckpoint(tempDir, t1, { session_id: 'marker-advance-session' });
         const first = restorePreCompactCheckpoint(tempDir, 'marker-advance-session');
         expect(first?.marker_status).toBe('written');
         const markerPath = join(getOmcRootForTest(tempDir), 'state', 'checkpoints-restored', 'marker-advance-session', 'restored.json');
         expect(JSON.parse(readFileSync(markerPath, 'utf-8')).checkpoint).toBe(checkpointA);
         const t2 = new Date().toISOString();
-        const checkpointB = writeCheckpoint(tempDir, t2);
+        const checkpointB = writeCheckpoint(tempDir, t2, { session_id: 'marker-advance-session' });
         const second = restorePreCompactCheckpoint(tempDir, 'marker-advance-session');
         expect(second?.marker_status).toBe('written');
         expect(second?.text).toContain(t2);
@@ -603,6 +605,7 @@ describe('PreCompact restore (issue #3730)', () => {
         const checkpointB = join(checkpointDir, 'checkpoint-equal-b.json');
         const payload = JSON.stringify({
             created_at: createdAt,
+            session_id: 'marker-equal-time',
             trigger: 'auto',
             active_modes: {},
             todo_summary: { pending: 1, in_progress: 0, completed: 0 },
@@ -630,6 +633,7 @@ describe('PreCompact restore (issue #3730)', () => {
         const checkpointB = join(checkpointDir, 'checkpoint-tie-b.json');
         const payload = JSON.stringify({
             created_at: createdAt,
+            session_id: 'marker-total-order',
             trigger: 'auto',
             active_modes: {},
             todo_summary: { pending: 1, in_progress: 0, completed: 0 },
@@ -645,6 +649,35 @@ describe('PreCompact restore (issue #3730)', () => {
         const restored = restorePreCompactCheckpoint(tempDir, 'marker-total-order');
         expect(restored?.marker_status).toBe('written');
         expect(restored?.text).toContain('checkpoint-tie-b.json');
+    });
+    it('derives legacy marker mtime before applying the filename tiebreaker', () => {
+        if (!SECURE_MARKER_SUPPORTED)
+            return;
+        const createdAt = new Date().toISOString();
+        const checkpointDir = join(getOmcRootForTest(tempDir), 'state', 'checkpoints');
+        mkdirSync(checkpointDir, { recursive: true });
+        const older = writeCheckpoint(tempDir, createdAt, { session_id: 'legacy-marker-order' });
+        const legacyPath = join(checkpointDir, 'checkpoint-z.json');
+        renameSync(older, legacyPath);
+        const olderTime = new Date(Date.now() - 2_000);
+        utimesSync(legacyPath, olderTime, olderTime);
+        expect(markCheckpointRestored(tempDir, 'legacy-marker-order', legacyPath, createdAt, statSync(legacyPath).mtimeMs)).toBe('written');
+        const markerPath = join(getOmcRootForTest(tempDir), 'state', 'checkpoints-restored', 'legacy-marker-order', 'restored.json');
+        const marker = JSON.parse(readFileSync(markerPath, 'utf8'));
+        delete marker.checkpoint_mtime_ms;
+        writeFileSync(markerPath, JSON.stringify(marker), 'utf8');
+        const newerPath = join(checkpointDir, 'checkpoint-a.json');
+        writeFileSync(newerPath, JSON.stringify({
+            created_at: createdAt,
+            session_id: 'legacy-marker-order',
+            trigger: 'auto',
+            active_modes: {},
+            todo_summary: { pending: 0, in_progress: 0, completed: 0 },
+            wisdom_exported: false,
+        }));
+        const newerTime = new Date();
+        utimesSync(newerPath, newerTime, newerTime);
+        expect(restorePreCompactCheckpoint(tempDir, 'legacy-marker-order')?.text).toContain('checkpoint-a.json');
     });
 });
 // ============================================================================

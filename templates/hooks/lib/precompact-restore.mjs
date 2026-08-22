@@ -17,6 +17,8 @@ const CHECKPOINT_MAX_BYTES = 256 * 1024;
 const RESTORE_CONTEXT_MAX_CHARS = 1200;
 const RESTORE_MARKER_MAX_BYTES = 16 * 1024;
 const RESTORE_LOCK_STALE_MS = 30_000;
+const RESTORE_LOCK_RETRY_ATTEMPTS = 100;
+const RESTORE_LOCK_RETRY_MS = 10;
 const CHECKPOINT_FILE_PATTERN = /^checkpoint-.+\.json$/;
 
 // Mirrors SESSION_ID_REGEX from src/lib/worktree-paths.ts::validateSessionId.
@@ -31,6 +33,19 @@ function isValidSessionId(sessionId) {
 
 function compareCheckpointNames(a, b) {
   return Buffer.compare(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'));
+}
+
+function legacyCheckpointMtime(omcRoot, checkpointPath) {
+  try {
+    const context = getCanonicalCheckpointContext(omcRoot);
+    if (!context) return null;
+    const resolved = resolveContainedRegularPath(context, omcRoot, checkpointPath);
+    if (!resolved || !isStableCheckpointContext(omcRoot, context)) return null;
+    const stat = lstatSync(resolved.path);
+    return stat.isFile() && !stat.isSymbolicLink() && stat.nlink === 1 ? stat.mtimeMs : null;
+  } catch {
+    return null;
+  }
 }
 
 function getCheckpointDir(omcRoot) {
@@ -452,7 +467,7 @@ function markCheckpointRestored(omcRoot, sessionId, checkpointPath, checkpointCr
           unlinkSync(lockPath);
           continue;
         }
-        return 'failed';
+        return 'contended';
       }
     }
     if (lockFd === null || lockIdentity === null) return 'failed';
@@ -509,7 +524,10 @@ function markCheckpointRestored(omcRoot, sessionId, checkpointPath, checkpointCr
           if (Number.isFinite(existingTime) && Number.isFinite(candidateTime)) {
             if (existingTime > candidateTime) return 'existing';
             if (existingTime === candidateTime) {
-              const existingMtime = Number(marker?.checkpoint_mtime_ms);
+              const recordedMtime = Number(marker?.checkpoint_mtime_ms);
+              const existingMtime = Number.isFinite(recordedMtime)
+                ? recordedMtime
+                : legacyCheckpointMtime(omcRoot, marker?.checkpoint);
               if (Number.isFinite(existingMtime) && Number.isFinite(checkpointMtimeMs)) {
                 if (existingMtime > checkpointMtimeMs) return 'existing';
                 if (existingMtime === checkpointMtimeMs) {
@@ -577,7 +595,7 @@ function parseCheckpoint(omcRoot, candidate, context) {
     const raw = readBoundedCheckpoint(candidate.path, candidate.verified);
     if (raw === null || !isStableCheckpointContext(omcRoot, context)) return null;
     const parsed = JSON.parse(raw);
-    if (typeof parsed?.created_at !== 'string') return null;
+    if (typeof parsed?.created_at !== 'string' || !isValidSessionId(parsed?.session_id)) return null;
     return parsed;
   } catch {
     return null;
@@ -678,7 +696,7 @@ export function preparePreCompactCheckpointRestore(omcRoot, sessionId) {
         const stat = lstatSync(resolvedPath.path);
         const candidate = { name, path, mtimeMs: stat.mtimeMs, verified: resolvedPath };
         const checkpoint = parseCheckpoint(omcRoot, candidate, context);
-        if (checkpoint) {
+        if (checkpoint?.session_id === sessionId) {
           candidates.push({ ...candidate, checkpoint });
         }
       } catch {
@@ -727,14 +745,20 @@ export function commitPreCompactCheckpointRestore(omcRoot, sessionId, checkpoint
 
 /** Find, publish, and render the newest PreCompact checkpoint for a session. */
 export function restorePreCompactCheckpoint(omcRoot, sessionId) {
-  const prepared = preparePreCompactCheckpointRestore(omcRoot, sessionId);
-  if (!prepared) return null;
-  const marker_status = commitPreCompactCheckpointRestore(
-    omcRoot,
-    sessionId,
-    prepared.path,
-    prepared.created_at,
-    prepared.mtime_ms,
-  );
-  return marker_status ? { ...prepared, marker_status } : null;
+  const waitCell = new Int32Array(new SharedArrayBuffer(4));
+  for (let attempt = 0; attempt < RESTORE_LOCK_RETRY_ATTEMPTS; attempt += 1) {
+    const prepared = preparePreCompactCheckpointRestore(omcRoot, sessionId);
+    if (!prepared) return null;
+    const marker_status = markCheckpointRestored(
+      omcRoot,
+      sessionId,
+      prepared.path,
+      prepared.created_at,
+      prepared.mtime_ms,
+    );
+    if (marker_status === 'written') return { ...prepared, marker_status };
+    if (marker_status !== 'contended') return null;
+    Atomics.wait(waitCell, 0, 0, RESTORE_LOCK_RETRY_MS);
+  }
+  return null;
 }

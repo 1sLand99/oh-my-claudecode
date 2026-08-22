@@ -51700,6 +51700,7 @@ async function createCompactCheckpoint(directory, trigger, sessionId) {
   const planRefs = collectPlanRefs(directory, sessionId);
   return {
     created_at: (/* @__PURE__ */ new Date()).toISOString(),
+    session_id: sessionId,
     trigger,
     active_modes: activeModes,
     todo_summary: todoSummary,

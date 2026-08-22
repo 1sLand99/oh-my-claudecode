@@ -1535,11 +1535,41 @@ describe('epic-3698 closure verifier (#3712)', () => {
     expect(check(run, 'docsLinks').status, JSON.stringify(check(run, 'docsLinks'))).toBe('pass');
   });
 
+  it('ends a fence when the ordered container chain changes at equal depth', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n- > ```md\n> - [escape]: ../../../outside.md\n',
+    );
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
+  });
+
   it('parses HTML tags with greater-than characters inside quoted attributes', () => {
     buildCompleteFixture(fixture);
     writeFileSync(
       join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
       '# design\n<a title=">" href="../../../outside.md">outside</a>\n',
+    );
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
+  });
+
+  it('scans raw HTML before masking paired backticks in attributes', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n<a title="`" href="../../../outside.md" data-x="`">outside</a>\n',
     );
     const run = runVerifier([
       '--root', fixture,
