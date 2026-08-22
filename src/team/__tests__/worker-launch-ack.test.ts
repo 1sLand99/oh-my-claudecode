@@ -280,7 +280,7 @@ describe('worker launch acknowledgement', () => {
     expect(retryCleanup).not.toHaveBeenCalled();
   });
 
-  it.runIf(process.platform !== 'win32')('publishes termination-complete on an identity-bound already-dead retry after a prior request', async () => {
+  it.runIf(process.platform !== 'win32')('does not synthesize completion from an already-dead retry after a prior request', async () => {
     const launchAttempt = await attempt();
     const expected = JSON.parse(await readFile(launchAttempt.expectedPath, 'utf8'));
     await writeFile(launchAttempt.startedPath, JSON.stringify({ ...expected,
@@ -291,11 +291,8 @@ describe('worker launch acknowledgement', () => {
       process_start_identity: '1', containment_nonce: launchAttempt.nonce,
       written_at: new Date().toISOString() }), 'utf8');
 
-    await expect(terminateWorkerLaunchProvider(launchAttempt, 100)).resolves.toBe(true);
-    await expect(readFile(`${launchAttempt.startedPath}.termination-complete`, 'utf8').then(JSON.parse))
-      .resolves.toMatchObject({ ...expected,
-        kind: 'worker_launch_termination_complete', cleanup_verified: true,
-        pid: 999_999_999, process_start_identity: '1' });
+    await expect(terminateWorkerLaunchProvider(launchAttempt, 100)).resolves.toBe(false);
+    await expect(readFile(`${launchAttempt.startedPath}.termination-complete`, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('does not treat a reused provider PID as cleaned without terminal descendant proof', async () => {

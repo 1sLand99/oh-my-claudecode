@@ -999,7 +999,6 @@ export async function terminateWorkerLaunchProvider(
   const terminationRequestPath = `${attempt.startedPath}.termination-request`;
   const terminationCompletePath = `${attempt.startedPath}.termination-complete`;
   const existingRequest = await readJson(terminationRequestPath);
-  let hadExistingValidTerminationRequest = false;
   if (process.platform === 'win32') {
     if (existingRequest.kind === 'absent') {
       try {
@@ -1044,7 +1043,6 @@ export async function terminateWorkerLaunchProvider(
       : null;
     if (!value || !identityMatches(value, attempt) || value.kind !== 'worker_launch_termination_request'
       || value.pid !== record.pid || value.process_start_identity !== record.process_start_identity) return false;
-    hadExistingValidTerminationRequest = true;
   }
   const deadlineAt = new Date(Date.now() + timeoutMs).toISOString();
   const result = await terminateOwnedProcessGroup({
@@ -1052,9 +1050,7 @@ export async function terminateWorkerLaunchProvider(
     processGroupId: record.process_group_id!, deadlineAt, force: true,
   });
   if (result === 'already-dead' || result === 'identity-mismatch') {
-    return terminalCleanupVerified || (hadExistingValidTerminationRequest
-      && isProcessGroupAbsent(record.process_group_id)
-      && await publishWorkerLaunchTerminationComplete(terminationCompletePath, attempt, record));
+    return terminalCleanupVerified;
   }
   if (result !== 'terminated') return false;
   const deadline = Date.parse(deadlineAt);
