@@ -10036,6 +10036,104 @@
           "previousFilename": null
         }
       ]
+    },
+    {
+      "pullNumber": 3799,
+      "targetRef": "dev",
+      "mergeBaseSha": "2fa329f44732642189b1afc5de8280827503b465",
+      "headSha": "c0d21db57ad74edd452b46e8c622ad6759ccf848",
+      "owner": "Yeachan-Heo",
+      "expiresAt": "2026-09-22T00:00:00.000Z",
+      "generatedDelta": {
+        "count": 14,
+        "sha256": "3a3ee582bc8391e103b70fb50a3028ff723bd4d2121a5c59b51780e8d810476a"
+      },
+      "generatedFiles": [
+        {
+          "status": "modified",
+          "filename": "bridge/cli.cjs",
+          "sha": "e6cca23e271f4771365501dd110aa4bfc47245c0",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "bridge/runtime-cli.cjs",
+          "sha": "e3594b23cd319d9d6d3f9ead32b1ccd0c54f4b8c",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "bridge/team.js",
+          "sha": "5b078524dc8f02041170321bcd66695477d1d6c7",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime-v2.dispatch.test.js",
+          "sha": "9694e104e38d6d663a7696624fe7f34b894b1c95",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime-v2.dispatch.test.js.map",
+          "sha": "5ce172dbc744f57b2016bdb4bff39300d90ef7a1",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/tmux-session.test.js",
+          "sha": "1a78c49c6dcce82faba52d2e1c1d05e5701bd594",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/tmux-session.test.js.map",
+          "sha": "49b1d8206ffd00fc9ffe82471867d6e405d9040c",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/runtime-v2.d.ts.map",
+          "sha": "7eb9309d47d6997720bc7975082a23f0a3c2fc1c",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/runtime-v2.js",
+          "sha": "bbc69f87d7235d5f432b5b4d1baa4bd19b728f27",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/runtime-v2.js.map",
+          "sha": "0b87b020acd72c99c3ba726f44bb57d7850c8ce5",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/tmux-session.d.ts",
+          "sha": "90d9b7f6031c4f9cef5f141f8a8c4c2f068698a6",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/tmux-session.d.ts.map",
+          "sha": "280d74f5c9a584805bdde69ff1ac5de659353d53",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/tmux-session.js",
+          "sha": "5f48ad9e134171f64ef049fb0a6a706ab601e5f6",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/tmux-session.js.map",
+          "sha": "5065d90cc83adada9e5f567840eeca90e0003440",
+          "previousFilename": null
+        }
+      ]
     }
   ]
 }
