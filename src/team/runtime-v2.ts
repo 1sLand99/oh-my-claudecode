@@ -2785,7 +2785,8 @@ export async function executeRecoverDeadWorkerV2Owner(
           : null;
         const statusBaseline = startupBaseline?.statusFingerprint
           ?? workerStatusStartupFingerprint(await readWorkerStatus(input.teamName, sagaInput.workerName, input.cwd));
-        const waitForCurrentEvidence = () => primaryTaskId && startupBaseline
+        const evidencePolicy = getWorkerStartupEvidencePolicy(pending.agentType);
+        const waitForCurrentEvidence = (budgetMs: number) => primaryTaskId && startupBaseline
           ? waitForWorkerStartupEvidence(
               input.teamName,
               sagaInput.workerName,
@@ -2793,7 +2794,7 @@ export async function executeRecoverDeadWorkerV2Owner(
               input.cwd,
               startupBaseline,
               startupAttemptId,
-              2_750,
+              budgetMs,
             )
           : waitForWorkerStatusTransition(
               input.teamName,
@@ -2802,6 +2803,19 @@ export async function executeRecoverDeadWorkerV2Owner(
               statusBaseline,
               startupAttemptId,
             );
+        const waitForBoundedStartupEvidence = async (
+          resubmit?: () => Promise<boolean>,
+        ): Promise<boolean> => {
+          let settled = await waitForCurrentEvidence(evidencePolicy.initialBudgetMs);
+          for (let attempt = 1; !settled && resubmit && attempt <= evidencePolicy.resubmitAttempts; attempt++) {
+            if (!await resubmit()) break;
+            settled = await waitForCurrentEvidence(evidencePolicy.resubmitBudgetMs);
+          }
+          if (!settled && evidencePolicy.finalRecheckBudgetMs > 0) {
+            settled = await waitForCurrentEvidence(evidencePolicy.finalRecheckBudgetMs);
+          }
+          return settled;
+        };
         const instruction = continuations.length > 0
           ? continuations.map(continuation => renderRecoveryContinuationInstruction({
             teamName: input.teamName,
@@ -2867,7 +2881,7 @@ export async function executeRecoverDeadWorkerV2Owner(
         const effects = await withWorkerLaunchAttemptFence(startupContext.attempt, async () => {
           await ensureFence();
           if (promptModeRecoveryRequiresProgressEvidence(pending.promptMode, continuations.length)) {
-            if (!await waitForCurrentEvidence()) return { ok: false as const, error: `${pending.agentType}_startup_evidence_missing` };
+            if (!await waitForBoundedStartupEvidence()) return { ok: false as const, error: `${pending.agentType}_startup_evidence_missing` };
           } else if (pending.promptMode) {
             // Idle prompt-mode recoveries (for example Gemini with no owned tasks)
             // intentionally have no task/status progress to prove. At this point
@@ -2896,7 +2910,9 @@ export async function executeRecoverDeadWorkerV2Owner(
               if (!attempted.ok) {
                 return { ok: false, transport: 'tmux_send_keys' as const, reason: `worker_notify_failed:${attempted.reason}` };
               }
-              const settled = await waitForCurrentEvidence();
+              const settled = await waitForBoundedStartupEvidence(
+                () => retryStartupInboxSubmit(startupContext, triggerMessage, { attemptAlreadyFenced: true }),
+              );
               return settled
                 ? { ok: true, transport: 'tmux_send_keys' as const, reason: 'worker_startup_confirmed' }
                 : { ok: false, transport: 'tmux_send_keys' as const, reason: 'worker_startup_evidence_missing' };
