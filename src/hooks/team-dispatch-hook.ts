@@ -19,6 +19,8 @@ import { dirname, join, resolve } from 'path';
 import { createSwallowedErrorLogger } from '../lib/swallowed-error.js';
 import { tmuxExecAsync } from '../cli/tmux-utils.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
+import type { CliAgentType } from '../team/model-contract.js';
+import { isCliAgentType, paneLineLooksLikeIdlePrompt } from '../team/pane-readiness.js';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -282,6 +284,30 @@ function defaultInjectTarget(
   return null;
 }
 
+type TargetProviderResolution =
+  | { ok: true; provider?: CliAgentType }
+  | { ok: false };
+
+function resolveTargetProvider(request: DispatchRequest, config: TeamConfig): TargetProviderResolution {
+  if (request.to_worker === 'leader-fixed' || !Array.isArray(config.workers)) return { ok: true };
+
+  const byName = config.workers.find((worker) => worker.name === request.to_worker);
+  const byPane = request.pane_id
+    ? config.workers.find((worker) => worker.pane_id === request.pane_id)
+    : undefined;
+  const byIndex = typeof request.worker_index === 'number'
+    ? config.workers.find((worker) => Number(worker.index) === request.worker_index)
+    : undefined;
+
+  const candidates = [byName, byPane, byIndex].filter((worker) => worker !== undefined);
+  const identitiesConflict = candidates.some((worker) => worker !== candidates[0]);
+  const cursorIdentityIncomplete = candidates.some((worker) => worker.worker_cli === 'cursor')
+    && (!byName || !byPane || !byIndex);
+  if (identitiesConflict || cursorIdentityIncomplete) return { ok: false };
+  if (!byName || !byPane || !byIndex) return { ok: true };
+  return isCliAgentType(byName.worker_cli) ? { ok: true, provider: byName.worker_cli } : { ok: true };
+}
+
 function normalizeCaptureText(value: string): string {
   return safeString(value).replace(/\r/g, '').replace(/\s+/g, ' ').trim();
 }
@@ -304,12 +330,13 @@ function capturedPaneContainsTriggerNearTail(captured: string, trigger: string, 
   return normalizeCaptureText(tail).includes(normalizedTrigger);
 }
 
-function paneHasActiveTask(captured: string): boolean {
+function paneHasActiveTask(captured: string, provider?: CliAgentType): boolean {
   const lines = safeString(captured)
     .split('\n')
     .map((line) => line.replace(/\r/g, '').trim())
     .filter((line) => line.length > 0);
   const tail = lines.slice(-40);
+  if (provider === 'cursor' && tail.some((line) => /ctrl\+c\s+to\s+stop/i.test(line))) return true;
   if (tail.some((line) => /\b\d+\s+background terminal running\b/i.test(line))) return true;
   if (tail.some((line) => /esc to interrupt/i.test(line))) return true;
   if (tail.some((line) => /\bbackground terminal running\b/i.test(line))) return true;
@@ -329,15 +356,7 @@ function paneIsBootstrapping(captured: string): boolean {
   );
 }
 
-function paneLineLooksLikeIdlePrompt(line: string): boolean {
-  // Claude Code can render its idle input prompt inside a box/left gutter
-  // (for example "│ ❯"). Treat that as ready while still requiring the prompt
-  // glyph to be at the visual start of the line, not embedded in arbitrary
-  // output text.
-  return /^\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?[›>❯]\s*/u.test(line);
-}
-
-function paneLooksReady(captured: string): boolean {
+function paneLooksReady(captured: string, provider?: CliAgentType): boolean {
   const content = safeString(captured).trimEnd();
   if (content === '') return false;
   const lines = content
@@ -346,8 +365,8 @@ function paneLooksReady(captured: string): boolean {
     .filter((line) => line.trim() !== '');
   if (paneIsBootstrapping(content)) return false;
   const lastLine = lines.length > 0 ? lines[lines.length - 1]! : '';
-  if (paneLineLooksLikeIdlePrompt(lastLine)) return true;
-  return lines.some(paneLineLooksLikeIdlePrompt);
+  if (paneLineLooksLikeIdlePrompt(lastLine, provider)) return true;
+  return lines.some((line) => paneLineLooksLikeIdlePrompt(line, provider));
 }
 
 async function runProcess(cmd: string, args: string[], timeoutMs: number): Promise<{ stdout: string; stderr: string }> {
@@ -361,6 +380,9 @@ async function runProcess(cmd: string, args: string[], timeoutMs: number): Promi
 async function defaultInjector(request: DispatchRequest, config: TeamConfig, _cwd: string): Promise<InjectionResult> {
   const target = defaultInjectTarget(request, config);
   if (!target) return { ok: false, reason: 'missing_tmux_target' };
+  const providerResolution = resolveTargetProvider(request, config);
+  if (!providerResolution.ok) return { ok: false, reason: 'provider_identity_unverified' };
+  const targetProvider = providerResolution.provider;
 
   const paneTarget = target.value;
   try {
@@ -415,10 +437,10 @@ async function defaultInjector(request: DispatchRequest, config: TeamConfig, _cw
       const narrowCap = await tmuxExecAsync(['capture-pane', '-t', paneTarget, '-p', '-S', '-8'], { timeout: 2000 });
       const wideCap = await tmuxExecAsync(['capture-pane', '-t', paneTarget, '-p'], { timeout: 2000 });
 
-      if (paneHasActiveTask(wideCap.stdout)) {
+      if (paneHasActiveTask(wideCap.stdout, targetProvider)) {
         return { ok: true, reason: 'tmux_send_keys_confirmed_active_task', pane: paneTarget };
       }
-      if (request.to_worker !== 'leader-fixed' && !paneLooksReady(wideCap.stdout)) {
+      if (request.to_worker !== 'leader-fixed' && !paneLooksReady(wideCap.stdout, targetProvider)) {
         continue;
       }
       const triggerInNarrow = capturedPaneContainsTrigger(narrowCap.stdout, request.trigger_message);
