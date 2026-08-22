@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -22,6 +23,7 @@ import {
   retireAndCleanupCurrentWorkerLaunchAttempt,
   terminateWorkerLaunchProvider,
   revokeWorkerLaunchAttempt,
+  buildProviderEnvironment,
   buildProviderSpawnInvocation,
   materializeProviderSpawnInvocation,
   quoteWindowsCreateProcessArgument,
@@ -694,7 +696,12 @@ describe('worker launch acknowledgement', () => {
       nonce: launchAttempt.nonce,
     });
     expect(descriptor.provider_argv).toEqual(providerArgv);
-    expect(descriptor.provider_env).toEqual(providerEnv);
+    const homeKey = process.platform === 'win32' ? 'USERPROFILE' : 'HOME';
+    const ambientHome = process.env[homeKey];
+    expect(descriptor.provider_env).toEqual({
+      ...providerEnv,
+      ...(ambientHome ? { [homeKey]: ambientHome } : {}),
+    });
     await expect(materializeWorkerLaunchTransport({
       attempt: launchAttempt,
       providerArgv: ['codex'],
@@ -760,6 +767,72 @@ describe('worker launch acknowledgement', () => {
     await expect(readFile(launchAttempt.bootstrapDescriptorPath, 'utf8')).resolves.toContain(launchAttempt.attempt_id);
   });
 
+  it('propagates only the canonical home variable for each platform', () => {
+    const posix = buildProviderEnvironment(undefined, {
+      PATH: '/usr/bin:/bin',
+      HOME: '/home/provider',
+      USERPROFILE: 'C:\\Users\\wrong-platform',
+      GH_TOKEN: 'ambient-secret',
+    }, 'linux');
+    expect(posix).toEqual({ PATH: '/usr/bin:/bin', HOME: '/home/provider' });
+
+    const windows = buildProviderEnvironment(undefined, {
+      PATH: 'C:\\Windows\\System32',
+      HOME: '/home/wrong-platform',
+      USERPROFILE: 'C:\\Users\\provider',
+      SystemRoot: 'C:\\Windows',
+      GH_TOKEN: 'ambient-secret',
+    }, 'win32');
+    expect(windows).toEqual({
+      PATH: 'C:\\Windows\\System32',
+      SystemRoot: 'C:\\Windows',
+      USERPROFILE: 'C:\\Users\\provider',
+    });
+  });
+
+  it('omits missing or empty ambient homes while preserving explicit overrides', () => {
+    expect(buildProviderEnvironment(undefined, { PATH: '/usr/bin:/bin' }, 'linux'))
+      .toEqual({ PATH: '/usr/bin:/bin' });
+    expect(buildProviderEnvironment(undefined, {
+      PATH: '/usr/bin:/bin', HOME: '', USERPROFILE: 'C:\\Users\\wrong-platform',
+    }, 'linux')).toEqual({ PATH: '/usr/bin:/bin' });
+    expect(buildProviderEnvironment(undefined, {
+      PATH: 'C:\\Windows\\System32', USERPROFILE: '', HOME: '/home/wrong-platform',
+    }, 'win32')).toEqual({ PATH: 'C:\\Windows\\System32' });
+
+    expect(buildProviderEnvironment({ HOME: '/home/explicit' }, {
+      PATH: '/usr/bin:/bin', HOME: '/home/ambient',
+    }, 'linux')).toMatchObject({ PATH: '/usr/bin:/bin', HOME: '/home/explicit' });
+    expect(buildProviderEnvironment({ USERPROFILE: 'D:\\Users\\explicit' }, {
+      PATH: 'C:\\Windows\\System32', USERPROFILE: 'C:\\Users\\ambient',
+    }, 'win32')).toMatchObject({ PATH: 'C:\\Windows\\System32', USERPROFILE: 'D:\\Users\\explicit' });
+    expect(buildProviderEnvironment({ userprofile: 'D:\\Users\\mixed-case' }, {
+      PATH: 'C:\\Windows\\System32', USERPROFILE: 'C:\\Users\\ambient',
+    }, 'win32')).toEqual({ PATH: 'C:\\Windows\\System32', userprofile: 'D:\\Users\\mixed-case' });
+    expect(buildProviderEnvironment({ HOME: '' }, {
+      PATH: '/usr/bin:/bin', HOME: '/home/ambient',
+    }, 'linux')).toMatchObject({ PATH: '/usr/bin:/bin', HOME: '' });
+  });
+
+  it.runIf(process.platform !== 'win32' && Boolean(process.env.HOME) && existsSync('/bin/bash'))(
+    'passes HOME to a real set -u bash provider wrapper',
+    async () => {
+      const launchAttempt = await attempt();
+      const marker = join(cwd, 'provider-home.txt');
+      const spec = buildWorkerLaunchBootstrapSpec(
+        launchAttempt,
+        ['/bin/bash', '--noprofile', '--norc', '-u', '-c', 'set -u; printf "%s" "$HOME" > "$1"; sleep 0.2', 'bash-provider', marker],
+        cwd,
+        { releaseAfterSpawn: true },
+      );
+      const bootstrap = runWorkerLaunchBootstrap(spec);
+      await expect(awaitWorkerLaunchAcknowledgement(launchAttempt, { timeoutMs: 2_000, pollIntervalMs: 5 }))
+        .resolves.toEqual({ ok: true });
+      await expect(bootstrap).resolves.toEqual({ outcome: 'ran', exitCode: 0, signal: null });
+      await expect(readFile(marker, 'utf8')).resolves.toBe(process.env.HOME);
+    },
+  );
+
   it('validates provider environment keys and propagates only explicit provider values', async () => {
     const launchAttempt = await attempt();
     expect(() => buildWorkerLaunchBootstrapSpec(launchAttempt, ['codex'], cwd, {
@@ -791,6 +864,19 @@ describe('worker launch acknowledgement', () => {
       value: 'provider-value',
       attempt: launchAttempt.attempt_id,
     });
+  });
+
+  it('rejects provider environment tampering through the authority digest', async () => {
+    const launchAttempt = await attempt();
+    const spec = buildWorkerLaunchBootstrapSpec(launchAttempt, ['codex'], cwd, {
+      providerEnv: { HOME: '/home/authority-original' },
+    });
+    const tampered = {
+      ...spec,
+      provider_env: { ...spec.provider_env, HOME: '/home/authority-tampered' },
+    };
+    expect(tampered.authority_digest).toBe(spec.authority_digest);
+    await expect(runWorkerLaunchBootstrap(tampered)).resolves.toEqual({ outcome: 'invalid_spec' });
   });
 
   it('routes native Windows batch shims through a percent-safe temporary wrapper without changing POSIX argv', async () => {
@@ -935,7 +1021,7 @@ describe('worker launch acknowledgement', () => {
   it('excludes ambient secret environment values and rejects Windows aliases', async () => {
     const launchAttempt = await attempt();
     const spec = buildWorkerLaunchBootstrapSpec(launchAttempt, ['codex'], cwd, { providerEnv: { EXPLICIT: 'yes' } });
-    for (const key of ['GH_TOKEN', 'AWS_SECRET_ACCESS_KEY', 'ANTHROPIC_API_KEY', 'NODE_OPTIONS', 'HTTPS_PROXY', 'HOME', 'USERPROFILE']) {
+    for (const key of ['GH_TOKEN', 'AWS_SECRET_ACCESS_KEY', 'ANTHROPIC_API_KEY', 'NODE_OPTIONS', 'HTTPS_PROXY']) {
       expect(spec.provider_env).not.toHaveProperty(key);
     }
     const originalPlatform = process.platform;

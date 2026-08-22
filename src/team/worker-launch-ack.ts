@@ -234,6 +234,12 @@ export function buildProviderEnvironment(
     const value = sourceEnv[key];
     if (typeof value === 'string' && value.length > 0) baseline[key] = value;
   }
+  const homeKey = platform === 'win32' ? 'USERPROFILE' : 'HOME';
+  const home = sourceEnv[homeKey];
+  const hasExplicitHome = Object.keys(normalized).some(key => (
+    platform === 'win32' ? key.toUpperCase() === homeKey : key === homeKey
+  ));
+  if (!hasExplicitHome && typeof home === 'string' && home.length > 0) baseline[homeKey] = home;
   if (platform === 'win32') {
     const systemRoot = sourceEnv.SystemRoot ?? sourceEnv.SYSTEMROOT;
     if (typeof systemRoot === 'string' && /^[A-Za-z]:\\/.test(systemRoot)) baseline.SystemRoot = systemRoot;
