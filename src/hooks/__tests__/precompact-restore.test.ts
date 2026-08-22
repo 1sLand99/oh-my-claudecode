@@ -925,6 +925,22 @@ describe('PreCompact restore (issue #3730)', () => {
       renameSpy.mockRestore();
     }
   });
+
+  it('reclaims an unchanged genuine stale lock after quarantine rename', () => {
+    if (!SECURE_MARKER_SUPPORTED) return;
+    const createdAt = new Date().toISOString();
+    const checkpoint = writeCheckpoint(tempDir, createdAt, { session_id: 'genuine-stale-lock' });
+    const markerParent = join(getOmcRootForTest(tempDir), 'state', 'checkpoints-restored', 'genuine-stale-lock');
+    mkdirSync(markerParent, { recursive: true });
+    const lockPath = join(markerParent, '.restored.json.lock');
+    writeFileSync(lockPath, 'stale');
+    const staleTime = new Date(Date.now() - 60_000);
+    utimesSync(lockPath, staleTime, staleTime);
+
+    expect(markCheckpointRestored(tempDir, 'genuine-stale-lock', checkpoint, createdAt, statSync(checkpoint).mtimeMs)).toBe('written');
+    expect(existsSync(lockPath)).toBe(false);
+    expect(existsSync(join(markerParent, 'restored.json'))).toBe(true);
+  });
 });
 
 // ============================================================================

@@ -974,7 +974,7 @@ function reclaimStaleLock(lockPath: string, stale: Stats, parentFd: number): boo
     const moved = lstatSync(quarantinePath);
     if (
       moved.dev !== stale.dev || moved.ino !== stale.ino ||
-      moved.ctimeMs !== stale.ctimeMs || moved.mtimeMs !== stale.mtimeMs || moved.size !== stale.size
+      moved.mtimeMs !== stale.mtimeMs || moved.size !== stale.size
     ) {
       try { linkSync(quarantinePath, lockPath); } catch { /* preserve any newer pathname owner */ }
       unlinkSync(quarantinePath);

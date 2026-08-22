@@ -1014,7 +1014,7 @@ function maskInlineCodeAndExtractHtml(text, problems, docPath) {
       while (chars[opening + runLength] === '`') runLength += 1;
       let closing = opening + runLength;
       while (closing < chars.length) {
-        if (chars[closing] !== '`' || isEscaped(text, closing)) {
+        if (chars[closing] !== '`') {
           closing += 1;
           continue;
         }
