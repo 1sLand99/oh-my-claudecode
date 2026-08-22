@@ -1005,7 +1005,7 @@ function maskCommonMarkCodeBlocks(text) {
 }
 
 function maskInlineCodeAndExtractHtml(text, problems, docPath) {
-  const chars = [...text];
+  const chars = text.split('');
   const targets = [];
   const urlAttributes = new Set(['href', 'src', 'action', 'formaction', 'poster', 'cite', 'data', 'srcset']);
   for (let opening = 0; opening < chars.length; opening += 1) {

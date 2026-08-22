@@ -1595,6 +1595,21 @@ describe('epic-3698 closure verifier (#3712)', () => {
     expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
   });
 
+  it('keeps escaped-backtick offsets aligned after astral Unicode', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n😀 \\`<a href="../../../outside.md">outside</a>\\`\n',
+    );
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
+  });
+
   it('ends list-contained fences when a sibling list item starts', () => {
     buildCompleteFixture(fixture);
     writeFileSync(
