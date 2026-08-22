@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "3590d865e955fc7d340ff4b5e5e25550ca22776b",
-    "sourceSha256": "6ade01f04c2ef85d387dc0ad8b8b67fa423743cebd235f6f76578df977223cc8",
+    "head": "fcde58d90936e0ee4c01f71ba944455f0e4dbe2c",
+    "sourceSha256": "bd5ac2e6504c8efe10b0c021e9cae4731de1c01f5d7c7be1db2022f48b33459e",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "3590d865e955fc7d340ff4b5e5e25550ca22776b",
-  "sourceSha256": "6ade01f04c2ef85d387dc0ad8b8b67fa423743cebd235f6f76578df977223cc8",
+  "head": "fcde58d90936e0ee4c01f71ba944455f0e4dbe2c",
+  "sourceSha256": "bd5ac2e6504c8efe10b0c021e9cae4731de1c01f5d7c7be1db2022f48b33459e",
   "counts": {
     "public": {
       "skills": 31,
@@ -6354,11 +6354,6 @@
         "id": ".github/SPONSOR_TIERS.md",
         "kind": "other",
         "path": ".github/SPONSOR_TIERS.md"
-      },
-      {
-        "id": ".github/generated-artifact-authorizations.json",
-        "kind": "other",
-        "path": ".github/generated-artifact-authorizations.json"
       },
       {
         "id": ".github/release-body.md",
@@ -74714,12 +74709,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6820,
+      "nodeCount": 6819,
       "edgeCount": 6860,
       "importEdgeCount": 5620,
       "registerEdgeCount": 52
     }
   },
-  "inventorySha256": "a5e0979491f038c33f656eed63cee7116707b1320b492ed8f19099027ebccb88",
-  "manifestSha256": "efc8c54b7666e924938020480a1b4e7b24a5408d863dee63c88174d7b8f23550"
+  "inventorySha256": "1d89540ec7601148a9d0c2622974011e9f1e508adbb6f2d8fd710b2c5ed3e836",
+  "manifestSha256": "30978fd82311b26e6aa834666eff1e6e9fb0d77b28f1ce5f5a74704ee71d6160"
 }
