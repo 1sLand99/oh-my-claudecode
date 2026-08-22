@@ -368,7 +368,7 @@ describe('PreCompact restore (issue #3730)', () => {
         expect(JSON.parse(readFileSync(externalMarker, 'utf-8')).checkpoint).toBe(checkpointPath);
     });
     it('fails closed when the marker parent is replaced after descriptor validation', async () => {
-        const checkpointPath = writeCheckpoint(tempDir, new Date().toISOString());
+        const checkpointPath = writeCheckpoint(tempDir, new Date().toISOString(), { session_id: 'marker-parent-race' });
         const markerParent = join(getOmcRootForTest(tempDir), 'state', 'checkpoints-restored', 'marker-parent-race');
         const markerParentBackup = `${markerParent}.backup`;
         const externalMarkerParent = join(tempDir, 'external-marker-parent-race');
@@ -736,6 +736,22 @@ describe('PreCompact restore (issue #3730)', () => {
             active_modes: { ralph: 'bad' },
             todo_summary: { pending: 0, in_progress: 0, completed: 0 }, wisdom_exported: false,
         }));
+        const found = await findLatestCheckpointForRestore(tempDir, sessionId);
+        expect(found.ok).toBe(true);
+        if (found.ok)
+            expect(found.path).toBe(older);
+    });
+    it('skips a newer-mtime checkpoint with an invalid created_at timestamp', async () => {
+        const sessionId = 'invalid-date-fallback';
+        const older = writeCheckpoint(tempDir, new Date(Date.now() - 2_000).toISOString(), { session_id: sessionId });
+        const checkpointDir = join(getOmcRootForTest(tempDir), 'state', 'checkpoints');
+        const invalid = join(checkpointDir, 'checkpoint-invalid-date.json');
+        writeFileSync(invalid, JSON.stringify({
+            created_at: 'not-a-date', session_id: sessionId, trigger: 'auto', active_modes: {},
+            todo_summary: { pending: 0, in_progress: 0, completed: 0 }, wisdom_exported: false,
+        }));
+        const newerTime = new Date();
+        utimesSync(invalid, newerTime, newerTime);
         const found = await findLatestCheckpointForRestore(tempDir, sessionId);
         expect(found.ok).toBe(true);
         if (found.ok)

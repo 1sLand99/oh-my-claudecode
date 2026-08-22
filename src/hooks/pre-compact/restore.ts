@@ -969,7 +969,10 @@ function parseCheckpoint(
 
   try {
     const parsed = JSON.parse(raw) as CompactCheckpoint;
-    if (typeof parsed?.created_at !== 'string' || !isValidSessionId(parsed?.session_id ?? '')) {
+    if (
+      typeof parsed?.created_at !== 'string' || !Number.isFinite(Date.parse(parsed.created_at)) ||
+      !isValidSessionId(parsed?.session_id ?? '')
+    ) {
       return null;
     }
     if (

@@ -896,6 +896,31 @@ function columnWidth(value) {
   return columns;
 }
 
+function maskTextButPreserveRawHtmlTags(line) {
+  const chars = line.split('');
+  for (let index = 0; index < chars.length; index += 1) {
+    if (chars[index] !== '<') {
+      if (chars[index] !== '\r' && chars[index] !== '\n') chars[index] = ' ';
+      continue;
+    }
+    let quote = null;
+    let closing = index + 1;
+    for (; closing < chars.length; closing += 1) {
+      const char = chars[closing];
+      if (quote) {
+        if (char === quote) quote = null;
+      } else if (char === '"' || char === "'") quote = char;
+      else if (char === '>') break;
+    }
+    if (closing >= chars.length || quote) {
+      chars[index] = ' ';
+      continue;
+    }
+    index = closing;
+  }
+  return chars.join('');
+}
+
 export function maskCommonMarkCodeBlocks(text) {
   const parts = text.split(/(\r\n?|\n)/);
   let fence = null;
@@ -983,7 +1008,9 @@ export function maskCommonMarkCodeBlocks(text) {
 
     if (htmlBlock) {
       paragraphChain = null;
-      parts[partIndex] = ' '.repeat(line.length);
+      parts[partIndex] = htmlBlock.tag === 'pre'
+        ? maskTextButPreserveRawHtmlTags(line)
+        : ' '.repeat(line.length);
       if (new RegExp(`</${htmlBlock.tag}[ \\t\\r\\n]*>`, 'i').test(content)) htmlBlock = null;
       continue;
     }
@@ -1015,7 +1042,9 @@ export function maskCommonMarkCodeBlocks(text) {
       if (openingEnd < content.length && !quote) {
         paragraphChain = null;
         const before = line.slice(0, contentOffset + openingEnd + 1);
-        parts[partIndex] = before + ' '.repeat(line.length - before.length);
+        parts[partIndex] = tagName === 'pre'
+          ? before + maskTextButPreserveRawHtmlTags(line.slice(before.length))
+          : before + ' '.repeat(line.length - before.length);
         const afterOpening = content.slice(openingEnd + 1);
         if (!new RegExp(`</${tagName}[ \\t\\r\\n]*>`, 'i').test(afterOpening)) {
           htmlBlock = { tag: tagName, containerChain: containerChain.join('/') };

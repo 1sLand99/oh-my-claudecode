@@ -737,7 +737,10 @@ function parseCheckpoint(omcRoot, candidate, context) {
     const raw = readBoundedCheckpoint(candidate.path, candidate.verified);
     if (raw === null || !isStableCheckpointContext(omcRoot, context)) return null;
     const parsed = JSON.parse(raw);
-    if (typeof parsed?.created_at !== 'string' || !isValidSessionId(parsed?.session_id)) return null;
+    if (
+      typeof parsed?.created_at !== 'string' || !Number.isFinite(Date.parse(parsed.created_at)) ||
+      !isValidSessionId(parsed?.session_id)
+    ) return null;
     if (
       parsed.active_modes !== undefined &&
       (parsed.active_modes === null || typeof parsed.active_modes !== 'object' || Array.isArray(parsed.active_modes) ||
@@ -873,6 +876,7 @@ function preparePreCompactCheckpointRestoreOnce(omcRoot, sessionId) {
         path: candidate.path,
         created_at: candidate.checkpoint.created_at,
         mtime_ms: candidate.mtimeMs,
+        checkpoint_sha256: checkpointOrderForSession(omcRoot, candidate.path, sessionId)?.contentSha256,
       };
     }
 
@@ -909,16 +913,26 @@ export function preparePreCompactCheckpointRestore(omcRoot, sessionId) {
 }
 
 /** Publish the replay marker after SessionStart confirms the complete context was selected. */
-export function claimPreCompactCheckpointRestore(omcRoot, sessionId, checkpointPath, checkpointCreatedAt, checkpointMtimeMs) {
+export function claimPreCompactCheckpointRestore(
+  omcRoot, sessionId, checkpointPath, checkpointCreatedAt, checkpointMtimeMs, checkpointSha256,
+) {
+  const currentOrder = checkpointOrderForSession(omcRoot, checkpointPath, sessionId);
+  if (
+    !currentOrder || currentOrder.createdAt !== checkpointCreatedAt ||
+    currentOrder.mtimeMs !== checkpointMtimeMs ||
+    (checkpointSha256 !== undefined && currentOrder.contentSha256 !== checkpointSha256)
+  ) return 'contended';
   return sessionId
     ? markCheckpointRestored(omcRoot, sessionId, checkpointPath, checkpointCreatedAt, checkpointMtimeMs)
     : 'unsupported';
 }
 
 /** Compatibility wrapper for callers that only accept a completed publication. */
-export function commitPreCompactCheckpointRestore(omcRoot, sessionId, checkpointPath, checkpointCreatedAt, checkpointMtimeMs) {
+export function commitPreCompactCheckpointRestore(
+  omcRoot, sessionId, checkpointPath, checkpointCreatedAt, checkpointMtimeMs, checkpointSha256,
+) {
   const marker_status = claimPreCompactCheckpointRestore(
-    omcRoot, sessionId, checkpointPath, checkpointCreatedAt, checkpointMtimeMs,
+    omcRoot, sessionId, checkpointPath, checkpointCreatedAt, checkpointMtimeMs, checkpointSha256,
   );
   return marker_status === 'written' ? marker_status : null;
 }

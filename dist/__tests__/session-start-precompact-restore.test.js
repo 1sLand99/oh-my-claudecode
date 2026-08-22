@@ -389,6 +389,26 @@ syncBuiltinESMExports();
         expect(parseContext(stdout)).toContain('PRECOMPACT CHECKPOINT RESTORED');
     }, 30_000);
     it.each([
+        ['installed', join(__dirname, '..', '..', 'scripts', 'lib', 'precompact-restore.mjs')],
+        ['template', join(__dirname, '..', '..', 'templates', 'hooks', 'lib', 'precompact-restore.mjs')],
+    ])('rejects a same-path %s checkpoint replacement between prepare and claim', async (_label, helperPath) => {
+        const sessionId = `prepare-replace-${_label}`;
+        const checkpoint = writeCheckpoint(project, new Date(Date.now() - 2_000).toISOString(), { session_id: sessionId });
+        const helper = await import(`${pathToFileURL(helperPath).href}?prepare-replace-${_label}`);
+        const root = join(project, '.omc');
+        const prepared = helper.preparePreCompactCheckpointRestore(root, sessionId);
+        const replacementCreatedAt = new Date().toISOString();
+        writeFileSync(checkpoint, JSON.stringify({
+            created_at: replacementCreatedAt, session_id: sessionId, trigger: 'auto', active_modes: {},
+            todo_summary: { pending: 2, in_progress: 0, completed: 0 }, wisdom_exported: false,
+        }));
+        const replacementTime = new Date();
+        utimesSync(checkpoint, replacementTime, replacementTime);
+        expect(helper.claimPreCompactCheckpointRestore(root, sessionId, prepared.path, prepared.created_at, prepared.mtime_ms, prepared.checkpoint_sha256)).toBe('contended');
+        const refreshed = helper.preparePreCompactCheckpointRestore(root, sessionId);
+        expect(refreshed.created_at).toBe(replacementCreatedAt);
+    });
+    it.each([
         ['installed', join(__dirname, '..', '..', 'scripts', 'lib', 'precompact-restore.mjs'), true],
         ['template', join(__dirname, '..', '..', 'templates', 'hooks', 'lib', 'precompact-restore.mjs'), true],
         ['dist', join(__dirname, '..', '..', 'dist', 'hooks', 'pre-compact', 'restore.js'), false],

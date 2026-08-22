@@ -778,7 +778,8 @@ function parseCheckpoint(omcRoot, candidate, context) {
     }
     try {
         const parsed = JSON.parse(raw);
-        if (typeof parsed?.created_at !== 'string' || !isValidSessionId(parsed?.session_id ?? '')) {
+        if (typeof parsed?.created_at !== 'string' || !Number.isFinite(Date.parse(parsed.created_at)) ||
+            !isValidSessionId(parsed?.session_id ?? '')) {
             return null;
         }
         if (parsed.active_modes !== undefined &&

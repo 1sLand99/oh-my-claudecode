@@ -724,6 +724,7 @@ ${agentsContent}
             pendingRestore.path,
             pendingRestore.created_at,
             pendingRestore.mtime_ms,
+            pendingRestore.checkpoint_sha256,
           );
           if (status === 'written') {
             markerStatus = status;

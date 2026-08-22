@@ -1600,6 +1600,17 @@ describe('epic-3698 closure verifier (#3712)', () => {
     expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
   });
 
+  it('contains URL-bearing descendants inside pre HTML blocks', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n<pre><a href="../../../outside.md">outside</a></pre>\n',
+    );
+    const run = runVerifier(['--root', fixture, '--evidence', join(fixture, 'ci-evidence.json'), '--changed-files', join(fixture, 'changed-files.txt')]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
+  });
+
   it('does not treat inline script tags as CommonMark HTML block starts', () => {
     buildCompleteFixture(fixture);
     writeFileSync(
