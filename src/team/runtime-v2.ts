@@ -968,16 +968,14 @@ async function waitForWorkerStatusTransition(
   cwd: string,
   baselineFingerprint: string,
   launchAttemptId: string,
-  attempts = 12,
+  budgetMs: number,
   delayMs = 250,
 ): Promise<boolean> {
-  for (let attempt = 1; attempt <= attempts; attempt++) {
+  return waitForStartupEvidenceBudget(async () => {
     const status = await readWorkerStatus(teamName, workerName, cwd);
-    if (status.state !== 'unknown' && status.launch_attempt_id === launchAttemptId
-      && workerStatusStartupFingerprint(status) !== baselineFingerprint) return true;
-    if (attempt < attempts) await new Promise(resolve => setTimeout(resolve, delayMs));
-  }
-  return false;
+    return status.state !== 'unknown' && status.launch_attempt_id === launchAttemptId
+      && workerStatusStartupFingerprint(status) !== baselineFingerprint;
+  }, budgetMs, delayMs);
 }
 
 export function promptModeRecoveryRequiresProgressEvidence(
@@ -2802,6 +2800,7 @@ export async function executeRecoverDeadWorkerV2Owner(
               input.cwd,
               statusBaseline,
               startupAttemptId,
+              budgetMs,
             );
         const waitForBoundedStartupEvidence = async (
           resubmit?: () => Promise<boolean>,
