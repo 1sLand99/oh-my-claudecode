@@ -854,48 +854,88 @@ function stripMarkdownContainerPrefix(line) {
   return content;
 }
 
-function stripMarkdownBlockQuotePrefix(line) {
-  let content = line;
+function blockQuotePrefix(line) {
+  let offset = 0;
+  let depth = 0;
   for (;;) {
-    const blockQuote = content.match(/^ {0,3}>[ \t]?/);
-    if (!blockQuote) return content;
-    content = content.slice(blockQuote[0].length);
+    const match = line.slice(offset).match(/^ {0,3}>[ \t]?/);
+    if (!match) return { offset, depth };
+    offset += match[0].length;
+    depth += 1;
   }
+}
+
+function indentation(line) {
+  let index = 0;
+  let columns = 0;
+  while (index < line.length) {
+    if (line[index] === ' ') columns += 1;
+    else if (line[index] === '\t') columns += 4 - (columns % 4);
+    else break;
+    index += 1;
+  }
+  return { index, columns };
+}
+
+function indexAfterColumns(line, targetColumns) {
+  let index = 0;
+  let columns = 0;
+  while (index < line.length && columns < targetColumns) {
+    if (line[index] === ' ') columns += 1;
+    else if (line[index] === '\t') columns += 4 - (columns % 4);
+    else break;
+    index += 1;
+  }
+  return columns >= targetColumns ? index : 0;
+}
+
+function columnWidth(value) {
+  let columns = 0;
+  for (const char of value) {
+    columns += char === '\t' ? 4 - (columns % 4) : 1;
+  }
+  return columns;
 }
 
 function maskCommonMarkCodeBlocks(text) {
   const parts = text.split(/(\r\n?|\n)/);
   let fence = null;
-  let listIndent = 0;
-  for (let index = 0; index < parts.length; index += 2) {
-    const line = parts[index];
-    const blockQuoteStripped = stripMarkdownBlockQuotePrefix(line);
-    const quoteOffset = line.length - blockQuoteStripped.length;
-    let content = blockQuoteStripped;
-    let contentOffset = quoteOffset;
-    const leading = content.match(/^ */)?.[0].length ?? 0;
+  const listIndents = [];
+  for (let partIndex = 0; partIndex < parts.length; partIndex += 2) {
+    const line = parts[partIndex];
+    const quote = blockQuotePrefix(line);
+    let content = line.slice(quote.offset);
+    if (fence && quote.depth < fence.quoteDepth) fence = null;
 
-    if (listIndent > 0) {
-      if (content.trim() === '') continue;
-      if (leading >= listIndent) {
-        contentOffset += listIndent;
-        content = content.slice(listIndent);
-      } else {
-        listIndent = 0;
+    if (content.trim() === '') {
+      if (fence) parts[partIndex] = ' '.repeat(line.length);
+      continue;
+    }
+
+    const leading = indentation(content);
+    while (listIndents.length > 0 && leading.columns < listIndents[listIndents.length - 1]) listIndents.pop();
+    if (fence && listIndents.length < fence.listDepth) fence = null;
+    const baseIndent = listIndents[listIndents.length - 1] ?? 0;
+    let contentOffset = quote.offset;
+    if (baseIndent > 0) {
+      const baseIndex = indexAfterColumns(content, baseIndent);
+      if (baseIndex > 0) {
+        contentOffset += baseIndex;
+        content = content.slice(baseIndex);
       }
     }
 
-    const list = content.match(/^ {0,3}(?:[-+*]|\d{1,9}[.)])([ \t]+)/);
+    const list = content.match(/^([ \t]{0,3})(?:[-+*]|\d{1,9}[.)])([ \t]+)/);
     if (list) {
-      const markerWidth = list[0].length;
-      listIndent = contentOffset - quoteOffset + markerWidth;
-      contentOffset += markerWidth;
-      content = content.slice(markerWidth);
+      const markerColumns = columnWidth(list[0]);
+      listIndents.push(baseIndent + markerColumns);
+      contentOffset += list[0].length;
+      content = content.slice(list[0].length);
     }
 
     const fenceMatch = content.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
     if (fence) {
-      parts[index] = ' '.repeat(line.length);
+      parts[partIndex] = ' '.repeat(line.length);
       if (
         fenceMatch &&
         fenceMatch[1][0] === fence.char &&
@@ -905,17 +945,20 @@ function maskCommonMarkCodeBlocks(text) {
       continue;
     }
     if (fenceMatch && !(fenceMatch[1][0] === '`' && fenceMatch[2].includes('`'))) {
-      fence = { char: fenceMatch[1][0], length: fenceMatch[1].length };
-      parts[index] = ' '.repeat(line.length);
+      fence = {
+        char: fenceMatch[1][0],
+        length: fenceMatch[1].length,
+        quoteDepth: quote.depth,
+        listDepth: listIndents.length,
+      };
+      parts[partIndex] = ' '.repeat(line.length);
       continue;
     }
-    if (/^ {4}/.test(content)) {
-      parts[index] = ' '.repeat(line.length);
+    if (indentation(content).columns >= 4) {
+      parts[partIndex] = ' '.repeat(line.length);
       continue;
     }
-    if (contentOffset > 0) {
-      parts[index] = ' '.repeat(contentOffset) + line.slice(contentOffset);
-    }
+    if (contentOffset > 0) parts[partIndex] = ' '.repeat(contentOffset) + line.slice(contentOffset);
   }
   return parts.join('');
 }
@@ -947,6 +990,29 @@ function maskCommonMarkInlineCode(text) {
     index = closing + runLength - 1;
   }
   return chars.join('');
+}
+
+function rawHtmlUrlTargets(text) {
+  const targets = [];
+  const urlAttributes = new Set(['href', 'src', 'action', 'formaction', 'poster', 'cite', 'data', 'srcset']);
+  for (const tag of text.matchAll(/<[A-Za-z][^<>]*>/g)) {
+    const body = tag[0];
+    const attributes = body.matchAll(/\b([A-Za-z_:][A-Za-z0-9_.:-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g);
+    for (const attribute of attributes) {
+      const name = attribute[1].toLowerCase();
+      if (!urlAttributes.has(name)) continue;
+      const value = attribute[2] ?? attribute[3] ?? attribute[4] ?? '';
+      if (name === 'srcset') {
+        for (const candidate of value.split(',')) {
+          const url = candidate.trim().split(/[ \t\r\n]+/, 1)[0];
+          if (url) targets.push(url);
+        }
+      } else if (value) {
+        targets.push(value);
+      }
+    }
+  }
+  return targets;
 }
 
 function parseMarkdownDestinations(text, problems, docPath) {
@@ -1023,6 +1089,7 @@ function parseMarkdownDestinations(text, problems, docPath) {
   }
   for (const target of definitions.values()) targets.push(target);
   for (const target of potentialDefinitionTargets) targets.push(target);
+  targets.push(...rawHtmlUrlTargets(definitionText));
   return targets;
 }
 

@@ -1376,6 +1376,151 @@ describe('epic-3698 closure verifier (#3712)', () => {
     expect(check(run, 'docsLinks').status).toBe('pass');
   });
 
+  it('unwinds nested lists to recognize an ancestor continuation definition', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n10. outer\n    - inner\n\n    [escape]: ../../../outside.md\n\n[escape]\n',
+    );
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
+  });
+
+  it('ends a fenced block when its block quote container ends', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n> ```\n> code\n\n[escape]: ../../../outside.md\n\n[escape]\n',
+    );
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
+  });
+
+  it('ignores tab-indented code pseudo-definitions', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(join(fixture, 'docs', 'safe.md'), 'safe\n');
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n[a]\n\n\t[a]: ../../../outside.md\n\n[a]: ../safe.md\n',
+    );
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(check(run, 'docsLinks').status).toBe('pass');
+  });
+
+  it('ends list-contained fences when the list container closes', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n- ```\n  code\n\n[escape]: ../../../outside.md\n\n[escape]\n',
+    );
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
+  });
+
+  it('keeps an invalid trailing-text fence closer inside the code block', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n```\ncode\n``` not-a-closer\n[example](../../../outside.md)\n',
+    );
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(check(run, 'docsLinks').status).toBe('pass');
+  });
+
+  it('checks quoted, unquoted, mixed-case, and srcset raw HTML URL attributes', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n<A HREF="&percnt;2e&percnt;2e/&percnt;2e&percnt;2e/&percnt;2e&percnt;2e/outside.md">x</A>\n<img SRC=../../../outside.md>\n<img srcset="../safe.md 1x, ../../../outside.md 2x">\n',
+    );
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
+  });
+
+  it('allows raw HTML anchors and external schemes', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n<a href="#section">anchor</a>\n<img src="https://example.com/image.png">\n<form action=mailto:test@example.com></form>\n',
+    );
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(check(run, 'docsLinks').status).toBe('pass');
+  });
+
+  it('ignores raw HTML URL examples inside inline and fenced code', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n`<a href="../../../outside.md">example</a>`\n\n```html\n<img src=../../../outside.md>\n```\n',
+    );
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(check(run, 'docsLinks').status).toBe('pass');
+  });
+
+  it('rejects raw HTML URLs through symlinks outside the repository', ({ skip }) => {
+    buildCompleteFixture(fixture);
+    const externalRoot = mkdtempSync(join(tmpdir(), 'epic-3698-html-external-'));
+    const externalTarget = join(externalRoot, 'outside.md');
+    writeFileSync(externalTarget, 'outside\n');
+    try {
+      try {
+        symlinkSync(externalTarget, join(fixture, 'outside-html-link.md'));
+      } catch (error) {
+        skip(`symlink creation unavailable: ${(error as Error).message}`);
+        return;
+      }
+      writeFileSync(
+        join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+        '# design\n<a href="../../outside-html-link.md">outside</a>\n',
+      );
+      const run = runVerifier([
+        '--root', fixture,
+        '--evidence', join(fixture, 'ci-evidence.json'),
+        '--changed-files', join(fixture, 'changed-files.txt'),
+      ]);
+      expect(run.status).toBe(1);
+      expect(check(run, 'docsLinks').problems.join(' ')).toContain('resolves outside repository root');
+    } finally {
+      rmSync(externalRoot, { recursive: true, force: true });
+    }
+  });
+
   it('rejects escaped-label reference links through symlinks that resolve outside the repository root', ({ skip }) => {
     buildCompleteFixture(fixture);
     const externalRoot = mkdtempSync(join(tmpdir(), 'epic-3698-external-'));
