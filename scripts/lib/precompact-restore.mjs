@@ -8,7 +8,8 @@
 // ancestors are trusted only when they are stable non-symlink directories,
 // and checkpoint bytes are read through an O_NOFOLLOW descriptor.
 
-import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, readdirSync, realpathSync, writeSync, mkdirSync } from 'fs';
+import { closeSync, constants, fstatSync, fsyncSync, lstatSync, linkSync, openSync, readSync, readdirSync, realpathSync, renameSync, unlinkSync, writeSync, mkdirSync } from 'fs';
+import { randomUUID } from 'crypto';
 import { basename, isAbsolute, join, relative, sep } from 'path';
 
 const CHECKPOINT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -356,6 +357,7 @@ function markCheckpointRestored(omcRoot, sessionId, checkpointPath) {
   if (!isValidSessionId(sessionId)) return 'invalid_session_id';
   let parentFd = null;
   let markerFd = null;
+  let tempPath = null;
   try {
     const target = getRestoreMarkerTarget(omcRoot, sessionId, true);
     if (!target) return 'unsupported';
@@ -378,16 +380,17 @@ function markCheckpointRestored(omcRoot, sessionId, checkpointPath) {
       (typeof noFollow === 'number' && noFollow !== 0 ? noFollow : 0);
     const markerPath = descriptorChildPath(parentFd, basename(target.path));
     if (markerPath === null) return 'unsupported';
-    markerFd = openSync(markerPath, flags, 0o600);
+    tempPath = descriptorChildPath(parentFd, `.${basename(target.path)}.${randomUUID()}.tmp`);
+    if (tempPath === null) return 'unsupported';
+    markerFd = openSync(tempPath, flags, 0o600);
     const before = fstatSync(markerFd);
-    const openedPath = realpathSync(markerPath);
+    const openedPath = realpathSync(tempPath);
     if (
       !before.isFile() ||
       before.isSymbolicLink() ||
-      before.nlink > 1 ||
+      before.nlink !== 1 ||
       before.size !== 0 ||
       !isPathWithin(target.context.omcRoot.path, openedPath) ||
-      openedPath !== target.path ||
       !isStableRestoreMarkerTarget(target, parentFd)
     ) return 'failed';
     const bytes = Buffer.from(
@@ -400,16 +403,77 @@ function markCheckpointRestored(omcRoot, sessionId, checkpointPath) {
       if (!Number.isInteger(count) || count <= 0) return 'failed';
       offset += count;
     }
+    fsyncSync(markerFd);
     const after = fstatSync(markerFd);
-    const afterPath = realpathSync(markerPath);
+    const afterPath = realpathSync(tempPath);
     if (
       !after.isFile() ||
       after.isSymbolicLink() ||
-      after.nlink > 1 ||
+      after.nlink !== 1 ||
       after.dev !== before.dev ||
       after.ino !== before.ino ||
       after.size !== bytes.length ||
-      afterPath !== target.path ||
+      afterPath !== openedPath ||
+      !isStableRestoreMarkerTarget(target, parentFd)
+    ) return 'failed';
+    closeSync(markerFd);
+    markerFd = null;
+
+    // Publish complete bytes atomically. The initial link+unlink path keeps
+    // O_EXCL semantics without exposing a partially written final file;
+    // existing validated regular markers are replaced with rename.
+    let existing = null;
+    try {
+      existing = lstatSync(markerPath);
+    } catch (error) {
+      if (error?.code !== 'ENOENT') return 'failed';
+    }
+    if (!existing) {
+      try {
+        linkSync(tempPath, markerPath);
+        unlinkSync(tempPath);
+        tempPath = null;
+      } catch (error) {
+        if (error?.code !== 'EEXIST') return 'failed';
+        existing = lstatSync(markerPath);
+      }
+    }
+    if (existing) {
+      // Never follow or overwrite an untrusted marker entry. The caller will
+      // withhold restore text unless an exact existing marker is proven.
+      if (!existing.isFile() || existing.isSymbolicLink() || existing.nlink !== 1) return 'existing';
+      const existingPath = realpathSync(markerPath);
+      if (
+        existingPath !== target.path ||
+        !isPathWithin(target.context.omcRoot.path, existingPath) ||
+        !isStableRestoreMarkerTarget(target, parentFd)
+      ) return 'existing';
+      const raw = readBoundedFile(
+        markerPath,
+        { path: existingPath, dev: existing.dev, ino: existing.ino },
+        RESTORE_MARKER_MAX_BYTES,
+      );
+      if (raw !== null) {
+        try {
+          if (JSON.parse(raw)?.checkpoint === checkpointPath) return 'existing';
+        } catch {
+          // Replace malformed marker content with complete new bytes.
+        }
+      }
+      renameSync(tempPath, markerPath);
+      tempPath = null;
+    }
+
+    const published = lstatSync(markerPath);
+    const publishedPath = realpathSync(markerPath);
+    if (
+      !published.isFile() ||
+      published.isSymbolicLink() ||
+      published.nlink !== 1 ||
+      published.dev !== before.dev ||
+      published.ino !== before.ino ||
+      published.size !== bytes.length ||
+      publishedPath !== target.path ||
       !isStableRestoreMarkerTarget(target, parentFd)
     ) return 'failed';
     return 'written';
@@ -418,6 +482,9 @@ function markCheckpointRestored(omcRoot, sessionId, checkpointPath) {
   } finally {
     if (markerFd !== null) {
       try { closeSync(markerFd); } catch { /* ignore */ }
+    }
+    if (tempPath !== null) {
+      try { unlinkSync(tempPath); } catch { /* ignore */ }
     }
     if (parentFd !== null) {
       try { closeSync(parentFd); } catch { /* ignore */ }
@@ -501,15 +568,8 @@ function formatRestoreContext(checkpoint, path) {
   return truncate(lines.join('\n'), RESTORE_CONTEXT_MAX_CHARS);
 }
 
-/**
- * Find and restore the newest PreCompact checkpoint for a session.
- * Returns null if no restore happened (fail-open).
- *
- * @param {string} omcRoot - resolved .omc root directory
- * @param {string} sessionId - session ID for replay guard
- * @returns {{ text: string, marker_status: string } | null}
- */
-export function restorePreCompactCheckpoint(omcRoot, sessionId) {
+/** Find the newest checkpoint without publishing its replay marker. */
+export function preparePreCompactCheckpointRestore(omcRoot, sessionId) {
   try {
     // Session ID is used to build the replay-marker path. Reject anything the
     // canonical session-ID contract rejects so a malicious ID cannot traverse
@@ -556,23 +616,12 @@ export function restorePreCompactCheckpoint(omcRoot, sessionId) {
       return b.mtimeMs - a.mtimeMs;
     });
 
-    // Walk newest-to-oldest, skipping already-restored
+    // The marker is a monotonic cursor: an exact newest match suppresses all
+    // older checkpoints, while a newer checkpoint may advance it atomically.
     for (const candidate of candidates) {
-      if (sessionId && isCheckpointRestored(omcRoot, sessionId, candidate.path)) continue;
+      if (sessionId && isCheckpointRestored(omcRoot, sessionId, candidate.path)) return null;
       if (!isWithinAgeBound(candidate.checkpoint.created_at)) continue;
-      // First non-restored, within-age candidate
-      const text = formatRestoreContext(candidate.checkpoint, candidate.path);
-      const marker_status = sessionId
-        ? markCheckpointRestored(omcRoot, sessionId, candidate.path)
-        : 'unsupported';
-      if (
-        marker_status === 'written' ||
-        (marker_status === 'existing' &&
-          isCheckpointRestored(omcRoot, sessionId, candidate.path))
-      ) {
-        return { text, marker_status };
-      }
-      return null;
+      return { text: formatRestoreContext(candidate.checkpoint, candidate.path), path: candidate.path };
     }
 
     return null;
@@ -580,4 +629,24 @@ export function restorePreCompactCheckpoint(omcRoot, sessionId) {
     // Restore is advisory: never break session start.
     return null;
   }
+}
+
+/** Publish the replay marker after SessionStart confirms the complete context was selected. */
+export function commitPreCompactCheckpointRestore(omcRoot, sessionId, checkpointPath) {
+  const marker_status = sessionId
+    ? markCheckpointRestored(omcRoot, sessionId, checkpointPath)
+    : 'unsupported';
+  if (
+    marker_status === 'written' ||
+    (marker_status === 'existing' && isCheckpointRestored(omcRoot, sessionId, checkpointPath))
+  ) return marker_status;
+  return null;
+}
+
+/** Find, publish, and render the newest PreCompact checkpoint for a session. */
+export function restorePreCompactCheckpoint(omcRoot, sessionId) {
+  const prepared = preparePreCompactCheckpointRestore(omcRoot, sessionId);
+  if (!prepared) return null;
+  const marker_status = commitPreCompactCheckpointRestore(omcRoot, sessionId, prepared.path);
+  return marker_status ? { ...prepared, marker_status } : null;
 }

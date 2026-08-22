@@ -21,6 +21,7 @@ vi.mock('fs', async () => {
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const SCRIPT_PATH = join(__dirname, '..', '..', 'scripts', 'session-start.mjs');
+const TEMPLATE_SCRIPT_PATH = join(__dirname, '..', '..', 'templates', 'hooks', 'session-start.mjs');
 const NODE = process.execPath;
 const SECURE_MARKER_SUPPORTED = process.platform === 'linux';
 
@@ -126,6 +127,24 @@ function runHookWithPlugin(
       HOME: home,
       USERPROFILE: home,
       CLAUDE_PLUGIN_ROOT: join(__dirname, '..', '..'),
+    },
+    timeout: 15000,
+  });
+  return { stdout };
+}
+
+function runTemplateHook(
+  payload: Record<string, unknown>,
+  project: string,
+  home: string,
+): RunResult {
+  const stdout = execFileSync(NODE, [TEMPLATE_SCRIPT_PATH], {
+    input: JSON.stringify(payload),
+    encoding: 'utf-8',
+    env: {
+      ...process.env,
+      HOME: home,
+      USERPROFILE: home,
     },
     timeout: 15000,
   });
@@ -273,6 +292,168 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
       home,
     );
     expect(parseContext(second.stdout)).not.toContain('PRECOMPACT CHECKPOINT RESTORED');
+  });
+
+  it('advances the installed SessionStart marker from checkpoint A to newer B', () => {
+    if (!SECURE_MARKER_SUPPORTED) return;
+    const t1 = new Date(Date.now() - 2_000).toISOString();
+    const checkpointA = writeCheckpoint(project, t1);
+    const first = runHook(
+      { hook_event_name: 'SessionStart', source: 'compact', session_id: 'marker-advance-installed', cwd: project },
+      project,
+      home,
+    );
+    expect(parseContext(first.stdout)).toContain(t1);
+
+    const markerPath = join(
+      project,
+      '.omc',
+      'state',
+      'checkpoints-restored',
+      'marker-advance-installed',
+      'restored.json',
+    );
+    expect(JSON.parse(readFileSync(markerPath, 'utf-8')).checkpoint).toBe(checkpointA);
+
+    const t2 = new Date().toISOString();
+    const checkpointB = writeCheckpoint(project, t2);
+    const second = runHook(
+      { hook_event_name: 'SessionStart', source: 'compact', session_id: 'marker-advance-installed', cwd: project },
+      project,
+      home,
+    );
+    expect(parseContext(second.stdout)).toContain(t2);
+    expect(JSON.parse(readFileSync(markerPath, 'utf-8')).checkpoint).toBe(checkpointB);
+
+    const replay = runHook(
+      { hook_event_name: 'SessionStart', source: 'compact', session_id: 'marker-advance-installed', cwd: project },
+      project,
+      home,
+    );
+    expect(parseContext(replay.stdout)).not.toContain('PRECOMPACT CHECKPOINT RESTORED');
+  });
+
+  it('does not commit a restore marker when oversized Priority Context evicts the sentinel', () => {
+    if (!SECURE_MARKER_SUPPORTED) return;
+    writeCheckpoint(project, new Date().toISOString());
+    const notepad = join(project, '.omc', 'notepad.md');
+    writeFileSync(notepad, `## Priority Context\n${'P'.repeat(7000)}\n`, 'utf-8');
+
+    const first = runHook(
+      { hook_event_name: 'SessionStart', source: 'compact', session_id: 'budgeted-restore-installed', cwd: project },
+      project,
+      home,
+    );
+    expect(parseContext(first.stdout)).not.toContain('PRECOMPACT CHECKPOINT RESTORED');
+    expect(
+      existsSync(join(project, '.omc', 'state', 'checkpoints-restored', 'budgeted-restore-installed', 'restored.json')),
+    ).toBe(false);
+
+    rmSync(notepad, { force: true });
+    const retry = runHook(
+      { hook_event_name: 'SessionStart', source: 'compact', session_id: 'budgeted-restore-installed', cwd: project },
+      project,
+      home,
+    );
+    expect(parseContext(retry.stdout)).toContain('PRECOMPACT CHECKPOINT RESTORED');
+    expect(
+      existsSync(join(project, '.omc', 'state', 'checkpoints-restored', 'budgeted-restore-installed', 'restored.json')),
+    ).toBe(true);
+  });
+
+  it('does not consume a checkpoint when the aggregate budget truncates the restore closing sentinel', () => {
+    if (!SECURE_MARKER_SUPPORTED) return;
+    writeCheckpoint(project, new Date().toISOString());
+    const notepad = join(project, '.omc', 'notepad.md');
+    writeFileSync(notepad, `## Priority Context\n${'P'.repeat(5450)}\n`, 'utf-8');
+
+    const sessionId = 'partial-sentinel-installed';
+    const first = runHook(
+      { hook_event_name: 'SessionStart', source: 'compact', session_id: sessionId, cwd: project },
+      project,
+      home,
+    );
+    const context = parseContext(first.stdout);
+    expect(context).not.toContain('PRECOMPACT CHECKPOINT RESTORED');
+    expect(context).not.toContain('</session-restore>');
+    expect(
+      existsSync(join(project, '.omc', 'state', 'checkpoints-restored', sessionId, 'restored.json')),
+    ).toBe(false);
+
+    rmSync(notepad, { force: true });
+    const retry = runHook(
+      { hook_event_name: 'SessionStart', source: 'compact', session_id: sessionId, cwd: project },
+      project,
+      home,
+    );
+    expect(parseContext(retry.stdout)).toContain('</session-restore>');
+  });
+
+  it('template SessionStart also delivers A then newer B and suppresses B replay', () => {
+    if (!SECURE_MARKER_SUPPORTED) return;
+    const t1 = new Date(Date.now() - 2_000).toISOString();
+    const checkpointA = writeCheckpoint(project, t1);
+    const first = runTemplateHook(
+      { hook_event_name: 'SessionStart', source: 'compact', session_id: 'marker-advance-template', cwd: project },
+      project,
+      home,
+    );
+    expect(parseContext(first.stdout)).toContain(t1);
+
+    const markerPath = join(
+      project,
+      '.omc',
+      'state',
+      'checkpoints-restored',
+      'marker-advance-template',
+      'restored.json',
+    );
+    expect(JSON.parse(readFileSync(markerPath, 'utf-8')).checkpoint).toBe(checkpointA);
+
+    const t2 = new Date().toISOString();
+    const checkpointB = writeCheckpoint(project, t2);
+    const second = runTemplateHook(
+      { hook_event_name: 'SessionStart', source: 'compact', session_id: 'marker-advance-template', cwd: project },
+      project,
+      home,
+    );
+    expect(parseContext(second.stdout)).toContain(t2);
+    expect(JSON.parse(readFileSync(markerPath, 'utf-8')).checkpoint).toBe(checkpointB);
+
+    const replay = runTemplateHook(
+      { hook_event_name: 'SessionStart', source: 'compact', session_id: 'marker-advance-template', cwd: project },
+      project,
+      home,
+    );
+    expect(parseContext(replay.stdout)).not.toContain('PRECOMPACT CHECKPOINT RESTORED');
+  });
+
+  it('template SessionStart defers marker commit when Priority Context evicts restore', () => {
+    if (!SECURE_MARKER_SUPPORTED) return;
+    writeCheckpoint(project, new Date().toISOString());
+    const notepad = join(project, '.omc', 'notepad.md');
+    writeFileSync(notepad, `## Priority Context\n${'P'.repeat(7000)}\n`, 'utf-8');
+
+    const first = runTemplateHook(
+      { hook_event_name: 'SessionStart', source: 'compact', session_id: 'budgeted-restore-template', cwd: project },
+      project,
+      home,
+    );
+    expect(parseContext(first.stdout)).not.toContain('PRECOMPACT CHECKPOINT RESTORED');
+    expect(
+      existsSync(join(project, '.omc', 'state', 'checkpoints-restored', 'budgeted-restore-template', 'restored.json')),
+    ).toBe(false);
+
+    rmSync(notepad, { force: true });
+    const retry = runTemplateHook(
+      { hook_event_name: 'SessionStart', source: 'compact', session_id: 'budgeted-restore-template', cwd: project },
+      project,
+      home,
+    );
+    expect(parseContext(retry.stdout)).toContain('PRECOMPACT CHECKPOINT RESTORED');
+    expect(
+      existsSync(join(project, '.omc', 'state', 'checkpoints-restored', 'budgeted-restore-template', 'restored.json')),
+    ).toBe(true);
   });
 
   it('fails open (no restore) on a malformed checkpoint', () => {

@@ -82,10 +82,20 @@ function installFakeGh(root: string, data: unknown) {
     "else if (args[0] === 'issue' && args[1] === 'view') out(data.issues[args[2]]);",
     "else if (args[0] === 'api') {",
     '  const path = args[1];',
+    '  const pull = path.match(/^repos\\/[^/]+\\/[^/]+\\/pulls\\/(\\d+)$/);',
     '  const timeline = path.match(/^repos\\/[^/]+\\/[^/]+\\/issues\\/(\\d+)\\/timeline/);',
     '  const status = path.match(/^repos\\/[^/]+\\/[^/]+\\/commits\\/([0-9a-f]{40})\\/status$/);',
-    '  if (timeline) out(data.timelines[timeline[1]] ?? []);',
+    '  const checks = path.match(/^repos\\/[^/]+\\/[^/]+\\/commits\\/([0-9a-f]{40})\\/check-runs/);',
+    '  const commitPulls = path.match(/^repos\\/[^/]+\\/[^/]+\\/commits\\/([0-9a-f]{40})\\/pulls$/);',
+    '  const commit = path.match(/^repos\\/[^/]+\\/[^/]+\\/commits\\/([0-9a-f]{40})$/);',
+    '  const workflows = path.match(/^repos\\/[^/]+\\/[^/]+\\/actions\\/runs/);',
+    '  if (pull) { const pr = data.prs[pull[1]]; out({ number: pr.number, state: pr.state === "MERGED" ? "closed" : "open", merged_at: pr.state === "MERGED" ? "2026-08-12T00:00:00Z" : null, head: { sha: pr.headRefOid }, merge_commit_sha: pr.mergeCommit.oid, base: { ref: pr.baseRefName, sha: pr.baseRefOid } }); }',
+    '  else if (timeline) out(data.timelines[timeline[1]] ?? []);',
     '  else if (status) out(data.statuses[status[1]]);',
+    '  else if (checks) out({ check_runs: data.checkRuns[checks[1]] ?? [] });',
+    '  else if (commitPulls) out(data.commitPulls?.[commitPulls[1]] ?? []);',
+    '  else if (commit) out(data.commits[commit[1]]);',
+    '  else if (workflows) out({ workflow_runs: data.workflowRuns ?? [] });',
     "  else { process.stderr.write('unknown fake gh api: ' + path + '\\n'); process.exit(2); }",
     "} else { process.stderr.write('unknown fake gh args: ' + args.join(' ') + '\\n'); process.exit(2); }",
     '',
@@ -191,7 +201,19 @@ function buildCompleteFixture(root: string) {
         state: 'CLOSED',
         commit: { sha: 'b'.repeat(40) },
         status: { sha: 'b'.repeat(40), state: 'success' },
-        source: { repository: 'fixture/example', issue: 'fixture issue', commit: 'fixture commit', status: 'fixture status' },
+        checks: [{ name: 'direct-check', status: 'completed', conclusion: 'success', head_sha: 'b'.repeat(40) }],
+        workflows: [{ id: 1, name: 'Direct CI', path: '.github/workflows/direct.yml', status: 'completed', conclusion: 'success', head_sha: 'b'.repeat(40) }],
+        source: {
+          repository: 'fixture/example',
+          issue: 'repos/fixture/example/issues/3709',
+          timeline: 'repos/fixture/example/issues/3709/timeline',
+          eventType: 'referenced',
+          commitId: 'b'.repeat(40),
+          commit: `repos/fixture/example/commits/${'b'.repeat(40)}`,
+          status: `repos/fixture/example/commits/${'b'.repeat(40)}/status`,
+          checks: `repos/fixture/example/commits/${'b'.repeat(40)}/check-runs`,
+          workflows: 'repos/fixture/example/actions/runs',
+        },
       }],
       pullRequests: ALL_CHILDREN.filter((issue) => EXPECTED_CHILD_PRS[issue] !== null).map((issue) => ({
         childIssue: issue,
@@ -215,14 +237,20 @@ function buildCompleteFixture(root: string) {
         state: 'MERGED',
         headRefOid: head,
         mergeCommit: { oid: 'b'.repeat(40) },
+        baseRefName: 'dev',
+        baseRefOid: 'd'.repeat(40),
         statusCheckRollup: [
           { workflowName: 'CI', name: 'Test', conclusion: 'success' },
           { workflowName: 'CI', name: 'Lint', conclusion: 'skipped' },
         ],
       }])),
     issues: Object.fromEntries(ALL_CHILDREN.map((issue) => [String(issue), { number: issue, state: 'CLOSED' }])),
-    timelines: { '3709': [{ event: 'committed', sha: 'b'.repeat(40) }] },
+    timelines: { '3709': [{ event: 'referenced', commit_id: 'b'.repeat(40) }] },
+    commits: { ['b'.repeat(40)]: { sha: 'b'.repeat(40), repository: { full_name: 'fixture/example' } } },
     statuses: { ['b'.repeat(40)]: { sha: 'b'.repeat(40), state: 'success' } },
+    checkRuns: { ['b'.repeat(40)]: [{ name: 'direct-check', status: 'completed', conclusion: 'success', head_sha: 'b'.repeat(40) }] },
+    commitPulls: {},
+    workflowRuns: [{ id: 1, name: 'Direct CI', path: '.github/workflows/direct.yml', status: 'completed', conclusion: 'success', head_sha: 'b'.repeat(40) }],
   });
   writeFileSync(join(root, 'changed-files.txt'), 'scripts/verify-epic-3698-closure.mjs\nreceipts/epic-3698/README.md\n');
   return head;
@@ -433,8 +461,15 @@ describe('epic-3698 closure verifier (#3712)', () => {
     const evidencePath = join(fixture, 'ci-evidence.json');
     const evidence = JSON.parse(readFileSync(evidencePath, 'utf8'));
     const forged = 'c'.repeat(40);
-    evidence.payload.directIssues[0].commit.sha = forged;
-    evidence.payload.directIssues[0].status.sha = forged;
+    const direct = evidence.payload.directIssues[0];
+    direct.commit.sha = forged;
+    direct.status.sha = forged;
+    direct.checks[0].head_sha = forged;
+    direct.workflows[0].head_sha = forged;
+    direct.source.commitId = forged;
+    direct.source.commit = `repos/fixture/example/commits/${forged}`;
+    direct.source.status = `repos/fixture/example/commits/${forged}/status`;
+    direct.source.checks = `repos/fixture/example/commits/${forged}/check-runs`;
     writeJson(evidencePath, evidence);
     writeJson(join(fixture, 'receipts', 'epic-3698', 'child-3709-terminal.receipt.json'), {
       schemaVersion: 1,
@@ -458,6 +493,40 @@ describe('epic-3698 closure verifier (#3712)', () => {
     expect(run.status).not.toBe(0);
     expect(check(run, 'exactHeadCi').status, JSON.stringify(check(run, 'exactHeadCi'), null, 2)).toBe('fail');
     expect(check(run, 'exactHeadCi').problems.join(' ')).toContain('live issue timeline commit');
+  });
+
+  it('rejects HEAD as a valid-but-wrong base against the authenticated expected merge base', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(join(fixture, 'tracked.txt'), 'base\n');
+    commitFixture(fixture, 'authenticated base');
+    const authenticatedBase = gitFixture(fixture, ['rev-parse', 'HEAD']);
+    writeFileSync(join(fixture, 'tracked.txt'), 'head\n');
+    commitFixtureHead(fixture, 'closure head');
+    writeFileSync(join(fixture, 'changed-files.txt'), 'tracked.txt\n');
+
+    const ghFixturePath = join(fixture, 'gh-fixture.json');
+    const ghFixture = JSON.parse(readFileSync(ghFixturePath, 'utf8'));
+    for (const pr of Object.values(ghFixture.prs) as Array<Record<string, unknown>>) {
+      pr.baseRefName = 'main';
+      pr.baseRefOid = authenticatedBase;
+    }
+    const closureHead = gitFixture(fixture, ['rev-parse', 'HEAD']);
+    ghFixture.commitPulls[closureHead] = [{
+      state: 'open',
+      head: { sha: closureHead },
+      base: { ref: 'main', sha: authenticatedBase },
+    }];
+    writeJson(ghFixturePath, ghFixture);
+
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--base', 'HEAD',
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'releaseSecurityParity').status).toBe('fail');
+    expect(check(run, 'releaseSecurityParity').problems.join(' ')).toContain('authenticated expected merge base');
   });
 
   it('does not let --changed-files bypass package.json version-diff inspection', () => {
@@ -694,6 +763,22 @@ describe('epic-3698 closure verifier (#3712)', () => {
     writeFileSync(
       join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
       '# design\n[escape\\]label](../../../outside.md)\n',
+    );
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'docsLinks').status).toBe('fail');
+    expect(check(run, 'docsLinks').problems.join(' ')).toContain('escapes repository root');
+  });
+
+  it('canonicalizes nested CommonMark labels and percent-escaped destination bytes before containment', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(
+      join(fixture, 'docs', 'design', 'ISSUE-3712-RELEASE-VERIFICATION.md'),
+      '# design\n[outer [nested]](%2e%2e/%2e%2e/%2e%2e/outside.md)\n',
     );
     const run = runVerifier([
       '--root', fixture,

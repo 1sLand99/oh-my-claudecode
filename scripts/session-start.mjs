@@ -902,20 +902,24 @@ async function main() {
     }
     const sessionId = data.session_id || data.sessionId || '';
     const omcRoot = await resolveOmcStateRoot(directory);
-    const messages = [];
+    let messages = [];
     const userMessages = [];
+    let pendingRestore = null;
+    let pendingRestoreMessage = null;
 
     // Restore the newest PreCompact checkpoint after compaction (issue #3730).
     // Only fires when Claude Code signals the session resumed from compaction
     // (source === 'compact'); never on startup, resume, or clear.
     if (data.source === 'compact' && sessionId) {
       try {
-        const { restorePreCompactCheckpoint } = await import(
+        const { preparePreCompactCheckpointRestore, commitPreCompactCheckpointRestore } = await import(
           pathToFileURL(join(__dirname, 'lib', 'precompact-restore.mjs')).href
         );
-        const restored = restorePreCompactCheckpoint(omcRoot, sessionId);
-        if (restored) {
-          messages.push(`<session-restore>\n\n${restored.text}\n\n</session-restore>\n\n---\n`);
+        const prepared = preparePreCompactCheckpointRestore(omcRoot, sessionId);
+        if (prepared) {
+          pendingRestore = { ...prepared, commitPreCompactCheckpointRestore };
+          pendingRestoreMessage = `<session-restore>\n\n${prepared.text}\n\n</session-restore>\n\n---\n`;
+          messages.push(pendingRestoreMessage);
         }
       } catch {
         // Restore is advisory: never break session start on a checkpoint error.
@@ -1266,6 +1270,29 @@ ${cleanContent}
       // Notification module not available, skip silently
     }
 
+    let additionalContext = '';
+    if (pendingRestore && pendingRestoreMessage) {
+      additionalContext = buildSessionStartAdditionalContext(messages);
+      if (additionalContext.includes(pendingRestoreMessage)) {
+        const markerStatus = pendingRestore.commitPreCompactCheckpointRestore(
+          omcRoot,
+          sessionId,
+          pendingRestore.path,
+        );
+        if (!markerStatus) {
+          messages = messages.filter((message) => message !== pendingRestoreMessage);
+          additionalContext = buildSessionStartAdditionalContext(messages);
+        }
+      } else {
+        // The complete restore sentinel did not fit the aggregate budget;
+        // do not commit a replay marker for context that was not delivered.
+        messages = messages.filter((message) => message !== pendingRestoreMessage);
+        additionalContext = buildSessionStartAdditionalContext(messages);
+      }
+    } else if (messages.length > 0) {
+      additionalContext = buildSessionStartAdditionalContext(messages);
+    }
+
     if (messages.length > 0 || userMessages.length > 0) {
       const output = {
         continue: true,
@@ -1276,7 +1303,7 @@ ${cleanContent}
       if (messages.length > 0) {
         output.hookSpecificOutput = {
           hookEventName: 'SessionStart',
-          additionalContext: buildSessionStartAdditionalContext(messages)
+          additionalContext,
         };
       }
       console.log(JSON.stringify(output));

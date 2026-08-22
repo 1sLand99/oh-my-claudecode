@@ -20,7 +20,7 @@
 // usage for 2 consecutive releases, zero known critical integrations) are
 // unsatisfied.
 
-import { existsSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -217,6 +217,89 @@ function normalizeLiveCheck(check, headSha, label) {
   return { name, conclusion, sha: headSha };
 }
 
+function normalizeDirectCheck(check, commitSha, label) {
+  if (!isObject(check)) throw new VerificationError(`${label} must be an object`);
+  const name = check.name ?? check.context;
+  const conclusion = String(check.conclusion ?? check.state ?? check.status ?? '').toLowerCase();
+  const headSha = check.head_sha ?? check.sha;
+  if (!isNonEmptyString(name)) throw new VerificationError(`${label}.name must be a non-empty string`);
+  if (headSha !== commitSha) throw new VerificationError(`${label}.head_sha must equal the referenced commit ${commitSha}`);
+  if (check.status !== undefined && check.status !== 'completed') {
+    throw new VerificationError(`${label}.status must be completed`);
+  }
+  if (!GREEN_CHECK_CONCLUSIONS.has(conclusion)) {
+    throw new VerificationError(`${label}.conclusion must be success|skipped|neutral, got ${JSON.stringify(conclusion)}`);
+  }
+  return { name, conclusion, sha: commitSha };
+}
+
+function normalizeWorkflowRun(run, commitSha, label) {
+  if (!isObject(run)) throw new VerificationError(`${label} must be an object`);
+  const id = run.id;
+  const name = run.name;
+  const path = run.path;
+  const conclusion = String(run.conclusion ?? '').toLowerCase();
+  const headSha = run.head_sha ?? run.sha;
+  if (!Number.isSafeInteger(id) || id < 1) throw new VerificationError(`${label}.id must be a positive integer`);
+  if (!isNonEmptyString(name)) throw new VerificationError(`${label}.name must be a non-empty string`);
+  if (!isNonEmptyString(path)) throw new VerificationError(`${label}.path must be a non-empty string`);
+  if (headSha !== commitSha) throw new VerificationError(`${label}.head_sha must equal the referenced commit ${commitSha}`);
+  if (run.status !== undefined && run.status !== 'completed') {
+    throw new VerificationError(`${label}.status must be completed`);
+  }
+  if (!GREEN_CHECK_CONCLUSIONS.has(conclusion)) {
+    throw new VerificationError(`${label}.conclusion must be success|skipped|neutral, got ${JSON.stringify(conclusion)}`);
+  }
+  return { id, name, path, conclusion, sha: commitSha };
+}
+
+function apiPath(value) {
+  if (!isNonEmptyString(value)) return null;
+  try {
+    const parsed = new URL(value);
+    if (parsed.hostname !== 'api.github.com') return null;
+    return parsed.pathname.replace(/^\/+/, '');
+  } catch {
+    return value.replace(/^\/+/, '').split('?')[0];
+  }
+}
+
+function apiPathMatches(value, expected) {
+  const actual = apiPath(value);
+  return actual === expected;
+}
+
+function normalizeTimelineCommitEvent(event, repository, issue, label) {
+  if (!isObject(event)) return null;
+  const eventType = event.event;
+  const sha = eventType === 'referenced' ? event.commit_id : eventType === 'committed' ? event.sha : null;
+  if (!isSha(sha)) return null;
+  const expectedIssuePath = `repos/${repository}/issues/${issue}`;
+  const expectedCommitPath = `repos/${repository}/commits/${sha}`;
+  if (event.issue_url !== undefined && !apiPathMatches(event.issue_url, expectedIssuePath)) {
+    throw new VerificationError(`${label}.issue_url does not identify ${expectedIssuePath}`);
+  }
+  if (event.commit_url !== undefined && !apiPathMatches(event.commit_url, expectedCommitPath)) {
+    throw new VerificationError(`${label}.commit_url does not identify ${expectedCommitPath}`);
+  }
+  if (isObject(event.repository) && event.repository.full_name !== undefined && event.repository.full_name !== repository) {
+    throw new VerificationError(`${label}.repository does not identify ${repository}`);
+  }
+  return { event: eventType, sha };
+}
+
+function directChecksAreGreen(status, checks, workflows) {
+  if (status?.state === 'success') return true;
+  // GitHub can report no legacy commit statuses while the check-runs and
+  // workflow-runs APIs are already terminal and green. Treat that shape as
+  // authenticated green evidence, but only when both independent APIs agree.
+  return status?.state === 'pending'
+    && checks.length > 0
+    && workflows.length > 0
+    && checks.every((check) => GREEN_CHECK_CONCLUSIONS.has(check.conclusion))
+    && workflows.every((run) => GREEN_CHECK_CONCLUSIONS.has(run.conclusion));
+}
+
 function checkKey(check) {
   return `${check.name}\u0000${check.conclusion}\u0000${check.sha}`;
 }
@@ -234,21 +317,64 @@ function verifyLiveGitHubEvidence(root, evidence, prs, directIssues) {
     if (!isObject(liveRepo) || liveRepo.nameWithOwner !== repository) {
       return { problems: [`CI evidence repository ${JSON.stringify(repository)} does not match live GitHub repository ${JSON.stringify(liveRepo?.nameWithOwner)}`] };
     }
+    let expectedBase = null;
+    let verificationHead = null;
+    try {
+      verificationHead = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+    } catch {
+      // Non-git fixtures and incomplete checkouts cannot authenticate a
+      // closure-PR base; the independent child evidence remains verifiable.
+    }
+    if (isSha(verificationHead)) {
+      const associatedPulls = ghJson(root, [
+        'api',
+        `repos/${repository}/commits/${verificationHead}/pulls`,
+        '--header',
+        'Accept: application/vnd.github+json',
+      ]);
+      const exactHeadPulls = (Array.isArray(associatedPulls) ? associatedPulls : [])
+        .filter((pull) => pull?.head?.sha === verificationHead && pull?.state === 'open');
+      if (exactHeadPulls.length > 1) {
+        return { problems: [`verification HEAD ${verificationHead} is the head of multiple open pull requests; authenticated expected base is ambiguous`] };
+      }
+      if (exactHeadPulls.length === 1) {
+        const pull = exactHeadPulls[0];
+        if (!isNonEmptyString(pull.base?.ref) || !isSha(pull.base?.sha)) {
+          return { problems: [`verification HEAD ${verificationHead} has no valid authenticated pull-request base`] };
+        }
+        expectedBase = { ref: pull.base.ref, sha: pull.base.sha };
+      }
+    }
     const livePrs = [];
     for (const [index, pr] of prs.entries()) {
       const label = `pullRequests[${index}]`;
-      const live = ghJson(root, ['pr', 'view', String(pr.number), '--json', 'number,headRefOid,mergeCommit,state,statusCheckRollup']);
-      if (!isObject(live) || live.number !== pr.number) return { problems: [`${label}.number is not bound to live repository PR #${pr.number}`] };
-      if (live.state !== 'MERGED') return { problems: [`${label} live state must be MERGED, got ${JSON.stringify(live.state)}`] };
-      if (live.headRefOid !== pr.headSha) return { problems: [`${label}.headSha does not match live PR head ${live.headRefOid}`] };
-      if (live.mergeCommit?.oid !== pr.mergeCommitSha) return { problems: [`${label}.mergeCommitSha does not match live merge commit ${live.mergeCommit?.oid}`] };
+      const live = ghJson(root, ['api', `repos/${repository}/pulls/${pr.number}`, '--header', 'Accept: application/vnd.github+json']);
+      const rollup = ghJson(root, ['pr', 'view', String(pr.number), '--json', 'number,statusCheckRollup']);
+      if (!isObject(live) || live.number !== pr.number || rollup?.number !== pr.number) return { problems: [`${label}.number is not bound to live repository PR #${pr.number}`] };
+      if (live.state !== 'closed' || !live.merged_at) return { problems: [`${label} live state must be MERGED, got ${JSON.stringify(live.state)}`] };
+      if (live.head?.sha !== pr.headSha) return { problems: [`${label}.headSha does not match live PR head ${live.head?.sha}`] };
+      if (live.merge_commit_sha !== pr.mergeCommitSha) return { problems: [`${label}.mergeCommitSha does not match live merge commit ${live.merge_commit_sha}`] };
+      const liveBaseRefName = live.base?.ref;
+      const liveBaseRefOid = live.base?.sha;
+      if (!isNonEmptyString(liveBaseRefName) || !isSha(liveBaseRefOid)) {
+        return { problems: [`${label}.live baseRefName/baseRefOid is not a valid authenticated PR base`] };
+      }
+      if (Object.hasOwn(pr, 'baseRefName') && pr.baseRefName !== liveBaseRefName) {
+        return { problems: [`${label}.baseRefName does not match live PR base ${liveBaseRefName}`] };
+      }
+      if (Object.hasOwn(pr, 'baseRefOid') && pr.baseRefOid !== liveBaseRefOid) {
+        return { problems: [`${label}.baseRefOid does not match live PR base ${liveBaseRefOid}`] };
+      }
       const liveIssue = ghJson(root, ['issue', 'view', String(pr.childIssue), '--json', 'number,state']);
       if (!isObject(liveIssue) || liveIssue.number !== pr.childIssue || liveIssue.state !== 'CLOSED') {
         return { problems: [`${label}.childIssue #${pr.childIssue} is not bound to a live CLOSED issue`] };
       }
       let liveChecks;
       try {
-        liveChecks = (live.statusCheckRollup ?? []).map((check, checkIndex) => normalizeLiveCheck(check, live.headRefOid, `${label}.liveChecks[${checkIndex}]`));
+        liveChecks = (rollup.statusCheckRollup ?? [])
+          .filter((check) => GREEN_CHECK_CONCLUSIONS.has(String(check.conclusion ?? check.state ?? check.status ?? '').toLowerCase()))
+          .map((check, checkIndex) => normalizeLiveCheck(check, live.head.sha, `${label}.liveChecks[${checkIndex}]`));
+        liveChecks = [...new Map(liveChecks.map((check) => [checkKey(check), check])).values()];
       } catch (error) {
         return { problems: [error.message] };
       }
@@ -258,7 +384,16 @@ function verifyLiveGitHubEvidence(root, evidence, prs, directIssues) {
       if (evidenceKeys.size !== liveKeys.size || [...liveKeys].some((key) => !evidenceKeys.has(key))) {
         return { problems: [`${label}.checks does not exactly match live successful status checks`] };
       }
-      livePrs.push({ number: live.number, childIssue: pr.childIssue, headSha: live.headRefOid, mergeCommitSha: live.mergeCommit.oid, state: live.state, checks: liveChecks });
+      livePrs.push({
+        number: live.number,
+        childIssue: pr.childIssue,
+        headSha: live.head.sha,
+        mergeCommitSha: live.merge_commit_sha,
+        state: 'MERGED',
+        checks: liveChecks,
+        baseRefName: liveBaseRefName,
+        baseRefOid: liveBaseRefOid,
+      });
     }
     const liveDirectIssues = [];
     for (const [index, direct] of directIssues.entries()) {
@@ -266,18 +401,124 @@ function verifyLiveGitHubEvidence(root, evidence, prs, directIssues) {
       const liveIssue = ghJson(root, ['issue', 'view', String(direct.issue), '--json', 'number,state']);
       if (!isObject(liveIssue) || liveIssue.number !== direct.issue) return { problems: [`${label}.issue is not bound to live repository issue #${direct.issue}`] };
       if (liveIssue.state !== 'CLOSED' || direct.state !== liveIssue.state) return { problems: [`${label}.state does not match live closed issue state`] };
-      const timeline = ghJson(root, ['api', `repos/${repository}/issues/${direct.issue}/timeline?per_page=100`, '--header', 'Accept: application/vnd.github+json']);
-      const commits = (Array.isArray(timeline) ? timeline : []).filter((event) => event.event === 'committed' && isSha(event.sha));
-      const liveCommit = commits.at(-1);
-      if (!liveCommit || liveCommit.sha !== direct.commit?.sha) return { problems: [`${label}.commit.sha does not match a live issue timeline commit`] };
-      const liveStatus = ghJson(root, ['api', `repos/${repository}/commits/${liveCommit.sha}/status`, '--header', 'Accept: application/vnd.github+json']);
-      if (liveStatus.sha !== direct.status?.sha || liveStatus.sha !== liveCommit.sha || liveStatus.state !== 'success' || direct.status?.state !== 'success') {
-        return { problems: [`${label}.status does not match the live successful commit status`] };
+      const commitSha = direct.commit?.sha;
+      const source = direct.source;
+      const expectedIssuePath = `repos/${repository}/issues/${direct.issue}`;
+      const expectedTimelinePath = `${expectedIssuePath}/timeline`;
+      const expectedCommitPath = `repos/${repository}/commits/${commitSha}`;
+      const expectedStatusPath = `${expectedCommitPath}/status`;
+      const expectedChecksPath = `${expectedCommitPath}/check-runs`;
+      const expectedWorkflowsPath = `repos/${repository}/actions/runs`;
+      if (!isObject(source) || source.repository !== repository) {
+        return { problems: [`${label}.source.repository must match the live repository`] };
       }
-      if (!isObject(direct.source) || direct.source.repository !== repository) return { problems: [`${label}.source.repository must match the live repository`] };
-      liveDirectIssues.push({ issue: liveIssue.number, state: liveIssue.state, commit: { sha: liveCommit.sha }, status: { sha: liveStatus.sha, state: liveStatus.state }, source: direct.source });
+      for (const [field, expected] of [
+        ['issue', expectedIssuePath],
+        ['timeline', expectedTimelinePath],
+        ['commit', expectedCommitPath],
+        ['status', expectedStatusPath],
+        ['checks', expectedChecksPath],
+        ['workflows', expectedWorkflowsPath],
+      ]) {
+        if (!apiPathMatches(source[field], expected)) {
+          return { problems: [`${label}.source.${field} must identify ${expected}`] };
+        }
+      }
+      const timeline = ghJson(root, ['api', `${expectedTimelinePath}?per_page=100`, '--header', 'Accept: application/vnd.github+json']);
+      let liveCommitEvent = null;
+      for (const [eventIndex, event] of (Array.isArray(timeline) ? timeline : []).entries()) {
+        let normalized;
+        try {
+          normalized = normalizeTimelineCommitEvent(event, repository, direct.issue, `${label}.timeline[${eventIndex}]`);
+        } catch (error) {
+          return { problems: [error.message] };
+        }
+        if (normalized?.sha === commitSha) liveCommitEvent = normalized;
+      }
+      if (!liveCommitEvent) return { problems: [`${label}.commit.sha does not match a live issue timeline commit (referenced.commit_id or committed.sha)`] };
+      if (source.eventType !== undefined && source.eventType !== liveCommitEvent.event) {
+        return { problems: [`${label}.source.eventType does not match the live ${liveCommitEvent.event} timeline event`] };
+      }
+      if (source.commitId !== undefined && source.commitId !== liveCommitEvent.sha) {
+        return { problems: [`${label}.source.commitId does not match the live issue timeline commit`] };
+      }
+      const liveCommit = ghJson(root, ['api', expectedCommitPath, '--header', 'Accept: application/vnd.github+json']);
+      if (!isObject(liveCommit) || liveCommit.sha !== commitSha) {
+        return { problems: [`${label}.commit.sha is not bound to the live repository commit`] };
+      }
+      if (isObject(liveCommit.repository) && liveCommit.repository.full_name !== repository) {
+        return { problems: [`${label}.commit repository does not match ${repository}`] };
+      }
+      const liveStatus = ghJson(root, ['api', expectedStatusPath, '--header', 'Accept: application/vnd.github+json']);
+      if (!isObject(liveStatus) || liveStatus.sha !== commitSha || direct.status?.sha !== commitSha || direct.status?.state !== liveStatus.state) {
+        return { problems: [`${label}.status does not match the live status for commit ${commitSha}`] };
+      }
+      if (isObject(liveStatus.repository) && liveStatus.repository.full_name !== repository) {
+        return { problems: [`${label}.status repository does not match ${repository}`] };
+      }
+      let liveChecks;
+      try {
+        const checksResponse = ghJson(root, ['api', `${expectedChecksPath}?per_page=100`, '--header', 'Accept: application/vnd.github+json']);
+        liveChecks = (Array.isArray(checksResponse) ? checksResponse : checksResponse?.check_runs ?? [])
+          .map((check, checkIndex) => normalizeDirectCheck(check, commitSha, `${label}.liveChecks[${checkIndex}]`));
+      } catch (error) {
+        return { problems: [error.message] };
+      }
+      if (liveChecks.length === 0) return { problems: [`${label}.liveChecks must contain at least one completed green check`] };
+      let evidenceChecks;
+      try {
+        evidenceChecks = (Array.isArray(direct.checks) ? direct.checks : [])
+          .map((check, checkIndex) => normalizeDirectCheck(check, commitSha, `${label}.checks[${checkIndex}]`));
+      } catch (error) {
+        return { problems: [error.message] };
+      }
+      const liveCheckKeys = new Set(liveChecks.map(checkKey));
+      const evidenceCheckKeys = new Set(evidenceChecks.map(checkKey));
+      if (liveCheckKeys.size !== liveChecks.length || evidenceCheckKeys.size !== evidenceChecks.length || liveCheckKeys.size !== evidenceCheckKeys.size || [...liveCheckKeys].some((key) => !evidenceCheckKeys.has(key))) {
+        return { problems: [`${label}.checks does not exactly match live check-run provenance`] };
+      }
+      let liveWorkflows;
+      try {
+        const workflowsResponse = ghJson(root, ['api', `${expectedWorkflowsPath}?head_sha=${commitSha}&per_page=100`, '--header', 'Accept: application/vnd.github+json']);
+        liveWorkflows = (Array.isArray(workflowsResponse) ? workflowsResponse : workflowsResponse?.workflow_runs ?? [])
+          .map((run, runIndex) => normalizeWorkflowRun(run, commitSha, `${label}.liveWorkflows[${runIndex}]`));
+      } catch (error) {
+        return { problems: [error.message] };
+      }
+      if (liveWorkflows.length === 0) return { problems: [`${label}.liveWorkflows must contain at least one completed green workflow run`] };
+      let evidenceWorkflows;
+      try {
+        evidenceWorkflows = (Array.isArray(direct.workflows) ? direct.workflows : [])
+          .map((run, runIndex) => normalizeWorkflowRun(run, commitSha, `${label}.workflows[${runIndex}]`));
+      } catch (error) {
+        return { problems: [error.message] };
+      }
+      const workflowKey = (run) => `${run.id}\u0000${run.name}\u0000${run.path}\u0000${run.conclusion}\u0000${run.sha}`;
+      const liveWorkflowKeys = new Set(liveWorkflows.map(workflowKey));
+      const evidenceWorkflowKeys = new Set(evidenceWorkflows.map(workflowKey));
+      if (liveWorkflowKeys.size !== liveWorkflows.length || evidenceWorkflowKeys.size !== evidenceWorkflows.length || liveWorkflowKeys.size !== evidenceWorkflowKeys.size || [...liveWorkflowKeys].some((key) => !evidenceWorkflowKeys.has(key))) {
+        return { problems: [`${label}.workflows does not exactly match live workflow provenance`] };
+      }
+      if (!directChecksAreGreen(liveStatus, liveChecks, liveWorkflows) || !directChecksAreGreen(direct.status, evidenceChecks, evidenceWorkflows)) {
+        return { problems: [`${label}.status/check/workflow provenance is not green for commit ${commitSha}`] };
+      }
+      liveDirectIssues.push({
+        issue: liveIssue.number,
+        state: liveIssue.state,
+        commit: { sha: commitSha },
+        status: { sha: liveStatus.sha, state: liveStatus.state },
+        checks: liveChecks,
+        workflows: liveWorkflows,
+        source: direct.source,
+      });
     }
-    return { authenticated: true, repository, prs: livePrs, directIssues: liveDirectIssues };
+    return {
+      authenticated: true,
+      repository,
+      expectedBase,
+      prs: livePrs,
+      directIssues: liveDirectIssues,
+    };
   } catch (error) {
     return { unavailable: true, error: `live GitHub verification unavailable: ${error.message}` };
   }
@@ -366,9 +607,26 @@ function checkExactHeadCi(root, evidencePath) {
       } else if (direct.commit?.sha !== direct.status.sha) {
         problems.push(`${label}.status.sha must equal commit.sha`);
       }
-      if (direct.status?.state !== 'success') problems.push(`${label}.status.state must be success, got ${JSON.stringify(direct.status?.state)}`);
-      if (!isObject(direct.source) || !isNonEmptyString(direct.source.issue) || !isNonEmptyString(direct.source.commit) || !isNonEmptyString(direct.source.status)) {
-        problems.push(`${label}.source must identify independent issue, commit, and status API evidence`);
+      if (!['success', 'pending'].includes(direct.status?.state)) problems.push(`${label}.status.state must be success|pending, got ${JSON.stringify(direct.status?.state)}`);
+      if (!Array.isArray(direct.checks) || direct.checks.length === 0) {
+        problems.push(`${label}.checks must contain completed check-run provenance`);
+      } else {
+        for (const [checkIndex, check] of direct.checks.entries()) {
+          try { normalizeDirectCheck(check, direct.commit?.sha, `${label}.checks[${checkIndex}]`); } catch (error) { problems.push(error.message); }
+        }
+      }
+      if (!Array.isArray(direct.workflows) || direct.workflows.length === 0) {
+        problems.push(`${label}.workflows must contain completed workflow-run provenance`);
+      } else {
+        for (const [runIndex, run] of direct.workflows.entries()) {
+          try { normalizeWorkflowRun(run, direct.commit?.sha, `${label}.workflows[${runIndex}]`); } catch (error) { problems.push(error.message); }
+        }
+      }
+      if (!isObject(direct.source) || !isNonEmptyString(direct.source.repository)
+        || !isNonEmptyString(direct.source.issue) || !isNonEmptyString(direct.source.timeline)
+        || !isNonEmptyString(direct.source.commit) || !isNonEmptyString(direct.source.status)
+        || !isNonEmptyString(direct.source.checks) || !isNonEmptyString(direct.source.workflows)) {
+        problems.push(`${label}.source must identify repository, issue, timeline, commit, status, check, and workflow API evidence`);
       }
     }
   }
@@ -390,8 +648,14 @@ function isEscaped(text, index) {
 }
 
 function findClosingBracket(text, opening) {
+  let depth = 1;
   for (let index = opening + 1; index < text.length; index += 1) {
-    if (text[index] === ']' && !isEscaped(text, index)) return index;
+    if (isEscaped(text, index)) continue;
+    if (text[index] === '[') depth += 1;
+    if (text[index] === ']') {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
   }
   return -1;
 }
@@ -413,9 +677,16 @@ function referenceLabel(value) {
   return unescapeReferenceLabel(value).trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
-function markdownDestination(value) {
+function markdownDestination(value, label, problems) {
   const trimmed = value.trim();
-  return trimmed.startsWith('<') && trimmed.endsWith('>') ? trimmed.slice(1, -1) : trimmed;
+  const unwrapped = trimmed.startsWith('<') && trimmed.endsWith('>') ? trimmed.slice(1, -1) : trimmed;
+  const unescaped = unescapeReferenceLabel(unwrapped);
+  try {
+    return decodeURIComponent(unescaped);
+  } catch {
+    problems.push(`${label} contains malformed percent-escaped bytes`);
+    return null;
+  }
 }
 
 function isReferenceDefinitionPosition(text, opening, closing) {
@@ -557,7 +828,8 @@ function checkDocsLinks(root, docPaths) {
     }
     const targets = parseMarkdownDestinations(text, problems, docPath);
     for (const rawTarget of targets) {
-      const target = markdownDestination(rawTarget);
+      const target = markdownDestination(rawTarget, `${docPath}: link ${rawTarget}`, problems);
+      if (target === null) continue;
       if (/^[a-z][a-z0-9+.-]*:/i.test(target) || target.startsWith('#')) continue; // external or anchor
       if (target.startsWith('//')) continue;
       const cleaned = target.split('#')[0];
@@ -867,7 +1139,7 @@ function isAllowedReleaseSmokeParityDiff(root, mergeBase) {
   }
 }
 
-function checkReleaseSecurityParity(root, base, changedFilesArg) {
+function checkReleaseSecurityParity(root, base, changedFilesArg, authenticatedBase) {
   const id = 'releaseSecurityParity';
   const problems = [];
   const changeSet = listChangedFiles(root, base, changedFilesArg);
@@ -880,6 +1152,29 @@ function checkReleaseSecurityParity(root, base, changedFilesArg) {
     };
   }
   if (changeSet.inputError) problems.push(changeSet.inputError);
+  if (authenticatedBase) {
+    let expectedMergeBase = null;
+    try {
+      expectedMergeBase = execFileSync(
+        'git',
+        ['merge-base', authenticatedBase.sha, 'HEAD'],
+        { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+      ).trim();
+    } catch {
+      // A shallow checkout may not contain the authenticated base object.
+    }
+    if (!isSha(expectedMergeBase)) {
+      return {
+        id,
+        status: 'pending',
+        details: `authenticated ${authenticatedBase.ref} base ${authenticatedBase.sha} is unavailable locally; fetch it before proving release/security parity`,
+        problems: [`unable to resolve authenticated expected merge base from ${authenticatedBase.sha}`],
+      };
+    }
+    if (changeSet.mergeBase !== expectedMergeBase) {
+      problems.push(`selected base ${base} resolves to merge base ${changeSet.mergeBase ?? 'unavailable'}, but authenticated expected merge base is ${expectedMergeBase}`);
+    }
+  }
   const suppliedFiles = [...new Set(changeSet.files)];
   const exactFiles = changeSet.exactFiles ? [...new Set(changeSet.exactFiles)] : null;
   if (exactFiles) {
@@ -1125,7 +1420,7 @@ export function runVerification(args) {
     checkShippedMetrics(measured, terminalChildren),
     checkMigrationReceipts(receiptsDir),
     checkRetirementPolicy(receiptsDir),
-    checkReleaseSecurityParity(root, args.base, args.changedFiles),
+    checkReleaseSecurityParity(root, args.base, args.changedFiles, ciCheck.live?.expectedBase ?? null),
     childCheck,
     checkRemainingRisk(root),
   ];
