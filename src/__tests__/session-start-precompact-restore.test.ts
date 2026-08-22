@@ -22,6 +22,7 @@ vi.mock('fs', async () => {
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const SCRIPT_PATH = join(__dirname, '..', '..', 'scripts', 'session-start.mjs');
 const NODE = process.execPath;
+const SECURE_MARKER_SUPPORTED = process.platform === 'linux';
 
 function makeProject(root: string): string {
   const project = join(root, 'project');
@@ -182,9 +183,13 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
     );
 
     const context = parseContext(stdout);
-    expect(context).toContain('PRECOMPACT CHECKPOINT RESTORED');
-    expect(context).toContain('epic');
-    expect(context).toContain('2/3 steps done');
+    if (SECURE_MARKER_SUPPORTED) {
+      expect(context).toContain('PRECOMPACT CHECKPOINT RESTORED');
+      expect(context).toContain('epic');
+      expect(context).toContain('2/3 steps done');
+    } else {
+      expect(context).not.toContain('PRECOMPACT CHECKPOINT RESTORED');
+    }
   });
 
   it('does not restore on plain startup (no source)', () => {
@@ -251,7 +256,11 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
       project,
       home,
     );
-    expect(parseContext(first.stdout)).toContain('PRECOMPACT CHECKPOINT RESTORED');
+    if (SECURE_MARKER_SUPPORTED) {
+      expect(parseContext(first.stdout)).toContain('PRECOMPACT CHECKPOINT RESTORED');
+    } else {
+      expect(parseContext(first.stdout)).not.toContain('PRECOMPACT CHECKPOINT RESTORED');
+    }
 
     const second = runHookWithPlugin(
       {
@@ -315,9 +324,11 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
     );
 
     const markerPath = join(project, '.omc', 'state', 'checkpoints-restored', 'session-3730', 'restored.json');
-    expect(existsSync(markerPath)).toBe(true);
-    const marker = JSON.parse(readFileSync(markerPath, 'utf-8'));
-    expect(marker.checkpoint).toBe(file);
+    expect(existsSync(markerPath)).toBe(SECURE_MARKER_SUPPORTED);
+    if (SECURE_MARKER_SUPPORTED) {
+      const marker = JSON.parse(readFileSync(markerPath, 'utf-8'));
+      expect(marker.checkpoint).toBe(file);
+    }
   });
 
   it('does not restore for a session when the checkpoint belongs to another project', () => {
@@ -354,8 +365,13 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
     );
 
     // The restore helper is inline (scripts/lib), so restore works in a
-    // clean checkout with no build step and no plugin root.
-    expect(parseContext(stdout)).toContain('PRECOMPACT CHECKPOINT RESTORED');
+    // clean checkout with no build step and no plugin root when secure marker
+    // publication is available.
+    if (SECURE_MARKER_SUPPORTED) {
+      expect(parseContext(stdout)).toContain('PRECOMPACT CHECKPOINT RESTORED');
+    } else {
+      expect(parseContext(stdout)).not.toContain('PRECOMPACT CHECKPOINT RESTORED');
+    }
   });
   it('does not restore and does not write a marker for a traversal session ID (P1 security)', () => {
     writeCheckpoint(project, new Date().toISOString());
@@ -674,8 +690,9 @@ describe('precompact-restore helper parity (issue #3730 security)', () => {
     ] as const) {
       const mod = await import(`${pathToFileURL(helper).href}?${suffix}`);
       const result = mod.restorePreCompactCheckpoint(join(project, '.omc'), suffix);
-      expect(result).not.toBeNull();
-      expect(result?.marker_status).toBe('unsupported');
+      expect(result).toBeNull();
+      const repeated = mod.restorePreCompactCheckpoint(join(project, '.omc'), suffix);
+      expect(repeated).toBeNull();
       expect(existsSync(join(externalMarkerRoot, suffix, 'restored.json'))).toBe(false);
     }
   });
@@ -702,8 +719,7 @@ describe('precompact-restore helper parity (issue #3730 security)', () => {
       const before = readFileSync(externalMarker, 'utf-8');
       const mod = await import(`${pathToFileURL(helper).href}?${suffix}`);
       const result = mod.restorePreCompactCheckpoint(join(project, '.omc'), suffix);
-      expect(result).not.toBeNull();
-      expect(result?.marker_status).toBe('existing');
+      expect(result).toBeNull();
       expect(readFileSync(externalMarker, 'utf-8')).toBe(before);
     }
   });
@@ -736,8 +752,8 @@ describe('precompact-restore helper parity (issue #3730 security)', () => {
       try {
         const mod = await import(`${pathToFileURL(helper).href}?${suffix}`);
         const result = mod.restorePreCompactCheckpoint(join(project, '.omc'), suffix);
-        expect(result).not.toBeNull();
-        expect(result?.marker_status).toBe('failed');
+        expect(result).toBeNull();
+        expect(mod.restorePreCompactCheckpoint(join(project, '.omc'), suffix)).toBeNull();
         expect(swapped).toBe(true);
         expect(existsSync(join(externalMarkerParent, 'restored.json'))).toBe(false);
       } finally {
@@ -965,8 +981,12 @@ describe('precompact-restore helper parity (issue #3730 security)', () => {
     };
     const omcRoot = join(project, '.omc');
     const result = mod.restorePreCompactCheckpoint(omcRoot, 'valid-session-3730');
-    expect(result).not.toBeNull();
-    expect(result!.text).toContain('PRECOMPACT CHECKPOINT RESTORED');
-    expect(result!.marker_status).toBe(process.platform === 'linux' ? 'written' : 'unsupported');
+    if (process.platform === 'linux') {
+      expect(result).not.toBeNull();
+      expect(result!.text).toContain('PRECOMPACT CHECKPOINT RESTORED');
+      expect(result!.marker_status).toBe('written');
+    } else {
+      expect(result).toBeNull();
+    }
   });
 });

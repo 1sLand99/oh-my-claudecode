@@ -188,13 +188,17 @@ function getTemplatePackageRoot() {
 function getPluginAgentDirs() {
   const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
   const packageAgentsDir = path.join(getTemplatePackageRoot(), 'agents');
-  return pluginRoot ? [path.join(pluginRoot, 'agents'), packageAgentsDir] : [packageAgentsDir];
+  return pluginRoot
+    ? [path.join(pluginRoot, 'agents'), packageAgentsDir]
+    : [path.join(getClaudeConfigDir(), 'agents')];
 }
 
 function getPluginSkillsDirs() {
   const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
   const packageSkillsDir = path.join(getTemplatePackageRoot(), 'skills');
-  return pluginRoot ? [path.join(pluginRoot, 'skills'), packageSkillsDir] : [packageSkillsDir];
+  return pluginRoot
+    ? [path.join(pluginRoot, 'skills'), packageSkillsDir]
+    : [path.join(getClaudeConfigDir(), 'skills')];
 }
 
 /** Whether an agent definition resolves for the given identifier. */

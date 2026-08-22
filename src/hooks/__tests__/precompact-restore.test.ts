@@ -42,11 +42,14 @@ import {
 } from '../pre-compact/index.js';
 import {
   findLatestCheckpointForRestore,
+  restorePreCompactCheckpoint,
   formatCheckpointRestoreContext,
   markCheckpointRestored,
   CHECKPOINT_MAX_AGE_MS,
   CHECKPOINT_MAX_BYTES,
 } from '../pre-compact/restore.js';
+
+const SECURE_MARKER_SUPPORTED = process.platform === 'linux';
 
 // ============================================================================
 // Helpers
@@ -273,6 +276,20 @@ describe('PreCompact restore (issue #3730)', () => {
     }
   });
 
+  it('returns restore text only after marker publication and suppresses repeats', async () => {
+    writeCheckpoint(tempDir, new Date().toISOString());
+
+    const first = restorePreCompactCheckpoint(tempDir, 'marker-gated-session');
+    if (SECURE_MARKER_SUPPORTED) {
+      expect(first).not.toBeNull();
+      expect(first?.marker_status).toBe('written');
+      expect(first?.text).toContain('PRECOMPACT CHECKPOINT RESTORED');
+    } else {
+      expect(first).toBeNull();
+    }
+    expect(restorePreCompactCheckpoint(tempDir, 'marker-gated-session')).toBeNull();
+  });
+
   it('isolates restore per project directory', async () => {
     const dirB = createTempDir();
     try {
@@ -464,6 +481,20 @@ describe('PreCompact restore (issue #3730)', () => {
     expect(second.ok).toBe(true);
   });
 
+  it('does not expose restore text when marker publication is unsupported, including repeats', async () => {
+    writeCheckpoint(tempDir, new Date().toISOString());
+    const markerRoot = join(getOmcRootForTest(tempDir), 'state', 'checkpoints-restored');
+    const externalMarkerRoot = join(tempDir, 'external-unsupported-marker-root');
+    mkdirSync(externalMarkerRoot, { recursive: true });
+    symlinkSync(externalMarkerRoot, markerRoot, 'dir');
+
+    expect(restorePreCompactCheckpoint(tempDir, 'unsupported-marker-session')).toBeNull();
+    expect(restorePreCompactCheckpoint(tempDir, 'unsupported-marker-session')).toBeNull();
+    expect(
+      existsSync(join(externalMarkerRoot, 'unsupported-marker-session', 'restored.json')),
+    ).toBe(false);
+  });
+
   it('rejects a symlinked replay marker file without reading or overwriting the target', async () => {
     const checkpointPath = writeCheckpoint(tempDir, new Date().toISOString());
     const markerParent = join(
@@ -518,6 +549,7 @@ describe('PreCompact restore (issue #3730)', () => {
     });
     try {
       expect(markCheckpointRestored(tempDir, 'marker-parent-race', checkpointPath)).toBe('failed');
+      expect(restorePreCompactCheckpoint(tempDir, 'marker-parent-race')).toBeNull();
       expect(swapped).toBe(true);
       expect(existsSync(join(externalMarkerParent, 'restored.json'))).toBe(false);
     } finally {

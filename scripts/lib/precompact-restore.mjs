@@ -565,7 +565,14 @@ export function restorePreCompactCheckpoint(omcRoot, sessionId) {
       const marker_status = sessionId
         ? markCheckpointRestored(omcRoot, sessionId, candidate.path)
         : 'unsupported';
-      return { text, marker_status };
+      if (
+        marker_status === 'written' ||
+        (marker_status === 'existing' &&
+          isCheckpointRestored(omcRoot, sessionId, candidate.path))
+      ) {
+        return { text, marker_status };
+      }
+      return null;
     }
 
     return null;

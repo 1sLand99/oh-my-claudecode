@@ -49,6 +49,10 @@ export type RestoreCandidate = {
     detail?: string;
 };
 export type RestoreMarkerStatus = 'written' | 'existing' | 'unsupported' | 'failed' | 'invalid_session_id';
+export interface RestoredCheckpointContext {
+    text: string;
+    marker_status: RestoreMarkerStatus;
+}
 /**
  * Record that a checkpoint was restored for a session.
  * Session-scoped: different sessions may restore the same checkpoint.
@@ -61,6 +65,13 @@ export declare function markCheckpointRestored(directory: string, sessionId: str
  * Returns `ok: false` with a reason on every failure mode; never throws.
  */
 export declare function findLatestCheckpointForRestore(directory: string, sessionId: string): RestoreCandidate;
+/**
+ * Find and render the newest checkpoint only after replay-marker publication
+ * succeeds. An existing marker is accepted only when its securely read
+ * checkpoint path exactly matches the candidate; unsupported or failed marker
+ * publication never exposes checkpoint text to the caller.
+ */
+export declare function restorePreCompactCheckpoint(directory: string, sessionId: string): RestoredCheckpointContext | null;
 /**
  * Format a restored checkpoint as bounded, advisory SessionStart context.
  *

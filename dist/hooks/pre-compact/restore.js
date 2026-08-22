@@ -660,6 +660,33 @@ export function findLatestCheckpointForRestore(directory, sessionId) {
         detail: `all ${scored.length} checkpoint(s) already restored for session ${sessionId}`,
     };
 }
+/**
+ * Find and render the newest checkpoint only after replay-marker publication
+ * succeeds. An existing marker is accepted only when its securely read
+ * checkpoint path exactly matches the candidate; unsupported or failed marker
+ * publication never exposes checkpoint text to the caller.
+ */
+export function restorePreCompactCheckpoint(directory, sessionId) {
+    try {
+        const candidate = findLatestCheckpointForRestore(directory, sessionId);
+        if (!candidate.ok) {
+            return null;
+        }
+        const marker_status = markCheckpointRestored(directory, sessionId, candidate.path);
+        if (marker_status !== 'written' &&
+            !(marker_status === 'existing' &&
+                isCheckpointRestored(directory, sessionId, candidate.path))) {
+            return null;
+        }
+        return {
+            text: formatCheckpointRestoreContext(candidate.checkpoint, candidate.path),
+            marker_status,
+        };
+    }
+    catch {
+        return null;
+    }
+}
 // ============================================================================
 // Restore context formatting
 // ============================================================================

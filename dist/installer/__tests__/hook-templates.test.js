@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { execFileSync } from 'child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'fs';
 import { basename, dirname, join } from 'path';
 import { tmpdir } from 'os';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -748,6 +748,67 @@ describe('pre-tool-use packaged artifacts', () => {
         }
         finally {
             rmSync(tempDir, { recursive: true, force: true });
+            rmSync(fakeHome, { recursive: true, force: true });
+        }
+    });
+    it('resolves bundled skills and installed agents from the standalone config layout', () => {
+        const sourceHookPath = join(packageRoot, 'templates', 'hooks', 'pre-tool-use.mjs');
+        const sourceConfigHelperPath = join(packageRoot, 'templates', 'hooks', 'lib', 'config-dir.mjs');
+        const sourceStdinHelperPath = join(packageRoot, 'templates', 'hooks', 'lib', 'stdin.mjs');
+        const sourceStateRootHelperPath = join(packageRoot, 'templates', 'hooks', 'lib', 'state-root.mjs');
+        const configDir = mkdtempSync(join(tmpdir(), 'pre-tool-installed-layout-'));
+        const fakeHome = mkdtempSync(join(tmpdir(), 'pre-tool-installed-home-'));
+        const installedHookDir = join(configDir, 'hooks');
+        const installedHookPath = join(installedHookDir, 'pre-tool-use.mjs');
+        const installedSkillsDir = join(configDir, 'skills', 'ai-slop-cleaner');
+        const installedAgentsDir = join(configDir, 'agents');
+        mkdirSync(installedHookDir, { recursive: true });
+        copyFileSync(sourceHookPath, installedHookPath);
+        mkdirSync(join(installedHookDir, 'lib'), { recursive: true });
+        copyFileSync(sourceConfigHelperPath, join(installedHookDir, 'lib', 'config-dir.mjs'));
+        copyFileSync(sourceStdinHelperPath, join(installedHookDir, 'lib', 'stdin.mjs'));
+        copyFileSync(sourceStateRootHelperPath, join(installedHookDir, 'lib', 'state-root.mjs'));
+        mkdirSync(installedSkillsDir, { recursive: true });
+        writeFileSync(join(installedSkillsDir, 'SKILL.md'), '---\nname: ai-slop-cleaner\n---\nBundled skill.\n');
+        mkdirSync(installedAgentsDir, { recursive: true });
+        writeFileSync(join(installedAgentsDir, 'executor.md'), '---\nname: executor\n---\nInstalled agent.\n');
+        try {
+            const env = {
+                CLAUDE_CONFIG_DIR: configDir,
+                CLAUDE_PLUGIN_ROOT: undefined,
+                HOME: fakeHome,
+                USER_TYPE: '',
+            };
+            const denied = runPreToolPayload(installedHookPath, {
+                tool_name: 'Task',
+                cwd: configDir,
+                directory: configDir,
+                tool_input: {
+                    subagent_type: 'oh-my-claudecode:ai-slop-cleaner',
+                    description: 'Run the cleaner',
+                    prompt: 'Clean the changed files',
+                },
+            }, env);
+            const deniedHook = denied.hookSpecificOutput;
+            expect(denied.continue).toBe(true);
+            expect(deniedHook.permissionDecision).toBe('deny');
+            expect(String(deniedHook.permissionDecisionReason ?? '')).toContain('Skill(skill="oh-my-claudecode:ai-slop-cleaner")');
+            const allowed = runPreToolPayload(installedHookPath, {
+                tool_name: 'Task',
+                cwd: configDir,
+                directory: configDir,
+                tool_input: {
+                    subagent_type: 'oh-my-claudecode:executor',
+                    description: 'Implement the change',
+                    prompt: 'Implement the requested change',
+                },
+            }, env);
+            expect(allowed.continue).toBe(true);
+            expect(allowed.hookSpecificOutput?.permissionDecision).toBeUndefined();
+            expect(JSON.stringify(allowed)).not.toContain('[SKILL vs AGENT]');
+        }
+        finally {
+            rmSync(configDir, { recursive: true, force: true });
             rmSync(fakeHome, { recursive: true, force: true });
         }
     });

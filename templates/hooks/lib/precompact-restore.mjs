@@ -296,7 +296,6 @@ function resolveContainedRegularPath(context, omcRoot, candidatePath) {
 
     const resolvedPath = realpathSync(candidatePath);
     if (!isPathWithin(context.checkpoints.path, resolvedPath)) return null;
-
     if (!isStableCheckpointContext(omcRoot, context)) return null;
 
     const after = lstatSync(candidatePath);
@@ -315,7 +314,7 @@ function resolveContainedRegularPath(context, omcRoot, candidatePath) {
     if (
       !resolvedStat.isFile() ||
       resolvedStat.isSymbolicLink() ||
-      resolvedStat.nlink !== 1 ||
+      resolvedStat.nlink > 1 ||
       resolvedStat.dev !== after.dev ||
       resolvedStat.ino !== after.ino
     ) return null;
@@ -566,7 +565,14 @@ export function restorePreCompactCheckpoint(omcRoot, sessionId) {
       const marker_status = sessionId
         ? markCheckpointRestored(omcRoot, sessionId, candidate.path)
         : 'unsupported';
-      return { text, marker_status };
+      if (
+        marker_status === 'written' ||
+        (marker_status === 'existing' &&
+          isCheckpointRestored(omcRoot, sessionId, candidate.path))
+      ) {
+        return { text, marker_status };
+      }
+      return null;
     }
 
     return null;
