@@ -77,17 +77,18 @@ function collectPr(issue, number, repository) {
   const childIssue = ghJson(['issue', 'view', String(issue), '--json', 'number,state']);
   if (childIssue.number !== issue || childIssue.state !== 'CLOSED') fail(`expected child issue #${issue} is not live and CLOSED while collecting PR #${number}`);
   const pr = ghJson(['api', `repos/${repository}/pulls/${number}`, '--header', 'Accept: application/vnd.github+json']);
-  const rollup = ghJson(['pr', 'view', String(number), '--json', 'number,statusCheckRollup']);
   if (pr.number !== number) fail(`gh returned PR #${pr.number} while collecting expected PR #${number} for child issue #${issue}`);
   if (pr.state !== 'closed' || !pr.merged_at) fail(`expected PR #${number} for child issue #${issue} is not merged (state: ${pr.state ?? 'missing'})`);
   if (typeof pr.head?.sha !== 'string' || !/^[0-9a-f]{40}$/.test(pr.head.sha)) {
     fail(`PR #${number} for child issue #${issue} has no valid exact head SHA`);
   }
-  const checks = [...new Map((rollup.statusCheckRollup ?? [])
-    .filter((c) => (c.workflowName || c.context || c.name) && (c.conclusion || c.status))
+  const checkRuns = ghPaginated(`repos/${repository}/commits/${pr.head.sha}/check-runs`, 'check_runs');
+  const statuses = ghPaginated(`repos/${repository}/commits/${pr.head.sha}/statuses`, 'statuses');
+  const checks = [...new Map([...checkRuns, ...statuses]
+    .filter((c) => (c.workflowName || c.context || c.name) && (c.conclusion || c.state || c.status))
     .map((c) => ({
       name: c.workflowName ? `${c.workflowName} / ${c.name}` : (c.context ?? c.name),
-      conclusion: String(c.conclusion ?? c.status).toLowerCase(),
+      conclusion: String(c.conclusion ?? c.state ?? c.status).toLowerCase(),
       sha: pr.head.sha,
     }))
     .map((check) => [`${check.name}\u0000${check.conclusion}\u0000${check.sha}`, check])).values()];
@@ -119,13 +120,9 @@ function collectDirectIssue(issue, repository) {
   if (issueData.number !== issue) fail(`gh returned issue #${issueData.number} while collecting expected issue #${issue}`);
   if (issueData.state !== 'CLOSED') fail(`expected direct issue #${issue} is not closed (state: ${issueData.state ?? 'missing'})`);
 
-  const timeline = ghJson([
-    'api',
-    `repos/${repository}/issues/${issue}/timeline?per_page=100`,
-    '--header',
-    'Accept: application/vnd.github+json',
-  ]);
-  const commitEvent = (Array.isArray(timeline) ? timeline : [])
+  const timelinePath = `repos/${repository}/issues/${issue}/timeline`;
+  const timeline = ghPaginated(timelinePath, 'timeline');
+  const commitEvent = timeline
     .map((event) => ({
       eventType: event.event,
       sha: event.event === 'referenced' ? event.commit_id : null,
@@ -145,6 +142,16 @@ function collectDirectIssue(issue, repository) {
     'Accept: application/vnd.github+json',
   ]);
   if (status.sha !== commitEvent.sha) fail(`direct issue #${issue} status SHA does not match commit ${commitEvent.sha}`);
+
+  const statusesPath = `${commitPath}/statuses`;
+  const statuses = ghPaginated(statusesPath, 'statuses').map((legacy) => ({
+    context: legacy.context,
+    state: String(legacy.state ?? '').toLowerCase(),
+    sha: legacy.sha,
+  }));
+  if (statuses.some((legacy) => legacy.sha !== commitEvent.sha || legacy.state !== 'success' || typeof legacy.context !== 'string' || legacy.context.length === 0)) {
+    fail(`direct issue #${issue} commit ${commitEvent.sha} has unresolved or mismatched legacy status contexts`);
+  }
 
   const checksPath = `${commitPath}/check-runs`;
   const checks = ghPaginated(checksPath, 'check_runs').map((check) => ({
@@ -169,7 +176,7 @@ function collectDirectIssue(issue, repository) {
   if (workflows.length === 0 || workflows.some((run) => run.head_sha !== commitEvent.sha || run.status !== 'completed' || !['success', 'skipped', 'neutral'].includes(run.conclusion))) {
     fail(`direct issue #${issue} commit ${commitEvent.sha} has incomplete, non-green, or mismatched workflow runs`);
   }
-  if (status.state !== 'success' && status.state !== 'pending') {
+  if (status.state !== 'success' && !(status.state === 'pending' && statuses.length === 0)) {
     fail(`direct issue #${issue} commit ${commitEvent.sha} is not green (status: ${status.state ?? 'missing'})`);
   }
   return {
@@ -177,6 +184,7 @@ function collectDirectIssue(issue, repository) {
     state: issueData.state,
     commit: { sha: commitEvent.sha },
     status: { sha: status.sha, state: status.state },
+    statuses,
     checks,
     workflows,
     source: {
@@ -187,6 +195,7 @@ function collectDirectIssue(issue, repository) {
       commitId: commitEvent.sha,
       commit: commitPath,
       status: `${commitPath}/status`,
+      statuses: statusesPath,
       checks: checksPath,
       workflows: workflowsPath,
     },

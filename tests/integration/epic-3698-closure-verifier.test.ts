@@ -107,15 +107,17 @@ function installFakeGh(root: string, data: unknown) {
     '  const pull = path.match(/^repos\\/[^/]+\\/[^/]+\\/pulls\\/(\\d+)$/);',
     '  const timeline = path.match(/^repos\\/[^/]+\\/[^/]+\\/issues\\/(\\d+)\\/timeline/);',
     '  const status = path.match(/^repos\\/[^/]+\\/[^/]+\\/commits\\/([0-9a-f]{40})\\/status$/);',
+    '  const statuses = path.match(/^repos\\/[^/]+\\/[^/]+\\/commits\\/([0-9a-f]{40})\\/statuses/);',
     '  const checks = path.match(/^repos\\/[^/]+\\/[^/]+\\/commits\\/([0-9a-f]{40})\\/check-runs/);',
-    '  const commitPulls = path.match(/^repos\\/[^/]+\\/[^/]+\\/commits\\/([0-9a-f]{40})\\/pulls$/);',
+    '  const commitPulls = path.match(/^repos\\/[^/]+\\/[^/]+\\/commits\\/([0-9a-f]{40})\\/pulls/);',
     '  const commit = path.match(/^repos\\/[^/]+\\/[^/]+\\/commits\\/([0-9a-f]{40})$/);',
     '  const workflows = path.match(/^repos\\/[^/]+\\/[^/]+\\/actions\\/runs/);',
     '  if (pull) { const pr = data.prs[pull[1]]; out({ number: pr.number, state: pr.state === "MERGED" ? "closed" : "open", merged_at: pr.state === "MERGED" ? "2026-08-12T00:00:00Z" : null, head: { sha: pr.headRefOid }, merge_commit_sha: pr.mergeCommit.oid, base: { ref: pr.baseRefName, sha: pr.baseRefOid } }); }',
-    '  else if (timeline) out(data.timelines[timeline[1]] ?? []);',
+    '  else if (timeline) out(pageRecords(data.timelines[timeline[1]] ?? []));',
     '  else if (status) out(data.statuses[status[1]]);',
+    '  else if (statuses) out(pageRecords(data.legacyStatuses?.[statuses[1]] ?? []));',
     '  else if (checks) { const values = data.checkRuns[checks[1]] ?? []; out({ total_count: values.length, check_runs: pageRecords(values) }); }',
-    '  else if (commitPulls) out(data.commitPulls?.[commitPulls[1]] ?? []);',
+    '  else if (commitPulls) out(pageRecords(data.commitPulls?.[commitPulls[1]] ?? []));',
     '  else if (commit) out(data.commits[commit[1]]);',
     '  else if (workflows) { const values = data.workflowRuns ?? []; out({ total_count: values.length, workflow_runs: pageRecords(values) }); }',
     "  else { process.stderr.write('unknown fake gh api: ' + path + '\\n'); process.exit(2); }",
@@ -223,6 +225,7 @@ function buildCompleteFixture(root: string) {
         state: 'CLOSED',
         commit: { sha: 'b'.repeat(40) },
         status: { sha: 'b'.repeat(40), state: 'success' },
+        statuses: [],
         checks: [{ name: 'direct-check', status: 'completed', conclusion: 'success', head_sha: 'b'.repeat(40) }],
         workflows: [{ id: 1, name: 'Direct CI', path: '.github/workflows/direct.yml', status: 'completed', conclusion: 'success', head_sha: 'b'.repeat(40) }],
         source: {
@@ -233,6 +236,7 @@ function buildCompleteFixture(root: string) {
           commitId: 'b'.repeat(40),
           commit: `repos/fixture/example/commits/${'b'.repeat(40)}`,
           status: `repos/fixture/example/commits/${'b'.repeat(40)}/status`,
+          statuses: `repos/fixture/example/commits/${'b'.repeat(40)}/statuses`,
           checks: `repos/fixture/example/commits/${'b'.repeat(40)}/check-runs`,
           workflows: 'repos/fixture/example/actions/runs',
         },
@@ -270,7 +274,14 @@ function buildCompleteFixture(root: string) {
     timelines: { '3709': [{ event: 'referenced', commit_id: 'b'.repeat(40) }] },
     commits: { ['b'.repeat(40)]: { sha: 'b'.repeat(40), repository: { full_name: 'fixture/example' } } },
     statuses: { ['b'.repeat(40)]: { sha: 'b'.repeat(40), state: 'success' } },
-    checkRuns: { ['b'.repeat(40)]: [{ name: 'direct-check', status: 'completed', conclusion: 'success', head_sha: 'b'.repeat(40) }] },
+    checkRuns: {
+      [head]: [
+        { name: 'CI / Test', status: 'completed', conclusion: 'success', head_sha: head },
+        { name: 'CI / Lint', status: 'completed', conclusion: 'skipped', head_sha: head },
+      ],
+      ['b'.repeat(40)]: [{ name: 'direct-check', status: 'completed', conclusion: 'success', head_sha: 'b'.repeat(40) }],
+    },
+    legacyStatuses: { [head]: [], ['b'.repeat(40)]: [] },
     commitPulls: {},
     workflowRuns: [{ id: 1, name: 'Direct CI', path: '.github/workflows/direct.yml', status: 'completed', conclusion: 'success', head_sha: 'b'.repeat(40) }],
   });
@@ -491,6 +502,7 @@ describe('epic-3698 closure verifier (#3712)', () => {
     direct.source.commitId = forged;
     direct.source.commit = `repos/fixture/example/commits/${forged}`;
     direct.source.status = `repos/fixture/example/commits/${forged}/status`;
+    direct.source.statuses = `repos/fixture/example/commits/${forged}/statuses`;
     direct.source.checks = `repos/fixture/example/commits/${forged}/check-runs`;
     writeJson(evidencePath, evidence);
     writeJson(join(fixture, 'receipts', 'epic-3698', 'child-3709-terminal.receipt.json'), {
@@ -536,7 +548,12 @@ describe('epic-3698 closure verifier (#3712)', () => {
     buildCompleteFixture(fixture);
     const ghFixturePath = join(fixture, 'gh-fixture.json');
     const ghFixture = JSON.parse(readFileSync(ghFixturePath, 'utf8'));
-    ghFixture.prs['3721'].statusCheckRollup.push({ name: 'Failed attempt', status: 'COMPLETED', conclusion: 'FAILURE' });
+    ghFixture.checkRuns['a'.repeat(40)].push({
+      name: 'Failed attempt',
+      status: 'completed',
+      conclusion: 'failure',
+      head_sha: 'a'.repeat(40),
+    });
     writeJson(ghFixturePath, ghFixture);
     const run = runVerifier([
       '--root', fixture,
@@ -571,6 +588,67 @@ describe('epic-3698 closure verifier (#3712)', () => {
     ]);
     expect(run.status).toBe(1);
     expect(check(run, 'exactHeadCi').problems.join(' ')).toContain('liveChecks[100].conclusion');
+  });
+
+  it('rejects pending legacy status contexts even when check runs and workflows are green', () => {
+    buildCompleteFixture(fixture);
+    const sha = 'b'.repeat(40);
+    const evidencePath = join(fixture, 'ci-evidence.json');
+    const evidence = JSON.parse(readFileSync(evidencePath, 'utf8'));
+    evidence.payload.directIssues[0].status.state = 'pending';
+    evidence.payload.directIssues[0].statuses = [{ context: 'legacy-required', state: 'pending', sha }];
+    writeJson(evidencePath, evidence);
+    const ghFixturePath = join(fixture, 'gh-fixture.json');
+    const ghFixture = JSON.parse(readFileSync(ghFixturePath, 'utf8'));
+    ghFixture.statuses[sha].state = 'pending';
+    ghFixture.legacyStatuses[sha] = [{ context: 'legacy-required', state: 'pending', sha }];
+    writeJson(ghFixturePath, ghFixture);
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', evidencePath,
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'exactHeadCi').problems.join(' ')).toContain('statuses[0].state must be success');
+  });
+
+  it('rejects a failed child PR check beyond the first 100 records', () => {
+    buildCompleteFixture(fixture);
+    const head = 'a'.repeat(40);
+    const ghFixturePath = join(fixture, 'gh-fixture.json');
+    const ghFixture = JSON.parse(readFileSync(ghFixturePath, 'utf8'));
+    ghFixture.checkRuns[head] = Array.from({ length: 100 }, (_, index) => ({
+      name: `green-${index}`,
+      status: 'completed',
+      conclusion: 'success',
+      head_sha: head,
+    }));
+    ghFixture.checkRuns[head].push({ name: 'late-pr-failure', status: 'completed', conclusion: 'failure', head_sha: head });
+    writeJson(ghFixturePath, ghFixture);
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(run.status).toBe(1);
+    expect(check(run, 'exactHeadCi').problems.join(' ')).toContain('liveChecks[100].conclusion');
+  });
+
+  it('finds direct issue referenced.commit_id after the first timeline page', () => {
+    buildCompleteFixture(fixture);
+    const ghFixturePath = join(fixture, 'gh-fixture.json');
+    const ghFixture = JSON.parse(readFileSync(ghFixturePath, 'utf8'));
+    ghFixture.timelines['3709'] = [
+      ...Array.from({ length: 100 }, () => ({ event: 'commented' })),
+      { event: 'referenced', commit_id: 'b'.repeat(40) },
+    ];
+    writeJson(ghFixturePath, ghFixture);
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--changed-files', join(fixture, 'changed-files.txt'),
+    ]);
+    expect(check(run, 'exactHeadCi').status).toBe('pass');
   });
 
   it('rejects HEAD as a valid-but-wrong base against the authenticated expected merge base', () => {
@@ -621,6 +699,30 @@ describe('epic-3698 closure verifier (#3712)', () => {
     expect(run.status).toBe(2);
     expect(check(run, 'releaseSecurityParity').status).toBe('pending');
     expect(check(run, 'releaseSecurityParity').problems.join(' ')).toContain('authenticated expected merge base unavailable');
+  });
+
+  it('derives the authenticated exact-head PR base from a later associated-pulls page', () => {
+    buildCompleteFixture(fixture);
+    writeFileSync(join(fixture, 'tracked.txt'), 'base\n');
+    commitFixture(fixture, 'authenticated base');
+    const authenticatedBase = gitFixture(fixture, ['rev-parse', 'HEAD']);
+    writeFileSync(join(fixture, 'tracked.txt'), 'head\n');
+    commitFixtureHead(fixture, 'closure head');
+    const closureHead = gitFixture(fixture, ['rev-parse', 'HEAD']);
+    const ghFixturePath = join(fixture, 'gh-fixture.json');
+    const ghFixture = JSON.parse(readFileSync(ghFixturePath, 'utf8'));
+    ghFixture.commitPulls[closureHead] = [
+      ...Array.from({ length: 100 }, () => ({ state: 'closed', head: { sha: closureHead }, base: { ref: 'other', sha: closureHead } })),
+      { state: 'open', head: { sha: closureHead }, base: { ref: 'main', sha: authenticatedBase } },
+    ];
+    writeJson(ghFixturePath, ghFixture);
+    const run = runVerifier([
+      '--root', fixture,
+      '--evidence', join(fixture, 'ci-evidence.json'),
+      '--base', 'HEAD',
+    ], fixture, { bindHeadBase: false });
+    expect(run.status).toBe(1);
+    expect(check(run, 'releaseSecurityParity').problems.join(' ')).toContain('authenticated expected merge base');
   });
 
   it('does not let --changed-files bypass package.json version-diff inspection', () => {
