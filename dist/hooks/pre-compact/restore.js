@@ -181,8 +181,8 @@ export function markCheckpointRestored(directory, sessionId, checkpointPath, che
                     stale.nlink === 1 &&
                     Date.now() - stale.mtimeMs > RESTORE_LOCK_STALE_MS &&
                     isStableRestoreMarkerTarget(target, parentFd)) {
-                    unlinkSync(lockPath);
-                    continue;
+                    if (reclaimStaleLock(lockPath, stale, parentFd))
+                        continue;
                 }
                 return 'contended';
             }
@@ -762,6 +762,33 @@ function isWithinAgeBound(createdAt) {
 }
 function compareCheckpointNames(a, b) {
     return Buffer.compare(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'));
+}
+function reclaimStaleLock(lockPath, stale, parentFd) {
+    const quarantinePath = descriptorChildPath(parentFd, `.${basename(lockPath)}.reclaim-${randomUUID()}`);
+    if (quarantinePath === null)
+        return false;
+    try {
+        renameSync(lockPath, quarantinePath);
+        const moved = lstatSync(quarantinePath);
+        if (moved.dev !== stale.dev || moved.ino !== stale.ino ||
+            moved.ctimeMs !== stale.ctimeMs || moved.mtimeMs !== stale.mtimeMs || moved.size !== stale.size) {
+            try {
+                linkSync(quarantinePath, lockPath);
+            }
+            catch { /* preserve any newer pathname owner */ }
+            unlinkSync(quarantinePath);
+            return false;
+        }
+        unlinkSync(quarantinePath);
+        return true;
+    }
+    catch {
+        try {
+            unlinkSync(quarantinePath);
+        }
+        catch { /* ignore */ }
+        return false;
+    }
 }
 function legacyCheckpointMtime(directory, checkpointPath) {
     try {

@@ -892,6 +892,39 @@ describe('PreCompact restore (issue #3730)', () => {
     utimesSync(newerPath, newerTime, newerTime);
     expect(restorePreCompactCheckpoint(tempDir, 'legacy-marker-order')?.text).toContain('checkpoint-a.json');
   });
+
+  it('does not unlink a replacement lock after inspecting a stale inode', () => {
+    if (!SECURE_MARKER_SUPPORTED) return;
+    const createdAt = new Date().toISOString();
+    const checkpoint = writeCheckpoint(tempDir, createdAt, { session_id: 'stale-lock-cas' });
+    const markerParent = join(getOmcRootForTest(tempDir), 'state', 'checkpoints-restored', 'stale-lock-cas');
+    mkdirSync(markerParent, { recursive: true });
+    const lockPath = join(markerParent, '.restored.json.lock');
+    writeFileSync(lockPath, 'stale');
+    const staleTime = new Date(Date.now() - 60_000);
+    utimesSync(lockPath, staleTime, staleTime);
+
+    const originalRenameSync = nodeFs.renameSync;
+    let replacementInode = 0;
+    let replaced = false;
+    const renameSpy = vi.spyOn(nodeFs, 'renameSync').mockImplementation((source, destination) => {
+      if (!replaced && String(source).endsWith('/.restored.json.lock')) {
+        replaced = true;
+        unlinkSync(lockPath);
+        writeFileSync(lockPath, 'live');
+        replacementInode = statSync(lockPath).ino;
+      }
+      return originalRenameSync(source, destination);
+    });
+    try {
+      expect(markCheckpointRestored(tempDir, 'stale-lock-cas', checkpoint, createdAt, statSync(checkpoint).mtimeMs)).toBe('contended');
+      expect(replaced).toBe(true);
+      expect(statSync(lockPath).ino).toBe(replacementInode);
+      expect(readFileSync(lockPath, 'utf8')).toBe('live');
+    } finally {
+      renameSpy.mockRestore();
+    }
+  });
 });
 
 // ============================================================================

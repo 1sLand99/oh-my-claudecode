@@ -901,6 +901,8 @@ function maskCommonMarkCodeBlocks(text) {
   const parts = text.split(/(\r\n?|\n)/);
   let fence = null;
   const listIndents = [];
+  const listItemIds = [];
+  let nextListItemId = 1;
   for (let partIndex = 0; partIndex < parts.length; partIndex += 2) {
     const line = parts[partIndex];
     if (line.trim() === '') {
@@ -918,7 +920,7 @@ function maskCommonMarkCodeBlocks(text) {
       contentOffset += baseIndex;
       content = content.slice(baseIndex);
       baseIndent = activeListIndent;
-      containerChain.push(...Array(listIndents.length).fill('list'));
+      containerChain.push(...listItemIds.map((id) => `list:${id}`));
     } else {
       const initialQuote = blockQuotePrefix(content);
       quoteDepth += initialQuote.depth;
@@ -927,9 +929,12 @@ function maskCommonMarkCodeBlocks(text) {
       content = content.slice(initialQuote.offset);
 
       const leading = indentation(content);
-      while (listIndents.length > 0 && leading.columns < listIndents[listIndents.length - 1]) listIndents.pop();
+      while (listIndents.length > 0 && leading.columns < listIndents[listIndents.length - 1]) {
+        listIndents.pop();
+        listItemIds.pop();
+      }
       baseIndent = listIndents[listIndents.length - 1] ?? 0;
-      containerChain.push(...Array(listIndents.length).fill('list'));
+      containerChain.push(...listItemIds.map((id) => `list:${id}`));
       if (baseIndent > 0) {
         const baseIndex = indexAfterColumns(content, baseIndent);
         if (baseIndex > 0) {
@@ -950,7 +955,10 @@ function maskCommonMarkCodeBlocks(text) {
         const markerColumns = columnWidth(list[0]);
         const parentIndent = listIndents[listIndents.length - 1] ?? baseIndent;
         listIndents.push(parentIndent + markerColumns);
-        containerChain.push('list');
+        const itemId = nextListItemId;
+        nextListItemId += 1;
+        listItemIds.push(itemId);
+        containerChain.push(`list:${itemId}`);
         contentOffset += list[0].length;
         content = content.slice(list[0].length);
       }
@@ -1001,12 +1009,12 @@ function maskInlineCodeAndExtractHtml(text, problems, docPath) {
   const targets = [];
   const urlAttributes = new Set(['href', 'src', 'action', 'formaction', 'poster', 'cite', 'data', 'srcset']);
   for (let opening = 0; opening < chars.length; opening += 1) {
-    if (chars[opening] === '`') {
+    if (chars[opening] === '`' && !isEscaped(text, opening)) {
       let runLength = 1;
       while (chars[opening + runLength] === '`') runLength += 1;
       let closing = opening + runLength;
       while (closing < chars.length) {
-        if (chars[closing] !== '`') {
+        if (chars[closing] !== '`' || isEscaped(text, closing)) {
           closing += 1;
           continue;
         }
