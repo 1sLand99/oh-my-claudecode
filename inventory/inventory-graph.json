@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "0eb316a55592846b14daf5dd5e749c66cad9d80e",
-    "sourceSha256": "558f23cb3d61aa8a2e9cfc2f7eb210a7cff222cbeeae7189cd627896ed216476",
+    "head": "2ccdc1f6c0f680491f62e8be51405d33fc168b85",
+    "sourceSha256": "4e1ef675f62a574a547f3992b7ff13b9cb7abde0a1b07c745c2c3e469cb43932",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "0eb316a55592846b14daf5dd5e749c66cad9d80e",
-  "sourceSha256": "558f23cb3d61aa8a2e9cfc2f7eb210a7cff222cbeeae7189cd627896ed216476",
+  "head": "2ccdc1f6c0f680491f62e8be51405d33fc168b85",
+  "sourceSha256": "4e1ef675f62a574a547f3992b7ff13b9cb7abde0a1b07c745c2c3e469cb43932",
   "counts": {
     "public": {
       "skills": 31,
@@ -23,13 +23,13 @@
       "total": 78
     },
     "internal": {
-      "hookFiles": 306,
+      "hookFiles": 307,
       "featureFiles": 68,
       "toolFiles": 56,
       "libFiles": 34,
       "templateHooks": 19,
-      "srcFiles": 1275,
-      "total": 1294
+      "srcFiles": 1277,
+      "total": 1296
     },
     "generated": {
       "distFiles": 4986,
@@ -37,14 +37,14 @@
       "total": 4995
     },
     "prompt": {
-      "promptLikeFiles": 62
+      "promptLikeFiles": 63
     },
     "skills": 31,
     "commands": 21,
-    "hookFiles": 306,
+    "hookFiles": 307,
     "workflows": 8,
     "agentDefinitions": 18,
-    "promptLikeFiles": 62
+    "promptLikeFiles": 63
   },
   "public": {
     "skills": [
@@ -153,6 +153,7 @@
       "src/hooks/__tests__/prompt-prerequisites.test.ts",
       "src/hooks/__tests__/stop-hook-openclaw-cooldown.test.ts",
       "src/hooks/__tests__/team-dispatch-cooldown.test.ts",
+      "src/hooks/__tests__/team-dispatch-prompt-readiness.test.ts",
       "src/hooks/__tests__/team-worker-heartbeat.test.ts",
       "src/hooks/__tests__/team-worker-idle-outstanding.test.ts",
       "src/hooks/__tests__/workflow-drift-guard-script.test.ts",
@@ -671,6 +672,7 @@
       "src/features/model-routing/prompts/opus.ts",
       "src/features/model-routing/prompts/sonnet.ts",
       "src/hooks/__tests__/prompt-prerequisites.test.ts",
+      "src/hooks/__tests__/team-dispatch-prompt-readiness.test.ts",
       "src/hooks/autopilot/__tests__/prompts.test.ts",
       "src/hooks/autopilot/prompts.ts",
       "src/hooks/persistent-mode/__tests__/prompt-truncation.test.ts",
@@ -5815,6 +5817,7 @@
       "src/hooks/__tests__/prompt-prerequisites.test.ts",
       "src/hooks/__tests__/stop-hook-openclaw-cooldown.test.ts",
       "src/hooks/__tests__/team-dispatch-cooldown.test.ts",
+      "src/hooks/__tests__/team-dispatch-prompt-readiness.test.ts",
       "src/hooks/__tests__/team-worker-heartbeat.test.ts",
       "src/hooks/__tests__/team-worker-idle-outstanding.test.ts",
       "src/hooks/__tests__/workflow-drift-guard-script.test.ts",
@@ -6158,6 +6161,7 @@
       "src/features/model-routing/prompts/opus.ts",
       "src/features/model-routing/prompts/sonnet.ts",
       "src/hooks/__tests__/prompt-prerequisites.test.ts",
+      "src/hooks/__tests__/team-dispatch-prompt-readiness.test.ts",
       "src/hooks/autopilot/__tests__/prompts.test.ts",
       "src/hooks/autopilot/prompts.ts",
       "src/hooks/persistent-mode/__tests__/prompt-truncation.test.ts",
@@ -36126,6 +36130,11 @@
         "path": "src/hooks/__tests__/team-dispatch-cooldown.test.ts"
       },
       {
+        "id": "src/hooks/__tests__/team-dispatch-prompt-readiness.test.ts",
+        "kind": "hook",
+        "path": "src/hooks/__tests__/team-dispatch-prompt-readiness.test.ts"
+      },
+      {
         "id": "src/hooks/__tests__/team-worker-heartbeat.test.ts",
         "kind": "hook",
         "path": "src/hooks/__tests__/team-worker-heartbeat.test.ts"
@@ -39474,6 +39483,11 @@
         "id": "src/team/outbox-reader.ts",
         "kind": "src",
         "path": "src/team/outbox-reader.ts"
+      },
+      {
+        "id": "src/team/pane-readiness.ts",
+        "kind": "src",
+        "path": "src/team/pane-readiness.ts"
       },
       {
         "id": "src/team/permissions.ts",
@@ -53123,6 +53137,36 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/hooks/__tests__/team-dispatch-prompt-readiness.test.ts",
+        "to": "external:fs/promises",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/__tests__/team-dispatch-prompt-readiness.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/__tests__/team-dispatch-prompt-readiness.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/__tests__/team-dispatch-prompt-readiness.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/__tests__/team-dispatch-prompt-readiness.test.ts",
+        "to": "src/hooks/team-dispatch-hook.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/__tests__/team-dispatch-prompt-readiness.test.ts",
+        "to": "src/team/dispatch-queue.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/hooks/__tests__/team-worker-heartbeat.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -59705,6 +59749,16 @@
       {
         "from": "src/hooks/team-dispatch-hook.ts",
         "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/team-dispatch-hook.ts",
+        "to": "src/team/model-contract.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/team-dispatch-hook.ts",
+        "to": "src/team/pane-readiness.ts",
         "kind": "imports"
       },
       {
@@ -68609,6 +68663,11 @@
       },
       {
         "from": "src/team/__tests__/tmux-session.startup.test.ts",
+        "to": "src/team/pane-readiness.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.startup.test.ts",
         "to": "src/team/tmux-session.ts",
         "kind": "imports"
       },
@@ -70358,6 +70417,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/team/pane-readiness.ts",
+        "to": "src/team/model-contract.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/team/permissions.ts",
         "to": "external:node:path",
         "kind": "imports"
@@ -71651,6 +71715,11 @@
         "from": "src/team/tmux-session.ts",
         "to": "src/team/model-contract.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/team/tmux-session.ts",
+        "to": "src/team/pane-readiness.ts",
+        "kind": "imports"
       },
       {
         "from": "src/team/tmux-session.ts",
@@ -74784,12 +74853,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6820,
-      "edgeCount": 6874,
-      "importEdgeCount": 5633,
+      "nodeCount": 6822,
+      "edgeCount": 6885,
+      "importEdgeCount": 5641,
       "registerEdgeCount": 52
     }
   },
-  "inventorySha256": "701586753abe736094554bb05bb7f721f9813c8a171f2b664b51c8d63bf06087",
-  "manifestSha256": "a67d614d75ac5ee052a3caafe2738d2cb656d785b1e63cbb3525c480af0b9462"
+  "inventorySha256": "fb7a79660fc8e0567ff1d3b9b1c35cc824ceee60b5a0313f27f45cd531a8e409",
+  "manifestSha256": "d4f7a2fdc8602be55f12b32b7f62439ec278a220fa2782d60972dd12b78f8d33"
 }
