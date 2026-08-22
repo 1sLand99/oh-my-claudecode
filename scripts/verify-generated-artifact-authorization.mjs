@@ -440,7 +440,15 @@ function assertOwnerCommitSignature(commit, signature, headSha, owner) {
   }
   const graphSignature = requiredObject(graphCommit.signature, 'GitHub GraphQL commit signature.signature');
   if (graphSignature.isValid !== true) fail('GitHub GraphQL does not verify the exact head signature');
-  if (requiredObject(graphSignature.signer, 'GitHub GraphQL commit signature.signer').login !== owner) {
+  const signerLogin = requiredString(
+    requiredObject(graphSignature.signer, 'GitHub GraphQL commit signature.signer').login,
+    'GitHub GraphQL commit signature.signer.login',
+  );
+  if (signerLogin === 'web-flow') {
+    if (requiredObject(commitResponse.committer, 'head commit response.committer').login !== 'web-flow') {
+      fail('GitHub web-flow signature does not match the REST commit committer');
+    }
+  } else if (signerLogin !== owner) {
     fail('GitHub GraphQL signature signer is not the protected owner');
   }
 }
