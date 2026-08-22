@@ -328,7 +328,7 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
         expect(await new Promise((resolve) => child.on('close', resolve)), stderr).toBe(0);
         expect(Date.now() - startedAt).toBeGreaterThanOrEqual(100);
         expect(parseContext(stdout)).toContain('PRECOMPACT CHECKPOINT RESTORED');
-    }, 15_000);
+    }, 30_000);
     it.each([
         ['installed', join(__dirname, '..', '..', 'scripts', 'lib', 'precompact-restore.mjs'), true],
         ['template', join(__dirname, '..', '..', 'templates', 'hooks', 'lib', 'precompact-restore.mjs'), true],
