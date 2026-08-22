@@ -1327,6 +1327,17 @@ async function cleanupRecoveryPaneAttempt(
       },
     ).catch(() => false);
   }
+  if (!providerStopped) {
+    const liveness = await getWorkerLiveness(pending.ownership.paneId).catch(() => 'unknown' as const);
+    await recordRecoveryPaneRollbackFailure(
+      input,
+      recoveryId,
+      pending,
+      `${reason}:provider_cleanup_unverified`,
+      liveness,
+    );
+    return false;
+  }
   let liveness: WorkerPaneLiveness = 'unknown';
   for (let attempt = 0; attempt < 2; attempt++) {
     await killOwnedWorkerPane(pending.ownership).catch(() => undefined);
