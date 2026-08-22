@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   autoStartupEvidence: true,
   nextStartupTaskId: 1,
   nextSplitPaneId: 2,
+  cmuxSplitPaneId: null as string | null,
   workerPaneBelongsToProviderTarget: vi.fn(async () => true),
 }));
 
@@ -126,6 +127,22 @@ vi.mock('../tmux-session.js', async (importOriginal) => {
     sendToWorker: mocks.sendToWorker,
     waitForPaneReady: mocks.waitForPaneReady,
     applyMainVerticalLayout: mocks.applyMainVerticalLayout,
+    splitTeamWorkerPaneWithEvidence: async (
+      splitTarget: string,
+      direction: 'right' | 'down',
+      cwd: string,
+      provider?: 'tmux' | 'cmux',
+    ) => provider === 'cmux' && mocks.cmuxSplitPaneId
+      ? {
+          commandSucceeded: true,
+          provider,
+          splitTarget,
+          direction,
+          rawOutput: `${mocks.cmuxSplitPaneId}\n`,
+          stderr: '',
+          paneId: mocks.cmuxSplitPaneId,
+        }
+      : actual.splitTeamWorkerPaneWithEvidence(splitTarget, direction, cwd, provider),
     workerPaneBelongsToProviderTarget: mocks.workerPaneBelongsToProviderTarget,
     killWorkerPanes: mocks.killWorkerPanes,
     killOwnedWorkerPane: mocks.killOwnedWorkerPane,
@@ -217,6 +234,7 @@ describe('runtime v2 startup inbox dispatch', () => {
     mocks.autoStartupEvidence = true;
     mocks.nextStartupTaskId = 1;
     mocks.nextSplitPaneId = 2;
+    mocks.cmuxSplitPaneId = null;
     mocks.spawnOwnedWorkerInPane.mockImplementation(async (
       sessionName: string,
       ownership: { paneId: string },
@@ -369,12 +387,94 @@ describe('runtime v2 startup inbox dispatch', () => {
         }),
       }),
     );
-    expect(mocks.applyMainVerticalLayout).toHaveBeenCalledWith('dispatch-session');
+    expect(mocks.applyMainVerticalLayout).toHaveBeenCalledWith('dispatch-session', { required: true });
+    const layoutOrder = mocks.applyMainVerticalLayout.mock.invocationCallOrder[0];
+    const ownedSpawnOrder = mocks.spawnOwnedWorkerInPane.mock.invocationCallOrder[0];
+    const providerOrder = mocks.spawnWorkerInPane.mock.invocationCallOrder[0];
+    const inboxOrder = mocks.deliverStartupInbox.mock.invocationCallOrder[0];
+    expect(layoutOrder).toBeLessThan(ownedSpawnOrder);
+    expect(ownedSpawnOrder).toBeLessThan(providerOrder);
+    expect(layoutOrder).toBeLessThan(providerOrder);
+    expect(providerOrder).toBeLessThan(inboxOrder);
     const config = JSON.parse(await readFile(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'config.json'), 'utf-8'));
     const manifest = JSON.parse(await readFile(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'manifest.json'), 'utf-8'));
     expect(config.workers[0].launch_descriptor).toMatchObject({ provider: 'claude', binary: '/usr/bin/claude', args: [] });
     expect(manifest.workers[0].launch_descriptor).toEqual(config.workers[0].launch_descriptor);
     expect(config.service_descriptor).toMatchObject({ schema_version: 1, auto_merge_enabled: false, cadence_policy: 'disabled' });
+  });
+
+  it('settles every tmux worker between its split and provider spawn', async () => {
+    cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-layout-order-multi-'));
+    mocks.tmuxExecAsync.mockClear();
+    mocks.applyMainVerticalLayout.mockClear();
+    mocks.spawnOwnedWorkerInPane.mockClear();
+    mocks.spawnWorkerInPane.mockClear();
+    const { startTeamV2 } = await import('../runtime-v2.js');
+
+    await startTeamV2({
+      teamName: 'dispatch-team',
+      workerCount: 2,
+      agentTypes: ['claude', 'claude'],
+      tasks: [
+        { subject: 'Dispatch one', description: 'Verify first worker layout ordering' },
+        { subject: 'Dispatch two', description: 'Verify second worker layout ordering' },
+      ],
+      cwd,
+    });
+
+    const splitOrders = mocks.tmuxExecAsync.mock.calls
+      .map((call, index) => ({
+        args: call[0] as string[],
+        order: mocks.tmuxExecAsync.mock.invocationCallOrder[index]!,
+      }))
+      .filter(call => call.args[0] === 'split-window')
+      .map(call => call.order);
+    const layoutOrders = mocks.applyMainVerticalLayout.mock.invocationCallOrder;
+    const ownedSpawnOrders = mocks.spawnOwnedWorkerInPane.mock.invocationCallOrder;
+    const providerOrders = mocks.spawnWorkerInPane.mock.invocationCallOrder;
+
+    expect(splitOrders).toHaveLength(2);
+    expect(layoutOrders).toHaveLength(2);
+    expect(ownedSpawnOrders).toHaveLength(2);
+    expect(providerOrders).toHaveLength(2);
+    for (let index = 0; index < 2; index++) {
+      expect(splitOrders[index]!).toBeLessThan(layoutOrders[index]!);
+      expect(layoutOrders[index]!).toBeLessThan(ownedSpawnOrders[index]!);
+      expect(ownedSpawnOrders[index]!).toBeLessThan(providerOrders[index]!);
+    }
+  });
+
+  it('leaves cmux startup on its native split and provider path', async () => {
+    cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-cmux-layout-isolation-'));
+    mocks.createTeamSession.mockResolvedValueOnce({
+      sessionName: 'cmux:workspace-1',
+      leaderPaneId: 'cmux-leader-1',
+      workerPaneIds: [],
+      sessionMode: 'split-pane',
+    });
+    mocks.cmuxSplitPaneId = 'cmux-worker-1';
+    const { startTeamV2 } = await import('../runtime-v2.js');
+
+    await startTeamV2({
+      teamName: 'dispatch-team',
+      workerCount: 1,
+      agentTypes: ['claude'],
+      tasks: [{ subject: 'Cmux dispatch', description: 'Keep tmux layout commands out of cmux' }],
+      cwd,
+    });
+
+    expect(mocks.applyMainVerticalLayout).not.toHaveBeenCalled();
+    expect(mocks.spawnOwnedWorkerInPane).toHaveBeenCalledWith(
+      'cmux:workspace-1',
+      expect.objectContaining({ provider: 'cmux', paneId: 'cmux-worker-1' }),
+      expect.objectContaining({ workerName: 'worker-1' }),
+    );
+    expect(mocks.spawnWorkerInPane).toHaveBeenCalledWith(
+      'cmux:workspace-1',
+      'cmux-worker-1',
+      expect.objectContaining({ workerName: 'worker-1' }),
+    );
+    expect(mocks.deliverStartupInbox).toHaveBeenCalled();
   });
 
   it('persists startup task delegation plans and gives executable result evidence instructions', async () => {
@@ -978,7 +1078,7 @@ describe('runtime v2 startup inbox dispatch', () => {
     expect(persisted.workers[0].assigned_tasks).toEqual([]);
   });
 
-  it('retires the exact provider when layout fails after launch handoff', async () => {
+  it('cleans the owned pane before provider launch when required layout fails', async () => {
     cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-layout-failure-'));
     mocks.applyMainVerticalLayout.mockRejectedValueOnce(new Error('layout failed'));
     const { startTeamV2 } = await import('../runtime-v2.js');
@@ -990,12 +1090,11 @@ describe('runtime v2 startup inbox dispatch', () => {
       tasks: [{ subject: 'Dispatch test', description: 'Layout failure cleanup' }],
       cwd,
     })).rejects.toThrow('layout failed');
-    expect(launchMocks.retireAndCleanupCurrentWorkerLaunchAttempt).toHaveBeenCalledWith(
-      expect.objectContaining({ attempt_id: 'attempt-worker-1' }),
-      'startup_layout_failed',
-      expect.any(Function),
-    );
-    expect(mocks.killOwnedWorkerPane).toHaveBeenCalled();
+    expect(mocks.spawnOwnedWorkerInPane).not.toHaveBeenCalled();
+    expect(mocks.spawnWorkerInPane).not.toHaveBeenCalled();
+    expect(mocks.deliverStartupInbox).not.toHaveBeenCalled();
+    expect(launchMocks.retireAndCleanupCurrentWorkerLaunchAttempt).not.toHaveBeenCalled();
+    expect(mocks.killOwnedWorkerPane).toHaveBeenCalledWith(expect.objectContaining({ paneId: '%2' }));
   });
 
   it('does not retain a torn-down worker pane as a future split target when startup readiness fails', async () => {
