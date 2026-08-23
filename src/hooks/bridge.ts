@@ -132,7 +132,7 @@ const PKILL_F_FLAG_PATTERN = /\bpkill\b.*\s-f\b/;
 const PKILL_FULL_FLAG_PATTERN = /\bpkill\b.*--full\b/;
 const WORKER_BLOCKED_TMUX_PATTERN = /\btmux\s+/i;
 const WORKER_BLOCKED_TEAM_CLI_PATTERN = /\bom[cx]\s+team\b(?!\s+api\b)/i;
-const WORKER_BLOCKED_SKILL_PATTERN = /\$(team|ultrawork|autopilot|ralph)\b/i;
+const WORKER_BLOCKED_SKILL_PATTERN = /\$(team|autopilot|ralph)\b/i;
 
 const TEAM_TERMINAL_VALUES = new Set([
   "completed",
@@ -1061,7 +1061,7 @@ function workerBashBlockReason(command: string): string | null {
     return `Team worker cannot run team orchestration commands. Use only \`${formatOmcCliInvocation("team api ... --json")}\`.`;
   }
   if (WORKER_BLOCKED_SKILL_PATTERN.test(command)) {
-    return "Team worker cannot invoke orchestration skills (`$team`, `$ultrawork`, `$autopilot`, `$ralph`).";
+    return "Team worker cannot invoke orchestration skills (`$team`, `$autopilot`, `$ralph`).";
   }
   return null;
 }
