@@ -3529,6 +3529,28 @@ var init_tmux_clipboard = __esm({
   }
 });
 
+// src/team/pane-readiness.ts
+function paneLineLooksLikeIdlePrompt(line, provider) {
+  if (provider === void 0) return LEGACY_IDLE_PROMPT_LINE.test(line);
+  return PROVIDER_IDLE_PROMPT_LINES[provider].test(line);
+}
+var LEGACY_IDLE_PROMPT_LINE, CURSOR_IDLE_PROMPT_LINE, PROVIDER_IDLE_PROMPT_LINES;
+var init_pane_readiness = __esm({
+  "src/team/pane-readiness.ts"() {
+    "use strict";
+    LEGACY_IDLE_PROMPT_LINE = /^\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?[›>❯]\s*/u;
+    CURSOR_IDLE_PROMPT_LINE = /^\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?[›>❯→]\s*/u;
+    PROVIDER_IDLE_PROMPT_LINES = {
+      claude: LEGACY_IDLE_PROMPT_LINE,
+      codex: LEGACY_IDLE_PROMPT_LINE,
+      gemini: LEGACY_IDLE_PROMPT_LINE,
+      cursor: CURSOR_IDLE_PROMPT_LINE,
+      grok: LEGACY_IDLE_PROMPT_LINE,
+      antigravity: LEGACY_IDLE_PROMPT_LINE
+    };
+  }
+});
+
 // src/platform/process-utils.ts
 import { execFileSync as execFileSync4, execFile as execFile2, spawnSync as spawnSync2 } from "child_process";
 import { readFileSync as readFileSync4 } from "fs";
@@ -4936,11 +4958,7 @@ function detectTeamMultiplexerContext(env = process.env) {
 function isUnixLikeOnWindows2() {
   return process.platform === "win32" && !!(process.env.MSYSTEM || process.env.MINGW_PREFIX);
 }
-async function applyMainVerticalLayout(teamTarget) {
-  try {
-    await tmuxExecAsync(["select-layout", "-t", teamTarget, "main-vertical"]);
-  } catch {
-  }
+async function applyMainVerticalLayout(teamTarget, options = {}) {
   try {
     const widthResult = await tmuxCmdAsync([
       "display-message",
@@ -4950,12 +4968,19 @@ async function applyMainVerticalLayout(teamTarget) {
       "#{window_width}"
     ]);
     const width = parseInt(widthResult.stdout.trim(), 10);
-    if (Number.isFinite(width) && width >= 40) {
-      const half = String(Math.floor(width / 2));
-      await tmuxExecAsync(["set-window-option", "-t", teamTarget, "main-pane-width", half]);
-      await tmuxExecAsync(["select-layout", "-t", teamTarget, "main-vertical"]);
+    if (!Number.isFinite(width) || width < 40) {
+      throw new Error(`team_layout_window_width_invalid:${widthResult.stdout.trim() || "empty"}`);
     }
-  } catch {
+    const half = String(Math.floor(width / 2));
+    await tmuxExecAsync(["set-window-option", "-t", teamTarget, "main-pane-width", half]);
+  } catch (error) {
+    if (options.required) throw error;
+    return;
+  }
+  try {
+    await tmuxExecAsync(["select-layout", "-t", teamTarget, "main-vertical"]);
+  } catch (error) {
+    if (options.required) throw error;
   }
 }
 function isCmuxContext() {
@@ -6058,44 +6083,42 @@ function detectPaneTrustPromptKind(captured) {
 function paneHasTrustPrompt(captured) {
   return detectPaneTrustPromptKind(captured) !== null;
 }
-function paneHasClaudeStartupBanner(captured) {
+function paneHasClaudeStartupBanner(captured, provider) {
   const lines = captured.split("\n").map((line) => line.replace(/\r/g, "").trim()).filter((line) => line.length > 0).slice(-20);
-  const lastPromptIndex = lines.findLastIndex(paneLineLooksLikeIdlePrompt);
+  const lastPromptIndex = lines.findLastIndex((line) => paneLineLooksLikeIdlePrompt(line, provider));
   if (lastPromptIndex >= 0) return false;
   const lastStartupBannerIndex = lines.findLastIndex(
     (line) => /bypass\s+permissions\s+on/i.test(line) || /shift\+tab\s+to\s+cycle/i.test(line) || /^⏵⏵\s+/.test(line)
   );
   return lastStartupBannerIndex >= 0;
 }
-function paneIsBootstrapping(captured) {
-  if (paneHasClaudeStartupBanner(captured)) return true;
+function paneIsBootstrapping(captured, provider) {
+  if (paneHasClaudeStartupBanner(captured, provider)) return true;
   const lines = captured.split("\n").map((line) => line.replace(/\r/g, "").trim()).filter((line) => line.length > 0);
   return lines.some(
     (line) => /\b(loading|initializing|starting up)\b/i.test(line) || /\bmodel:\s*loading\b/i.test(line) || /\bconnecting\s+to\b/i.test(line)
   );
 }
-function paneHasActiveTask(captured) {
+function paneHasActiveTask(captured, provider) {
   const lines = captured.split("\n").map((l) => l.replace(/\r/g, "").trim()).filter((l) => l.length > 0);
   const tail = lines.slice(-40);
+  if (provider === "cursor" && tail.some((l) => /ctrl\+c\s+to\s+stop/i.test(l))) return true;
   if (tail.some((l) => /\b\d+\s+background terminal running\b/i.test(l))) return true;
   if (tail.some((l) => /esc to interrupt/i.test(l))) return true;
   if (tail.some((l) => /\bbackground terminal running\b/i.test(l))) return true;
   if (tail.some((l) => /^[·✻]\s+[A-Za-z][A-Za-z0-9''-]*(?:\s+[A-Za-z][A-Za-z0-9''-]*){0,3}(?:…|\.{3})$/u.test(l))) return true;
   return false;
 }
-function paneLineLooksLikeIdlePrompt(line) {
-  return /^\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?[›>❯]\s*/u.test(line);
-}
-function paneLooksReady(captured) {
+function paneLooksReady(captured, provider) {
   const content = captured.trimEnd();
   if (content === "") return false;
   const lines = content.split("\n").map((line) => line.replace(/\r/g, "").trimEnd()).filter((line) => line.trim() !== "");
   if (lines.length === 0) return false;
   if (paneHasTrustPrompt(content)) return true;
-  if (paneIsBootstrapping(content)) return false;
+  if (paneIsBootstrapping(content, provider)) return false;
   const lastLine = lines[lines.length - 1];
-  if (paneLineLooksLikeIdlePrompt(lastLine)) return true;
-  return lines.some(paneLineLooksLikeIdlePrompt);
+  if (paneLineLooksLikeIdlePrompt(lastLine, provider)) return true;
+  return lines.some((line) => paneLineLooksLikeIdlePrompt(line, provider));
 }
 async function waitForPaneReady(paneId, opts = {}) {
   const envTimeout = Number.parseInt(process.env.OMC_SHELL_READY_TIMEOUT_MS ?? "", 10);
@@ -6104,7 +6127,7 @@ async function waitForPaneReady(paneId, opts = {}) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const captured = await capturePaneAsync(paneId);
-    if (paneLooksReady(captured) && !paneHasActiveTask(captured)) {
+    if (paneLooksReady(captured, opts.provider) && !paneHasActiveTask(captured, opts.provider)) {
       return true;
     }
     await sleep3(pollIntervalMs);
@@ -6169,8 +6192,8 @@ async function waitForStartupPaneReady(context, opts = {}) {
       await sleep3(pollIntervalMs);
       continue;
     }
-    if (paneHasActiveTask(captured)) return { ok: false, reason: "pane_busy" };
-    if (paneLooksReady(captured)) return { ok: true };
+    if (paneHasActiveTask(captured, context.provider)) return { ok: false, reason: "pane_busy" };
+    if (paneLooksReady(captured, context.provider)) return { ok: true };
     await sleep3(pollIntervalMs);
   }
   return { ok: false, reason: "readiness_timeout" };
@@ -6481,6 +6504,7 @@ var init_tmux_session = __esm({
     init_worktree_paths();
     init_tmux_utils();
     init_tmux_clipboard();
+    init_pane_readiness();
     init_worker_launch_ack();
     sleep3 = (ms) => new Promise((r) => setTimeout(r, ms));
     execFileAsync2 = promisify3(execFile3);
@@ -13655,6 +13679,24 @@ async function waitForWorkerStatusTransition(teamName, workerName, cwd, baseline
 function promptModeRecoveryRequiresProgressEvidence(promptMode, continuationCount) {
   return promptMode && continuationCount > 0;
 }
+async function applyRequiredLayoutBeforeOwnedLaunch(sessionName2, ownership, workerName) {
+  try {
+    await applyMainVerticalLayout(sessionName2, { required: true });
+  } catch (error) {
+    let cleaned = false;
+    try {
+      await killOwnedWorkerPane(ownership);
+      cleaned = await getWorkerPaneLiveness(ownership.paneId) === "dead";
+    } catch {
+    }
+    if (!cleaned) {
+      const cleanupError = new Error(`worker_layout_cleanup_unverified:${workerName}:${ownership.paneId}`);
+      cleanupError.cause = error;
+      throw cleanupError;
+    }
+    throw error;
+  }
+}
 async function spawnV2Worker(opts) {
   const splitTarget = opts.existingWorkerPaneIds.length === 0 ? opts.leaderPaneId : opts.existingWorkerPaneIds[opts.existingWorkerPaneIds.length - 1];
   const splitDirection = opts.existingWorkerPaneIds.length === 0 ? "right" : "down";
@@ -13680,6 +13722,9 @@ async function spawnV2Worker(opts) {
   })) throw new Error(`worker_pane_membership_unverified:${ownershipResult.ownership.paneId}`);
   const ownership = ownershipResult.ownership;
   const paneId = ownership.paneId;
+  if (launchProvider === "tmux") {
+    await applyRequiredLayoutBeforeOwnedLaunch(opts.sessionName, ownership, opts.workerName);
+  }
   const usePromptMode = isPromptModeAgent(opts.agentType);
   const injectContract = shouldInjectContract(opts.role ?? null, opts.agentType);
   const outputFile = injectContract && opts.role ? cliWorkerOutputFilePath(teamStateRoot(opts.cwd, opts.teamName), opts.workerName) : void 0;
@@ -13739,12 +13784,11 @@ async function spawnV2Worker(opts) {
     launchStateCwd: opts.cwd,
     launchContext: { kind: "initial" }
   };
-  let startupContext;
-  try {
-    startupContext = await spawnOwnedWorkerInPane(opts.sessionName, ownership, paneConfig);
-  } catch (error) {
-    throw error;
-  }
+  const startupContext = await spawnOwnedWorkerInPane(
+    opts.sessionName,
+    ownership,
+    paneConfig
+  );
   const inboxTriggerMessage = `${generateTriggerMessage(opts.teamName, opts.workerName, instructionStateRoot)} [launch:${startupContext.attempt.attempt_id.slice(0, 12)}]`;
   const cleanupStartedLaunch = async (reason) => {
     const cleaned = await retireAndCleanupCurrentWorkerLaunchAttempt(startupContext.attempt, reason, async () => {
@@ -13758,12 +13802,6 @@ async function spawnV2Worker(opts) {
     }).catch(() => false);
     if (!cleaned) throw new Error(`worker_startup_cleanup_unverified:${opts.workerName}:${paneId}`);
   };
-  try {
-    await applyMainVerticalLayout(opts.sessionName);
-  } catch (error) {
-    await cleanupStartedLaunch("startup_layout_failed");
-    throw error;
-  }
   const waitForCurrentEvidence = (attempts = 12) => waitForWorkerStartupEvidence(
     opts.teamName,
     opts.workerName,
@@ -14914,6 +14952,20 @@ async function executeRecoverDeadWorkerV2Owner(input) {
             split
           );
           return { ok: false, error: "worker_activation_failed" };
+        }
+        if (recoveryProvider === "tmux") {
+          try {
+            await applyRequiredLayoutBeforeOwnedLaunch(
+              owner.config.tmux_session,
+              ownershipResult.ownership,
+              sagaInput2.workerName
+            );
+          } catch (error) {
+            return {
+              ok: false,
+              error: error instanceof Error && error.message.startsWith("worker_layout_cleanup_unverified:") ? "worker_cleanup_incomplete" : "spawn_failed"
+            };
+          }
         }
         let pending;
         try {
@@ -16678,6 +16730,9 @@ var init_runtime_v2 = __esm({
         this.cwd = cwd;
         this.threshold = threshold;
       }
+      teamName;
+      cwd;
+      threshold;
       consecutiveFailures = 0;
       tripped = false;
       recordSuccess() {

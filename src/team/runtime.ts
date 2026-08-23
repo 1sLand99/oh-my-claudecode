@@ -794,12 +794,11 @@ export async function spawnWorkerForTask(
     cwd: runtime.cwd,
   };
 
+  await applyMainVerticalLayout(runtime.sessionName, { required: true });
   await spawnWorkerInPane(runtime.sessionName, paneId, paneConfig);
 
   runtime.workerPaneIds.push(paneId);
   runtime.activeWorkers.set(workerNameValue, { paneId, taskId, spawnedAt: Date.now() });
-
-  await applyMainVerticalLayout(runtime.sessionName);
 
   try {
     await writePanesTrackingFileIfPresent(runtime);

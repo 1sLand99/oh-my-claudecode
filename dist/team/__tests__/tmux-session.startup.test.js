@@ -132,7 +132,8 @@ vi.mock('../../cli/tmux-utils.js', async (importOriginal) => {
         }),
     };
 });
-import { deliverStartupInbox, adoptWorkerPaneOwnership, proveWorkerPaneOwnership, spawnWorkerInPane, spawnOwnedWorkerInPane, retryStartupInboxSubmit, } from '../tmux-session.js';
+import { deliverStartupInbox, adoptWorkerPaneOwnership, proveWorkerPaneOwnership, spawnWorkerInPane, spawnOwnedWorkerInPane, retryStartupInboxSubmit, waitForStartupPaneReady, } from '../tmux-session.js';
+import { paneLineLooksLikeIdlePrompt } from '../pane-readiness.js';
 import { awaitWorkerLaunchAcknowledgement, prepareWorkerLaunchAttempt, } from '../worker-launch-ack.js';
 let cwd = '';
 let originalPlatform;
@@ -193,6 +194,38 @@ async function acceptedContext(provider) {
     return { ownership: ownership(), attempt, provider };
 }
 describe('worker pane startup safety', () => {
+    it.each([
+        ['legacy Codex prompt', undefined, '› ', true],
+        ['legacy Claude prompt', undefined, '❯ ', true],
+        ['legacy generic prompt', undefined, '> ', true],
+        ['legacy Cursor arrow', undefined, '→ ', false],
+        ['Cursor prompt', 'cursor', '→ ', true],
+        ['Claude rejects Cursor arrow', 'claude', '→ ', false],
+        ['Codex rejects Cursor arrow', 'codex', '→ ', false],
+        ['Cursor rejects embedded arrow', 'cursor', 'completed → next', false],
+        ['existing Gemini prompt behavior', 'gemini', '❯ ', true],
+    ])('detects %s', (_name, provider, line, expected) => {
+        expect(paneLineLooksLikeIdlePrompt(line, provider)).toBe(expected);
+    });
+    it.each([
+        ['cursor', '→ ', { ok: true }],
+        ['claude', '→ ', { ok: false, reason: 'readiness_timeout' }],
+        ['codex', '→ ', { ok: false, reason: 'readiness_timeout' }],
+        ['cursor', 'completed → next', { ok: false, reason: 'readiness_timeout' }],
+        ['claude', '❯ ', { ok: true }],
+        ['codex', '› ', { ok: true }],
+    ])('waits for the %s startup prompt without generic arrow matching', async (provider, capture, expected) => {
+        const context = await acceptedContext(provider);
+        tmuxState.captures = [capture];
+        await expect(waitForStartupPaneReady(context, { timeoutMs: expected.ok ? 50 : 5, pollIntervalMs: 1 }))
+            .resolves.toEqual(expected);
+    });
+    it('rejects a Cursor prompt retained above its active-task stop marker', async () => {
+        const context = await acceptedContext('cursor');
+        tmuxState.captures = ['→ Plan, search, build anything\nWorking on the task\nctrl+c to stop'];
+        await expect(waitForStartupPaneReady(context, { timeoutMs: 50, pollIntervalMs: 1 }))
+            .resolves.toEqual({ ok: false, reason: 'pane_busy' });
+    });
     it.each([
         ['leader_alias', '%1', '%1', []],
         ['split_target_alias', '%3', '%1', []],

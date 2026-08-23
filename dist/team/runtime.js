@@ -620,10 +620,10 @@ export async function spawnWorkerForTask(runtime, workerNameValue, taskIndex) {
         launchArgs,
         cwd: runtime.cwd,
     };
+    await applyMainVerticalLayout(runtime.sessionName, { required: true });
     await spawnWorkerInPane(runtime.sessionName, paneId, paneConfig);
     runtime.workerPaneIds.push(paneId);
     runtime.activeWorkers.set(workerNameValue, { paneId, taskId, spawnedAt: Date.now() });
-    await applyMainVerticalLayout(runtime.sessionName);
     try {
         await writePanesTrackingFileIfPresent(runtime);
     }
@@ -633,7 +633,7 @@ export async function spawnWorkerForTask(runtime, workerNameValue, taskIndex) {
     if (!usePromptMode) {
         // Interactive mode: wait for pane readiness, handle trust-confirm, then
         // send instruction via tmux send-keys.
-        const paneReady = await waitForPaneReady(paneId);
+        const paneReady = await waitForPaneReady(paneId, { provider: agentType });
         if (!paneReady) {
             await killWorkerPane(runtime, workerNameValue, paneId);
             await resetTaskToPending(root, taskId, runtime.teamName, runtime.cwd);

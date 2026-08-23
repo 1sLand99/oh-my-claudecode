@@ -660,7 +660,7 @@ export async function scaleUpOwned(teamName, count, agentType, tasks, cwd, env =
                 const skipReadyWait = env.OMC_TEAM_SKIP_READY_WAIT === '1';
                 if (!skipReadyWait) {
                     try {
-                        await waitForPaneReady(paneId, { timeoutMs: readyTimeoutMs });
+                        await waitForPaneReady(paneId, { timeoutMs: readyTimeoutMs, provider: workerAgentType });
                     }
                     catch {
                         // Non-fatal: worker may still become ready

@@ -15,6 +15,7 @@ import { validateTeamName } from './team-name.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 import { tmuxExec, tmuxExecAsync, tmuxShell, tmuxCmdAsync } from '../cli/tmux-utils.js';
 import { configureTmuxClipboardForSession, configureTmuxClipboardForSessionAsync } from '../cli/tmux-clipboard.js';
+import { paneLineLooksLikeIdlePrompt } from './pane-readiness.js';
 import { awaitWorkerLaunchAcknowledgement, awaitWorkerLaunchProviderStarted, cleanupWorkerLaunchTransport, isWorkerLaunchAttemptAccepted, isWorkerLaunchAttemptCurrent, materializeWorkerLaunchTransport, prepareWorkerLaunchAttempt, retireAndCleanupCurrentWorkerLaunchAttempt, revokeWorkerLaunchAttempt, } from './worker-launch-ack.js';
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const execFileAsync = promisify(execFile);
@@ -34,26 +35,29 @@ export function isUnixLikeOnWindows() {
     return process.platform === 'win32' &&
         !!(process.env.MSYSTEM || process.env.MINGW_PREFIX);
 }
-export async function applyMainVerticalLayout(teamTarget) {
-    try {
-        await tmuxExecAsync(['select-layout', '-t', teamTarget, 'main-vertical']);
-    }
-    catch {
-        // Layout may not apply if only 1 pane; ignore.
-    }
+export async function applyMainVerticalLayout(teamTarget, options = {}) {
     try {
         const widthResult = await tmuxCmdAsync([
             'display-message', '-p', '-t', teamTarget, '#{window_width}',
         ]);
         const width = parseInt(widthResult.stdout.trim(), 10);
-        if (Number.isFinite(width) && width >= 40) {
-            const half = String(Math.floor(width / 2));
-            await tmuxExecAsync(['set-window-option', '-t', teamTarget, 'main-pane-width', half]);
-            await tmuxExecAsync(['select-layout', '-t', teamTarget, 'main-vertical']);
+        if (!Number.isFinite(width) || width < 40) {
+            throw new Error(`team_layout_window_width_invalid:${widthResult.stdout.trim() || 'empty'}`);
         }
+        const half = String(Math.floor(width / 2));
+        await tmuxExecAsync(['set-window-option', '-t', teamTarget, 'main-pane-width', half]);
     }
-    catch {
-        /* ignore layout sizing errors */
+    catch (error) {
+        if (options.required)
+            throw error;
+        return;
+    }
+    try {
+        await tmuxExecAsync(['select-layout', '-t', teamTarget, 'main-vertical']);
+    }
+    catch (error) {
+        if (options.required)
+            throw error;
     }
 }
 function isCmuxContext() {
@@ -1295,13 +1299,13 @@ function detectPaneTrustPromptKind(captured) {
 export function paneHasTrustPrompt(captured) {
     return detectPaneTrustPromptKind(captured) !== null;
 }
-function paneHasClaudeStartupBanner(captured) {
+function paneHasClaudeStartupBanner(captured, provider) {
     const lines = captured
         .split('\n')
         .map((line) => line.replace(/\r/g, '').trim())
         .filter((line) => line.length > 0)
         .slice(-20);
-    const lastPromptIndex = lines.findLastIndex(paneLineLooksLikeIdlePrompt);
+    const lastPromptIndex = lines.findLastIndex(line => paneLineLooksLikeIdlePrompt(line, provider));
     // Claude Code v2.1.x renders the permission-mode indicator
     // ("⏵⏵ bypass permissions on (shift+tab to cycle)") *below* the prompt
     // as a persistent idle-state UI element. If a prompt is present anywhere
@@ -1314,8 +1318,8 @@ function paneHasClaudeStartupBanner(captured) {
         || /^⏵⏵\s+/.test(line));
     return lastStartupBannerIndex >= 0;
 }
-function paneIsBootstrapping(captured) {
-    if (paneHasClaudeStartupBanner(captured))
+function paneIsBootstrapping(captured, provider) {
+    if (paneHasClaudeStartupBanner(captured, provider))
         return true;
     const lines = captured
         .split('\n')
@@ -1325,9 +1329,11 @@ function paneIsBootstrapping(captured) {
         || /\bmodel:\s*loading\b/i.test(line)
         || /\bconnecting\s+to\b/i.test(line));
 }
-export function paneHasActiveTask(captured) {
+export function paneHasActiveTask(captured, provider) {
     const lines = captured.split('\n').map(l => l.replace(/\r/g, '').trim()).filter(l => l.length > 0);
     const tail = lines.slice(-40);
+    if (provider === 'cursor' && tail.some(l => /ctrl\+c\s+to\s+stop/i.test(l)))
+        return true;
     if (tail.some(l => /\b\d+\s+background terminal running\b/i.test(l)))
         return true;
     if (tail.some(l => /esc to interrupt/i.test(l)))
@@ -1338,14 +1344,7 @@ export function paneHasActiveTask(captured) {
         return true;
     return false;
 }
-function paneLineLooksLikeIdlePrompt(line) {
-    // Claude Code can render its idle input prompt inside a box/left gutter
-    // (for example "│ ❯"). Treat that as ready while still requiring the prompt
-    // glyph to be at the visual start of the line, not embedded in arbitrary
-    // output text.
-    return /^\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?[›>❯]\s*/u.test(line);
-}
-export function paneLooksReady(captured) {
+export function paneLooksReady(captured, provider) {
     const content = captured.trimEnd();
     if (content === '')
         return false;
@@ -1357,12 +1356,12 @@ export function paneLooksReady(captured) {
         return false;
     if (paneHasTrustPrompt(content))
         return true;
-    if (paneIsBootstrapping(content))
+    if (paneIsBootstrapping(content, provider))
         return false;
     const lastLine = lines[lines.length - 1];
-    if (paneLineLooksLikeIdlePrompt(lastLine))
+    if (paneLineLooksLikeIdlePrompt(lastLine, provider))
         return true;
-    return lines.some(paneLineLooksLikeIdlePrompt);
+    return lines.some(line => paneLineLooksLikeIdlePrompt(line, provider));
 }
 export async function waitForPaneReady(paneId, opts = {}) {
     const envTimeout = Number.parseInt(process.env.OMC_SHELL_READY_TIMEOUT_MS ?? '', 10);
@@ -1375,7 +1374,7 @@ export async function waitForPaneReady(paneId, opts = {}) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
         const captured = await capturePaneAsync(paneId);
-        if (paneLooksReady(captured) && !paneHasActiveTask(captured)) {
+        if (paneLooksReady(captured, opts.provider) && !paneHasActiveTask(captured, opts.provider)) {
             return true;
         }
         await sleep(pollIntervalMs);
@@ -1450,9 +1449,9 @@ export async function waitForStartupPaneReady(context, opts = {}) {
             await sleep(pollIntervalMs);
             continue;
         }
-        if (paneHasActiveTask(captured))
+        if (paneHasActiveTask(captured, context.provider))
             return { ok: false, reason: 'pane_busy' };
-        if (paneLooksReady(captured))
+        if (paneLooksReady(captured, context.provider))
             return { ok: true };
         await sleep(pollIntervalMs);
     }

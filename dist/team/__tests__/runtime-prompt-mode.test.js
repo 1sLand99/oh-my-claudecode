@@ -168,6 +168,15 @@ describe('spawnWorkerForTask – prompt mode and interactive worker launch', () 
         expect(launchCmd).toContain('concrete progress');
         rmSync(cwd, { recursive: true, force: true });
     });
+    it('settles the tmux main-vertical layout before launching a legacy worker', async () => {
+        const runtime = makeRuntime(cwd, 'codex');
+        await spawnWorkerForTask(runtime, 'worker-1', 0);
+        const layoutIndex = tmuxCalls.args.findIndex(args => args[0] === 'select-layout' && args.includes('main-vertical'));
+        const launchIndex = tmuxCalls.args.findIndex(args => args[0] === 'send-keys' && args.includes('-l'));
+        expect(layoutIndex).toBeGreaterThanOrEqual(0);
+        expect(launchIndex).toBeGreaterThan(layoutIndex);
+        rmSync(cwd, { recursive: true, force: true });
+    });
     it('antigravity worker launch args lead with --dangerously-skip-permissions and pass the instruction as the -p value', async () => {
         const runtime = makeRuntime(cwd, 'antigravity');
         await spawnWorkerForTask(runtime, 'worker-1', 0);
