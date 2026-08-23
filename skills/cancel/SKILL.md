@@ -234,7 +234,6 @@ After graceful pass:
   1. Clear team state: state_clear(mode="team")
   2. Check for linked ralph: state_read(mode="ralph") — if linked_team is true:
      a. Clear ralph state: state_clear(mode="ralph")
-     b. Clear linked ultrawork if present: state_clear(mode="ultrawork")
   3. Run OMC tmux/CLI orphan scan only for legacy `omc team` / `/omc-teams` workers (see below)
   4. Emit structured cancel report
 ```
@@ -282,7 +281,6 @@ Autopilot handles its own primary-first cleanup: named workflows additionally re
    - If this write fails, stop immediately. Do not clear nested ralplan, linked state, cancel signals, or runtime artifacts.
 3. For a named workflow, clear only `ralplan` state owned by the same `session_id`; never clear another session's standalone ralplan state. Record a failure but keep the paused primary resumable.
 4. Only after the primary pause commits, check linked ralph via `state_read(mode="ralph", session_id)`:
-   - If ralph is active and has `linked_ultrawork: true`, clear ultrawork first and require success.
    - Clear ralph and require success.
 5. Check for retired ultraqa state via `state_read(mode="ultraqa", session_id)` and clear it if present.
 6. Report every dependent clear failure explicitly; the already-paused autopilot state remains resumable and cleanup may be retried.
@@ -291,11 +289,7 @@ Force cancellation follows the same primary-first rule for every autopilot group
 
 #### If Ralph Active (but not Autopilot)
 
-1. Read ralph state via `state_read(mode="ralph", session_id)` to check for linked ultrawork
-2. If `linked_ultrawork: true`:
-   - Read ultrawork state to verify `linked_to_ralph: true`
-   - If linked, clear ultrawork: `state_clear(mode="ultrawork", session_id)`
-3. Clear ralph: `state_clear(mode="ralph", session_id)`
+1. Clear ralph: `state_clear(mode="ralph", session_id)`
 
 #### If Legacy Ultrawork State Exists
 
@@ -367,8 +361,6 @@ Mode-specific subsections below describe what extra cleanup each handler perform
 ## Notes
 
 - **Dependency-aware**: Autopilot cancellation cleans up Ralph and any retired ultraqa state
-- **Link-aware**: Ralph cancellation cleans up linked Ultrawork
-- **Safe**: Only clears linked Ultrawork, preserves standalone Ultrawork
 - **Local-only**: Clears state files in `.omc/state/` directory
 - **Resume-friendly**: Autopilot state is preserved for seamless resume
 - **Team-aware**: Detects native Claude Code teams and performs graceful shutdown

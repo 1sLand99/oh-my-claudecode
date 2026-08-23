@@ -41,7 +41,7 @@ The `swarm` compatibility alias was removed in #1131.
 /team 2:gemini "redesign the UI components"
 # With Antigravity CLI workers (requires: install per https://antigravity.google)
 /team 2:antigravity "redesign the UI components"
-# Mixed: Codex for backend analysis, Gemini/Antigravity for frontend (use /ccg instead for this)
+# Mixed: Codex for backend analysis, Gemini/Antigravity for frontend (delegate per-task with /oh-my-claudecode:ask)
 ```
 
 ## Architecture
