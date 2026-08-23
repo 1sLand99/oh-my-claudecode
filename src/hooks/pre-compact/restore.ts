@@ -80,6 +80,7 @@ interface RestoreMarkerTarget {
 }
 
 interface CheckpointOrder {
+  path?: string;
   createdAt: string;
   mtimeMs: number;
   name: string;
@@ -370,6 +371,7 @@ function checkpointOrderForSession(
     if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink > 1 ||
         stat.dev !== resolved.dev || stat.ino !== resolved.ino) return null;
     return {
+      path: resolved.path,
       createdAt: checkpoint.created_at,
       mtimeMs: normalizeMtimeMs(stat.mtimeMs),
       name: basename(resolved.path),
@@ -522,13 +524,15 @@ export function markCheckpointRestored(
     if (!target) return 'failed';
     const candidateOrder = checkpointOrderForSession(directory, checkpointPath, sessionId);
     if (!candidateOrder) return 'failed';
+    const canonicalCheckpointPath = candidateOrder.path;
+    if (!canonicalCheckpointPath) return 'failed';
     if (checkpointCreatedAt !== undefined && candidateOrder.createdAt !== checkpointCreatedAt) return 'contended';
     if (checkpointMtimeMs !== undefined && candidateOrder.mtimeMs !== normalizeMtimeMs(checkpointMtimeMs)) return 'contended';
     if (checkpointSha256 !== undefined && candidateOrder.contentSha256 !== checkpointSha256) return 'contended';
     const result = runPublisher({
       operation: 'publish',
       sessionId,
-      checkpointPath,
+      checkpointPath: canonicalCheckpointPath,
       checkpointCreatedAt: candidateOrder.createdAt,
       checkpointMtimeMs: candidateOrder.mtimeMs,
       checkpointSha256: checkpointSha256 ?? candidateOrder.contentSha256,
@@ -536,12 +540,12 @@ export function markCheckpointRestored(
       expectedCwd: target.parent,
     }, target.parent.path);
     if (!isStableRestoreMarkerTarget(target)) return 'failed';
-    const publishedOrder = checkpointOrderForSession(directory, checkpointPath, sessionId);
+    const publishedOrder = checkpointOrderForSession(directory, canonicalCheckpointPath, sessionId);
     if (!publishedOrder || compareCheckpointOrder(candidateOrder, publishedOrder) !== 0) return 'contended';
     if (result?.status === 'written') {
       const claimName = claimNameForMarker({
         session_id: sessionId,
-        checkpoint: checkpointPath,
+        checkpoint: canonicalCheckpointPath,
         checkpoint_created_at: candidateOrder.createdAt,
         checkpoint_mtime_ms: candidateOrder.mtimeMs,
         checkpoint_sha256: candidateOrder.contentSha256,

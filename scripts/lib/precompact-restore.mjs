@@ -278,6 +278,7 @@ function checkpointOrderForSession(omcRoot, checkpointPath, sessionId) {
     if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink > 1 ||
       stat.dev !== resolved.dev || stat.ino !== resolved.ino) return null;
     return {
+      path: resolved.path,
       createdAt: checkpoint.created_at,
       mtimeMs: normalizeMtimeMs(stat.mtimeMs),
       name: basename(resolved.path),
@@ -414,13 +415,15 @@ function markCheckpointRestored(omcRoot, sessionId, checkpointPath, checkpointCr
     if (!target) return 'failed';
     const candidateOrder = checkpointOrderForSession(omcRoot, checkpointPath, sessionId);
     if (!candidateOrder) return 'failed';
+    const canonicalCheckpointPath = candidateOrder.path;
+    if (!canonicalCheckpointPath) return 'failed';
     if (checkpointCreatedAt !== undefined && candidateOrder.createdAt !== checkpointCreatedAt) return 'contended';
     if (checkpointMtimeMs !== undefined && candidateOrder.mtimeMs !== normalizeMtimeMs(checkpointMtimeMs)) return 'contended';
     if (checkpointSha256 !== undefined && candidateOrder.contentSha256 !== checkpointSha256) return 'contended';
     const result = runPublisher({
       operation: 'publish',
       sessionId,
-      checkpointPath,
+      checkpointPath: canonicalCheckpointPath,
       checkpointCreatedAt: candidateOrder.createdAt,
       checkpointMtimeMs: candidateOrder.mtimeMs,
       checkpointSha256: checkpointSha256 ?? candidateOrder.contentSha256,
@@ -428,12 +431,12 @@ function markCheckpointRestored(omcRoot, sessionId, checkpointPath, checkpointCr
       expectedCwd: target.parent,
     }, target.parent.path);
     if (!isStableRestoreMarkerTarget(target)) return 'failed';
-    const publishedOrder = checkpointOrderForSession(omcRoot, checkpointPath, sessionId);
+    const publishedOrder = checkpointOrderForSession(omcRoot, canonicalCheckpointPath, sessionId);
     if (!publishedOrder || compareCheckpointOrder(candidateOrder, publishedOrder) !== 0) return 'contended';
     if (result?.status === 'written') {
       const claimName = claimNameForMarker({
         session_id: sessionId,
-        checkpoint: checkpointPath,
+        checkpoint: canonicalCheckpointPath,
         checkpoint_created_at: candidateOrder.createdAt,
         checkpoint_mtime_ms: candidateOrder.mtimeMs,
         checkpoint_sha256: candidateOrder.contentSha256,
