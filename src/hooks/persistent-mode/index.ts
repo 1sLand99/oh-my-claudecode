@@ -1262,11 +1262,9 @@ async function checkRalphLoop(
           // Architect approved - truly complete
           const criticMode = verificationState.critic_mode;
           const finish = () => {
-            if (!consumeVerificationRequest(workingDir, verificationState!.request_id, sessionId)) {
-              return false;
-            }
-            return clearRalphState(workingDir, sessionId)
-              && deactivateUltrawork(workingDir, sessionId);
+            if (!clearRalphState(workingDir, sessionId)
+              || !deactivateUltrawork(workingDir, sessionId)) return false;
+            return consumeVerificationRequest(workingDir, verificationState!.request_id, sessionId);
           };
           const consumed = !prdStatus.hasPrd
             ? finish()

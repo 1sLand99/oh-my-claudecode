@@ -560,6 +560,24 @@ export function writePrd(directory: string, prd: PRD, sessionId?: string): boole
   }
 }
 
+/** Publish a derived PRD only if its governing-criteria generation is still current. */
+export function writePrdIfRevision(
+  directory: string,
+  prd: PRD,
+  expectedRevision: string,
+  sessionId?: string,
+): boolean {
+  const prdPath = findPrdPath(directory, sessionId);
+  if (!prdPath) return false;
+  const result = withStateFileMutationLock(prdPath, () => {
+    const current = readPrdFromPath(prdPath).prd;
+    if (!current || getPrdGoverningCriteriaRevision(current) !== expectedRevision) return false;
+    atomicWriteJsonSync(prdPath, bindCompletionClaims(prd));
+    return true;
+  }, true);
+  return result.acquired && result.value === true;
+}
+
 function mutatePrd<T>(directory: string, sessionId: string | undefined, mutate: (prd: PRD) => T | undefined): T | undefined {
   const prdPath = sessionId ? getSessionPrdPath(directory, sessionId) : findPrdPath(directory);
   if (!prdPath) return undefined;
@@ -601,12 +619,15 @@ export function consumeStoryArchitectApproval(
       || story.completionCriteriaRevision !== expectedCriteriaRevision) {
       return false;
     }
+    const original = JSON.stringify(parsed);
     story.architectVerified = true;
     story.architectVerificationCriteriaRevision = expectedCriteriaRevision;
     if (notes) story.notes = notes;
     try {
       atomicWriteJsonSync(prdPath, bindCompletionClaims(parsed));
-      return consume?.() ?? true;
+      if (consume?.() ?? true) return true;
+      atomicWriteJsonSync(prdPath, JSON.parse(original) as PRD);
+      return false;
     } catch {
       return false;
     }

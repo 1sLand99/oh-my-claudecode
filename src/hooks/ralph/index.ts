@@ -58,6 +58,7 @@ export {
   // File operations
   readPrd,
   writePrd,
+  writePrdIfRevision,
   findPrdPath,
   getPrdPath,
   getOmcPrdPath,
