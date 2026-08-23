@@ -14,6 +14,7 @@ import {
   initPrd,
   readPrd,
   writePrd,
+  getStoryGoverningCriteriaRevision,
   type PRD,
   type UserStory,
 } from '../hooks/ralph/index.js';
@@ -232,6 +233,9 @@ describe('Ralph PRD-Mandatory', () => {
           },
         ],
       };
+      const revision = getStoryGoverningCriteriaRevision(prd.userStories[0]);
+      prd.userStories[0].completionCriteriaRevision = revision;
+      prd.userStories[0].architectVerificationCriteriaRevision = revision;
       writePrd(testDir, prd);
 
       const hook = createRalphLoopHook(testDir);
