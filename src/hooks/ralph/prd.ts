@@ -572,6 +572,7 @@ export function consumeStoryArchitectApproval(
   expectedCriteriaRevision: string,
   sessionId?: string,
   beforeCommit?: () => void,
+  notes?: string,
 ): boolean {
   const prdPath = findPrdPath(directory, sessionId);
   if (!prdPath) return false;
@@ -586,6 +587,7 @@ export function consumeStoryArchitectApproval(
     }
     story.architectVerified = true;
     story.architectVerificationCriteriaRevision = expectedCriteriaRevision;
+    if (notes) story.notes = notes;
     try {
       atomicWriteJsonSync(prdPath, bindCompletionClaims(parsed));
       return true;
@@ -722,16 +724,8 @@ export function markStoryArchitectVerified(
   }
 
   const governingCriteriaRevision = getGoverningCriteriaRevision(story.acceptanceCriteria, story.criterionAmendments);
-  if (!story.passes || story.completionCriteriaRevision !== governingCriteriaRevision) {
-    return false;
-  }
-  story.architectVerified = true;
-  story.architectVerificationCriteriaRevision = governingCriteriaRevision;
-  if (notes) {
-    story.notes = notes;
-  }
-
-  return writePrd(directory, prd, sessionId);
+  if (!story.passes || story.completionCriteriaRevision !== governingCriteriaRevision) return false;
+  return consumeStoryArchitectApproval(directory, storyId, governingCriteriaRevision, sessionId, undefined, notes);
 }
 
 /**
