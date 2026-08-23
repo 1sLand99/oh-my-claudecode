@@ -9,7 +9,6 @@ export type ExecutionMode =
   | 'autoresearch'
   | 'team'
   | 'ralph'
-  | 'ultrawork'
   | 'deep-interview'
   | 'merge-readiness'
   | 'self-improve';

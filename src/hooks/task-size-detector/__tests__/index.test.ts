@@ -348,8 +348,8 @@ describe('task-size-detector', () => {
       expect(isHeavyMode('team')).toBe(true);
     });
 
-    it('returns true for ultrawork', () => {
-      expect(isHeavyMode('ultrawork')).toBe(true);
+    it('returns false for retired ultrawork', () => {
+      expect(isHeavyMode('ultrawork')).toBe(false);
     });
 
     it('returns false for removed ultrapilot (#1131)', () => {
@@ -368,8 +368,8 @@ describe('task-size-detector', () => {
       expect(isHeavyMode('ralplan')).toBe(true);
     });
 
-    it('returns true for ccg', () => {
-      expect(isHeavyMode('ccg')).toBe(true);
+    it('returns false for retired ccg', () => {
+      expect(isHeavyMode('ccg')).toBe(false);
     });
 
     it('returns false for cancel', () => {
@@ -415,7 +415,7 @@ describe('task-size-detector', () => {
 
   describe('HEAVY_MODE_KEYWORDS set', () => {
     it('contains expected heavy modes', () => {
-      const expected = ['ralph', 'autopilot', 'team', 'ultrawork', 'ralplan', 'ccg'];
+      const expected = ['ralph', 'autopilot', 'team', 'ralplan'];
       for (const mode of expected) {
         expect(HEAVY_MODE_KEYWORDS.has(mode)).toBe(true);
       }

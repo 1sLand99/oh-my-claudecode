@@ -597,7 +597,7 @@ export function isHeredocWithSafeBase(command: string): boolean {
 }
 
 /**
- * Check if an active mode (autopilot/ultrawork/ralph/team) is running
+ * Check if an active supported mode is running
  */
 export function isActiveModeRunning(directory: string): boolean {
   const stateDir = path.join(getOmcRoot(directory), 'state');
@@ -609,7 +609,6 @@ export function isActiveModeRunning(directory: string): boolean {
   const activeStateFiles = [
     'autopilot-state.json',
     'ralph-state.json',
-    'ultrawork-state.json',
     'team-state.json',
     'omc-teams-state.json',
   ];

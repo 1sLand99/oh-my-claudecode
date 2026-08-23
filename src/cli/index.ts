@@ -708,7 +708,7 @@ program
   .description('Test how a prompt would be enhanced')
   .addHelpText('after', `
 Examples:
-  $ omc test-prompt "ultrawork fix bugs"    See how magic keywords are detected
+  $ omc test-prompt "analyze this code"     See how magic keywords are detected
   $ omc test-prompt "analyze this code"     Test prompt enhancement`)
   .action(async (prompt: string) => {
     const session = createOmcSession();
@@ -936,7 +936,7 @@ Examples:
         console.log('  /omc <task>              # Activate OMC orchestration mode');
         console.log('  /omc-default             # Configure for current project');
         console.log('  /omc-default-global      # Configure globally');
-        console.log('  /ultrawork <task>             # Maximum performance mode');
+        console.log('  /team <task>                  # Coordinated parallel execution');
         console.log('  /deepsearch <query>           # Thorough codebase search');
         console.log('  /analyze <target>             # Deep analysis mode');
         console.log('  /plan <description>           # Start planning with Planner');
