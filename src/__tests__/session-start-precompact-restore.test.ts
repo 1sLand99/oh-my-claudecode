@@ -175,7 +175,7 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
   });
 
   afterEach(() => {
-    rmSync(tempDir, { recursive: true, force: true });
+    rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   });
 
   it('restores the newest checkpoint when source=compact', () => {
