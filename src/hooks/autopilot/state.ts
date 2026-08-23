@@ -532,7 +532,7 @@ export interface TransitionResult {
  *
  * This:
  * 1. Saves Ralph's progress to autopilot state
- * 2. Cleanly terminates Ralph mode (and linked Ultrawork)
+ * 2. Cleanly terminates Ralph mode
  * 3. Transitions to the QA phase
  * 4. Preserves context for potential rollback
  */
@@ -701,7 +701,7 @@ The execution phase is complete. Transitioning to QA phase.
 
 The transition handler has:
 1. Preserved Ralph iteration count and progress
-2. Cleared Ralph state (and linked Ultrawork)
+2. Cleared Ralph state
 3. Transitioned the autopilot phase to QA
 
 You are now in QA phase. Run the QA cycle:
