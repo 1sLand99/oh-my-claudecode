@@ -1121,13 +1121,6 @@ async function spawnV2Worker(opts: SpawnV2WorkerOptions): Promise<SpawnV2WorkerR
     }).catch(() => false);
     if (!cleaned) throw new Error(`worker_startup_cleanup_unverified:${opts.workerName}:${paneId}`);
   };
-  try {
-    await applyMainVerticalLayout(opts.sessionName);
-  } catch (error) {
-    await cleanupStartedLaunch('startup_layout_failed');
-    throw error;
-  }
-
   const evidencePolicy = getWorkerStartupEvidencePolicy(opts.agentType);
   const waitForCurrentEvidence = (budgetMs: number) => waitForWorkerStartupEvidence(
     opts.teamName,
