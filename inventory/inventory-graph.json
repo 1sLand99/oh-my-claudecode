@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "677f0185333f03d3fee4e26a7550eb4df5263833",
-    "sourceSha256": "0b839bede2f3c1222466dd492aec33025d834fcab2c2b0fb4c7b683b84539fc0",
+    "head": "48b521818b24756b1cb2d215d9541828eace72ec",
+    "sourceSha256": "5dfb026d48bf6bd584ee2692491832fabcefde60db1f74a2cfaa298983ea4a7c",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "677f0185333f03d3fee4e26a7550eb4df5263833",
-  "sourceSha256": "0b839bede2f3c1222466dd492aec33025d834fcab2c2b0fb4c7b683b84539fc0",
+  "head": "48b521818b24756b1cb2d215d9541828eace72ec",
+  "sourceSha256": "5dfb026d48bf6bd584ee2692491832fabcefde60db1f74a2cfaa298983ea4a7c",
   "counts": {
     "public": {
       "skills": 31,
@@ -23,25 +23,25 @@
       "total": 78
     },
     "internal": {
-      "hookFiles": 306,
+      "hookFiles": 307,
       "featureFiles": 68,
       "toolFiles": 56,
       "libFiles": 34,
-      "templateHooks": 21,
-      "srcFiles": 1279,
-      "total": 1300
+      "templateHooks": 19,
+      "srcFiles": 1277,
+      "total": 1296
     },
     "generated": {
-      "distFiles": 4999,
+      "distFiles": 4994,
       "bridgeFiles": 9,
-      "total": 5008
+      "total": 5003
     },
     "prompt": {
       "promptLikeFiles": 63
     },
     "skills": 31,
     "commands": 21,
-    "hookFiles": 306,
+    "hookFiles": 307,
     "workflows": 8,
     "agentDefinitions": 18,
     "promptLikeFiles": 63
@@ -422,6 +422,7 @@
       "src/hooks/todo-continuation/__tests__/isRateLimitStop.test.ts",
       "src/hooks/todo-continuation/__tests__/isUserAbort.test.ts",
       "src/hooks/todo-continuation/index.ts",
+      "src/hooks/ultraqa/index.ts",
       "src/hooks/ultrawork/__tests__/prompt-truncation.test.ts",
       "src/hooks/ultrawork/index.ts",
       "src/hooks/ultrawork/session-isolation.test.ts",
@@ -615,9 +616,7 @@
       "templates/hooks/lib/cache-occupancy.mjs",
       "templates/hooks/lib/config-dir.mjs",
       "templates/hooks/lib/model-routing-override-message.mjs",
-      "templates/hooks/lib/precompact-publisher.mjs",
       "templates/hooks/lib/precompact-restore.mjs",
-      "templates/hooks/lib/skill-entitlements.mjs",
       "templates/hooks/lib/state-root.mjs",
       "templates/hooks/lib/stdin.mjs",
       "templates/hooks/lib/workflow-profile-runtime.mjs",
@@ -722,7 +721,6 @@
       "scripts/generate-featured-contributors.ts",
       "scripts/generate-inventory-graph.mjs",
       "scripts/generate-prompt-projections.mjs",
-      "scripts/generate-skill-entitlements.mjs",
       "scripts/inventory-issue-3698.mjs",
       "scripts/keyword-detector.mjs",
       "scripts/lib/agent-model-config.mjs",
@@ -741,9 +739,7 @@
       "scripts/lib/hud-wrapper-template.txt",
       "scripts/lib/model-routing-override-message.mjs",
       "scripts/lib/pre-tool-enforcer-preflight.mjs",
-      "scripts/lib/precompact-publisher.mjs",
       "scripts/lib/precompact-restore.mjs",
-      "scripts/lib/skill-entitlements.mjs",
       "scripts/lib/state-root.cjs",
       "scripts/lib/state-root.mjs",
       "scripts/lib/stdin.mjs",
@@ -786,6 +782,7 @@
       "scripts/sync-metadata.ts",
       "scripts/sync-version.sh",
       "scripts/test-max-attempts.ts",
+      "scripts/test-mutual-exclusion.ts",
       "scripts/test-notepad-integration.ts",
       "scripts/test-pr25.sh",
       "scripts/test-remember-tags.ts",
@@ -1694,14 +1691,6 @@
       "dist/__tests__/shared-state-locking.test.d.ts.map",
       "dist/__tests__/shared-state-locking.test.js",
       "dist/__tests__/shared-state-locking.test.js.map",
-      "dist/__tests__/skill-entitlements-cross-surface.test.d.ts",
-      "dist/__tests__/skill-entitlements-cross-surface.test.d.ts.map",
-      "dist/__tests__/skill-entitlements-cross-surface.test.js",
-      "dist/__tests__/skill-entitlements-cross-surface.test.js.map",
-      "dist/__tests__/skill-entitlements.test.d.ts",
-      "dist/__tests__/skill-entitlements.test.d.ts.map",
-      "dist/__tests__/skill-entitlements.test.js",
-      "dist/__tests__/skill-entitlements.test.js.map",
       "dist/__tests__/skill-injector-script.test.d.ts",
       "dist/__tests__/skill-injector-script.test.d.ts.map",
       "dist/__tests__/skill-injector-script.test.js",
@@ -2266,7 +2255,6 @@
       "dist/config/__tests__/test-helpers.d.ts.map",
       "dist/config/__tests__/test-helpers.js",
       "dist/config/__tests__/test-helpers.js.map",
-      "dist/config/builtin-skill-entitlements.json",
       "dist/config/index.d.ts",
       "dist/config/index.d.ts.map",
       "dist/config/index.js",
@@ -3724,6 +3712,10 @@
       "dist/hooks/todo-continuation/index.d.ts.map",
       "dist/hooks/todo-continuation/index.js",
       "dist/hooks/todo-continuation/index.js.map",
+      "dist/hooks/ultraqa/index.d.ts",
+      "dist/hooks/ultraqa/index.d.ts.map",
+      "dist/hooks/ultraqa/index.js",
+      "dist/hooks/ultraqa/index.js.map",
       "dist/hooks/ultrawork/__tests__/prompt-truncation.test.d.ts",
       "dist/hooks/ultrawork/__tests__/prompt-truncation.test.d.ts.map",
       "dist/hooks/ultrawork/__tests__/prompt-truncation.test.js",
@@ -6102,6 +6094,7 @@
       "src/hooks/todo-continuation/__tests__/isRateLimitStop.test.ts",
       "src/hooks/todo-continuation/__tests__/isUserAbort.test.ts",
       "src/hooks/todo-continuation/index.ts",
+      "src/hooks/ultraqa/index.ts",
       "src/hooks/ultrawork/__tests__/prompt-truncation.test.ts",
       "src/hooks/ultrawork/index.ts",
       "src/hooks/ultrawork/session-isolation.test.ts",
@@ -11670,46 +11663,6 @@
         "path": "dist/__tests__/shared-state-locking.test.js.map"
       },
       {
-        "id": "dist/__tests__/skill-entitlements-cross-surface.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/__tests__/skill-entitlements-cross-surface.test.d.ts"
-      },
-      {
-        "id": "dist/__tests__/skill-entitlements-cross-surface.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/__tests__/skill-entitlements-cross-surface.test.d.ts.map"
-      },
-      {
-        "id": "dist/__tests__/skill-entitlements-cross-surface.test.js",
-        "kind": "generated-dist",
-        "path": "dist/__tests__/skill-entitlements-cross-surface.test.js"
-      },
-      {
-        "id": "dist/__tests__/skill-entitlements-cross-surface.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/__tests__/skill-entitlements-cross-surface.test.js.map"
-      },
-      {
-        "id": "dist/__tests__/skill-entitlements.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/__tests__/skill-entitlements.test.d.ts"
-      },
-      {
-        "id": "dist/__tests__/skill-entitlements.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/__tests__/skill-entitlements.test.d.ts.map"
-      },
-      {
-        "id": "dist/__tests__/skill-entitlements.test.js",
-        "kind": "generated-dist",
-        "path": "dist/__tests__/skill-entitlements.test.js"
-      },
-      {
-        "id": "dist/__tests__/skill-entitlements.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/__tests__/skill-entitlements.test.js.map"
-      },
-      {
         "id": "dist/__tests__/skill-injector-script.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/__tests__/skill-injector-script.test.d.ts"
@@ -14528,11 +14481,6 @@
         "id": "dist/config/__tests__/test-helpers.js.map",
         "kind": "generated-dist",
         "path": "dist/config/__tests__/test-helpers.js.map"
-      },
-      {
-        "id": "dist/config/builtin-skill-entitlements.json",
-        "kind": "generated-dist",
-        "path": "dist/config/builtin-skill-entitlements.json"
       },
       {
         "id": "dist/config/index.d.ts",
@@ -21818,6 +21766,26 @@
         "id": "dist/hooks/todo-continuation/index.js.map",
         "kind": "generated-dist",
         "path": "dist/hooks/todo-continuation/index.js.map"
+      },
+      {
+        "id": "dist/hooks/ultraqa/index.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hooks/ultraqa/index.d.ts"
+      },
+      {
+        "id": "dist/hooks/ultraqa/index.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/ultraqa/index.d.ts.map"
+      },
+      {
+        "id": "dist/hooks/ultraqa/index.js",
+        "kind": "generated-dist",
+        "path": "dist/hooks/ultraqa/index.js"
+      },
+      {
+        "id": "dist/hooks/ultraqa/index.js.map",
+        "kind": "generated-dist",
+        "path": "dist/hooks/ultraqa/index.js.map"
       },
       {
         "id": "dist/hooks/ultrawork/__tests__/prompt-truncation.test.d.ts",
@@ -33035,11 +33003,6 @@
         "path": "scripts/generate-prompt-projections.mjs"
       },
       {
-        "id": "scripts/generate-skill-entitlements.mjs",
-        "kind": "script",
-        "path": "scripts/generate-skill-entitlements.mjs"
-      },
-      {
         "id": "scripts/inventory-issue-3698.mjs",
         "kind": "script",
         "path": "scripts/inventory-issue-3698.mjs"
@@ -33130,19 +33093,9 @@
         "path": "scripts/lib/pre-tool-enforcer-preflight.mjs"
       },
       {
-        "id": "scripts/lib/precompact-publisher.mjs",
-        "kind": "script",
-        "path": "scripts/lib/precompact-publisher.mjs"
-      },
-      {
         "id": "scripts/lib/precompact-restore.mjs",
         "kind": "script",
         "path": "scripts/lib/precompact-restore.mjs"
-      },
-      {
-        "id": "scripts/lib/skill-entitlements.mjs",
-        "kind": "script",
-        "path": "scripts/lib/skill-entitlements.mjs"
       },
       {
         "id": "scripts/lib/state-root.cjs",
@@ -33353,6 +33306,11 @@
         "id": "scripts/test-max-attempts.ts",
         "kind": "script",
         "path": "scripts/test-max-attempts.ts"
+      },
+      {
+        "id": "scripts/test-mutual-exclusion.ts",
+        "kind": "script",
+        "path": "scripts/test-mutual-exclusion.ts"
       },
       {
         "id": "scripts/test-notepad-integration.ts",
@@ -34990,16 +34948,6 @@
         "path": "src/__tests__/shared-state-locking.test.ts"
       },
       {
-        "id": "src/__tests__/skill-entitlements-cross-surface.test.ts",
-        "kind": "src",
-        "path": "src/__tests__/skill-entitlements-cross-surface.test.ts"
-      },
-      {
-        "id": "src/__tests__/skill-entitlements.test.ts",
-        "kind": "src",
-        "path": "src/__tests__/skill-entitlements.test.ts"
-      },
-      {
         "id": "src/__tests__/skill-injector-script.test.ts",
         "kind": "src",
         "path": "src/__tests__/skill-injector-script.test.ts"
@@ -35723,11 +35671,6 @@
         "id": "src/config/__tests__/test-helpers.ts",
         "kind": "src",
         "path": "src/config/__tests__/test-helpers.ts"
-      },
-      {
-        "id": "src/config/builtin-skill-entitlements.json",
-        "kind": "src",
-        "path": "src/config/builtin-skill-entitlements.json"
       },
       {
         "id": "src/config/index.ts",
@@ -37578,6 +37521,11 @@
         "id": "src/hooks/todo-continuation/index.ts",
         "kind": "hook",
         "path": "src/hooks/todo-continuation/index.ts"
+      },
+      {
+        "id": "src/hooks/ultraqa/index.ts",
+        "kind": "hook",
+        "path": "src/hooks/ultraqa/index.ts"
       },
       {
         "id": "src/hooks/ultrawork/__tests__/prompt-truncation.test.ts",
@@ -40275,19 +40223,9 @@
         "path": "templates/hooks/lib/model-routing-override-message.mjs"
       },
       {
-        "id": "templates/hooks/lib/precompact-publisher.mjs",
-        "kind": "template-hook",
-        "path": "templates/hooks/lib/precompact-publisher.mjs"
-      },
-      {
         "id": "templates/hooks/lib/precompact-restore.mjs",
         "kind": "template-hook",
         "path": "templates/hooks/lib/precompact-restore.mjs"
-      },
-      {
-        "id": "templates/hooks/lib/skill-entitlements.mjs",
-        "kind": "template-hook",
-        "path": "templates/hooks/lib/skill-entitlements.mjs"
       },
       {
         "id": "templates/hooks/lib/state-root.mjs",
@@ -41357,26 +41295,6 @@
         "kind": "imports"
       },
       {
-        "from": "scripts/generate-skill-entitlements.mjs",
-        "to": "external:node:crypto",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/generate-skill-entitlements.mjs",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/generate-skill-entitlements.mjs",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/generate-skill-entitlements.mjs",
-        "to": "external:node:url",
-        "kind": "imports"
-      },
-      {
         "from": "scripts/inventory-issue-3698.mjs",
         "to": "external:node:crypto",
         "kind": "imports"
@@ -41572,26 +41490,6 @@
         "kind": "imports"
       },
       {
-        "from": "scripts/lib/precompact-publisher.mjs",
-        "to": "external:crypto",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/lib/precompact-publisher.mjs",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/lib/precompact-publisher.mjs",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/lib/precompact-restore.mjs",
-        "to": "external:child_process",
-        "kind": "imports"
-      },
-      {
         "from": "scripts/lib/precompact-restore.mjs",
         "to": "external:crypto",
         "kind": "imports"
@@ -41604,11 +41502,6 @@
       {
         "from": "scripts/lib/precompact-restore.mjs",
         "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/lib/precompact-restore.mjs",
-        "to": "external:url",
         "kind": "imports"
       },
       {
@@ -42073,11 +41966,6 @@
       },
       {
         "from": "scripts/pre-tool-enforcer.mjs",
-        "to": "scripts/lib/skill-entitlements.mjs",
-        "kind": "imports"
-      },
-      {
-        "from": "scripts/pre-tool-enforcer.mjs",
         "to": "scripts/lib/state-root.mjs",
         "kind": "imports"
       },
@@ -42529,6 +42417,31 @@
       {
         "from": "scripts/test-max-attempts.ts",
         "to": "src/hooks/persistent-mode/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/test-mutual-exclusion.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/test-mutual-exclusion.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/test-mutual-exclusion.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/test-mutual-exclusion.ts",
+        "to": "src/hooks/ralph/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/test-mutual-exclusion.ts",
+        "to": "src/hooks/ultraqa/index.ts",
         "kind": "imports"
       },
       {
@@ -44023,6 +43936,11 @@
       },
       {
         "from": "src/__tests__/hooks.test.ts",
+        "to": "src/hooks/ralph/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hooks.test.ts",
         "to": "src/hooks/skill-state/index.ts",
         "kind": "imports"
       },
@@ -44035,6 +43953,11 @@
         "from": "src/__tests__/hooks.test.ts",
         "to": "src/hooks/todo-continuation/index.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/__tests__/hooks.test.ts",
+        "to": "src/hooks/ultraqa/index.ts",
+        "kind": "imports"
       },
       {
         "from": "src/__tests__/hooks/learner/bridge.test.ts",
@@ -48062,71 +47985,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/__tests__/skill-entitlements-cross-surface.test.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/skill-entitlements-cross-surface.test.ts",
-        "to": "external:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/skill-entitlements-cross-surface.test.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/skill-entitlements-cross-surface.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/skill-entitlements-cross-surface.test.ts",
-        "to": "src/features/builtin-skills/skills.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/skill-entitlements-cross-surface.test.ts",
-        "to": "src/features/delegation-enforcer.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/skill-entitlements-cross-surface.test.ts",
-        "to": "src/installer/index.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/skill-entitlements.test.ts",
-        "to": "external:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/skill-entitlements.test.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/skill-entitlements.test.ts",
-        "to": "external:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/skill-entitlements.test.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/skill-entitlements.test.ts",
-        "to": "external:url",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/skill-entitlements.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
         "from": "src/__tests__/skill-injector-script.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -51863,11 +51721,6 @@
       },
       {
         "from": "src/features/builtin-skills/skills.ts",
-        "to": "src/config/builtin-skill-entitlements.json",
-        "kind": "imports"
-      },
-      {
-        "from": "src/features/builtin-skills/skills.ts",
         "to": "src/features/builtin-skills/runtime-guidance.ts",
         "kind": "imports"
       },
@@ -51999,11 +51852,6 @@
       {
         "from": "src/features/delegation-enforcer.ts",
         "to": "src/agents/definitions.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/features/delegation-enforcer.ts",
-        "to": "src/config/builtin-skill-entitlements.json",
         "kind": "imports"
       },
       {
@@ -53193,11 +53041,6 @@
       },
       {
         "from": "src/hooks/__tests__/precompact-restore.test.ts",
-        "to": "external:crypto",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/__tests__/precompact-restore.test.ts",
         "to": "external:fs",
         "kind": "imports"
       },
@@ -53209,11 +53052,6 @@
       {
         "from": "src/hooks/__tests__/precompact-restore.test.ts",
         "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/__tests__/precompact-restore.test.ts",
-        "to": "external:url",
         "kind": "imports"
       },
       {
@@ -53733,7 +53571,7 @@
       },
       {
         "from": "src/hooks/autopilot/__tests__/cancel.test.ts",
-        "to": "src/lib/mode-state-io.ts",
+        "to": "src/hooks/ultraqa/index.ts",
         "kind": "imports"
       },
       {
@@ -54138,6 +53976,11 @@
       },
       {
         "from": "src/hooks/autopilot/cancel.ts",
+        "to": "src/hooks/ultraqa/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/autopilot/cancel.ts",
         "to": "src/lib/mode-state-io.ts",
         "kind": "imports"
       },
@@ -54449,6 +54292,11 @@
       {
         "from": "src/hooks/autopilot/state.ts",
         "to": "src/hooks/ralph/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/autopilot/state.ts",
+        "to": "src/hooks/ultraqa/index.ts",
         "kind": "imports"
       },
       {
@@ -55554,6 +55402,16 @@
       {
         "from": "src/hooks/index.ts",
         "to": "src/hooks/todo-continuation/index.ts",
+        "kind": "type-exports"
+      },
+      {
+        "from": "src/hooks/index.ts",
+        "to": "src/hooks/ultraqa/index.ts",
+        "kind": "exports"
+      },
+      {
+        "from": "src/hooks/index.ts",
+        "to": "src/hooks/ultraqa/index.ts",
         "kind": "type-exports"
       },
       {
@@ -57328,11 +57186,6 @@
       },
       {
         "from": "src/hooks/pre-compact/restore.ts",
-        "to": "external:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/pre-compact/restore.ts",
         "to": "external:crypto",
         "kind": "imports"
       },
@@ -57343,12 +57196,12 @@
       },
       {
         "from": "src/hooks/pre-compact/restore.ts",
-        "to": "external:path",
-        "kind": "imports"
+        "to": "external:fs",
+        "kind": "type-imports"
       },
       {
         "from": "src/hooks/pre-compact/restore.ts",
-        "to": "external:url",
+        "to": "external:path",
         "kind": "imports"
       },
       {
@@ -57963,6 +57816,11 @@
       },
       {
         "from": "src/hooks/ralph/loop.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/ralph/loop.ts",
         "to": "external:path",
         "kind": "imports"
       },
@@ -58012,6 +57870,16 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/ralph/loop.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/ralph/prd.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/ralph/prd.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -58025,6 +57893,16 @@
         "from": "src/hooks/ralph/prd.ts",
         "to": "src/hooks/ralph/stale-prd.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/ralph/prd.ts",
+        "to": "src/lib/atomic-write.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/ralph/prd.ts",
+        "to": "src/lib/mode-state-io.ts",
+        "kind": "imports"
       },
       {
         "from": "src/hooks/ralph/prd.ts",
@@ -58095,6 +57973,11 @@
         "from": "src/hooks/ralph/verifier.ts",
         "to": "src/hooks/ralph/loop.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/hooks/ralph/verifier.ts",
+        "to": "src/hooks/ralph/prd.ts",
+        "kind": "imports"
       },
       {
         "from": "src/hooks/ralph/verifier.ts",
@@ -60244,6 +60127,16 @@
       {
         "from": "src/hooks/todo-continuation/index.ts",
         "to": "src/utils/config-dir.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/ultraqa/index.ts",
+        "to": "src/hooks/ralph/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/ultraqa/index.ts",
+        "to": "src/lib/mode-state-io.ts",
         "kind": "imports"
       },
       {
@@ -62694,11 +62587,6 @@
       {
         "from": "src/installer/index.ts",
         "to": "external:url",
-        "kind": "imports"
-      },
-      {
-        "from": "src/installer/index.ts",
-        "to": "src/config/builtin-skill-entitlements.json",
         "kind": "imports"
       },
       {
@@ -74242,36 +74130,6 @@
         "kind": "projects"
       },
       {
-        "from": "templates/hooks/lib/precompact-publisher.mjs",
-        "to": "external:crypto",
-        "kind": "imports"
-      },
-      {
-        "from": "templates/hooks/lib/precompact-publisher.mjs",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "templates/hooks/lib/precompact-publisher.mjs",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "templates/hooks/lib/precompact-publisher.mjs",
-        "to": "hooks/hooks.json",
-        "kind": "projects"
-      },
-      {
-        "from": "templates/hooks/lib/precompact-publisher.mjs",
-        "to": "src/hooks/bridge.ts",
-        "kind": "projects"
-      },
-      {
-        "from": "templates/hooks/lib/precompact-restore.mjs",
-        "to": "external:child_process",
-        "kind": "imports"
-      },
-      {
         "from": "templates/hooks/lib/precompact-restore.mjs",
         "to": "external:crypto",
         "kind": "imports"
@@ -74288,26 +74146,11 @@
       },
       {
         "from": "templates/hooks/lib/precompact-restore.mjs",
-        "to": "external:url",
-        "kind": "imports"
-      },
-      {
-        "from": "templates/hooks/lib/precompact-restore.mjs",
         "to": "hooks/hooks.json",
         "kind": "projects"
       },
       {
         "from": "templates/hooks/lib/precompact-restore.mjs",
-        "to": "src/hooks/bridge.ts",
-        "kind": "projects"
-      },
-      {
-        "from": "templates/hooks/lib/skill-entitlements.mjs",
-        "to": "hooks/hooks.json",
-        "kind": "projects"
-      },
-      {
-        "from": "templates/hooks/lib/skill-entitlements.mjs",
         "to": "src/hooks/bridge.ts",
         "kind": "projects"
       },
@@ -74534,11 +74377,6 @@
       {
         "from": "templates/hooks/pre-tool-use.mjs",
         "to": "templates/hooks/lib/config-dir.mjs",
-        "kind": "imports"
-      },
-      {
-        "from": "templates/hooks/pre-tool-use.mjs",
-        "to": "templates/hooks/lib/skill-entitlements.mjs",
         "kind": "imports"
       },
       {
@@ -75088,12 +74926,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6841,
-      "edgeCount": 6910,
-      "importEdgeCount": 5665,
+      "nodeCount": 6830,
+      "edgeCount": 6890,
+      "importEdgeCount": 5646,
       "registerEdgeCount": 52
     }
   },
-  "inventorySha256": "f87ce5b82ba93aa0f25b13865de71d4acab9d7e6211b33178720a927f2780d32",
-  "manifestSha256": "1d38ffa28778568078d7cb14d9bd368b4630027ed707bb98b77cc2a608ae8135"
+  "inventorySha256": "fb7a79660fc8e0567ff1d3b9b1c35cc824ceee60b5a0313f27f45cd531a8e409",
+  "manifestSha256": "d46e8e28dde580d9822b94291f1cb5bb3255fe617dd0a86da32e8a2099914656"
 }

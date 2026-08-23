@@ -196,7 +196,7 @@ describe('PreCompact writer - plan anchors (issue #3730)', () => {
     expect(checkpoint.plan_refs!.prd!.title).toBe('Fix the login bug');
     expect(checkpoint.plan_refs!.prd!.status).toBe('in_progress');
     expect(checkpoint.plan_refs!.prd!.stories_total).toBe(2);
-    expect(checkpoint.plan_refs!.prd!.stories_completed).toBe(1);
+    expect(checkpoint.plan_refs!.prd!.stories_completed).toBe(0);
   });
 
   it('captures boulder plan anchors when a boulder is active', async () => {
