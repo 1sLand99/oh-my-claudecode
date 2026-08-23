@@ -128,6 +128,8 @@ jobs:
         run: npm run build
 
       - name: Run portable restore and SessionStart interleaving tests
+        env:
+          OMC_PRECOMPACT_DIST_INTERLEAVINGS: '1'
         run: >-
           npx vitest run
           src/hooks/__tests__/precompact-restore.test.ts

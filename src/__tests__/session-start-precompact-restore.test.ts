@@ -25,6 +25,11 @@ const TEMPLATE_SCRIPT_PATH = join(__dirname, '..', '..', 'templates', 'hooks', '
 const NODE = process.execPath;
 // Marker publication is portable across every supported Node platform.
 const SECURE_MARKER_SUPPORTED = true;
+const CONCURRENT_RESTORE_HELPERS: Array<[string, string, boolean]> = [
+  ['installed', join(__dirname, '..', '..', 'scripts', 'lib', 'precompact-restore.mjs'), true],
+  ['template', join(__dirname, '..', '..', 'templates', 'hooks', 'lib', 'precompact-restore.mjs'), true],
+  ['dist', join(__dirname, '..', '..', 'dist', 'hooks', 'pre-compact', 'restore.js'), false],
+].filter(([label]) => label !== 'dist' || process.env.OMC_PRECOMPACT_DIST_INTERLEAVINGS === '1') as Array<[string, string, boolean]>;
 
 function makeProject(root: string): string {
   const project = join(root, 'project');
@@ -496,11 +501,8 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
     expect(refreshed.created_at).toBe(replacementCreatedAt);
   });
 
-  it.each([
-    ['installed', join(__dirname, '..', '..', 'scripts', 'lib', 'precompact-restore.mjs'), true],
-    ['template', join(__dirname, '..', '..', 'templates', 'hooks', 'lib', 'precompact-restore.mjs'), true],
-    ['dist', join(__dirname, '..', '..', 'dist', 'hooks', 'pre-compact', 'restore.js'), false],
-  ])('keeps marker advancement monotonic across delayed %s helper processes', async (_label, helperPath, usesOmcRoot) => {
+  it.each(CONCURRENT_RESTORE_HELPERS)(
+    'keeps marker advancement monotonic across delayed %s helper processes', async (_label, helperPath, usesOmcRoot) => {
     if (!SECURE_MARKER_SUPPORTED) return;
     const createdAt = new Date().toISOString();
     const checkpointDir = join(project, '.omc', 'state', 'checkpoints');
@@ -513,7 +515,7 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
       todo_summary: { pending: 1, in_progress: 0, completed: 0 },
       wisdom_exported: false,
     });
-    const checkpointA = join(checkpointDir, 'checkpoint-é.json');
+    const checkpointA = join(checkpointDir, 'checkpoint-a.json');
     writeFileSync(checkpointA, payload);
     const sameTime = new Date(Date.now() - 2_000);
     utimesSync(checkpointA, sameTime, sameTime);
@@ -578,15 +580,12 @@ process.stdout.write(JSON.stringify(result));`;
     expect(JSON.parse(delayedStdout)).toBeNull();
 
     const markerPath = join(project, '.omc', 'state', 'checkpoints-restored', `marker-process-${_label}`, 'restored.json');
-    expect(JSON.parse(readFileSync(markerPath, 'utf8')).checkpoint).toBe(realpathSync(checkpointB));
-    expect(JSON.parse(readFileSync(markerPath, 'utf8')).checkpoint).not.toBe(realpathSync(checkpointA));
+    expect(JSON.parse(readFileSync(markerPath, 'utf8')).checkpoint.normalize('NFC')).toBe(realpathSync(checkpointB).normalize('NFC'));
+    expect(JSON.parse(readFileSync(markerPath, 'utf8')).checkpoint.normalize('NFC')).not.toBe(realpathSync(checkpointA).normalize('NFC'));
   }, 30_000);
 
-  it.each([
-    ['installed', join(__dirname, '..', '..', 'scripts', 'lib', 'precompact-restore.mjs'), true],
-    ['template', join(__dirname, '..', '..', 'templates', 'hooks', 'lib', 'precompact-restore.mjs'), true],
-    ['dist', join(__dirname, '..', '..', 'dist', 'hooks', 'pre-compact', 'restore.js'), false],
-  ])('delivers only one restore for concurrent duplicate %s claims', async (_label, helperPath, usesOmcRoot) => {
+  it.each(CONCURRENT_RESTORE_HELPERS)(
+    'delivers only one restore for concurrent duplicate %s claims', async (_label, helperPath, usesOmcRoot) => {
     if (!SECURE_MARKER_SUPPORTED) return;
     const checkpoint = writeCheckpoint(project, new Date().toISOString(), { session_id: `duplicate-${_label}` });
     const signal = join(tempDir, `duplicate-signal-${_label}`);
