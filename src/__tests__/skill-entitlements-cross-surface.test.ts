@@ -52,15 +52,18 @@ describe('nonempty skill entitlement fixture', () => {
   it('withholds delegation guidance for mixed-case hidden skill invocations', async () => {
     await withEntitlementFixture(async () => {
       const { enforceModel } = await import('../features/delegation-enforcer.js');
+      const { clearSkillsCache } = await import('../features/builtin-skills/skills.js');
 
       for (const skill of ['Remember', 'VERIFY', 'Debug']) {
         process.env.USER_TYPE = '';
+        clearSkillsCache();
         expect(() => enforceModel({ description: 't', prompt: 'p', subagent_type: `oh-my-claudecode:${skill}` }))
           .toThrow(/Unknown agent type/);
         expect(() => enforceModel({ description: 't', prompt: 'p', subagent_type: `oh-my-claudecode:${skill}` }))
           .not.toThrow(/Skill\(skill=/);
 
         process.env.USER_TYPE = 'ant';
+        clearSkillsCache();
         expect(() => enforceModel({ description: 't', prompt: 'p', subagent_type: `oh-my-claudecode:${skill}` }))
           .toThrow(`Skill(skill="oh-my-claudecode:${skill.toLowerCase()}")`);
       }
