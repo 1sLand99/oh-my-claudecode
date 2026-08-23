@@ -49184,7 +49184,19 @@ async function spawnWorkerForTask(runtime, workerNameValue, taskIndex) {
     launchArgs,
     cwd: runtime.cwd
   };
-  await applyMainVerticalLayout(runtime.sessionName, { required: true });
+  try {
+    await applyMainVerticalLayout(runtime.sessionName, { required: true });
+  } catch (error2) {
+    try {
+      await killTeamPane(paneId);
+    } catch {
+    }
+    try {
+      await resetTaskToPending(root2, taskId, runtime.teamName, runtime.cwd);
+    } catch {
+    }
+    throw error2;
+  }
   await spawnWorkerInPane(runtime.sessionName, paneId, paneConfig);
   runtime.workerPaneIds.push(paneId);
   runtime.activeWorkers.set(workerNameValue, { paneId, taskId, spawnedAt: Date.now() });

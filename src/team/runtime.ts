@@ -794,7 +794,21 @@ export async function spawnWorkerForTask(
     cwd: runtime.cwd,
   };
 
-  await applyMainVerticalLayout(runtime.sessionName, { required: true });
+  try {
+    await applyMainVerticalLayout(runtime.sessionName, { required: true });
+  } catch (error) {
+    try {
+      await killTeamPane(paneId);
+    } catch {
+      // Preserve the required-layout failure after best-effort pane cleanup.
+    }
+    try {
+      await resetTaskToPending(root, taskId, runtime.teamName, runtime.cwd);
+    } catch {
+      // Preserve the required-layout failure after best-effort task cleanup.
+    }
+    throw error;
+  }
   await spawnWorkerInPane(runtime.sessionName, paneId, paneConfig);
 
   runtime.workerPaneIds.push(paneId);
