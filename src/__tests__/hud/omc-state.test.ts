@@ -154,11 +154,7 @@ describe('hud omc state session scoping', () => {
       iteration: 3,
       max_iterations: 8,
       current_story_id: 'story-b',
-    });
-    writeJson(join(omcRoot, 'state', 'sessions', 'session-b', 'ultrawork-state.json'), {
-      active: true,
-      reinforcement_count: 7,
-    });
+    }, Date.now() + 1000);
 
     expect(isAnyModeActive(worktree)).toBe(true);
     expect(isAnyModeActive(worktree, 'session-a')).toBe(false);
