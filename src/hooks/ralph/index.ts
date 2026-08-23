@@ -69,6 +69,9 @@ export {
   markStoryComplete,
   markStoryIncomplete,
   markStoryArchitectVerified,
+  consumeStoryArchitectApproval,
+  consumeCompletionArchitectApproval,
+  getPrdGoverningCriteriaRevision,
   getStory,
   getNextStory,
   amendCriterion,
@@ -146,6 +149,7 @@ export {
   readVerificationState,
   writeVerificationState,
   clearVerificationState,
+  consumeVerificationRequest,
 
   // Verification workflow
   startVerification,

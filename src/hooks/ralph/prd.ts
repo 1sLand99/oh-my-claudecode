@@ -12,9 +12,12 @@
  * - notes: Optional notes from implementation
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { createHash } from 'crypto';
+import { existsSync, readFileSync, mkdirSync } from 'fs';
 import { dirname, join } from 'path';
 import { ensureSessionStateDir, getOmcRoot, getSessionStateDir } from '../../lib/worktree-paths.js';
+import { withStateFileMutationLock } from '../../lib/mode-state-io.js';
+import { atomicWriteJsonSync } from '../../lib/atomic-write.js';
 import type { ObservableCheck, PrdReconciliationConfig } from './stale-prd.js';
 
 // ============================================================================
@@ -64,6 +67,12 @@ export interface UserStory {
   passes: boolean;
   /** Whether architect verification has approved this story for progression */
   architectVerified?: boolean;
+  /** Canonical digest of this story's active criteria and amendment ledger. */
+  governingCriteriaRevision?: string;
+  /** Revision whose criteria were marked complete. */
+  completionCriteriaRevision?: string;
+  /** Revision whose completed criteria received architect approval. */
+  architectVerificationCriteriaRevision?: string;
   /** Optional notes from implementation */
   notes?: string;
 }
@@ -253,6 +262,17 @@ function normalizeStory(candidate: unknown): UserStory | null {
     return null;
   }
 
+  const governingCriteriaRevision = getGoverningCriteriaRevision(acceptanceCriteria, criterionAmendments);
+  const completionCriteriaRevision = typeof story.completionCriteriaRevision === 'string'
+    ? story.completionCriteriaRevision
+    : undefined;
+  const passes = story.passes === true && completionCriteriaRevision === governingCriteriaRevision;
+  const architectVerificationCriteriaRevision = typeof story.architectVerificationCriteriaRevision === 'string'
+    ? story.architectVerificationCriteriaRevision
+    : undefined;
+  const architectVerified = passes && story.architectVerified === true
+    && architectVerificationCriteriaRevision === governingCriteriaRevision;
+
   return {
     id: story.id,
     title: story.title,
@@ -260,9 +280,47 @@ function normalizeStory(candidate: unknown): UserStory | null {
     acceptanceCriteria,
     criterionAmendments,
     priority: story.priority,
-    passes: story.passes,
-    architectVerified: story.architectVerified === true,
+    governingCriteriaRevision,
+    completionCriteriaRevision: passes ? completionCriteriaRevision : undefined,
+    architectVerificationCriteriaRevision: architectVerified ? architectVerificationCriteriaRevision : undefined,
+    passes,
+    architectVerified,
     notes: typeof story.notes === 'string' ? story.notes : undefined
+  };
+}
+
+function getGoverningCriteriaRevision(
+  acceptanceCriteria: readonly string[],
+  criterionAmendments: readonly CriterionAmendment[] | undefined,
+): string {
+  return `sha256:${createHash('sha256').update(JSON.stringify({ acceptanceCriteria, criterionAmendments: criterionAmendments ?? [] })).digest('hex')}`;
+}
+
+export function getPrdGoverningCriteriaRevision(prd: PRD): string {
+  return `sha256:${createHash('sha256').update(JSON.stringify(prd.userStories.map(story => ({
+    id: story.id,
+    governingCriteriaRevision: getGoverningCriteriaRevision(story.acceptanceCriteria, story.criterionAmendments),
+  })))).digest('hex')}`;
+}
+
+function bindCompletionClaims(prd: PRD): PRD {
+  return {
+    ...prd,
+    userStories: prd.userStories.map(story => {
+      const governingCriteriaRevision = getGoverningCriteriaRevision(story.acceptanceCriteria, story.criterionAmendments);
+      const passes = story.passes === true
+        && (story.completionCriteriaRevision === undefined || story.completionCriteriaRevision === governingCriteriaRevision);
+      const architectVerified = passes && story.architectVerified === true
+        && (story.architectVerificationCriteriaRevision === undefined || story.architectVerificationCriteriaRevision === governingCriteriaRevision);
+      return {
+        ...story,
+        governingCriteriaRevision,
+        completionCriteriaRevision: passes ? governingCriteriaRevision : undefined,
+        architectVerificationCriteriaRevision: architectVerified ? governingCriteriaRevision : undefined,
+        passes,
+        architectVerified,
+      };
+    }),
   };
 }
 
@@ -492,11 +550,67 @@ export function writePrd(directory: string, prd: PRD, sessionId?: string): boole
 
   try {
     mkdirSync(dirname(prdPath), { recursive: true });
-    writeFileSync(prdPath, JSON.stringify(prd, null, 2));
-    return true;
+    const result = withStateFileMutationLock(prdPath, () => {
+      atomicWriteJsonSync(prdPath, bindCompletionClaims(prd));
+      return true;
+    }, true);
+    return result.acquired && result.value === true;
   } catch {
     return false;
   }
+}
+
+/**
+ * Consume an architect approval only when the story still has the exact
+ * governing-criteria revision that was submitted for review. The PRD lock is
+ * shared with amendments so a stale approval cannot overwrite an amendment's
+ * reset ledger with a full-file write.
+ */
+export function consumeStoryArchitectApproval(
+  directory: string,
+  storyId: string,
+  expectedCriteriaRevision: string,
+  sessionId?: string,
+  beforeCommit?: () => void,
+): boolean {
+  const prdPath = findPrdPath(directory, sessionId);
+  if (!prdPath) return false;
+
+  const result = withStateFileMutationLock(prdPath, () => {
+    beforeCommit?.();
+    const parsed = readPrdFromPath(prdPath).prd;
+    const story = parsed?.userStories.find(candidate => candidate.id === storyId);
+    if (!parsed || !story || !story.passes || story.governingCriteriaRevision !== expectedCriteriaRevision
+      || story.completionCriteriaRevision !== expectedCriteriaRevision) {
+      return false;
+    }
+    story.architectVerified = true;
+    story.architectVerificationCriteriaRevision = expectedCriteriaRevision;
+    try {
+      atomicWriteJsonSync(prdPath, bindCompletionClaims(parsed));
+      return true;
+    } catch {
+      return false;
+    }
+  }, true);
+  return result.acquired && result.value === true;
+}
+
+/** Atomically rechecks the complete PRD revision before final approval is consumed. */
+export function consumeCompletionArchitectApproval(
+  directory: string,
+  expectedCriteriaRevision: string,
+  sessionId?: string,
+): boolean {
+  const prdPath = findPrdPath(directory, sessionId);
+  if (!prdPath) return false;
+  const result = withStateFileMutationLock(prdPath, () => {
+    const prd = readPrdFromPath(prdPath).prd;
+    return prd !== undefined
+      && getPrdGoverningCriteriaRevision(prd) === expectedCriteriaRevision
+      && getPrdStatus(prd).allComplete;
+  }, true);
+  return result.acquired && result.value === true;
 }
 
 // ============================================================================
@@ -545,6 +659,8 @@ export function markStoryComplete(
 
   story.passes = true;
   story.architectVerified = false;
+  story.completionCriteriaRevision = getGoverningCriteriaRevision(story.acceptanceCriteria, story.criterionAmendments);
+  story.architectVerificationCriteriaRevision = undefined;
   if (notes) {
     story.notes = notes;
   }
@@ -573,6 +689,8 @@ export function markStoryIncomplete(
 
   story.passes = false;
   story.architectVerified = false;
+  story.completionCriteriaRevision = undefined;
+  story.architectVerificationCriteriaRevision = undefined;
   if (notes) {
     story.notes = notes;
   }
@@ -599,7 +717,12 @@ export function markStoryArchitectVerified(
     return false;
   }
 
+  const governingCriteriaRevision = getGoverningCriteriaRevision(story.acceptanceCriteria, story.criterionAmendments);
+  if (!story.passes || story.completionCriteriaRevision !== governingCriteriaRevision) {
+    return false;
+  }
   story.architectVerified = true;
+  story.architectVerificationCriteriaRevision = governingCriteriaRevision;
   if (notes) {
     story.notes = notes;
   }
@@ -715,6 +838,8 @@ function applyCriterionAmendment(
   story.criterionAmendments = [...ledger, amendment];
   story.passes = false;
   story.architectVerified = false;
+  story.completionCriteriaRevision = undefined;
+  story.architectVerificationCriteriaRevision = undefined;
 
   if (!writePrd(directory, prd, sessionId)) {
     return { ok: false, error: 'write-failed' };

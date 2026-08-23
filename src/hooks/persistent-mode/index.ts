@@ -35,9 +35,12 @@ import {
   findPrdPath,
   getPrdCompletionStatus,
   getRalphContext,
+  readPrd,
   getStory,
   markStoryIncomplete,
-  markStoryArchitectVerified,
+  consumeStoryArchitectApproval,
+  consumeCompletionArchitectApproval,
+  getPrdGoverningCriteriaRevision,
   readVerificationState,
   startVerification,
   recordArchitectFeedback,
@@ -46,6 +49,7 @@ import {
   detectArchitectApproval,
   detectArchitectRejection,
   clearVerificationState,
+  consumeVerificationRequest,
   type VerificationState,
 } from '../ralph/index.js';
 import { checkIncompleteTodos, getNextPendingTodo, StopContext, isUserAbort, isContextLimitStop, isRateLimitStop, isExplicitCancelCommand, isAuthenticationError, isScheduledWakeupStop, isOversizeToolResultRedirectStop } from '../todo-continuation/index.js';
@@ -1209,7 +1213,12 @@ async function checkRalphLoop(
       : undefined;
     const staleVerification = verificationState.verification_scope === 'story'
       ? !verifiedStory?.passes || verifiedStory.architectVerified === true
-      : prdStatus.hasPrd && !prdStatus.allComplete;
+        || verifiedStory.governingCriteriaRevision !== verificationState.criteria_revision
+      : prdStatus.hasPrd && (!prdStatus.allComplete
+        || (() => {
+          const prd = readPrd(workingDir, sessionId);
+          return !prd || getPrdGoverningCriteriaRevision(prd) !== verificationState.criteria_revision;
+        })());
 
     if (staleVerification) {
       clearVerificationState(workingDir, sessionId);
@@ -1227,25 +1236,50 @@ async function checkRalphLoop(
       // Check for architect approval
       if (checkArchitectApprovalInTranscript(sessionId, verificationState)) {
         if (verificationState.verification_scope === 'story' && verificationState.story_id) {
-          markStoryArchitectVerified(workingDir, verificationState.story_id, undefined, sessionId);
-          clearVerificationState(workingDir, sessionId);
+          const consumed = consumeStoryArchitectApproval(
+            workingDir,
+            verificationState.story_id,
+            verificationState.criteria_revision ?? '',
+            sessionId,
+          );
+          if (!consumed || !consumeVerificationRequest(workingDir, verificationState.request_id, sessionId)) {
+            verificationState = null;
+          }
 
-          const refreshedState = readRalphState(workingDir, sessionId);
-          if (refreshedState) {
-            const refreshedPrd = getPrdCompletionStatus(workingDir, sessionId);
-            refreshedState.current_story_id = refreshedPrd.nextStory?.id;
-            writeRalphState(workingDir, refreshedState, sessionId);
+          if (consumed) {
+            const refreshedState = readRalphState(workingDir, sessionId);
+            if (refreshedState) {
+              const refreshedPrd = getPrdCompletionStatus(workingDir, sessionId);
+              refreshedState.current_story_id = refreshedPrd.nextStory?.id;
+              writeRalphState(workingDir, refreshedState, sessionId);
+            }
           }
           verificationState = readVerificationState(workingDir, sessionId);
         } else {
           // Architect approved - truly complete
-          // Also deactivate ultrawork if it was active alongside ralph
-          clearVerificationState(workingDir, sessionId);
-          clearRalphState(workingDir, sessionId);
-          deactivateUltrawork(workingDir, sessionId);
-          const criticLabel = verificationState.critic_mode === 'codex'
+          const criticMode = verificationState.critic_mode;
+          const consumed = (!prdStatus.hasPrd || consumeCompletionArchitectApproval(
+            workingDir,
+            verificationState.criteria_revision ?? '',
+            sessionId,
+          )) && consumeVerificationRequest(workingDir, verificationState.request_id, sessionId);
+          if (!consumed) {
+            verificationState = null;
+          } else {
+            // Also deactivate ultrawork if it was active alongside ralph.
+            clearRalphState(workingDir, sessionId);
+            deactivateUltrawork(workingDir, sessionId);
+          }
+          if (!consumed) {
+            return {
+              shouldBlock: true,
+              message: '[RALPH VERIFICATION INVALIDATED] The PRD changed while approval was being consumed. Re-run verification against the current criteria.',
+              mode: 'ralph',
+            };
+          }
+          const criticLabel = criticMode === 'codex'
             ? 'Codex critic'
-            : verificationState.critic_mode === 'critic'
+            : criticMode === 'critic'
               ? 'Critic'
               : 'Architect';
           return {

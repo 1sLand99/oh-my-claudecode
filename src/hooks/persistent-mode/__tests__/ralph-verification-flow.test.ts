@@ -245,6 +245,7 @@ describe('Ralph verification flow', () => {
 
     writePrd(testDir, prd);
     writeRalphState(sessionId, { current_story_id: 'US-001' });
+    const criteriaRevision = readPrd(testDir)?.userStories[0].governingCriteriaRevision;
     writeFileSync(join(sessionDir, 'ralph-verification-state.json'), JSON.stringify({
       pending: true,
       completion_claim: 'US-001 is ready to progress',
@@ -256,6 +257,7 @@ describe('Ralph verification flow', () => {
       verification_scope: 'story',
       story_id: 'US-001',
       request_id: 'story-request',
+      criteria_revision: criteriaRevision,
     }));
 
     writeMessagesTranscript(sessionId, [
@@ -408,6 +410,7 @@ describe('Ralph verification flow', () => {
     writePrd(testDir, sessionPrd, sessionId);
     writePrd(testDir, legacyPrd);
     writeRalphState(sessionId, { current_story_id: 'US-001' });
+    const criteriaRevision = readPrd(testDir, sessionId)?.userStories[0].governingCriteriaRevision;
     writeFileSync(join(sessionDir, 'ralph-verification-state.json'), JSON.stringify({
       pending: true,
       completion_claim: 'US-001 is ready to progress',
@@ -419,6 +422,7 @@ describe('Ralph verification flow', () => {
       verification_scope: 'story',
       story_id: 'US-001',
       request_id: 'rejected-story-request',
+      criteria_revision: criteriaRevision,
     }));
 
     const transcriptDir = join(claudeConfigDir, 'sessions', sessionId);
@@ -440,7 +444,7 @@ describe('Ralph verification flow', () => {
     expect(updatedSessionPrd?.userStories[0].notes).toBe('Needs tests before progression.');
 
     const legacyPrdPath = join(testDir, '.omc', 'prd.json');
-    expect(JSON.parse(readFileSync(legacyPrdPath, 'utf-8'))).toEqual(legacyPrd);
+    expect(JSON.parse(readFileSync(legacyPrdPath, 'utf-8'))).toMatchObject(legacyPrd);
   });
 
   it('does not reuse stale earlier story approval from transcript tail', async () => {
@@ -476,6 +480,7 @@ describe('Ralph verification flow', () => {
 
     writePrd(testDir, prd);
     writeRalphState(sessionId, { current_story_id: 'US-001' });
+    const criteriaRevision = readPrd(testDir)?.userStories[0].governingCriteriaRevision;
     writeFileSync(join(sessionDir, 'ralph-verification-state.json'), JSON.stringify({
       pending: true,
       completion_claim: 'US-001 is ready to progress',
@@ -487,6 +492,7 @@ describe('Ralph verification flow', () => {
       verification_scope: 'story',
       story_id: 'US-001',
       request_id: 'current-request',
+      criteria_revision: criteriaRevision,
     }));
 
     writeMessagesTranscript(sessionId, [
@@ -577,6 +583,7 @@ describe('Ralph verification flow', () => {
 
     writePrd(testDir, prd);
     writeRalphState(sessionId, { current_story_id: 'US-001' });
+    const criteriaRevision = readPrd(testDir)?.userStories[0].governingCriteriaRevision;
     writeFileSync(join(sessionDir, 'ralph-verification-state.json'), JSON.stringify({
       pending: true,
       completion_claim: 'US-001 is ready to progress',
@@ -588,6 +595,7 @@ describe('Ralph verification flow', () => {
       verification_scope: 'story',
       story_id: 'US-001',
       request_id: 'current-request',
+      criteria_revision: criteriaRevision,
     }));
 
     writeMessagesTranscript(sessionId, [

@@ -106,7 +106,7 @@ describe('Ralph PRD Module', () => {
     it('should write and read prd correctly', () => {
       expect(writePrd(testDir, samplePrd)).toBe(true);
       const read = readPrd(testDir);
-      expect(read).toEqual(samplePrd);
+      expect(read).toMatchObject(samplePrd);
     });
 
     it('should create .omc directory when writing', () => {

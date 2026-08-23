@@ -16,9 +16,9 @@ import { randomUUID } from 'crypto';
 import { existsSync, readFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { resolveSessionStatePath, ensureSessionStateDir, getOmcRoot } from '../../lib/worktree-paths.js';
-import { clearStateFileLocked, writeStateFileLocked } from '../../lib/mode-state-io.js';
+import { clearStateFileLocked, clearStateFileLockedIf, writeStateFileLocked } from '../../lib/mode-state-io.js';
 import { formatOmcCliInvocation } from '../../utils/omc-cli-rendering.js';
-import type { UserStory } from './prd.js';
+import { getPrdGoverningCriteriaRevision, readPrd, type UserStory } from './prd.js';
 import type { RalphCriticMode } from './loop.js';
 
 export interface VerificationState {
@@ -46,6 +46,8 @@ export interface VerificationState {
   critic_mode?: RalphCriticMode;
   /** Unique request id used to correlate approvals to the current verification attempt */
   request_id?: string;
+  /** Canonical criteria revision submitted to the reviewer for a story. */
+  criteria_revision?: string;
 }
 
 const DEFAULT_MAX_VERIFICATION_ATTEMPTS = 3;
@@ -154,6 +156,19 @@ export function clearVerificationState(directory: string, sessionId?: string): b
   return clearStateFileLocked(statePath);
 }
 
+/** Clear only the verification request whose approval was consumed. */
+export function consumeVerificationRequest(
+  directory: string,
+  requestId: string | undefined,
+  sessionId?: string,
+): boolean {
+  if (!requestId) return false;
+  return clearStateFileLockedIf(
+    getVerificationStatePath(directory, sessionId),
+    current => current.request_id === requestId,
+  ) === 'cleared';
+}
+
 /**
  * Start verification process
  */
@@ -175,7 +190,12 @@ export function startVerification(
     verification_scope: currentStory ? 'story' : 'completion',
     story_id: currentStory?.id,
     critic_mode: getCriticMode(criticMode),
-    request_id: createVerificationRequestId()
+    request_id: createVerificationRequestId(),
+    criteria_revision: currentStory?.governingCriteriaRevision
+      ?? (() => {
+        const prd = readPrd(directory, sessionId);
+        return prd ? getPrdGoverningCriteriaRevision(prd) : undefined;
+      })(),
   };
 
   writeVerificationState(directory, state, sessionId);
