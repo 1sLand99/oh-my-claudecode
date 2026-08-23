@@ -10,6 +10,8 @@ import {
   getSessionPrdPath,
   markStoryComplete,
   consumeStoryArchitectApproval,
+  consumeCompletionArchitectApproval,
+  getPrdGoverningCriteriaRevision,
   amendCriterion,
   supersedeCriterion,
   formatStory,
@@ -87,6 +89,23 @@ describe('Ralph PRD Criterion Amendment', () => {
   }
 
   describe('amendCriterion', () => {
+    it('rejects final approval when a forced interleaving amendment changes the PRD revision', () => {
+      writeSamplePrd({
+        ...samplePrd,
+        userStories: [{ ...samplePrd.userStories[0], passes: true, architectVerified: true }],
+      });
+      const expectedRevision = getPrdGoverningCriteriaRevision(readPrd(testDir)!);
+      const prdPath = findPrdPath(testDir)!;
+
+      expect(consumeCompletionArchitectApproval(testDir, expectedRevision, undefined, undefined, () => {
+        const handEdited = JSON.parse(readFileSync(prdPath, 'utf8')) as PRD;
+        handEdited.userStories[0].acceptanceCriteria = [FDFT_REPLACEMENT];
+        handEdited.userStories[0].criterionAmendments = [resultAmendment()];
+        writeFileSync(prdPath, JSON.stringify(handEdited, null, 2));
+      })).toBe(false);
+      expect(readPrd(testDir)?.userStories[0]).toMatchObject({ passes: false, architectVerified: false });
+    });
+
     it('rejects approval when a forced interleaving amendment changes the revision before consumption', () => {
       writeSamplePrd({
         ...samplePrd,
