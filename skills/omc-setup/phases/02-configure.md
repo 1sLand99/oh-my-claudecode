@@ -85,48 +85,6 @@ elif [ -n "$LATEST_VERSION" ]; then
 fi
 ```
 
-## Step 2.4: Set Default Execution Mode
-
-Use the AskUserQuestion tool to prompt the user:
-
-**Question:** "Which parallel execution mode should be your default when you say 'fast' or 'parallel'?"
-
-**Options:**
-1. **ultrawork (maximum capability)** - Uses all agent tiers including Opus for complex tasks. Best for challenging work where quality matters most. (Recommended)
-
-Store the preference in `~/.claude/.omc-config.json`:
-
-```bash
-CONFIG_FILE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.omc-config.json"
-mkdir -p "$(dirname "$CONFIG_FILE")"
-
-if ! command -v jq >/dev/null 2>&1; then
-  echo "ERROR: jq is required to update $CONFIG_FILE safely."
-  echo "Install jq and rerun setup. Existing config was not modified."
-  exit 1
-fi
-
-if [ -f "$CONFIG_FILE" ]; then
-  EXISTING=$(cat "$CONFIG_FILE")
-else
-  EXISTING='{}'
-fi
-
-# Set defaultExecutionMode (replace USER_CHOICE with "ultrawork" or "")
-TEMP_FILE=$(mktemp "${CONFIG_FILE}.tmp.XXXXXX")
-trap 'rm -f "$TEMP_FILE"' EXIT
-if printf '%s\n' "$EXISTING" | jq --arg mode "USER_CHOICE" '. + {defaultExecutionMode: $mode, configuredAt: (now | todate)}' > "$TEMP_FILE"; then
-  mv "$TEMP_FILE" "$CONFIG_FILE"
-else
-  echo "ERROR: Failed to update $CONFIG_FILE. Existing config was not modified."
-  exit 1
-fi
-trap - EXIT
-echo "Default execution mode set to: USER_CHOICE"
-```
-
-**Note**: This preference ONLY affects generic keywords ("fast", "parallel"). Explicit keywords ("ulw") always override this preference.
-
 ## Step 2.5: Install OMC CLI Tool
 
 The OMC CLI (`omc` command) provides standalone helper commands such as `omc hud`, `omc teleport`, and `omc team ...`.

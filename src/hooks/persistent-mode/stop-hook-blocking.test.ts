@@ -430,8 +430,8 @@ describe("Stop Hook Blocking Contract", () => {
       );
 
       const result = await checkPersistentModes(sessionId, tempDir);
-      expect(result.shouldBlock).toBe(true);
-      expect(result.mode).toBe("ultrawork");
+      expect(result.shouldBlock).toBe(false);
+      expect(result.mode).toBe("none");
     });
 
 
@@ -466,11 +466,11 @@ describe("Stop Hook Blocking Contract", () => {
       );
 
       const result = await checkPersistentModes(sessionId, tempDir);
-      expect(result.shouldBlock).toBe(true);
-      expect(result.mode).toBe("ultrawork");
+      expect(result.shouldBlock).toBe(false);
+      expect(result.mode).toBe("none");
     });
 
-    it("blocks stop for active ultrawork while incomplete work remains (shouldBlock: true -> continue: false)", async () => {
+    it("ignores retired ultrawork while incomplete work remains", async () => {
       const sessionId = "test-session-block";
       activateUltrawork("Fix the bug", sessionId, tempDir);
       mkdirSync(join(tempDir, '.claude'), { recursive: true });
@@ -488,14 +488,14 @@ describe("Stop Hook Blocking Contract", () => {
       );
 
       const result = await checkPersistentModes(sessionId, tempDir);
-      expect(result.shouldBlock).toBe(true);
+      expect(result.shouldBlock).toBe(false);
 
       const output = createHookOutput(result);
-      expect(output.continue).toBe(false);
-      expect(output.message).toBeDefined();
+      expect(output.continue).toBe(true);
+      expect(output.message).toBeUndefined();
     });
 
-    it("auto-deactivates ultrawork and allows stop when all tracked work is complete", async () => {
+    it("does not mutate retired state when tracked work is complete", async () => {
       const sessionId = "test-session-complete";
       activateUltrawork("Task complete", sessionId, tempDir);
       const statePath = join(tempDir, '.omc', 'state', 'sessions', sessionId, 'ultrawork-state.json');
@@ -503,13 +503,13 @@ describe("Stop Hook Blocking Contract", () => {
       const result = await checkPersistentModes(sessionId, tempDir);
       expect(result.shouldBlock).toBe(false);
       expect(result.mode).toBe('none');
-      expect(result.message).toContain('ULTRAWORK COMPLETE');
+      expect(result.message).toBe('');
 
       const output = createHookOutput(result);
       expect(output.continue).toBe(true);
-      expect(output.message).toContain('ULTRAWORK COMPLETE');
+      expect(output.message).toBeUndefined();
 
-      expect(() => readFileSync(statePath, 'utf-8')).toThrow();
+      expect(() => readFileSync(statePath, 'utf-8')).not.toThrow();
     });
 
     it("allows stop for deactivated ultrawork (shouldBlock: false -> continue: true)", async () => {
@@ -880,7 +880,6 @@ describe("Stop Hook Blocking Contract", () => {
       | "swarm";
 
     const stopHookActiveModes: PersistentModeScriptMode[] = [
-      "ultrawork",
       "ralph",
       "autopilot",
       "ultragoal",
@@ -1157,7 +1156,7 @@ describe("Stop Hook Blocking Contract", () => {
       expect(String(output.reason || "")).not.toContain("[RALPH LOOP");
     });
 
-    it("returns decision: block when ultrawork is active", () => {
+    it("ignores retired ultrawork state", () => {
       const sessionId = "ultrawork-mjs-test";
       const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
       mkdirSync(sessionDir, { recursive: true });
@@ -1174,10 +1173,11 @@ describe("Stop Hook Blocking Contract", () => {
       );
 
       const output = runScript({ directory: tempDir, sessionId });
-      expect(output.decision).toBe("block");
+      expect(output.continue).toBe(true);
+      expect(output.decision).toBeUndefined();
     });
 
-    it("does not echo the cached original prompt as a Task in ultrawork reinforcement", () => {
+    it("does not emit retired ultrawork reinforcement", () => {
       const sessionId = "ultrawork-mjs-no-original-task-echo";
       const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
       const longOriginalPrompt = "Original prompt should not be echoed. ".repeat(20);
@@ -1197,13 +1197,12 @@ describe("Stop Hook Blocking Contract", () => {
 
       const output = runScript({ directory: tempDir, sessionId });
       const reason = String(output.reason || "");
-      expect(output.decision).toBe("block");
-      expect(reason).not.toContain("\nTask:");
-      expect(reason).not.toContain(longOriginalPrompt);
-      expect(reason).toContain("Current objective: Fix issue #2971 Stop-hook reinforcement");
+      expect(output.continue).toBe(true);
+      expect(output.decision).toBeUndefined();
+      expect(reason).toBe("");
     });
 
-    it("surfaces cancel guidance on the first ultrawork reinforcement", () => {
+    it("does not surface retired ultrawork cancel guidance", () => {
       const sessionId = "ultrawork-mjs-first-cancel-guidance";
       const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
       mkdirSync(sessionDir, { recursive: true });
@@ -1221,10 +1220,9 @@ describe("Stop Hook Blocking Contract", () => {
 
       const output = runScript({ directory: tempDir, sessionId });
       const reason = String(output.reason || "");
-      expect(output.decision).toBe("block");
-      expect(reason).toContain("[ULTRAWORK #1/");
-      expect(reason).toContain("/oh-my-claudecode:cancel");
-      expect(reason).not.toContain("\nTask:");
+      expect(output.continue).toBe(true);
+      expect(output.decision).toBeUndefined();
+      expect(reason).toBe("");
     });
 
     it("returns continue: true for tombstoned stale ultrawork state", () => {

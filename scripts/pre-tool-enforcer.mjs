@@ -1632,13 +1632,9 @@ function confirmSkillModeStates(stateDir, skillName, sessionId) {
   switch (skillName) {
     case 'ralph':
       clearAwaitingConfirmationFlag(stateDir, 'ralph', sessionId);
-      clearAwaitingConfirmationFlag(stateDir, 'ultrawork', sessionId);
       break;
     case 'ultragoal':
       clearAwaitingConfirmationFlag(stateDir, 'ultragoal', sessionId);
-      break;
-    case 'ultrawork':
-      clearAwaitingConfirmationFlag(stateDir, 'ultrawork', sessionId);
       break;
     case 'autopilot':
       clearAwaitingConfirmationFlag(stateDir, 'autopilot', sessionId);

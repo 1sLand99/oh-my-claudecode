@@ -1434,7 +1434,7 @@ async function seedModeStateForExplicitWorkflowSlash(
       await seedAutopilotStartupState(directory, promptText, sessionId);
       return;
     default:
-      // ralph / ultrawork / team / deep-interview / self-improve
+      // ralph / team / deep-interview / self-improve
       // own their state activation inside their own Skill PostToolUse handlers.
       // Pre-Skill seeding for these would clobber existing in-flight state
       // (e.g. nested `autopilot → ralph`); the workflow slot alone is enough
@@ -1783,13 +1783,13 @@ async function processStopContinuation(_input: HookInput): Promise<HookOutput> {
 
 /**
  * Process persistent mode hook (enhanced stop continuation)
- * Unified handler for ultrawork, ralph, and todo-continuation.
+ * Unified handler for ralph and todo-continuation.
  *
  * NOTE: The legacy `processRalph` function was removed in issue #1058.
  * Ralph is now handled exclusively by `checkRalphLoop` inside
  * `persistent-mode/index.ts`, which has richer logic (PRD checks,
  * team pipeline coordination, tool-error injection, cancel caching,
- * ultrawork self-heal, and architect rejection handling).
+ * architect rejection handling).
  */
 async function processPersistentMode(input: HookInput): Promise<HookOutput> {
   const rawSessionId = (input as Record<string, unknown>).session_id as

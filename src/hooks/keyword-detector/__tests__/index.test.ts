@@ -2672,7 +2672,6 @@ This article argues that fake popularity signals damage trust in open source.`;
       '/ultrawork build me an app',
       '/ulw ask codex to review',
       '/uw build me an app',
-      '/ultraqa ask codex to review',
       '/ccg build me an app',
       '/claude-codex-gemini ask codex to review',
       '/울트라워크 build me an app',
@@ -2681,8 +2680,6 @@ This article argues that fake popularity signals damage trust in open source.`;
       '/シーシージー build me an app',
       '/omc:ultrawork build me an app',
       '/oh-my-claudecode:ulw ask codex to review',
-      '/omc:ultraqa build me an app',
-      '/oh-my-claudecode:ultraqa ask codex to review',
       '/omc:ccg build me an app',
       '/oh-my-claudecode:claude-codex-gemini ask codex to review',
       '/omc:울트라워크 build me an app',
@@ -2763,16 +2760,19 @@ This article argues that fake popularity signals damage trust in open source.`;
       expect(result!.args).toBe('');
     });
 
+    it('continues to parse UltraQA until #3826 owns its removal', () => {
+      expect(parseExplicitWorkflowSlashInvocation('/ultraqa run tests')?.skill).toBe('ultraqa');
+      expect(parseExplicitWorkflowSlashInvocation('/oh-my-claudecode:ultraqa run tests')?.skill).toBe('ultraqa');
+    });
+
     it('does not parse retired workflow invocations', () => {
       expect(parseExplicitWorkflowSlashInvocation('/ultrawork investigate this report')).toBeNull();
       expect(parseExplicitWorkflowSlashInvocation('/ulw investigate this report')).toBeNull();
       expect(parseExplicitWorkflowSlashInvocation('/uw investigate this report')).toBeNull();
-      expect(parseExplicitWorkflowSlashInvocation('/ultraqa run tests')).toBeNull();
       expect(parseExplicitWorkflowSlashInvocation('/ccg review this')).toBeNull();
       expect(parseExplicitWorkflowSlashInvocation('/claude-codex-gemini review this')).toBeNull();
       expect(parseExplicitWorkflowSlashInvocation('/omc:ultrawork investigate this report')).toBeNull();
       expect(parseExplicitWorkflowSlashInvocation('/omc:ccg review this')).toBeNull();
-      expect(parseExplicitWorkflowSlashInvocation('/oh-my-claudecode:ultraqa run tests')).toBeNull();
       expect(parseExplicitWorkflowSlashInvocation('/oh-my-claudecode:claude-codex-gemini review this')).toBeNull();
     });
 

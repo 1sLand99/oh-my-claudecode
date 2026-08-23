@@ -1,7 +1,7 @@
 ---
 name: cancel
 aliases: [cancel-ralph]
-description: Cancel any active OMC mode (autopilot, ralph, ultrawork, ultragoal, swarm, ultrapilot, pipeline, team)
+description: Cancel any active OMC mode (autopilot, ralph, ultragoal, swarm, ultrapilot, pipeline, team) and clean up retired legacy state
 argument-hint: "[--force|--all]"
 level: 2
 ---
@@ -20,8 +20,8 @@ a last resort.
 
 Automatically detects which mode is active and cancels it:
 - **Autopilot**: Stops workflow, preserves progress for resume
-- **Ralph**: Stops persistence loop, clears linked ultrawork if applicable
-- **Ultrawork**: Stops parallel execution (standalone or linked)
+- **Ralph**: Stops the persistence loop
+- **Legacy Ultrawork state**: Cleanup-only removal for upgraded installations; it is not an active workflow
 - **UltraQA (retired)**: No live workflow remains; clears stale pre-5.0.0 `ultraqa-state.json` if present
 - **Ultragoal**: Clears the session-scoped ultragoal runtime guard (`.omc/state/.../ultragoal-state.json`) so PreToolUse `/goal` enforcement and Stop reinforcement release. Durable `.omc/ultragoal/` plan/ledger artifacts are preserved.
 - **Swarm**: Stops coordinated agent swarm, releases claimed tasks
@@ -50,7 +50,7 @@ ToolSearch(query="select:mcp__plugin_oh-my-claudecode_t__state_clear,mcp__plugin
 
 If `state_clear` is unavailable or fails, use this **bash fallback** as an **emergency
 escape from the stop hook loop**. This is NOT a full replacement for the cancel flow —
-it only removes state files to unblock the session. Linked modes (e.g. ralph→ultrawork,
+it only removes state files to unblock the session. Linked active modes (for example,
 autopilot→ralph) must be cleared separately by running the fallback once per mode.
 
 Replace `MODE` with the specific mode (e.g. `ralplan`, `ralph`, `ultrawork`, `ultragoal`).
@@ -110,9 +110,9 @@ fi
 - The default cleanup flow calls `state_clear` with the session id to remove only the matching session files; modes stay bound to their originating session.
 
 Active modes are still cancelled in dependency order:
-1. Autopilot (includes linked ralph/ retired-ultraqa cleanup)
-2. Ralph (cleans its linked ultrawork or )
-3. Ultrawork (standalone)
+1. Autopilot (includes linked ralph and retired-state cleanup)
+2. Ralph
+3. Legacy Ultrawork/UltraQA state cleanup
 4. Ultragoal (standalone runtime guard — `state_clear(mode="ultragoal")`; preserves durable `.omc/ultragoal/` artifacts)
 5. Swarm (standalone)
 6. Ultrapilot (standalone)
@@ -188,7 +188,7 @@ fi
 
 The skill now relies on the session-aware state contract rather than hard-coded file paths:
 1. Call `state_list_active` to enumerate `.omc/state/sessions/{sessionId}/…` and discover every active session.
-2. For each session id, call `state_get_status` to learn which mode is running (`autopilot`, `ralph`, `ultrawork`, etc.) and whether dependent modes exist.
+2. For each session id, call `state_get_status` to learn which active mode is running and whether dependent modes exist; treat any Ultrawork record as retired cleanup input only.
 3. If a `session_id` was supplied to `/oh-my-claudecode:cancel`, skip legacy fallback entirely and operate solely within that session path; otherwise, consult legacy files in `.omc/state/*.json` only if the state tools report no active session. Swarm remains a shared SQLite/marker mode outside session scoping.
 4. Any cancellation logic in this doc mirrors the dependency order discovered via state tools (autopilot → ralph → …).
 
@@ -297,11 +297,10 @@ Force cancellation follows the same primary-first rule for every autopilot group
    - If linked, clear ultrawork: `state_clear(mode="ultrawork", session_id)`
 3. Clear ralph: `state_clear(mode="ralph", session_id)`
 
-#### If Ultrawork Active (standalone, not linked)
+#### If Legacy Ultrawork State Exists
 
-1. Read ultrawork state via `state_read(mode="ultrawork", session_id)`
-2. If `linked_to_ralph: true`, warn user to cancel ralph instead (which cascades)
-3. Otherwise clear: `state_clear(mode="ultrawork", session_id)`
+1. Read Ultrawork state only to identify a stale upgraded-installation record.
+2. Clear it with `state_clear(mode="ultrawork", session_id)`; never reactivate or route it.
 
 #### If UltraQA State Present (retired)
 
@@ -322,7 +321,7 @@ Report: "No active OMC modes detected. Use --force to clear all state files anyw
 
 The cancel skill runs as follows:
 1. Parse the `--force` / `--all` flags, tracking whether cleanup should span every session or stay scoped to the current session id.
-2. Use `state_list_active` to enumerate known session ids and `state_get_status` to learn the active mode (`autopilot`, `ralph`, `ultrawork`, etc.) for each session.
+2. Use `state_list_active` to enumerate known session ids and `state_get_status` to learn each active mode; treat any Ultrawork record as cleanup-only legacy state.
 3. When operating in default mode, call `state_clear` with that session_id to remove only the session’s files, then run mode-specific cleanup (autopilot → ralph → …) based on the state tool signals.
 4. In force mode, iterate every active session, call `state_clear` per session, then run a global `state_clear` without `session_id` to drop legacy files (`.omc/state/*.json`, compatibility artifacts) and report success. Swarm remains a shared SQLite/marker mode outside session scoping.
 5. Team artifacts (`~/.claude/teams/*/`, `~/.claude/tasks/*/`, `.omc/state/team-state.json`) remain best-effort cleanup items invoked during the legacy/global pass.
@@ -341,8 +340,8 @@ Mode-specific subsections below describe what extra cleanup each handler perform
 |------|-----------------|
 | Autopilot | "Autopilot cancelled at phase: {phase}. Progress preserved for resume." |
 | Ralph | "Ralph cancelled. Persistent mode deactivated." |
-| Ultrawork | "Ultrawork cancelled. Parallel execution mode deactivated." |
-| UltraQA (retired) | "UltraQA retired state cleared." |
+| Legacy Ultrawork state | "Retired Ultrawork state removed." |
+| Legacy UltraQA state | "Retired UltraQA state cleared." |
 | Ultragoal | "Ultragoal cancelled. Runtime /goal guard released; durable plan/ledger preserved." |
 | Swarm | "Swarm cancelled. Coordinated agents stopped." |
 | Ultrapilot | "Ultrapilot cancelled. Parallel autopilot workers stopped." |

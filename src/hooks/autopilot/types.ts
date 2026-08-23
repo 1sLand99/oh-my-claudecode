@@ -213,7 +213,7 @@ export interface AutopilotConfig {
    * Pipeline configuration for the unified orchestrator.
    * When set, autopilot uses the pipeline orchestrator instead of the legacy
    * hard-coded phase sequence. This is the path forward for unifying
-   * autopilot/ultrawork/ultrapilot.
+   * autopilot and ultrapilot.
    *
    * @see https://github.com/Yeachan-Heo/oh-my-claudecode/issues/1130
    */

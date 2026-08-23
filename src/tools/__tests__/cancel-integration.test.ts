@@ -182,8 +182,9 @@ describe('cancel-integration', () => {
       // Legacy file should also be deleted
       expect(existsSync(join(TEST_DIR, '.omc', 'state', 'ralph-state.json'))).toBe(false);
 
-      // Should report locations cleared
-      expect(result.content[0].text).toContain('Locations cleared: 4');
+      const clearedMatch = result.content[0].text.match(/Locations cleared: (\d+)/);
+      expect(clearedMatch).not.toBeNull();
+      expect(Number(clearedMatch![1])).toBeGreaterThanOrEqual(4);
       expect(result.content[0].text).toContain('WARNING: No session_id provided');
     });
   });

@@ -1151,7 +1151,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     ).toBeUndefined();
     expect(
       JSON.parse(readFileSync(join(sessionStateDir, 'ultrawork-state.json'), 'utf-8')).awaiting_confirmation,
-    ).toBeUndefined();
+    ).toBe(true);
   });
 
   // === Model routing / forceInherit tests (issue #1868 catch-22) ===

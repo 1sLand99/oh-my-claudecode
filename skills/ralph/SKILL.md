@@ -5,12 +5,12 @@ argument-hint: "[--no-deslop] [--critic=architect|critic|codex] <task descriptio
 level: 4
 ---
 
-[RALPH + ULTRAWORK - ITERATION {{ITERATION}}/{{MAX}}]
+[RALPH - ITERATION {{ITERATION}}/{{MAX}}]
 
 Your previous attempt did not output the completion promise. Continue working on the task.
 
 <Purpose>
-Ralph is a PRD-driven persistence loop that keeps working on a task until ALL user stories in prd.json have passes: true and are reviewer-verified. It wraps ultrawork's parallel execution with session persistence, automatic retry on failure, structured story tracking, and mandatory verification before completion.
+Ralph is a PRD-driven persistence loop that keeps working on a task until ALL user stories in prd.json have passes: true and are reviewer-verified. It combines session persistence, automatic retry on failure, structured story tracking, and mandatory verification before completion.
 </Purpose>
 
 <Use_When>
@@ -26,7 +26,7 @@ Ralph is a PRD-driven persistence loop that keeps working on a task until ALL us
 - User wants a full autonomous pipeline from idea to code -- use `autopilot` instead
 - User wants to explore or plan before committing -- use `plan` skill instead
 - User wants a quick one-shot fix -- delegate directly to an executor agent
-- User wants manual control over completion -- use `ultrawork` directly
+- User wants manual control over completion -- delegate directly to an executor agent
 - User already has an active Claude Code `/goal` and only wants that native goal loop monitored -- adopt the existing `/goal` explicitly or use artifact-only Ultragoal notes instead of starting Ralph as a competing persistence loop
   </Do_Not_Use_When>
 

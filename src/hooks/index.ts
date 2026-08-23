@@ -437,18 +437,6 @@ export {
   type AgentUsageState
 } from './agent-usage-reminder/index.js';
 
-export {
-  // Ultrawork State (Persistent Mode)
-  activateUltrawork,
-  deactivateUltrawork,
-  readUltraworkState,
-  writeUltraworkState,
-  incrementReinforcement,
-  shouldReinforceUltrawork,
-  getUltraworkPersistenceMessage,
-  createUltraworkStateHook,
-  type UltraworkState
-} from './ultrawork/index.js';
 
 export {
   // Persistent Mode (Unified Stop Handler)

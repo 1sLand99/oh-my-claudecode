@@ -1,13 +1,12 @@
 /**
  * Persistent Mode Hook
  *
- * Unified handler for persistent work modes: ultrawork, ralph, and todo-continuation.
+ * Unified handler for persistent work modes: ralph and todo-continuation.
  * This hook intercepts Stop events and enforces work continuation based on:
- * 1. Active ultrawork mode with pending todos
- * 2. Active ralph loop (until cancelled via /oh-my-claudecode:cancel)
- * 3. Any pending todos (general enforcement)
+ * 1. Active ralph loop (until cancelled via /oh-my-claudecode:cancel)
+ * 2. Any pending todos (general enforcement)
  *
- * Priority order: Ralph > Ultrawork > Todo Continuation
+ * Priority order: Ralph > Todo Continuation
  */
 
 import { createHash } from 'crypto';
@@ -23,8 +22,6 @@ import {
   restoreUltraworkStateIfAbsent,
   incrementReinforcement,
   deactivateUltrawork,
-  getUltraworkPersistenceMessage,
-  type UltraworkState
 } from '../ultrawork/index.js';
 import { resolveToWorktreeRoot, resolveSessionStatePath, resolveStatePath, getOmcRoot } from '../../lib/worktree-paths.js';
 import {
@@ -1185,26 +1182,6 @@ async function checkRalphLoop(
     };
   }
 
-  // Self-heal linked ultrawork: if ralph is active and marked linked but ultrawork
-  // state is missing, recreate it so stop reinforcement cannot silently disappear.
-  if (state.linked_ultrawork) {
-    const ultraworkState = readUltraworkState(workingDir, sessionId);
-    if (!ultraworkState?.active) {
-      const now = new Date().toISOString();
-      const restoredState: UltraworkState = {
-        active: true,
-        started_at: state.started_at || now,
-        original_prompt: state.prompt || 'Ralph loop task',
-        session_id: sessionId,
-        project_path: workingDir,
-        reinforcement_count: 0,
-        last_checked_at: now,
-        linked_to_ralph: true
-      };
-      writeUltraworkState(restoredState, workingDir, sessionId);
-    }
-  }
-
   // Check team pipeline state coordination
   // When team mode is active alongside ralph, respect team phase transitions
   const teamState = readTeamPipelineState(workingDir, sessionId);
@@ -2213,85 +2190,6 @@ When done, run \`/oh-my-claudecode:cancel\` to cleanly exit.
   };
 }
 
-/**
- * Check Ultrawork state and determine if it should reinforce
- */
-async function checkUltrawork(
-  sessionId?: string,
-  directory?: string,
-  _hasIncompleteTodos?: boolean,
-  cancelInProgress?: boolean
-): Promise<PersistentModeResult | null> {
-  const workingDir = resolveToWorktreeRoot(directory);
-  const state = readUltraworkState(workingDir, sessionId);
-
-  if (!state || !state.active || isStaleState(state)) {
-    return null;
-  }
-
-  // Session isolation. `readUltraworkState()` already enforces the lenient
-  // form ("only reject when BOTH sides have defined session_ids that
-  // differ"). The previous strict check rejected legitimate cases where
-  // one side was undefined — same root cause as the ralph counter bug.
-  if (state.session_id && sessionId && state.session_id !== sessionId) {
-    return null;
-  }
-
-  if (isAwaitingConfirmation(state)) {
-    return null;
-  }
-
-  // Uses cached cancel signal from checkPersistentModes to avoid TOCTOU re-reads.
-  if (cancelInProgress) {
-    return {
-      shouldBlock: false,
-      message: '',
-      mode: 'none'
-    };
-  }
-
-  // If all tracked work is complete, auto-deactivate ultrawork and allow exit.
-  // Issue #2419: otherwise the Stop hook can keep blocking even after task
-  // completion, leaving ultrawork active until manual /cancel or session-end.
-  if (!_hasIncompleteTodos) {
-    deactivateUltrawork(workingDir, sessionId);
-    return {
-      shouldBlock: false,
-      message: '[ULTRAWORK COMPLETE] No incomplete tasks remain. Ultrawork state cleared.',
-      mode: 'none'
-    };
-  }
-
-  // Enforce hard max iterations for ultrawork (mirrors ralph enforcement).
-  const hardMax = getHardMaxIterations();
-  if (hardMax > 0 && state.reinforcement_count >= hardMax) {
-    deactivateUltrawork(workingDir, sessionId);
-    return {
-      shouldBlock: true,
-      message: '[ULTRAWORK - HARD LIMIT] Reached hard max iterations (' + hardMax + '). Mode auto-disabled. Restart with /oh-my-claudecode:ultrawork if needed.',
-      mode: 'ultrawork',
-      metadata: { reinforcementCount: state.reinforcement_count }
-    };
-  }
-
-  // Reinforce ultrawork mode while incomplete work remains.
-  // This prevents false stops from bash errors or transient failures mid-task.
-  const newState = incrementReinforcement(workingDir, sessionId);
-  if (!newState) {
-    return null;
-  }
-
-  const message = getUltraworkPersistenceMessage(newState);
-
-  return {
-    shouldBlock: true,
-    message,
-    mode: 'ultrawork',
-    metadata: {
-      reinforcementCount: newState.reinforcement_count
-    }
-  };
-}
 
 /**
  * Check for incomplete todos (baseline enforcement)
@@ -2539,10 +2437,6 @@ async function resolvePersistentModeBlock(
     };
   }
 
-  // First, check for incomplete todos (we need this info for ultrawork)
-  // Note: stopContext already checked above, but pass it for consistency
-  const todoResult = await checkIncompleteTodos(sessionId, workingDir, stopContext);
-  const hasIncompleteTodos = todoResult.count > 0;
 
   // Consult the workflow ledger ONCE before direct mode-priority shortcuts.
   // `resolveAuthoritativeWorkflowSkill()` returns the root of the live chain
@@ -2667,15 +2561,7 @@ async function resolvePersistentModeBlock(
     }
   }
 
-  // Priority 2: Ultrawork Mode (performance mode with persistence)
-  if (!tombstonedWorkflowModes.has('ultrawork') && isModeActive('ultrawork', workingDir, sessionId)) {
-    const ultraworkResult = await checkUltrawork(sessionId, workingDir, hasIncompleteTodos, cancelInProgress);
-    if (ultraworkResult) {
-      return ultraworkResult;
-    }
-  }
-
-  // Priority 3: Skill Active State (issue #1033)
+  // Priority 2: Skill Active State (issue #1033)
   // Skills like code-review, plan, tdd, etc. write skill-active-state.json
   // when invoked via the Skill tool. This prevents premature stops mid-skill.
   try {

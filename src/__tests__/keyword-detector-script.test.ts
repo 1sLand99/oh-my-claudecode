@@ -129,7 +129,6 @@ describe('keyword-detector.mjs mode-message dispatch', () => {
     '/ultrawork build me an app',
     '/ulw build me an app',
     '/uw build me an app',
-    '/ultraqa build me an app',
     '/ccg deep interview this task',
     '/claude-codex-gemini deep interview this task',
     '/ccg ask codex to review',
@@ -140,7 +139,6 @@ describe('keyword-detector.mjs mode-message dispatch', () => {
     '/omc:ultrawork build me an app',
     '/omc:ulw build me an app',
     '/omc:uw build me an app',
-    '/omc:ultraqa build me an app',
     '/omc:ccg deep interview this task',
     '/omc:claude-codex-gemini deep interview this task',
     '/omc:울트라워크 build me an app',
@@ -150,7 +148,6 @@ describe('keyword-detector.mjs mode-message dispatch', () => {
     '/oh-my-claudecode:ultrawork build me an app',
     '/oh-my-claudecode:ulw build me an app',
     '/oh-my-claudecode:uw build me an app',
-    '/oh-my-claudecode:ultraqa build me an app',
     '/oh-my-claudecode:ccg deep interview this task',
     '/oh-my-claudecode:claude-codex-gemini deep interview this task',
   ])('passes through retired slash route before dispatching arguments: %s', (prompt) => {

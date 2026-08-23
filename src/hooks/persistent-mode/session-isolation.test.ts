@@ -38,14 +38,14 @@ describe("Persistent Mode Session Isolation (Issue #311)", () => {
   });
 
   describe("checkPersistentModes session isolation", () => {
-    it("should block stop when session_id matches active ultrawork", async () => {
+    it("ignores retired ultrawork state even when session_id matches", async () => {
       const sessionId = "session-owner";
       activateUltrawork("Fix the bug", sessionId, tempDir);
       writePendingTodo(tempDir, "Finish the bug fix");
 
       const result = await checkPersistentModes(sessionId, tempDir);
-      expect(result.shouldBlock).toBe(true);
-      expect(result.mode).toBe("ultrawork");
+      expect(result.shouldBlock).toBe(false);
+      expect(result.mode).toBe("none");
     });
 
     it("should NOT block stop when session_id does not match", async () => {
@@ -301,10 +301,10 @@ describe("Persistent Mode Session Isolation (Issue #311)", () => {
     });
 
     it.each([
-      ['future-dated', 6_000, true],
-      ['stale', -30_001, true],
-      ['fresh', 0, false],
-    ])('applies requested_at freshness to requested_at-only non-autopilot cancellation (%s)', async (_name, offsetMs, shouldBlock) => {
+      ['future-dated', 6_000],
+      ['stale', -30_001],
+      ['fresh', 0],
+    ])('ignores requested_at-only cancellation for retired state (%s)', async (_name, offsetMs) => {
       const sessionId = `ultrawork-cancel-freshness-${offsetMs}`;
       activateUltrawork('Finish the task', sessionId, tempDir);
       writePendingTodo(tempDir, 'Finish the task');
@@ -317,12 +317,12 @@ describe("Persistent Mode Session Isolation (Issue #311)", () => {
       }));
 
       await expect(checkPersistentModes(sessionId, tempDir)).resolves.toMatchObject({
-        shouldBlock,
-        mode: shouldBlock ? 'ultrawork' : 'none',
+        shouldBlock: false,
+        mode: 'none',
       });
     });
 
-    it("should support session-scoped state files", async () => {
+    it("ignores retired session-scoped state files", async () => {
       const sessionId = "session-scoped-test";
       writePendingTodo(tempDir, "Finish the session-scoped task");
       // Create state in session-scoped directory
@@ -341,8 +341,8 @@ describe("Persistent Mode Session Isolation (Issue #311)", () => {
       );
 
       const result = await checkPersistentModes(sessionId, tempDir);
-      expect(result.shouldBlock).toBe(true);
-      expect(result.mode).toBe("ultrawork");
+      expect(result.shouldBlock).toBe(false);
+      expect(result.mode).toBe("none");
     });
 
     it("Session A cannot see Session B state in session-scoped dirs", async () => {
@@ -426,7 +426,7 @@ describe("Persistent Mode Session Isolation (Issue #311)", () => {
       );
     }
 
-    it("should block when sessionId matches ultrawork state", () => {
+    it("ignores retired state when sessionId matches", () => {
       const sessionId = "test-session-match";
       createUltraworkState(tempDir, sessionId, "Test task");
 
@@ -435,8 +435,8 @@ describe("Persistent Mode Session Isolation (Issue #311)", () => {
         sessionId: sessionId,
       });
 
-      expect(output.decision).toBe("block");
-      expect(output.reason).toContain("ULTRAWORK");
+      expect(output.continue).toBe(true);
+      expect(output.decision).toBeUndefined();
     });
 
     it("should NOT block when sessionId does not match ultrawork state", () => {
@@ -494,7 +494,7 @@ describe("Persistent Mode Session Isolation (Issue #311)", () => {
       expect(output.decision).toBeUndefined();
     });
 
-    it("should block legacy state when invalid sessionId is provided (falls back to legacy)", () => {
+    it("ignores retired legacy state when invalid sessionId falls back", () => {
       const stateDir = join(tempDir, ".omc", "state");
       mkdirSync(stateDir, { recursive: true });
       writeFileSync(
@@ -517,8 +517,8 @@ describe("Persistent Mode Session Isolation (Issue #311)", () => {
         sessionId: "../session-valid",
       });
 
-      // Invalid sessionId sanitizes to "", falls back to legacy path, blocks
-      expect(output.decision).toBe("block");
+      expect(output.continue).toBe(true);
+      expect(output.decision).toBeUndefined();
     });
 
     it("should allow stop when cancel signal only includes requested_at", () => {
@@ -591,7 +591,7 @@ describe("Persistent Mode Session Isolation (Issue #311)", () => {
       expect(output.decision).toBeUndefined();
     });
 
-    it("should block for legacy state when no sessionId provided (backward compat)", () => {
+    it("ignores retired legacy state when no sessionId is provided", () => {
       const stateDir = join(tempDir, ".omc", "state");
       mkdirSync(stateDir, { recursive: true });
       writeFileSync(
@@ -613,9 +613,8 @@ describe("Persistent Mode Session Isolation (Issue #311)", () => {
         directory: tempDir,
       });
 
-      // Legacy state blocks when no sessionId (backward compat)
-      expect(output.decision).toBe("block");
-      expect(output.reason).toContain("ULTRAWORK");
+      expect(output.continue).toBe(true);
+      expect(output.decision).toBeUndefined();
     });
 
     it("should block for legacy autopilot state when no sessionId provided", () => {
@@ -734,8 +733,8 @@ describe("Persistent Mode Session Isolation (Issue #311)", () => {
         sessionId: sessionId,
       });
 
-      expect(output.decision).toBe("block");
-      expect(output.reason).toContain("ULTRAWORK");
+      expect(output.continue).toBe(true);
+      expect(output.decision).toBeUndefined();
     });
 
     it("should accept session_id (snake_case) for session identification", () => {
@@ -747,8 +746,8 @@ describe("Persistent Mode Session Isolation (Issue #311)", () => {
         session_id: sessionId,
       });
 
-      expect(output.decision).toBe("block");
-      expect(output.reason).toContain("ULTRAWORK");
+      expect(output.continue).toBe(true);
+      expect(output.decision).toBeUndefined();
     });
 
     it("should accept sessionid (lowercase) for session identification", () => {
@@ -760,8 +759,8 @@ describe("Persistent Mode Session Isolation (Issue #311)", () => {
         sessionid: sessionId,
       });
 
-      expect(output.decision).toBe("block");
-      expect(output.reason).toContain("ULTRAWORK");
+      expect(output.continue).toBe(true);
+      expect(output.decision).toBeUndefined();
     });
 
     it("should prefer sessionId over session_id when both provided", () => {
@@ -775,8 +774,8 @@ describe("Persistent Mode Session Isolation (Issue #311)", () => {
         session_id: wrongSession,   // This should be ignored
       });
 
-      expect(output.decision).toBe("block");
-      expect(output.reason).toContain("ULTRAWORK");
+      expect(output.continue).toBe(true);
+      expect(output.decision).toBeUndefined();
     });
 
     it("should prefer session_id over sessionid when both provided", () => {
@@ -790,8 +789,8 @@ describe("Persistent Mode Session Isolation (Issue #311)", () => {
         sessionid: wrongSession,     // This should be ignored
       });
 
-      expect(output.decision).toBe("block");
-      expect(output.reason).toContain("ULTRAWORK");
+      expect(output.continue).toBe(true);
+      expect(output.decision).toBeUndefined();
     });
 
     it("should prefer sessionId over sessionid when both provided", () => {
@@ -805,8 +804,8 @@ describe("Persistent Mode Session Isolation (Issue #311)", () => {
         sessionid: wrongSession,    // This should be ignored
       });
 
-      expect(output.decision).toBe("block");
-      expect(output.reason).toContain("ULTRAWORK");
+      expect(output.continue).toBe(true);
+      expect(output.decision).toBeUndefined();
     });
 
     it("should fall back to session_id when sessionId is empty", () => {
@@ -819,8 +818,8 @@ describe("Persistent Mode Session Isolation (Issue #311)", () => {
         session_id: sessionId,
       });
 
-      expect(output.decision).toBe("block");
-      expect(output.reason).toContain("ULTRAWORK");
+      expect(output.continue).toBe(true);
+      expect(output.decision).toBeUndefined();
     });
   });
 
@@ -878,8 +877,8 @@ describe("Persistent Mode Session Isolation (Issue #311)", () => {
         sessionId: sessionId,
       });
 
-      expect(output.decision).toBe("block");
-      expect(output.reason).toContain("ULTRAWORK");
+      expect(output.continue).toBe(true);
+      expect(output.decision).toBeUndefined();
     });
 
     it("should NOT block when project_path does not match current directory", () => {
@@ -991,8 +990,8 @@ describe("Persistent Mode Session Isolation (Issue #311)", () => {
         sessionId: "..\\session-valid",
       });
 
-      // Invalid sessionId sanitizes to "", falls back to legacy path, blocks
-      expect(output.decision).toBe("block");
+      expect(output.continue).toBe(true);
+      expect(output.decision).toBeUndefined();
     });
 
     it("should block for legacy local state when no sessionId (backward compat)", () => {
@@ -1018,8 +1017,8 @@ describe("Persistent Mode Session Isolation (Issue #311)", () => {
       });
 
       // Legacy state blocks when no sessionId
-      expect(output.decision).toBe("block");
-      expect(output.reason).toContain("ULTRAWORK");
+      expect(output.continue).toBe(true);
+      expect(output.decision).toBeUndefined();
     });
   });
 });

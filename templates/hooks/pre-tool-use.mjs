@@ -144,10 +144,6 @@ async function confirmSkillModeStates(directory, skillName, sessionId) {
   switch (skillName) {
     case 'ralph':
       await clearAwaitingConfirmationFlag(directory, 'ralph', sessionId);
-      await clearAwaitingConfirmationFlag(directory, 'ultrawork', sessionId);
-      break;
-    case 'ultrawork':
-      await clearAwaitingConfirmationFlag(directory, 'ultrawork', sessionId);
       break;
     case 'autopilot':
       await clearAwaitingConfirmationFlag(directory, 'autopilot', sessionId);

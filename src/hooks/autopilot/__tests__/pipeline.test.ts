@@ -62,10 +62,9 @@ describe("Pipeline Types", () => {
     });
   });
 
-  it("should define deprecation aliases for ultrawork and ultrapilot", () => {
-    expect(DEPRECATED_MODE_ALIASES).toHaveProperty("ultrawork");
+  it("should define only the surviving ultrapilot deprecation alias", () => {
+    expect(DEPRECATED_MODE_ALIASES).not.toHaveProperty("ultrawork");
     expect(DEPRECATED_MODE_ALIASES).toHaveProperty("ultrapilot");
-    expect(DEPRECATED_MODE_ALIASES.ultrawork.config.execution).toBe("team");
     expect(DEPRECATED_MODE_ALIASES.ultrapilot.config.execution).toBe("team");
   });
 });
@@ -232,12 +231,12 @@ describe("resolvePipelineConfig", () => {
   });
 
   it("should apply deprecated mode aliases", () => {
-    const config = resolvePipelineConfig(undefined, "ultrawork");
+    const config = resolvePipelineConfig(undefined, "ultrapilot");
     expect(config.execution).toBe("team");
   });
 
   it("should let user overrides win over deprecated aliases", () => {
-    const config = resolvePipelineConfig({ execution: "solo" }, "ultrawork");
+    const config = resolvePipelineConfig({ execution: "solo" }, "ultrapilot");
     expect(config.execution).toBe("solo");
   });
 
@@ -248,9 +247,8 @@ describe("resolvePipelineConfig", () => {
 });
 
 describe("getDeprecationWarning", () => {
-  it("should return warning for ultrawork", () => {
-    const warning = getDeprecationWarning("ultrawork");
-    expect(warning).toContain("deprecated");
+  it("should not alias removed ultrawork", () => {
+    expect(getDeprecationWarning("ultrawork")).toBeNull();
   });
 
   it("should return warning for ultrapilot", () => {
@@ -367,7 +365,7 @@ describe("Pipeline Orchestrator (with state)", () => {
         undefined,
         undefined,
         undefined,
-        "ultrawork",
+        "ultrapilot",
       );
       const tracking = readPipelineTracking(state!);
       expect(tracking!.pipelineConfig!.execution).toBe("team");

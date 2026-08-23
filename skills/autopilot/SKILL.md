@@ -93,7 +93,7 @@ V1 does not support `stageModels`, model routing, provider or role selection; in
    - Critic (Opus): Validate plan
    - Output: `.omc/plans/autopilot-impl.md`
 
-3. **Phase 2 - Execution**: Implement the plan using Ralph + Ultrawork
+3. **Phase 2 - Execution**: Implement the plan using executor agents with Ralph persistence when needed
    - Executor (Haiku): Simple tasks
    - Executor (Sonnet): Standard tasks
    - Executor (Opus): Complex tasks
@@ -111,7 +111,7 @@ V1 does not support `stageModels`, model routing, provider or role selection; in
    - All must approve; fix and re-validate on rejection
 
 6. **Phase 5 - Cleanup**: Delete all state files on successful completion
-   - Remove `.omc/state/autopilot-state.json`, `ralph-state.json`, `ultrawork-state.json` (plus stale `ultraqa-state.json` if a retired copy exists)
+   - Remove `.omc/state/autopilot-state.json`, `ralph-state.json` (plus stale retired `ultraqa-state.json`/`ultrawork-state.json` if legacy copies exist)
    - Run `/oh-my-claudecode:cancel` for clean exit
 </Steps>
 
@@ -263,5 +263,5 @@ When autopilot detects a ralplan consensus plan (`.omc/plans/ralplan-*.md` or `.
 - Architecture-reviewed (ralplan Architect agent)
 - Quality-checked (ralplan Critic agent)
 
-Autopilot starts directly at Phase 2 (Execution via Ralph + Ultrawork).
+Autopilot starts directly at Phase 2 using executor agents and Ralph persistence.
 </Advanced>
