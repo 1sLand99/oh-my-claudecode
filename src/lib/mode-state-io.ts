@@ -100,7 +100,8 @@ function guardedLockRemoval(path: string, operation: 'reclaim' | 'release', owne
 
 function acquireLockAt(path: string, requireExclusive = false): MutationLock | null {
   mkdirSync(dirname(path), { recursive: true });
-  if (!flockPath()) return requireExclusive ? null : { unlocked: true };
+  const hasFlock = flockPath() !== null;
+  if (!hasFlock && !requireExclusive) return { unlocked: true };
   const processStart = processStartIdentity(process.pid);
   if (!processStart || processStart === 'absent') {
     console.error(`[omc-lock] state_mutation_lock_owner_unverifiable: ${path}`);
@@ -121,6 +122,7 @@ function acquireLockAt(path: string, requireExclusive = false): MutationLock | n
       if (fd !== undefined) { try { closeSync(fd); } catch { /* best-effort descriptor cleanup */ } }
       try { unlinkSync(tempPath); } catch { /* best-effort unpublished temp cleanup */ }
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') return null;
+      if (!hasFlock) return null;
       const disposition = guardedLockRemoval(path, 'reclaim');
       if (disposition === 'unverifiable') {
         console.error(`[omc-lock] state_mutation_lock_unverifiable: ${path}`);
@@ -139,6 +141,13 @@ function acquireMutationLock(filePath: string): MutationLock | null {
 function releaseMutationLock(lock: MutationLock | null): void {
   if (!lock || 'unlocked' in lock) return;
   try { closeSync(lock.fd); } catch { /* lock metadata ownership still guards release */ }
+  if (!flockPath()) {
+    try {
+      const current = JSON.parse(readFileSync(lock.path, 'utf8')) as MutationLockOwner;
+      if (sameEmergencyOwner(current, lock.owner)) unlinkSync(lock.path);
+    } catch { /* a replacement lock must survive */ }
+    return;
+  }
   guardedLockRemoval(lock.path, 'release', lock.owner);
 }
 

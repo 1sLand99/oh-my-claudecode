@@ -553,7 +553,7 @@ export function writePrd(directory: string, prd: PRD, sessionId?: string): boole
     const result = withStateFileMutationLock(prdPath, () => {
       atomicWriteJsonSync(prdPath, bindCompletionClaims(prd));
       return true;
-    });
+    }, true);
     return result.acquired && result.value === true;
   } catch {
     return false;
@@ -571,7 +571,7 @@ function mutatePrd<T>(directory: string, sessionId: string | undefined, mutate: 
     if (value === undefined) return undefined;
     atomicWriteJsonSync(prdPath, bindCompletionClaims(prd));
     return value;
-  });
+  }, true);
   return result.acquired ? result.value : undefined;
 }
 
@@ -610,7 +610,7 @@ export function consumeStoryArchitectApproval(
     } catch {
       return false;
     }
-  });
+  }, true);
   return result.acquired && result.value === true;
 }
 
@@ -631,7 +631,7 @@ export function consumeCompletionArchitectApproval(
       && getPrdGoverningCriteriaRevision(prd) === expectedCriteriaRevision
       && getPrdStatus(prd).allComplete;
     return current && (consume?.() ?? true);
-  });
+  }, true);
   return result.acquired && result.value === true;
 }
 
