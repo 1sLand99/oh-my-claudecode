@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from 'fs';
+import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
+import { homedir } from 'os';
 
 
 const TEST_DIR = '/tmp/cancel-integration-test';
@@ -167,6 +168,29 @@ describe('cancel-integration', () => {
         JSON.stringify({ active: true, source: 'legacy' })
       );
 
+      // Broad ralph clear also sweeps the shared-home converged root
+      // (~/.omc/state/sessions/*) plus any stray shared-home global fallback.
+      // Snapshot what is already there, seed exactly one owned session file,
+      // and compute the expected count so the assertion stays truthful no
+      // matter what earlier suites in the same CI home directory left behind.
+      const homeStateRoot = join(homedir(), '.omc', 'state');
+      const homeSessionsRoot = join(homeStateRoot, 'sessions');
+      const preExistingHomeRalphCount = (() => {
+        let count = existsSync(join(homeStateRoot, 'ralph-state.json')) ? 1 : 0;
+        try {
+          for (const sid of readdirSync(homeSessionsRoot, { withFileTypes: true })) {
+            if (sid.isDirectory() && existsSync(join(homeSessionsRoot, sid.name, 'ralph-state.json'))) count++;
+          }
+        } catch { /* sessions root may not exist */ }
+        return count;
+      })();
+      const homeSessionDir = join(homeSessionsRoot, 'cancel-integration-home');
+      mkdirSync(homeSessionDir, { recursive: true });
+      writeFileSync(
+        join(homeSessionDir, 'ralph-state.json'),
+        JSON.stringify({ active: true, _meta: { sessionId: 'cancel-integration-home' } })
+      );
+
       // Clear without session_id (force/broad clear)
       const result = await stateClearTool.handler({
         mode: 'ralph',
@@ -182,9 +206,14 @@ describe('cancel-integration', () => {
       // Legacy file should also be deleted
       expect(existsSync(join(TEST_DIR, '.omc', 'state', 'ralph-state.json'))).toBe(false);
 
+      // Shared-home converged session file is cleared too
+      expect(existsSync(join(homeSessionDir, 'ralph-state.json'))).toBe(false);
+
+      // 3 session files + legacy + seeded shared-home session + any
+      // pre-existing shared-home ralph state swept by the broad clear
       const clearedMatch = result.content[0].text.match(/Locations cleared: (\d+)/);
       expect(clearedMatch).not.toBeNull();
-      expect(Number(clearedMatch![1])).toBeGreaterThanOrEqual(4);
+      expect(Number(clearedMatch![1])).toBe(5 + preExistingHomeRalphCount);
       expect(result.content[0].text).toContain('WARNING: No session_id provided');
     });
   });
