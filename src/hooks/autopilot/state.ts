@@ -35,7 +35,6 @@ import {
   readRalphState,
   writeRalphState,
   clearRalphState,
-  clearLinkedUltraworkState,
 } from "../ralph/index.js";
 import { canStartMode } from "../mode-registry/index.js";
 import {
@@ -573,10 +572,6 @@ export function transitionRalphToUltraQA(
   if (ralphState) {
     writeRalphState(directory, { ...ralphState, active: false }, sessionId);
   }
-  if (ralphState?.linked_ultrawork) {
-    clearLinkedUltraworkState(directory, sessionId);
-  }
-
   // Step 3: Transition to QA phase
   const newState = transitionPhase(directory, "qa", sessionId);
   if (!newState) {

@@ -26,7 +26,6 @@ export {
   readRalphState,
   writeRalphState,
   clearRalphState,
-  clearLinkedUltraworkState,
   incrementRalphIteration,
   // PRD Integration
   hasPrd,

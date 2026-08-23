@@ -67,8 +67,6 @@ export interface RalphLoopState {
   prd_mode?: boolean;
   /** Current story being worked on */
   current_story_id?: string;
-  /** Whether ultrawork is linked/auto-activated with ralph */
-  linked_ultrawork?: boolean;
   /** Reviewer mode for Ralph completion verification */
   critic_mode?: RalphCriticMode;
 }
@@ -151,23 +149,6 @@ export function clearRalphState(
   expectedState?: RalphLoopState,
 ): boolean {
   return clearModeStateFile("ralph", directory, sessionId, expectedState as Record<string, unknown> | undefined);
-}
-
-/**
- * Clear ultrawork state (only if linked to ralph)
- */
-export function clearLinkedUltraworkState(
-  directory: string,
-  sessionId?: string,
-): boolean {
-  const state = readModeState<{ linked_to_ralph?: boolean }>("ultrawork", directory, sessionId);
-
-  // Only clear if it was linked to ralph (auto-activated)
-  if (!state || !state.linked_to_ralph) {
-    return true;
-  }
-
-  return clearModeStateFile("ultrawork", directory, sessionId);
 }
 
 /**
@@ -329,11 +310,6 @@ export function createRalphLoopHook(directory: string): RalphLoopHook {
 
     if (!state || state.session_id !== sessionId) {
       return false;
-    }
-
-    // Also clear linked ultrawork state if it was auto-activated
-    if (state.linked_ultrawork) {
-      clearLinkedUltraworkState(directory, sessionId);
     }
 
     return clearRalphState(directory, sessionId);
