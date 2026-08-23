@@ -153,7 +153,6 @@ function inspectCanonicalDirectory(path: string): CanonicalDirectory | null {
     return null;
   }
 }
-
 function getCanonicalCheckpointContext(omcRoot: string): CanonicalCheckpointContext | null {
   const root = inspectCanonicalDirectory(omcRoot);
   const statePath = join(omcRoot, 'state');
