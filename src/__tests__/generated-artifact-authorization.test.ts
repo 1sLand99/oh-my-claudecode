@@ -90,26 +90,7 @@ type MutableInput = {
     merge_base_commit: { sha: string };
     files?: unknown;
   };
-  authorizedHeadAdvance?: {
-    status: string;
-    ahead_by: number;
-    behind_by: number;
-    total_commits: number;
-    commits: Array<{ sha: string }>;
-    base_commit: { sha: string };
-    merge_base_commit: { sha: string };
-    files: ApiFile[];
-  };
-  authorizedBaseAdvance?: {
-    status: string;
-    ahead_by: number;
-    behind_by: number;
-    total_commits: number;
-    commits: Array<{ sha: string }>;
-    base_commit: { sha: string };
-    merge_base_commit: { sha: string };
-    files: ApiFile[];
-  };
+
   commit: {
     sha: string;
     commit: { verification: { verified: boolean } };
@@ -573,69 +554,21 @@ describe('generated-artifact base-owned authorization decision', () => {
     }, 'web-flow signature does not match');
   });
 
-  it('accepts only fully enumerable non-generated advances from the authorized head and merge base', () => {
+  it('rejects any live head or merge-base mismatch from the authorized tuple', () => {
     const input = authorizedInput();
     const authorizedHeadSha = 'b'.repeat(40);
     const authorizedMergeBaseSha = 'c'.repeat(40);
     input.manifest.authorizations[0].headSha = authorizedHeadSha;
     input.manifest.authorizations[0].mergeBaseSha = authorizedMergeBaseSha;
-    input.authorizedHeadAdvance = {
-      status: 'ahead',
-      ahead_by: 1,
-      behind_by: 0,
-      total_commits: 1,
-      commits: [{ sha: HEAD_SHA }],
-      base_commit: { sha: authorizedHeadSha },
-      merge_base_commit: { sha: authorizedHeadSha },
-      files: [{ status: 'modified', filename: 'src/reconciled.ts', sha: 'd'.repeat(40) }],
-    };
-    input.authorizedBaseAdvance = {
-      status: 'ahead',
-      ahead_by: 1,
-      behind_by: 0,
-      total_commits: 1,
-      commits: [{ sha: MERGE_BASE_SHA }],
-      base_commit: { sha: authorizedMergeBaseSha },
-      merge_base_commit: { sha: authorizedMergeBaseSha },
-      files: [{ status: 'modified', filename: 'scripts/base-trust.mjs', sha: 'e'.repeat(40) }],
-    };
-    expect(verifier.evaluateGeneratedArtifactAuthorization(input)).toMatchObject({ allowed: true });
-
-    input.authorizedHeadAdvance.files = [
-      { status: 'modified', filename: 'dist/unauthorized.js', sha: 'f'.repeat(40) },
-    ];
     expect(verifier.evaluateGeneratedArtifactAuthorization(input)).toMatchObject({
       allowed: false,
-      reason: expect.stringContaining('outside the authorized closure'),
+      reason: expect.stringContaining('authorized PR/target/head identity'),
     });
 
-    input.authorizedHeadAdvance.files = [];
-    input.authorizedHeadAdvance.commits = [{ sha: 'a'.repeat(40) }];
+    input.manifest.authorizations[0].headSha = HEAD_SHA;
     expect(verifier.evaluateGeneratedArtifactAuthorization(input)).toMatchObject({
       allowed: false,
-      reason: expect.stringContaining('compare head does not match'),
-    });
-
-    input.authorizedHeadAdvance.commits = Array.from({ length: 101 }, () => ({ sha: HEAD_SHA }));
-    input.authorizedHeadAdvance.ahead_by = 101;
-    input.authorizedHeadAdvance.total_commits = 101;
-    expect(verifier.evaluateGeneratedArtifactAuthorization(input)).toMatchObject({
-      allowed: false,
-      reason: expect.stringContaining('too large or inconsistent'),
-    });
-
-    input.authorizedHeadAdvance.commits = [{ sha: HEAD_SHA }];
-    input.authorizedHeadAdvance.ahead_by = 1;
-    input.authorizedHeadAdvance.total_commits = 1;
-    input.authorizedHeadAdvance.files = [{
-      status: 'renamed',
-      filename: 'src/moved.cjs',
-      previous_filename: 'bridge/moved.cjs',
-      sha: 'f'.repeat(40),
-    }];
-    expect(verifier.evaluateGeneratedArtifactAuthorization(input)).toMatchObject({
-      allowed: false,
-      reason: expect.stringContaining('outside the authorized closure'),
+      reason: expect.stringContaining('authorized merge base SHA'),
     });
   });
 
@@ -1002,23 +935,7 @@ describe('generated-artifact base-owned authorization decision', () => {
 
       const advancedInput = authorizedInput();
       const authorizedHeadSha = 'b'.repeat(40);
-      const authorizedMergeBaseSha = 'c'.repeat(40);
       advancedInput.manifest.authorizations[0].headSha = authorizedHeadSha;
-      advancedInput.manifest.authorizations[0].mergeBaseSha = authorizedMergeBaseSha;
-      advancedInput.authorizedHeadAdvance = {
-        status: 'ahead', ahead_by: 1, behind_by: 0, total_commits: 1,
-        commits: [{ sha: HEAD_SHA }],
-        base_commit: { sha: authorizedHeadSha },
-        merge_base_commit: { sha: authorizedHeadSha },
-        files: [{ status: 'modified', filename: 'src/head-advance.ts', sha: 'd'.repeat(40) }],
-      };
-      advancedInput.authorizedBaseAdvance = {
-        status: 'ahead', ahead_by: 1, behind_by: 0, total_commits: 1,
-        commits: [{ sha: MERGE_BASE_SHA }],
-        base_commit: { sha: authorizedMergeBaseSha },
-        merge_base_commit: { sha: authorizedMergeBaseSha },
-        files: [{ status: 'modified', filename: 'scripts/base-advance.mjs', sha: 'e'.repeat(40) }],
-      };
       const advancePaths: string[] = [];
       const advanceFetch: typeof fetch = async request => {
         const url = new URL(
@@ -1034,8 +951,6 @@ describe('generated-artifact base-owned authorization decision', () => {
         else if (path.includes(`/pulls/${PULL_NUMBER}/files`) && path.endsWith('page=2')) body = advancedInput.files.slice(100);
         else if (path.includes(`/pulls/${PULL_NUMBER}/files`) && path.endsWith('page=3')) body = [];
         else if (path === `/repos/${REPOSITORY}/compare/${LIVE_BASE_SHA}...${HEAD_SHA}?per_page=1&page=1`) body = advancedInput.compare;
-        else if (path === `/repos/${REPOSITORY}/compare/${authorizedHeadSha}...${HEAD_SHA}?per_page=100&page=1`) body = advancedInput.authorizedHeadAdvance;
-        else if (path === `/repos/${REPOSITORY}/compare/${authorizedMergeBaseSha}...${MERGE_BASE_SHA}?per_page=100&page=1`) body = advancedInput.authorizedBaseAdvance;
         else if (path === `/repos/${REPOSITORY}/commits/${HEAD_SHA}`) body = advancedInput.commit;
         else if (path === '/graphql') body = { data: { repository: { object: advancedInput.signature } } };
         else throw new Error(`Unexpected GitHub API path ${path}`);
@@ -1049,11 +964,44 @@ describe('generated-artifact base-owned authorization decision', () => {
         fetchImpl: advanceFetch,
         repositoryRoot: checkoutRoot,
         now: advancedInput.now,
-      })).resolves.toMatchObject({ requiresAuthorization: true, pullNumber: PULL_NUMBER });
-      expect(advancePaths).toContain(
+      })).rejects.toThrow('authorized PR/target/head identity');
+      expect(advancePaths).not.toContain(
         `/repos/${REPOSITORY}/compare/${authorizedHeadSha}...${HEAD_SHA}?per_page=100&page=1`,
       );
-      expect(advancePaths).toContain(
+
+      const mergeBaseAdvancedInput = authorizedInput();
+      const authorizedMergeBaseSha = 'c'.repeat(40);
+      mergeBaseAdvancedInput.manifest.authorizations[0].mergeBaseSha = authorizedMergeBaseSha;
+      const mergeBaseAdvancePaths: string[] = [];
+      const mergeBaseAdvanceFetch: typeof fetch = async request => {
+        const url = new URL(
+          typeof request === 'string' ? request : request instanceof URL ? request.href : request.url,
+        );
+        const path = `${url.pathname}${url.search}`;
+        mergeBaseAdvancePaths.push(path);
+        let body: unknown;
+        if (path === `/repos/${REPOSITORY}`) body = mergeBaseAdvancedInput.repositoryMetadata;
+        else if (path === `/repos/${REPOSITORY}/commits/main`) body = mergeBaseAdvancedInput.runtimeCommit;
+        else if (path === `/repos/${REPOSITORY}/pulls/${PULL_NUMBER}`) body = mergeBaseAdvancedInput.livePull;
+        else if (path.includes(`/pulls/${PULL_NUMBER}/files`) && path.endsWith('page=1')) body = mergeBaseAdvancedInput.files.slice(0, 100);
+        else if (path.includes(`/pulls/${PULL_NUMBER}/files`) && path.endsWith('page=2')) body = mergeBaseAdvancedInput.files.slice(100);
+        else if (path.includes(`/pulls/${PULL_NUMBER}/files`) && path.endsWith('page=3')) body = [];
+        else if (path === `/repos/${REPOSITORY}/compare/${LIVE_BASE_SHA}...${HEAD_SHA}?per_page=1&page=1`) body = mergeBaseAdvancedInput.compare;
+        else if (path === `/repos/${REPOSITORY}/commits/${HEAD_SHA}`) body = mergeBaseAdvancedInput.commit;
+        else if (path === '/graphql') body = { data: { repository: { object: mergeBaseAdvancedInput.signature } } };
+        else throw new Error(`Unexpected GitHub API path ${path}`);
+        return { ok: true, json: async () => body } as Response;
+      };
+      await expect(verifier.verifyLiveGeneratedArtifactAuthorization({
+        event: mergeBaseAdvancedInput.event,
+        manifest: mergeBaseAdvancedInput.manifest,
+        environment: mergeBaseAdvancedInput.environment,
+        token: 'test-token',
+        fetchImpl: mergeBaseAdvanceFetch,
+        repositoryRoot: checkoutRoot,
+        now: mergeBaseAdvancedInput.now,
+      })).rejects.toThrow('authorized merge base SHA');
+      expect(mergeBaseAdvancePaths).not.toContain(
         `/repos/${REPOSITORY}/compare/${authorizedMergeBaseSha}...${MERGE_BASE_SHA}?per_page=100&page=1`,
       );
 
