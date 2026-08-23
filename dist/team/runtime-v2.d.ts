@@ -168,6 +168,14 @@ export interface StartTeamV2Config {
      */
     autoMerge?: boolean;
 }
+export interface WorkerStartupEvidencePolicy {
+    initialBudgetMs: number;
+    finalRecheckBudgetMs: number;
+    resubmitAttempts: number;
+    resubmitBudgetMs: number;
+}
+export declare function getWorkerStartupEvidencePolicy(agentType: CliAgentType): WorkerStartupEvidencePolicy;
+export declare function waitForStartupEvidenceBudget(hasEvidence: () => Promise<boolean>, budgetMs: number, delayMs?: number): Promise<boolean>;
 export declare function promptModeRecoveryRequiresProgressEvidence(promptMode: boolean, continuationCount: number): boolean;
 interface RecoveryOwnerFinalizationDeps {
     readRevisionedConfig: (teamName: string, cwd: string) => Promise<{

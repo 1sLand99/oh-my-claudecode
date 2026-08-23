@@ -41,7 +41,9 @@ async function prepareAcceptedLaunch(cwd, teamName, workerName, paneId) {
     await awaitWorkerLaunchAcknowledgement(attempt, { timeoutMs: 1_000, pollIntervalMs: 5 });
     writeFileSync(`${attempt.startedPath}.terminal`, JSON.stringify({ ...expected,
         kind: 'worker_launch_provider_terminal', outcome: 'exit', cleanup_verified: true,
-        pid: 999_999, process_start_identity: '1', written_at: new Date().toISOString() }));
+        pid: 999_999, process_start_identity: '1',
+        ...(process.platform !== 'win32' ? { process_group_id: 999_999 } : {}),
+        written_at: new Date().toISOString() }));
     return attempt;
 }
 describe('shutdownTeamV2 detached worktree cleanup', () => {

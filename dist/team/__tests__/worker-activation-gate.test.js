@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { runWorkerActivationGate } from '../worker-activation-gate.js';
-import { awaitWorkerLaunchAcknowledgement, prepareWorkerLaunchAttempt } from '../worker-launch-ack.js';
+import { awaitWorkerLaunchAcknowledgement, awaitWorkerLaunchProviderStarted, buildWorkerLaunchBootstrapSpec, prepareWorkerLaunchAttempt, retireAndCleanupCurrentWorkerLaunchAttempt, runWorkerLaunchBootstrap, } from '../worker-launch-ack.js';
 import { isProcessAlive } from '../../platform/process-utils.js';
 let cwd;
 beforeEach(() => { cwd = mkdtempSync(join(tmpdir(), 'recovery-gate-')); });
@@ -81,6 +82,82 @@ describe('worker recovery activation gate', () => {
             launch_nonce: launchAttempt.nonce,
             pane_attempt_id: 'attempt-a',
         });
+    });
+    it.runIf(process.platform !== 'win32')('keeps a nested recovery provider in the durable bootstrap group during rollback', async () => {
+        const readyPath = join(cwd, 'nested-bootstrap-ready.json');
+        const activatePath = join(cwd, 'nested-bootstrap-activate.json');
+        const runPath = join(cwd, 'nested-bootstrap-run.json');
+        const gateSpecPath = join(cwd, 'nested-bootstrap-gate.json');
+        const childPidPath = join(cwd, 'nested-bootstrap-child.pid');
+        const launchAttempt = await prepareWorkerLaunchAttempt({
+            cwd,
+            teamName: 'recovery-gate-team',
+            workerName: 'worker-1',
+            paneId: '%nested',
+            provider: 'codex',
+            runtimeCliPath: '/runtime-cli.cjs',
+            context: { kind: 'recovery', recovery_id: 'recovery-nested-bootstrap', replacement_generation: 3, pane_attempt_id: 'attempt-nested-bootstrap' },
+        });
+        const record = {
+            recovery_id: 'recovery-nested-bootstrap', worker_name: 'worker-1', replacement_generation: 3,
+            pane_attempt_id: 'attempt-nested-bootstrap', launch_attempt_id: launchAttempt.attempt_id,
+            launch_nonce: launchAttempt.nonce, written_at: new Date().toISOString(),
+        };
+        const providerScript = [
+            "const fs=require('node:fs')",
+            "const cp=require('node:child_process')",
+            "const child=cp.spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});child.unref()",
+            `fs.writeFileSync(${JSON.stringify(childPidPath)},String(child.pid))`,
+            'setInterval(()=>{},1000)',
+        ].join(';');
+        const gate = {
+            recoveryId: 'recovery-nested-bootstrap', workerName: 'worker-1', replacementGeneration: 3,
+            paneAttemptId: 'attempt-nested-bootstrap', readyPath, activatePath, runPath,
+            launchAttempt, providerArgv: [process.execPath, '-e', providerScript], cwd,
+            timeoutMs: 5_000, pollIntervalMs: 5,
+        };
+        writeFileSync(gateSpecPath, JSON.stringify(gate));
+        const gateModuleUrl = pathToFileURL(join(process.cwd(), 'src/team/worker-activation-gate.ts')).href;
+        const tsxLoader = join(process.cwd(), 'node_modules/tsx/dist/loader.mjs');
+        const gateRunner = [
+            "import { readFileSync } from 'node:fs'",
+            `const { runWorkerActivationGate } = await import(${JSON.stringify(gateModuleUrl)})`,
+            `const result = await runWorkerActivationGate(JSON.parse(readFileSync(${JSON.stringify(gateSpecPath)}, 'utf8')))`,
+            "if (result.outcome !== 'ran') process.exit(1)",
+        ].join(';');
+        const spec = buildWorkerLaunchBootstrapSpec(launchAttempt, [process.execPath, '--import', tsxLoader, '--input-type=module', '-e', gateRunner], cwd, { providerEnv: { OMC_RECOVERY_GATE_SPEC: JSON.stringify(gate) }, releaseAfterSpawn: true });
+        const bootstrap = runWorkerLaunchBootstrap(spec);
+        let rollbackComplete = false;
+        try {
+            await expect(awaitWorkerLaunchAcknowledgement(launchAttempt, { timeoutMs: 2_000, pollIntervalMs: 5 }))
+                .resolves.toEqual({ ok: true });
+            await expect(awaitWorkerLaunchProviderStarted(launchAttempt, { timeoutMs: 2_000, pollIntervalMs: 5 }))
+                .resolves.toBe(true);
+            await expect.poll(() => existsSync(readyPath), { timeout: 2_000, interval: 5 }).toBe(true);
+            writeFileSync(activatePath, JSON.stringify(record));
+            writeFileSync(runPath, JSON.stringify(record));
+            await expect.poll(() => existsSync(`${runPath}.launched`), { timeout: 2_000, interval: 5 }).toBe(true);
+            const started = JSON.parse(readFileSync(launchAttempt.startedPath, 'utf8'));
+            const launched = JSON.parse(readFileSync(`${runPath}.launched`, 'utf8'));
+            expect(started.process_group_id).toEqual(expect.any(Number));
+            expect(launched).toMatchObject({
+                provider_pid: expect.any(Number),
+                process_group_id: started.process_group_id,
+            });
+            const childPid = Number(readFileSync(childPidPath, 'utf8'));
+            await expect(retireAndCleanupCurrentWorkerLaunchAttempt(launchAttempt, 'nested_bootstrap_rollback', async () => true)).resolves.toBe(true);
+            rollbackComplete = true;
+            await expect(bootstrap).resolves.toMatchObject({ outcome: 'ran' });
+            await expect.poll(() => isProcessAlive(childPid), { timeout: 2_000, interval: 20 }).toBe(false);
+            await expect.poll(() => isProcessAlive(launched.provider_pid), { timeout: 2_000, interval: 20 }).toBe(false);
+            expect(() => process.kill(-started.process_group_id, 0)).toThrow(expect.objectContaining({ code: 'ESRCH' }));
+        }
+        finally {
+            if (!rollbackComplete) {
+                await retireAndCleanupCurrentWorkerLaunchAttempt(launchAttempt, 'nested_bootstrap_rollback_cleanup', async () => true).catch(() => false);
+            }
+            await bootstrap.catch(() => ({ outcome: 'provider_spawn_failed' }));
+        }
     });
     it.each([0, 7])('does not publish launched evidence for a provider that exits immediately with code %s', async (exitCode) => {
         const readyPath = join(cwd, 'early-exit-ready.json');

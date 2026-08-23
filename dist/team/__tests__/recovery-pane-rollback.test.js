@@ -102,7 +102,9 @@ async function attachPersistedPriorLaunch(teamName, configPath) {
     await expect(awaitWorkerLaunchAcknowledgement(attempt, { timeoutMs: 1_000, pollIntervalMs: 5 })).resolves.toEqual({ ok: true });
     writeFileSync(`${attempt.startedPath}.terminal`, JSON.stringify({ ...expected,
         kind: 'worker_launch_provider_terminal', outcome: 'exit', cleanup_verified: true,
-        pid: 999_999, process_start_identity: '1', written_at: new Date().toISOString() }));
+        pid: 999_999, process_start_identity: '1',
+        ...(process.platform !== 'win32' ? { process_group_id: 999_999 } : {}),
+        written_at: new Date().toISOString() }));
     worker.pane_id = '%1';
     worker.launch_attempt_id = attempt.attempt_id;
     writeFileSync(configPath, JSON.stringify(config));
@@ -139,14 +141,68 @@ describe('recovery pane rollback evidence', () => {
         expect(paneMocks.applyMainVerticalLayout).toHaveBeenCalledWith(`${teamName}:0`, { required: true });
         expect(paneMocks.applyMainVerticalLayout.mock.invocationCallOrder[0])
             .toBeLessThan(paneMocks.spawnOwnedWorkerInPane.mock.invocationCallOrder[0]);
-        expect(paneMocks.killTeamPane).toHaveBeenCalledTimes(2);
+        expect(paneMocks.killTeamPane).not.toHaveBeenCalled();
         const evidenceRoot = absPath(cwd, `.omc/state/team/${teamName}/recovery/rollback-failures/${recoveryId}`);
         const evidenceFiles = readdirSync(evidenceRoot);
         expect(evidenceFiles).toHaveLength(1);
         const evidence = JSON.parse(readFileSync(join(evidenceRoot, evidenceFiles[0]), 'utf8'));
         expect(evidence).toMatchObject({ schema_version: 1, team_name: teamName, worker_name: 'worker-1',
-            request_id: requestId, recovery_id: recoveryId, pane_id: '%2', reason: 'spawn failed --api-key=<redacted> after pane creation', liveness: 'alive' });
+            request_id: requestId, recovery_id: recoveryId, pane_id: '%2', reason: 'spawn failed --api-key=<redacted> after pane creation:provider_cleanup_unverified', liveness: 'alive' });
         await expectRecoveryLockReleased(teamName, 'worker-1', 'cleanup-failure');
+    });
+    it('preserves the recovery pane when provider containment cannot be verified', async () => {
+        cwd = mkdtempSync(join(tmpdir(), 'recovery-provider-unverified-'));
+        const teamName = 'provider-unverified-team';
+        const requestId = 'provider-unverified-request';
+        const recoveryId = 'provider-unverified-recovery';
+        const configPath = absPath(cwd, TeamPaths.config(teamName));
+        mkdirSync(join(configPath, '..'), { recursive: true });
+        writeFileSync(configPath, JSON.stringify({
+            name: teamName,
+            worker_count: 1,
+            workers: [{ name: 'worker-1', index: 1, ...launchMetadata, replacement_generation: 1 }],
+            agent_type: 'claude',
+            created_at: new Date().toISOString(),
+            tmux_session: `${teamName}:0`,
+            lifecycle_state: 'active',
+            state_revision: 1,
+            leader_pane_id: '%leader',
+        }));
+        await attachPersistedPriorLaunch(teamName, configPath);
+        reserveRecoveryRequest(cwd, requestId, { operation: 'recover-worker',
+            workspaceHash: createHash('sha256').update(cwd).digest('hex'), teamName, workerName: 'worker-1' }, recoveryId);
+        paneMocks.getWorkerLiveness.mockResolvedValueOnce('dead').mockResolvedValue('alive');
+        paneMocks.spawnOwnedWorkerInPane.mockImplementationOnce(async (_sessionName, ownership) => {
+            const attempt = await prepareWorkerLaunchAttempt({ cwd, teamName, workerName: 'worker-1', paneId: ownership.paneId,
+                provider: 'claude', runtimeCliPath: '/runtime-cli.cjs', context: { kind: 'recovery',
+                    recovery_id: recoveryId, replacement_generation: 2, pane_attempt_id: 'test-pane-attempt' } });
+            const expected = JSON.parse(readFileSync(attempt.expectedPath, 'utf8'));
+            writeFileSync(attempt.ackPath, JSON.stringify({ ...expected, kind: 'worker_launch_ack', written_at: new Date().toISOString() }));
+            await awaitWorkerLaunchAcknowledgement(attempt, { timeoutMs: 1_000, pollIntervalMs: 5 });
+            let reads = 0;
+            return Object.defineProperty({ ownership }, 'attempt', {
+                enumerable: true,
+                get: () => {
+                    if (reads++ === 0)
+                        throw new Error('activation record failed');
+                    return attempt;
+                },
+            });
+        });
+        await expect(executeRecoverDeadWorkerV2Owner({ teamName, cwd, workerName: 'worker-1', requestId }))
+            .resolves.toMatchObject({ outcome: 'failed', error: 'spawn_failed', recoveryId });
+        expect(paneMocks.killOwnedWorkerPane).not.toHaveBeenCalled();
+        expect(paneMocks.killTeamPane).not.toHaveBeenCalled();
+        const evidenceRoot = absPath(cwd, `.omc/state/team/${teamName}/recovery/rollback-failures/${recoveryId}`);
+        const evidenceFiles = readdirSync(evidenceRoot);
+        expect(evidenceFiles.length).toBeGreaterThan(0);
+        const evidence = JSON.parse(readFileSync(join(evidenceRoot, evidenceFiles.at(-1)), 'utf8'));
+        expect(evidence).toMatchObject({
+            recovery_id: recoveryId,
+            pane_id: '%2',
+            reason: 'activation record failed:provider_cleanup_unverified',
+            liveness: 'alive',
+        });
     });
     it('reconciles an accepted initial launch pointer before treating the worker as already running', async () => {
         cwd = mkdtempSync(join(tmpdir(), 'omc-recovery-initial-pointer-'));

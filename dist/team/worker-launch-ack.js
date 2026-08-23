@@ -15,10 +15,13 @@ const DEFAULT_DECISION_TIMEOUT_MS = 15_000;
 const WORKER_LAUNCH_TRANSPORT_OWNER_KIND = 'worker_launch_transport_owner';
 const WORKER_LAUNCH_TRANSPORT_CLEANUP_KIND = 'worker_launch_transport_cleanup_complete';
 const WORKER_LAUNCH_BOOTSTRAP_DESCRIPTOR_FILE = 'bootstrap.json';
+/** Internal handoff marker for a recovery gate nested inside this bootstrap. */
+export const WORKER_LAUNCH_RECOVERY_GATE_CONTAINED_ENV = 'OMC_WORKER_LAUNCH_RECOVERY_GATE_CONTAINED';
 const WORKER_LAUNCH_INTERNAL_ENV_KEYS = new Set([
     'OMC_WORKER_LAUNCH_SPEC',
     'OMC_WORKER_LAUNCH_SPEC_B64',
     'OMC_WORKER_LAUNCH_SPEC_FILE',
+    WORKER_LAUNCH_RECOVERY_GATE_CONTAINED_ENV,
 ]);
 const WORKER_LAUNCH_AUTHORITY_PROTOCOL = 'worker-launch-authority-v1';
 const WINDOWS_SUPERVISOR_PROTOCOL = 'worker-launch-windows-supervisor-v1';
@@ -40,7 +43,7 @@ export function buildWindowsSupervisorSource() {
         '  $si = New-Object O+STARTUPINFO; $si.cb = [Runtime.InteropServices.Marshal]::SizeOf($si); $flags = 0x00000004 -bor 0x00000400; if (-not [O]::CreateProcessW($null, $cmd, [IntPtr]::Zero, [IntPtr]::Zero, $false, $flags, $envPtr, $payload.cwd, [ref]$si, [ref]$pi)) { throw "worker_launch_create_process_failed" }',
         '  $job = [O]::CreateJobObjectW([IntPtr]::Zero, $null); if ($job -eq [IntPtr]::Zero) { throw "worker_launch_create_job_failed" }; $info = New-Object O+JOBOBJECT_EXTENDED_LIMIT_INFORMATION; $info.BasicLimitInformation.LimitFlags = 0x2000; $ptr = [Runtime.InteropServices.Marshal]::AllocHGlobal([Runtime.InteropServices.Marshal]::SizeOf($info)); try { [Runtime.InteropServices.Marshal]::StructureToPtr($info, $ptr, $false); if (-not [O]::SetInformationJobObject($job, 9, $ptr, [Runtime.InteropServices.Marshal]::SizeOf($info))) { throw "worker_launch_job_config_failed" } } finally { [Runtime.InteropServices.Marshal]::FreeHGlobal($ptr) }; if (-not [O]::AssignProcessToJobObject($job, $pi.hProcess)) { throw "worker_launch_assign_job_failed" }; if ([O]::ResumeThread($pi.hThread) -eq [uint32]0xffffffff) { throw "worker_launch_resume_failed" }',
         '  $ticks = ([DateTime]((Get-Process -Id $pi.dwProcessId).StartTime)).ToUniversalTime().Ticks; $ready = @{ protocol="' + WINDOWS_SUPERVISOR_PROTOCOL + '"; kind="ready"; attempt_id=$payload.identity.attempt_id; authority_digest=$payload.authority_digest; containment_nonce=$payload.containment_nonce; pid=$pi.dwProcessId; process_start_identity=("ticks:" + $ticks) } | ConvertTo-Json -Compress; [Console]::Out.WriteLine($ready); [Console]::Out.Flush()',
-        '  $readTask = [Console]::In.ReadLineAsync(); while ($true) { if ([O]::WaitForSingleObject($pi.hProcess, 50) -eq 0) { $exitCode = [uint32]0; [O]::GetExitCodeProcess($pi.hProcess, [ref]$exitCode) | Out-Null; [O]::TerminateJobObject($job, $exitCode) | Out-Null; $terminal = @{ protocol="' + WINDOWS_SUPERVISOR_PROTOCOL + '"; kind="terminal"; attempt_id=$payload.identity.attempt_id; authority_digest=$payload.authority_digest; containment_nonce=$payload.containment_nonce; pid=$pi.dwProcessId; outcome="exit"; cleanup_verified=$true; exit_code=$exitCode } | ConvertTo-Json -Compress; [Console]::Out.WriteLine($terminal); [Console]::Out.Flush(); break }; if (-not $readTask.IsCompleted) { continue }; $line = $readTask.Result; if ($null -eq $line) { throw "worker_launch_authority_lost" }; $readTask = [Console]::In.ReadLineAsync(); if ([string]::IsNullOrWhiteSpace($line) -or $line.Length -gt 4096) { continue }; try { $msg = $line | ConvertFrom-Json } catch { continue }; if ($msg.protocol -ne "' + WINDOWS_SUPERVISOR_PROTOCOL + '" -or $msg.attempt_id -ne $payload.identity.attempt_id -or $msg.authority_digest -ne $payload.authority_digest -or $msg.containment_nonce -ne $payload.containment_nonce -or $msg.kind -ne "terminate") { continue }; [O]::TerminateJobObject($job, 1) | Out-Null; [O]::WaitForSingleObject($pi.hProcess, 5000) | Out-Null; $terminal = @{ protocol="' + WINDOWS_SUPERVISOR_PROTOCOL + '"; kind="terminal"; attempt_id=$payload.identity.attempt_id; authority_digest=$payload.authority_digest; containment_nonce=$payload.containment_nonce; pid=$pi.dwProcessId; outcome="terminated"; cleanup_verified=$true } | ConvertTo-Json -Compress; [Console]::Out.WriteLine($terminal); [Console]::Out.Flush(); break }',
+        '  $readTask = [Console]::In.ReadLineAsync(); while ($true) { if ([O]::WaitForSingleObject($pi.hProcess, 50) -eq 0) { $exitCode = [uint32]0; [O]::GetExitCodeProcess($pi.hProcess, [ref]$exitCode) | Out-Null; if (-not [O]::TerminateJobObject($job, $exitCode)) { throw "worker_launch_job_terminate_failed" }; if ([O]::WaitForSingleObject($job, 5000) -ne 0) { throw "worker_launch_job_cleanup_timeout" }; $terminal = @{ protocol="' + WINDOWS_SUPERVISOR_PROTOCOL + '"; kind="terminal"; attempt_id=$payload.identity.attempt_id; authority_digest=$payload.authority_digest; containment_nonce=$payload.containment_nonce; pid=$pi.dwProcessId; outcome="exit"; cleanup_verified=$true; exit_code=$exitCode } | ConvertTo-Json -Compress; [Console]::Out.WriteLine($terminal); [Console]::Out.Flush(); break }; if (-not $readTask.IsCompleted) { continue }; $line = $readTask.Result; if ($null -eq $line) { throw "worker_launch_authority_lost" }; $readTask = [Console]::In.ReadLineAsync(); if ([string]::IsNullOrWhiteSpace($line) -or $line.Length -gt 4096) { continue }; try { $msg = $line | ConvertFrom-Json } catch { continue }; if ($msg.protocol -ne "' + WINDOWS_SUPERVISOR_PROTOCOL + '" -or $msg.attempt_id -ne $payload.identity.attempt_id -or $msg.authority_digest -ne $payload.authority_digest -or $msg.containment_nonce -ne $payload.containment_nonce -or $msg.kind -ne "terminate") { continue }; if (-not [O]::TerminateJobObject($job, 1)) { throw "worker_launch_job_terminate_failed" }; if ([O]::WaitForSingleObject($job, 5000) -ne 0) { throw "worker_launch_job_cleanup_timeout" }; $terminal = @{ protocol="' + WINDOWS_SUPERVISOR_PROTOCOL + '"; kind="terminal"; attempt_id=$payload.identity.attempt_id; authority_digest=$payload.authority_digest; containment_nonce=$payload.containment_nonce; pid=$pi.dwProcessId; outcome="terminated"; cleanup_verified=$true } | ConvertTo-Json -Compress; [Console]::Out.WriteLine($terminal); [Console]::Out.Flush(); break }',
         '} catch { if ($pi.hProcess -ne [IntPtr]::Zero) { if ($job -ne [IntPtr]::Zero) { [O]::TerminateJobObject($job, 1) | Out-Null } else { [O]::TerminateProcess($pi.hProcess, 1) | Out-Null }; [O]::WaitForSingleObject($pi.hProcess, 5000) | Out-Null }; throw } finally { if ($envPtr -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::FreeHGlobal($envPtr) }; if ($pi.hThread -ne [IntPtr]::Zero) { [O]::CloseHandle($pi.hThread) | Out-Null }; if ($pi.hProcess -ne [IntPtr]::Zero) { [O]::CloseHandle($pi.hProcess) | Out-Null }; if ($job -ne [IntPtr]::Zero) { [O]::CloseHandle($job) | Out-Null } }',
     ].join("`n");
 }
@@ -769,6 +772,16 @@ function isValidProcessStartIdentity(value) {
 }
 async function readWorkerLaunchCleanupProof(attempt, started) {
     const startedPath = 'startedPath' in attempt ? attempt.startedPath : attempt.started_path;
+    const matchesProcessGroup = (value) => {
+        if (process.platform === 'win32')
+            return true;
+        if (!Number.isSafeInteger(value.process_group_id) || Number(value.process_group_id) <= 0)
+            return false;
+        return started === undefined
+            || (Number.isSafeInteger(started.process_group_id)
+                && Number(started.process_group_id) > 0
+                && value.process_group_id === started.process_group_id);
+    };
     const terminal = await readJson(`${startedPath}.terminal`);
     if (terminal.kind === 'value') {
         const value = terminal.value;
@@ -777,7 +790,8 @@ async function readWorkerLaunchCleanupProof(attempt, started) {
         if (matchesStarted && identityMatches(value, attempt) && value.kind === 'worker_launch_provider_terminal'
             && value.outcome === 'exit' && value.cleanup_verified === true
             && Number.isSafeInteger(value.pid) && Number(value.pid) > 0
-            && isValidProcessStartIdentity(value.process_start_identity))
+            && isValidProcessStartIdentity(value.process_start_identity)
+            && matchesProcessGroup(value))
             return true;
     }
     const completed = await readJson(`${startedPath}.termination-complete`);
@@ -787,7 +801,8 @@ async function readWorkerLaunchCleanupProof(attempt, started) {
             && value.process_start_identity === started.process_start_identity);
         if (matchesStarted && identityMatches(value, attempt) && value.kind === 'worker_launch_termination_complete'
             && value.cleanup_verified === true && Number.isSafeInteger(value.pid) && Number(value.pid) > 0
-            && isValidProcessStartIdentity(value.process_start_identity))
+            && isValidProcessStartIdentity(value.process_start_identity)
+            && matchesProcessGroup(value))
             return true;
     }
     return false;
@@ -813,7 +828,6 @@ export async function terminateWorkerLaunchProvider(attempt, timeoutMs = 2_000) 
     const terminationRequestPath = `${attempt.startedPath}.termination-request`;
     const terminationCompletePath = `${attempt.startedPath}.termination-complete`;
     const existingRequest = await readJson(terminationRequestPath);
-    let hadExistingValidTerminationRequest = false;
     if (process.platform === 'win32') {
         if (existingRequest.kind === 'absent') {
             try {
@@ -866,7 +880,6 @@ export async function terminateWorkerLaunchProvider(attempt, timeoutMs = 2_000) 
         if (!value || !identityMatches(value, attempt) || value.kind !== 'worker_launch_termination_request'
             || value.pid !== record.pid || value.process_start_identity !== record.process_start_identity)
             return false;
-        hadExistingValidTerminationRequest = true;
     }
     const deadlineAt = new Date(Date.now() + timeoutMs).toISOString();
     const result = await terminateOwnedProcessGroup({
@@ -874,29 +887,17 @@ export async function terminateWorkerLaunchProvider(attempt, timeoutMs = 2_000) 
         processGroupId: record.process_group_id, deadlineAt, force: true,
     });
     if (result === 'already-dead' || result === 'identity-mismatch') {
-        return terminalCleanupVerified || (hadExistingValidTerminationRequest
-            && isProcessGroupAbsent(record.process_group_id)
-            && await publishWorkerLaunchTerminationComplete(terminationCompletePath, attempt, record));
+        return terminalCleanupVerified;
     }
     if (result !== 'terminated')
         return false;
-    if (!await publishWorkerLaunchTerminationComplete(terminationCompletePath, attempt, record)) {
-        // The completion-record write failed after a successful termination.
-        // Retry: verify the process is dead, then re-attempt the write so a
-        // later retry can safely resume from the termination-request + proven
-        // process absence. Never infer from PID absence without request identity.
-        const deadline = Date.parse(deadlineAt);
-        const liveness = await isProcessIdentityLive(record.pid, record.process_start_identity, deadline);
-        if ((liveness === 'dead' || liveness === 'mismatch')
-            && await publishWorkerLaunchTerminationComplete(terminationCompletePath, attempt, record))
-            return true;
-        return false;
-    }
     const deadline = Date.parse(deadlineAt);
     while (Date.now() < deadline) {
         const liveness = await isProcessIdentityLive(record.pid, record.process_start_identity, deadline);
-        if (liveness === 'dead' || liveness === 'mismatch')
-            return true;
+        if ((liveness === 'dead' || liveness === 'mismatch')
+            && isProcessGroupAbsent(record.process_group_id)) {
+            return publishWorkerLaunchTerminationComplete(terminationCompletePath, attempt, record);
+        }
         if (liveness === 'unknown')
             return false;
         await sleep(20);
@@ -914,13 +915,23 @@ function isProcessGroupAbsent(processGroupId) {
         return error.code === 'ESRCH';
     }
 }
+async function waitForProcessGroupAbsence(processGroupId, deadlineAt) {
+    while (Date.now() < deadlineAt) {
+        if (isProcessGroupAbsent(processGroupId))
+            return true;
+        await sleep(20);
+    }
+    return isProcessGroupAbsent(processGroupId);
+}
 async function publishWorkerLaunchTerminationComplete(terminationCompletePath, attempt, record) {
     const existingComplete = await readJson(terminationCompletePath);
     if (existingComplete.kind === 'absent') {
         try {
             await writeExclusiveAtomic(terminationCompletePath, {
                 ...identityOf(attempt), kind: 'worker_launch_termination_complete', cleanup_verified: true,
-                pid: record.pid, process_start_identity: record.process_start_identity, written_at: new Date().toISOString(),
+                pid: record.pid, process_start_identity: record.process_start_identity,
+                ...(process.platform !== 'win32' ? { process_group_id: record.process_group_id } : {}),
+                written_at: new Date().toISOString(),
             });
             return true;
         }
@@ -933,7 +944,8 @@ async function publishWorkerLaunchTerminationComplete(terminationCompletePath, a
         : null;
     return !!value && identityMatches(value, attempt) && value.kind === 'worker_launch_termination_complete'
         && value.cleanup_verified === true && value.pid === record.pid
-        && value.process_start_identity === record.process_start_identity;
+        && value.process_start_identity === record.process_start_identity
+        && (process.platform === 'win32' || value.process_group_id === record.process_group_id);
 }
 async function readValidProviderStarted(attempt) {
     const started = await readJson(attempt.startedPath);
@@ -1240,7 +1252,18 @@ export async function runWorkerLaunchBootstrap(value) {
         return { outcome: 'decision_timeout' };
     if (decision === 'revoked')
         return { outcome: 'revoked' };
-    const providerEnv = { ...spec.provider_env };
+    // Recovery gates launch one more provider process after this durable
+    // bootstrap starts. Mark that handoff so the gate keeps its provider in the
+    // process group already captured and proven by this bootstrap. The marker
+    // is injected after authority validation and is stripped by the gate before
+    // the actual provider receives its environment.
+    const providerEnv = {
+        ...spec.provider_env,
+        ...(typeof spec.provider_env.OMC_RECOVERY_GATE_SPEC === 'string'
+            || typeof spec.provider_env.OMC_RECOVERY_GATE_SPEC_B64 === 'string'
+            ? { [WORKER_LAUNCH_RECOVERY_GATE_CONTAINED_ENV]: '1' }
+            : {}),
+    };
     try {
         const launched = await withFileLock(lockPathFor(spec.current_path), async () => {
             if (!await isCurrentLaunchIdentity(spec.current_path, spec)
@@ -1339,16 +1362,21 @@ export async function runWorkerLaunchBootstrap(value) {
                     }
                     const effectiveExitCode = supervisedExitCode ?? exitCode;
                     const effectiveSignal = supervisedExitCode === null ? signal : null;
-                    const cleanupVerified = process.platform === 'win32'
+                    const terminationVerified = process.platform === 'win32'
                         ? await awaitExternalTerminationCompletion(spec) || await readWorkerLaunchCleanupProof(spec)
                         : terminationResult
                             ? ['terminated', 'already-dead', 'identity-mismatch'].includes(await terminationResult)
                             : await awaitExternalTerminationCompletion(spec) || await readWorkerLaunchCleanupProof(spec)
                                 || await isCorrelatedTerminationDead(spec);
+                    const cleanupVerified = terminationVerified && (process.platform === 'win32'
+                        || (launchGroup !== null
+                            && await waitForProcessGroupAbsence(launchGroup.processGroupId, Date.now() + 2_000)));
                     await atomicWriteJson(`${spec.started_path}.terminal`, {
                         ...identityOf(spec), kind: 'worker_launch_provider_terminal',
                         outcome: cleanupVerified ? 'exit' : 'cleanup_unverified', cleanup_verified: cleanupVerified,
-                        pid: providerPid ?? child.pid ?? null, process_start_identity: providerStartIdentity, exit_code: effectiveExitCode, signal: effectiveSignal, written_at: new Date().toISOString(),
+                        pid: providerPid ?? child.pid ?? null, process_start_identity: providerStartIdentity,
+                        ...(process.platform !== 'win32' && launchGroup ? { process_group_id: launchGroup.processGroupId } : {}),
+                        exit_code: effectiveExitCode, signal: effectiveSignal, written_at: new Date().toISOString(),
                     }).catch(() => undefined);
                     await invocation.cleanup().catch(() => undefined);
                     resolve(cleanupVerified

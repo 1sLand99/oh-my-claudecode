@@ -4158,7 +4158,7 @@ function buildWindowsSupervisorSource() {
     '  $si = New-Object O+STARTUPINFO; $si.cb = [Runtime.InteropServices.Marshal]::SizeOf($si); $flags = 0x00000004 -bor 0x00000400; if (-not [O]::CreateProcessW($null, $cmd, [IntPtr]::Zero, [IntPtr]::Zero, $false, $flags, $envPtr, $payload.cwd, [ref]$si, [ref]$pi)) { throw "worker_launch_create_process_failed" }',
     '  $job = [O]::CreateJobObjectW([IntPtr]::Zero, $null); if ($job -eq [IntPtr]::Zero) { throw "worker_launch_create_job_failed" }; $info = New-Object O+JOBOBJECT_EXTENDED_LIMIT_INFORMATION; $info.BasicLimitInformation.LimitFlags = 0x2000; $ptr = [Runtime.InteropServices.Marshal]::AllocHGlobal([Runtime.InteropServices.Marshal]::SizeOf($info)); try { [Runtime.InteropServices.Marshal]::StructureToPtr($info, $ptr, $false); if (-not [O]::SetInformationJobObject($job, 9, $ptr, [Runtime.InteropServices.Marshal]::SizeOf($info))) { throw "worker_launch_job_config_failed" } } finally { [Runtime.InteropServices.Marshal]::FreeHGlobal($ptr) }; if (-not [O]::AssignProcessToJobObject($job, $pi.hProcess)) { throw "worker_launch_assign_job_failed" }; if ([O]::ResumeThread($pi.hThread) -eq [uint32]0xffffffff) { throw "worker_launch_resume_failed" }',
     '  $ticks = ([DateTime]((Get-Process -Id $pi.dwProcessId).StartTime)).ToUniversalTime().Ticks; $ready = @{ protocol="' + WINDOWS_SUPERVISOR_PROTOCOL + '"; kind="ready"; attempt_id=$payload.identity.attempt_id; authority_digest=$payload.authority_digest; containment_nonce=$payload.containment_nonce; pid=$pi.dwProcessId; process_start_identity=("ticks:" + $ticks) } | ConvertTo-Json -Compress; [Console]::Out.WriteLine($ready); [Console]::Out.Flush()',
-    '  $readTask = [Console]::In.ReadLineAsync(); while ($true) { if ([O]::WaitForSingleObject($pi.hProcess, 50) -eq 0) { $exitCode = [uint32]0; [O]::GetExitCodeProcess($pi.hProcess, [ref]$exitCode) | Out-Null; [O]::TerminateJobObject($job, $exitCode) | Out-Null; $terminal = @{ protocol="' + WINDOWS_SUPERVISOR_PROTOCOL + '"; kind="terminal"; attempt_id=$payload.identity.attempt_id; authority_digest=$payload.authority_digest; containment_nonce=$payload.containment_nonce; pid=$pi.dwProcessId; outcome="exit"; cleanup_verified=$true; exit_code=$exitCode } | ConvertTo-Json -Compress; [Console]::Out.WriteLine($terminal); [Console]::Out.Flush(); break }; if (-not $readTask.IsCompleted) { continue }; $line = $readTask.Result; if ($null -eq $line) { throw "worker_launch_authority_lost" }; $readTask = [Console]::In.ReadLineAsync(); if ([string]::IsNullOrWhiteSpace($line) -or $line.Length -gt 4096) { continue }; try { $msg = $line | ConvertFrom-Json } catch { continue }; if ($msg.protocol -ne "' + WINDOWS_SUPERVISOR_PROTOCOL + '" -or $msg.attempt_id -ne $payload.identity.attempt_id -or $msg.authority_digest -ne $payload.authority_digest -or $msg.containment_nonce -ne $payload.containment_nonce -or $msg.kind -ne "terminate") { continue }; [O]::TerminateJobObject($job, 1) | Out-Null; [O]::WaitForSingleObject($pi.hProcess, 5000) | Out-Null; $terminal = @{ protocol="' + WINDOWS_SUPERVISOR_PROTOCOL + '"; kind="terminal"; attempt_id=$payload.identity.attempt_id; authority_digest=$payload.authority_digest; containment_nonce=$payload.containment_nonce; pid=$pi.dwProcessId; outcome="terminated"; cleanup_verified=$true } | ConvertTo-Json -Compress; [Console]::Out.WriteLine($terminal); [Console]::Out.Flush(); break }',
+    '  $readTask = [Console]::In.ReadLineAsync(); while ($true) { if ([O]::WaitForSingleObject($pi.hProcess, 50) -eq 0) { $exitCode = [uint32]0; [O]::GetExitCodeProcess($pi.hProcess, [ref]$exitCode) | Out-Null; if (-not [O]::TerminateJobObject($job, $exitCode)) { throw "worker_launch_job_terminate_failed" }; if ([O]::WaitForSingleObject($job, 5000) -ne 0) { throw "worker_launch_job_cleanup_timeout" }; $terminal = @{ protocol="' + WINDOWS_SUPERVISOR_PROTOCOL + '"; kind="terminal"; attempt_id=$payload.identity.attempt_id; authority_digest=$payload.authority_digest; containment_nonce=$payload.containment_nonce; pid=$pi.dwProcessId; outcome="exit"; cleanup_verified=$true; exit_code=$exitCode } | ConvertTo-Json -Compress; [Console]::Out.WriteLine($terminal); [Console]::Out.Flush(); break }; if (-not $readTask.IsCompleted) { continue }; $line = $readTask.Result; if ($null -eq $line) { throw "worker_launch_authority_lost" }; $readTask = [Console]::In.ReadLineAsync(); if ([string]::IsNullOrWhiteSpace($line) -or $line.Length -gt 4096) { continue }; try { $msg = $line | ConvertFrom-Json } catch { continue }; if ($msg.protocol -ne "' + WINDOWS_SUPERVISOR_PROTOCOL + '" -or $msg.attempt_id -ne $payload.identity.attempt_id -or $msg.authority_digest -ne $payload.authority_digest -or $msg.containment_nonce -ne $payload.containment_nonce -or $msg.kind -ne "terminate") { continue }; if (-not [O]::TerminateJobObject($job, 1)) { throw "worker_launch_job_terminate_failed" }; if ([O]::WaitForSingleObject($job, 5000) -ne 0) { throw "worker_launch_job_cleanup_timeout" }; $terminal = @{ protocol="' + WINDOWS_SUPERVISOR_PROTOCOL + '"; kind="terminal"; attempt_id=$payload.identity.attempt_id; authority_digest=$payload.authority_digest; containment_nonce=$payload.containment_nonce; pid=$pi.dwProcessId; outcome="terminated"; cleanup_verified=$true } | ConvertTo-Json -Compress; [Console]::Out.WriteLine($terminal); [Console]::Out.Flush(); break }',
     "} catch { if ($pi.hProcess -ne [IntPtr]::Zero) { if ($job -ne [IntPtr]::Zero) { [O]::TerminateJobObject($job, 1) | Out-Null } else { [O]::TerminateProcess($pi.hProcess, 1) | Out-Null }; [O]::WaitForSingleObject($pi.hProcess, 5000) | Out-Null }; throw } finally { if ($envPtr -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::FreeHGlobal($envPtr) }; if ($pi.hThread -ne [IntPtr]::Zero) { [O]::CloseHandle($pi.hThread) | Out-Null }; if ($pi.hProcess -ne [IntPtr]::Zero) { [O]::CloseHandle($pi.hProcess) | Out-Null }; if ($job -ne [IntPtr]::Zero) { [O]::CloseHandle($job) | Out-Null } }"
   ].join("`n");
 }
@@ -4692,17 +4692,22 @@ function isValidProcessStartIdentity2(value) {
 }
 async function readWorkerLaunchCleanupProof(attempt, started) {
   const startedPath = "startedPath" in attempt ? attempt.startedPath : attempt.started_path;
+  const matchesProcessGroup = (value) => {
+    if (process.platform === "win32") return true;
+    if (!Number.isSafeInteger(value.process_group_id) || Number(value.process_group_id) <= 0) return false;
+    return started === void 0 || Number.isSafeInteger(started.process_group_id) && Number(started.process_group_id) > 0 && value.process_group_id === started.process_group_id;
+  };
   const terminal = await readJson(`${startedPath}.terminal`);
   if (terminal.kind === "value") {
     const value = terminal.value;
     const matchesStarted = !started || value.pid === started.pid && value.process_start_identity === started.process_start_identity;
-    if (matchesStarted && identityMatches(value, attempt) && value.kind === "worker_launch_provider_terminal" && value.outcome === "exit" && value.cleanup_verified === true && Number.isSafeInteger(value.pid) && Number(value.pid) > 0 && isValidProcessStartIdentity2(value.process_start_identity)) return true;
+    if (matchesStarted && identityMatches(value, attempt) && value.kind === "worker_launch_provider_terminal" && value.outcome === "exit" && value.cleanup_verified === true && Number.isSafeInteger(value.pid) && Number(value.pid) > 0 && isValidProcessStartIdentity2(value.process_start_identity) && matchesProcessGroup(value)) return true;
   }
   const completed = await readJson(`${startedPath}.termination-complete`);
   if (completed.kind === "value") {
     const value = completed.value;
     const matchesStarted = !started || value.pid === started.pid && value.process_start_identity === started.process_start_identity;
-    if (matchesStarted && identityMatches(value, attempt) && value.kind === "worker_launch_termination_complete" && value.cleanup_verified === true && Number.isSafeInteger(value.pid) && Number(value.pid) > 0 && isValidProcessStartIdentity2(value.process_start_identity)) return true;
+    if (matchesStarted && identityMatches(value, attempt) && value.kind === "worker_launch_termination_complete" && value.cleanup_verified === true && Number.isSafeInteger(value.pid) && Number(value.pid) > 0 && isValidProcessStartIdentity2(value.process_start_identity) && matchesProcessGroup(value)) return true;
   }
   return false;
 }
@@ -4721,7 +4726,6 @@ async function terminateWorkerLaunchProvider(attempt, timeoutMs = 2e3) {
   const terminationRequestPath = `${attempt.startedPath}.termination-request`;
   const terminationCompletePath = `${attempt.startedPath}.termination-complete`;
   const existingRequest = await readJson(terminationRequestPath);
-  let hadExistingValidTerminationRequest = false;
   if (process.platform === "win32") {
     if (existingRequest.kind === "absent") {
       try {
@@ -4766,7 +4770,6 @@ async function terminateWorkerLaunchProvider(attempt, timeoutMs = 2e3) {
   } else {
     const value = existingRequest.kind === "value" ? existingRequest.value : null;
     if (!value || !identityMatches(value, attempt) || value.kind !== "worker_launch_termination_request" || value.pid !== record.pid || value.process_start_identity !== record.process_start_identity) return false;
-    hadExistingValidTerminationRequest = true;
   }
   const deadlineAt = new Date(Date.now() + timeoutMs).toISOString();
   const result = await terminateOwnedProcessGroup({
@@ -4777,19 +4780,15 @@ async function terminateWorkerLaunchProvider(attempt, timeoutMs = 2e3) {
     force: true
   });
   if (result === "already-dead" || result === "identity-mismatch") {
-    return terminalCleanupVerified || hadExistingValidTerminationRequest && isProcessGroupAbsent(record.process_group_id) && await publishWorkerLaunchTerminationComplete(terminationCompletePath, attempt, record);
+    return terminalCleanupVerified;
   }
   if (result !== "terminated") return false;
-  if (!await publishWorkerLaunchTerminationComplete(terminationCompletePath, attempt, record)) {
-    const deadline2 = Date.parse(deadlineAt);
-    const liveness = await isProcessIdentityLive(record.pid, record.process_start_identity, deadline2);
-    if ((liveness === "dead" || liveness === "mismatch") && await publishWorkerLaunchTerminationComplete(terminationCompletePath, attempt, record)) return true;
-    return false;
-  }
   const deadline = Date.parse(deadlineAt);
   while (Date.now() < deadline) {
     const liveness = await isProcessIdentityLive(record.pid, record.process_start_identity, deadline);
-    if (liveness === "dead" || liveness === "mismatch") return true;
+    if ((liveness === "dead" || liveness === "mismatch") && isProcessGroupAbsent(record.process_group_id)) {
+      return publishWorkerLaunchTerminationComplete(terminationCompletePath, attempt, record);
+    }
     if (liveness === "unknown") return false;
     await sleep2(20);
   }
@@ -4814,6 +4813,7 @@ async function publishWorkerLaunchTerminationComplete(terminationCompletePath, a
         cleanup_verified: true,
         pid: record.pid,
         process_start_identity: record.process_start_identity,
+        ...process.platform !== "win32" ? { process_group_id: record.process_group_id } : {},
         written_at: (/* @__PURE__ */ new Date()).toISOString()
       });
       return true;
@@ -4822,7 +4822,7 @@ async function publishWorkerLaunchTerminationComplete(terminationCompletePath, a
     }
   }
   const value = existingComplete.kind === "value" ? existingComplete.value : null;
-  return !!value && identityMatches(value, attempt) && value.kind === "worker_launch_termination_complete" && value.cleanup_verified === true && value.pid === record.pid && value.process_start_identity === record.process_start_identity;
+  return !!value && identityMatches(value, attempt) && value.kind === "worker_launch_termination_complete" && value.cleanup_verified === true && value.pid === record.pid && value.process_start_identity === record.process_start_identity && (process.platform === "win32" || value.process_group_id === record.process_group_id);
 }
 async function readValidProviderStarted(attempt) {
   const started = await readJson(attempt.startedPath);
@@ -4867,7 +4867,7 @@ function quoteWindowsCmdArgument(value) {
   if (/[\r\n]/.test(value)) throw new Error("worker_launch_provider_argv_invalid");
   return `"${value.replace(/%/g, "%%").replace(/"/g, '""')}"`;
 }
-var WORKER_LAUNCH_SCHEMA_VERSION, DEFAULT_ACK_TIMEOUT_MS, DEFAULT_POLL_INTERVAL_MS, DEFAULT_DECISION_TIMEOUT_MS, WORKER_LAUNCH_TRANSPORT_OWNER_KIND, WORKER_LAUNCH_TRANSPORT_CLEANUP_KIND, WORKER_LAUNCH_BOOTSTRAP_DESCRIPTOR_FILE, WORKER_LAUNCH_INTERNAL_ENV_KEYS, WORKER_LAUNCH_AUTHORITY_PROTOCOL, WINDOWS_SUPERVISOR_PROTOCOL, WINDOWS_RESERVED_ENV_KEYS, SAFE_BASELINE_ENV_KEYS;
+var WORKER_LAUNCH_SCHEMA_VERSION, DEFAULT_ACK_TIMEOUT_MS, DEFAULT_POLL_INTERVAL_MS, DEFAULT_DECISION_TIMEOUT_MS, WORKER_LAUNCH_TRANSPORT_OWNER_KIND, WORKER_LAUNCH_TRANSPORT_CLEANUP_KIND, WORKER_LAUNCH_BOOTSTRAP_DESCRIPTOR_FILE, WORKER_LAUNCH_RECOVERY_GATE_CONTAINED_ENV, WORKER_LAUNCH_INTERNAL_ENV_KEYS, WORKER_LAUNCH_AUTHORITY_PROTOCOL, WINDOWS_SUPERVISOR_PROTOCOL, WINDOWS_RESERVED_ENV_KEYS, SAFE_BASELINE_ENV_KEYS;
 var init_worker_launch_ack = __esm({
   "src/team/worker-launch-ack.ts"() {
     "use strict";
@@ -4882,10 +4882,12 @@ var init_worker_launch_ack = __esm({
     WORKER_LAUNCH_TRANSPORT_OWNER_KIND = "worker_launch_transport_owner";
     WORKER_LAUNCH_TRANSPORT_CLEANUP_KIND = "worker_launch_transport_cleanup_complete";
     WORKER_LAUNCH_BOOTSTRAP_DESCRIPTOR_FILE = "bootstrap.json";
+    WORKER_LAUNCH_RECOVERY_GATE_CONTAINED_ENV = "OMC_WORKER_LAUNCH_RECOVERY_GATE_CONTAINED";
     WORKER_LAUNCH_INTERNAL_ENV_KEYS = /* @__PURE__ */ new Set([
       "OMC_WORKER_LAUNCH_SPEC",
       "OMC_WORKER_LAUNCH_SPEC_B64",
-      "OMC_WORKER_LAUNCH_SPEC_FILE"
+      "OMC_WORKER_LAUNCH_SPEC_FILE",
+      WORKER_LAUNCH_RECOVERY_GATE_CONTAINED_ENV
     ]);
     WORKER_LAUNCH_AUTHORITY_PROTOCOL = "worker-launch-authority-v1";
     WINDOWS_SUPERVISOR_PROTOCOL = "worker-launch-windows-supervisor-v1";
@@ -13198,6 +13200,7 @@ __export(runtime_v2_exports, {
   executeRecoverDeadWorkerV2Owner: () => executeRecoverDeadWorkerV2Owner,
   finalizeRecoveryOwnerResult: () => finalizeRecoveryOwnerResult,
   findActiveTeamsV2: () => findActiveTeamsV2,
+  getWorkerStartupEvidencePolicy: () => getWorkerStartupEvidencePolicy,
   isRuntimeV2Enabled: () => isRuntimeV2Enabled,
   monitorTeamV2: () => monitorTeamV2,
   prepareRecoveryOwnerBootstrap: () => prepareRecoveryOwnerBootstrap,
@@ -13216,6 +13219,7 @@ __export(runtime_v2_exports, {
   setRuntimeOwnerRecoveryClient: () => setRuntimeOwnerRecoveryClient,
   shutdownTeamV2: () => shutdownTeamV2,
   startTeamV2: () => startTeamV2,
+  waitForStartupEvidenceBudget: () => waitForStartupEvidenceBudget,
   writeWatchdogFailedMarker: () => writeWatchdogFailedMarker
 });
 import { join as join34, resolve as resolve10 } from "path";
@@ -13661,20 +13665,30 @@ async function hasCurrentWorkerStartupEvidence(teamName, workerName, taskId, cwd
   const currentStatus = status.current_task_id === taskId && ["working", "blocked", "done", "failed"].includes(status.state) && status.launch_attempt_id === launchAttemptId && workerStatusStartupFingerprint(status) !== baseline.statusFingerprint;
   return currentClaim || currentStatus;
 }
-async function waitForWorkerStartupEvidence(teamName, workerName, taskId, cwd, baseline, launchAttemptId, attempts = 3, delayMs = 250) {
-  for (let attempt = 1; attempt <= attempts; attempt++) {
-    if (await hasCurrentWorkerStartupEvidence(teamName, workerName, taskId, cwd, baseline, launchAttemptId)) return true;
-    if (attempt < attempts) await new Promise((resolve11) => setTimeout(resolve11, delayMs));
-  }
-  return false;
+function getWorkerStartupEvidencePolicy(agentType) {
+  return WORKER_STARTUP_EVIDENCE_POLICIES[agentType];
 }
-async function waitForWorkerStatusTransition(teamName, workerName, cwd, baselineFingerprint, launchAttemptId, attempts = 12, delayMs = 250) {
-  for (let attempt = 1; attempt <= attempts; attempt++) {
-    const status = await readWorkerStatus(teamName, workerName, cwd);
-    if (status.state !== "unknown" && status.launch_attempt_id === launchAttemptId && workerStatusStartupFingerprint(status) !== baselineFingerprint) return true;
-    if (attempt < attempts) await new Promise((resolve11) => setTimeout(resolve11, delayMs));
+async function waitForStartupEvidenceBudget(hasEvidence, budgetMs, delayMs = WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS) {
+  const deadline = Date.now() + Math.max(0, budgetMs);
+  for (; ; ) {
+    if (await hasEvidence()) return true;
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) return false;
+    await new Promise((resolve11) => setTimeout(resolve11, Math.min(delayMs, remainingMs)));
   }
-  return false;
+}
+async function waitForWorkerStartupEvidence(teamName, workerName, taskId, cwd, baseline, launchAttemptId, budgetMs, delayMs = WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS) {
+  return waitForStartupEvidenceBudget(
+    () => hasCurrentWorkerStartupEvidence(teamName, workerName, taskId, cwd, baseline, launchAttemptId),
+    budgetMs,
+    delayMs
+  );
+}
+async function waitForWorkerStatusTransition(teamName, workerName, cwd, baselineFingerprint, launchAttemptId, budgetMs, delayMs = 250) {
+  return waitForStartupEvidenceBudget(async () => {
+    const status = await readWorkerStatus(teamName, workerName, cwd);
+    return status.state !== "unknown" && status.launch_attempt_id === launchAttemptId && workerStatusStartupFingerprint(status) !== baselineFingerprint;
+  }, budgetMs, delayMs);
 }
 function promptModeRecoveryRequiresProgressEvidence(promptMode, continuationCount) {
   return promptMode && continuationCount > 0;
@@ -13802,15 +13816,20 @@ async function spawnV2Worker(opts) {
     }).catch(() => false);
     if (!cleaned) throw new Error(`worker_startup_cleanup_unverified:${opts.workerName}:${paneId}`);
   };
-  const waitForCurrentEvidence = (attempts = 12) => waitForWorkerStartupEvidence(
+  const evidencePolicy = getWorkerStartupEvidencePolicy(opts.agentType);
+  const waitForCurrentEvidence = (budgetMs) => waitForWorkerStartupEvidence(
     opts.teamName,
     opts.workerName,
     opts.taskId,
     opts.cwd,
     startupBaseline,
     startupContext.attempt.attempt_id,
-    attempts
+    budgetMs
   );
+  const waitForBoundedStartupEvidence = async () => {
+    if (await waitForCurrentEvidence(evidencePolicy.initialBudgetMs)) return true;
+    return evidencePolicy.finalRecheckBudgetMs > 0 ? waitForCurrentEvidence(evidencePolicy.finalRecheckBudgetMs) : false;
+  };
   const fencedDispatch = await (async () => {
     try {
       return await withWorkerLaunchAttemptFence(startupContext.attempt, async () => {
@@ -13832,17 +13851,20 @@ async function spawnV2Worker(opts) {
           inboxCorrelationKey: `startup:${opts.workerName}:${opts.taskId}:${startupContext.attempt.attempt_id}`,
           notify: async (_target, triggerMessage) => {
             if (usePromptMode) {
-              const settled2 = await waitForCurrentEvidence();
+              const settled2 = await waitForBoundedStartupEvidence();
               return settled2 ? { ok: true, transport: "prompt_stdin", reason: "prompt_mode_worker_confirmed" } : { ok: false, transport: "prompt_stdin", reason: `${opts.agentType}_startup_evidence_missing` };
             }
             const attempted = await deliverStartupInbox(startupContext, triggerMessage, { attemptAlreadyFenced: true });
             if (!attempted.ok) {
               return { ok: false, transport: "tmux_send_keys", reason: `worker_notify_failed:${attempted.reason}` };
             }
-            let settled = await waitForCurrentEvidence(opts.agentType === "claude" ? 6 : 12);
-            for (let attempt = 1; !settled && opts.agentType === "claude" && attempt <= 4; attempt++) {
+            let settled = await waitForCurrentEvidence(evidencePolicy.initialBudgetMs);
+            for (let attempt = 1; !settled && attempt <= evidencePolicy.resubmitAttempts; attempt++) {
               if (!await retryStartupInboxSubmit(startupContext, triggerMessage, { attemptAlreadyFenced: true })) break;
-              settled = await waitForCurrentEvidence();
+              settled = await waitForCurrentEvidence(evidencePolicy.resubmitBudgetMs);
+            }
+            if (!settled && evidencePolicy.finalRecheckBudgetMs > 0) {
+              settled = await waitForCurrentEvidence(evidencePolicy.finalRecheckBudgetMs);
             }
             return settled ? { ok: true, transport: "tmux_send_keys", reason: "worker_startup_confirmed" } : { ok: false, transport: "tmux_send_keys", reason: "worker_startup_evidence_missing" };
           },
@@ -13946,7 +13968,7 @@ async function recordUnaddressableRecoveryPaneFailure(input, recoveryId, paneAtt
   return path4;
 }
 async function cleanupRecoveryPaneAttempt(input, recoveryId, pending, reason) {
-  let providerStopped = true;
+  let providerStopped = false;
   if (pending.startupContext) {
     providerStopped = await retireAndCleanupCurrentWorkerLaunchAttempt(
       pending.startupContext.attempt,
@@ -13960,6 +13982,17 @@ async function cleanupRecoveryPaneAttempt(input, recoveryId, pending, reason) {
         }
       }
     ).catch(() => false);
+  }
+  if (!providerStopped) {
+    const liveness2 = await getWorkerLiveness(pending.ownership.paneId).catch(() => "unknown");
+    await recordRecoveryPaneRollbackFailure(
+      input,
+      recoveryId,
+      pending,
+      `${reason}:provider_cleanup_unverified`,
+      liveness2
+    );
+    return false;
   }
   let liveness = "unknown";
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -15118,21 +15151,34 @@ async function executeRecoverDeadWorkerV2Owner(input) {
         const primaryTaskId = continuations[0]?.taskId;
         const startupBaseline = primaryTaskId ? await captureWorkerStartupBaseline(input.teamName, sagaInput2.workerName, primaryTaskId, input.cwd) : null;
         const statusBaseline = startupBaseline?.statusFingerprint ?? workerStatusStartupFingerprint(await readWorkerStatus(input.teamName, sagaInput2.workerName, input.cwd));
-        const waitForCurrentEvidence = () => primaryTaskId && startupBaseline ? waitForWorkerStartupEvidence(
+        const evidencePolicy = getWorkerStartupEvidencePolicy(pending.agentType);
+        const waitForCurrentEvidence = (budgetMs) => primaryTaskId && startupBaseline ? waitForWorkerStartupEvidence(
           input.teamName,
           sagaInput2.workerName,
           primaryTaskId,
           input.cwd,
           startupBaseline,
           startupAttemptId,
-          12
+          budgetMs
         ) : waitForWorkerStatusTransition(
           input.teamName,
           sagaInput2.workerName,
           input.cwd,
           statusBaseline,
-          startupAttemptId
+          startupAttemptId,
+          budgetMs
         );
+        const waitForBoundedStartupEvidence = async (resubmit) => {
+          let settled = await waitForCurrentEvidence(evidencePolicy.initialBudgetMs);
+          for (let attempt2 = 1; !settled && resubmit && attempt2 <= evidencePolicy.resubmitAttempts; attempt2++) {
+            if (!await resubmit()) break;
+            settled = await waitForCurrentEvidence(evidencePolicy.resubmitBudgetMs);
+          }
+          if (!settled && evidencePolicy.finalRecheckBudgetMs > 0) {
+            settled = await waitForCurrentEvidence(evidencePolicy.finalRecheckBudgetMs);
+          }
+          return settled;
+        };
         const instruction = continuations.length > 0 ? continuations.map((continuation) => renderRecoveryContinuationInstruction({
           teamName: input.teamName,
           workerName: sagaInput2.workerName,
@@ -15186,7 +15232,7 @@ async function executeRecoverDeadWorkerV2Owner(input) {
         const effects = await withWorkerLaunchAttemptFence(startupContext.attempt, async () => {
           await ensureFence();
           if (promptModeRecoveryRequiresProgressEvidence(pending.promptMode, continuations.length)) {
-            if (!await waitForCurrentEvidence()) return { ok: false, error: `${pending.agentType}_startup_evidence_missing` };
+            if (!await waitForBoundedStartupEvidence()) return { ok: false, error: `${pending.agentType}_startup_evidence_missing` };
           } else if (pending.promptMode) {
           } else {
             const recoveryTriggerMessage = `${generateTriggerMessage(
@@ -15210,7 +15256,9 @@ async function executeRecoverDeadWorkerV2Owner(input) {
                 if (!attempted.ok) {
                   return { ok: false, transport: "tmux_send_keys", reason: `worker_notify_failed:${attempted.reason}` };
                 }
-                const settled = await waitForCurrentEvidence();
+                const settled = await waitForBoundedStartupEvidence(
+                  () => retryStartupInboxSubmit(startupContext, triggerMessage, { attemptAlreadyFenced: true })
+                );
                 return settled ? { ok: true, transport: "tmux_send_keys", reason: "worker_startup_confirmed" } : { ok: false, transport: "tmux_send_keys", reason: "worker_startup_evidence_missing" };
               },
               deps: { writeWorkerInbox }
@@ -16665,7 +16713,7 @@ async function findActiveTeamsV2(cwd) {
   }
   return active;
 }
-var runtimeOwnerRecoveryClient, orchestratorByTeam, CURSOR_UNSUPPORTED_REVIEW_INTENT_RE, CURSOR_EXECUTOR_CONTEXT_RE, CURSOR_EXECUTOR_CONTEXT_INTENTS, cadenceByTeam, MONITOR_SIGNAL_STALE_MS, pendingRecoveryPanes, BOOTSTRAP_RECOVERY_EVIDENCE_POLL_MS, BOOTSTRAP_RECOVERY_EVIDENCE_MAX_WAIT_MS, CIRCUIT_BREAKER_THRESHOLD, CircuitBreakerV2;
+var runtimeOwnerRecoveryClient, orchestratorByTeam, CURSOR_UNSUPPORTED_REVIEW_INTENT_RE, CURSOR_EXECUTOR_CONTEXT_RE, CURSOR_EXECUTOR_CONTEXT_INTENTS, cadenceByTeam, MONITOR_SIGNAL_STALE_MS, WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS, WORKER_STARTUP_EVIDENCE_POLICIES, pendingRecoveryPanes, BOOTSTRAP_RECOVERY_EVIDENCE_POLL_MS, BOOTSTRAP_RECOVERY_EVIDENCE_MAX_WAIT_MS, CIRCUIT_BREAKER_THRESHOLD, CircuitBreakerV2;
 var init_runtime_v2 = __esm({
   "src/team/runtime-v2.ts"() {
     "use strict";
@@ -16720,6 +16768,20 @@ var init_runtime_v2 = __esm({
     ]);
     cadenceByTeam = /* @__PURE__ */ new Map();
     MONITOR_SIGNAL_STALE_MS = 3e4;
+    WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS = 250;
+    WORKER_STARTUP_EVIDENCE_POLICIES = {
+      // Claude's interactive transport can lose a submit, so retain the existing
+      // bounded resubmit behavior and its effective 6 + (4 * 12) poll windows.
+      claude: { initialBudgetMs: 1250, finalRecheckBudgetMs: 0, resubmitAttempts: 4, resubmitBudgetMs: 2750 },
+      // External providers can be visibly ready before they publish task/status
+      // evidence. Give that distinct evidence gate enough time for a cold start,
+      // then perform one bounded read-only recheck without duplicating the inbox.
+      codex: { initialBudgetMs: 3e4, finalRecheckBudgetMs: 1e3, resubmitAttempts: 0, resubmitBudgetMs: 0 },
+      gemini: { initialBudgetMs: 3e4, finalRecheckBudgetMs: 1e3, resubmitAttempts: 0, resubmitBudgetMs: 0 },
+      cursor: { initialBudgetMs: 3e4, finalRecheckBudgetMs: 1e3, resubmitAttempts: 0, resubmitBudgetMs: 0 },
+      grok: { initialBudgetMs: 3e4, finalRecheckBudgetMs: 1e3, resubmitAttempts: 0, resubmitBudgetMs: 0 },
+      antigravity: { initialBudgetMs: 3e4, finalRecheckBudgetMs: 1e3, resubmitAttempts: 0, resubmitBudgetMs: 0 }
+    };
     pendingRecoveryPanes = /* @__PURE__ */ new Map();
     BOOTSTRAP_RECOVERY_EVIDENCE_POLL_MS = 25;
     BOOTSTRAP_RECOVERY_EVIDENCE_MAX_WAIT_MS = 1e3;

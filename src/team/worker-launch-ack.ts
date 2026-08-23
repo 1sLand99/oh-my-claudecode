@@ -20,10 +20,13 @@ const DEFAULT_DECISION_TIMEOUT_MS = 15_000;
 const WORKER_LAUNCH_TRANSPORT_OWNER_KIND = 'worker_launch_transport_owner' as const;
 const WORKER_LAUNCH_TRANSPORT_CLEANUP_KIND = 'worker_launch_transport_cleanup_complete' as const;
 const WORKER_LAUNCH_BOOTSTRAP_DESCRIPTOR_FILE = 'bootstrap.json' as const;
+/** Internal handoff marker for a recovery gate nested inside this bootstrap. */
+export const WORKER_LAUNCH_RECOVERY_GATE_CONTAINED_ENV = 'OMC_WORKER_LAUNCH_RECOVERY_GATE_CONTAINED' as const;
 const WORKER_LAUNCH_INTERNAL_ENV_KEYS = new Set([
   'OMC_WORKER_LAUNCH_SPEC',
   'OMC_WORKER_LAUNCH_SPEC_B64',
   'OMC_WORKER_LAUNCH_SPEC_FILE',
+  WORKER_LAUNCH_RECOVERY_GATE_CONTAINED_ENV,
 ]);
 const WORKER_LAUNCH_AUTHORITY_PROTOCOL = 'worker-launch-authority-v1';
 const WINDOWS_SUPERVISOR_PROTOCOL = 'worker-launch-windows-supervisor-v1';
@@ -1426,7 +1429,18 @@ export async function runWorkerLaunchBootstrap(value: unknown): Promise<WorkerLa
   const decision = await waitForBootstrapDecision(spec);
   if (decision === 'timeout') return { outcome: 'decision_timeout' };
   if (decision === 'revoked') return { outcome: 'revoked' };
-  const providerEnv: NodeJS.ProcessEnv = { ...spec.provider_env };
+  // Recovery gates launch one more provider process after this durable
+  // bootstrap starts. Mark that handoff so the gate keeps its provider in the
+  // process group already captured and proven by this bootstrap. The marker
+  // is injected after authority validation and is stripped by the gate before
+  // the actual provider receives its environment.
+  const providerEnv: NodeJS.ProcessEnv = {
+    ...spec.provider_env,
+    ...(typeof spec.provider_env.OMC_RECOVERY_GATE_SPEC === 'string'
+      || typeof spec.provider_env.OMC_RECOVERY_GATE_SPEC_B64 === 'string'
+      ? { [WORKER_LAUNCH_RECOVERY_GATE_CONTAINED_ENV]: '1' }
+      : {}),
+  };
   try {
     const launched = await withFileLock(lockPathFor(spec.current_path), async () => {
       if (!await isCurrentLaunchIdentity(spec.current_path, spec)

@@ -17,59 +17,73 @@ const tmuxCalls = vi.hoisted(() => ({
     args: [],
     capturePaneText: '❯ ready\n',
     lastLiteralSend: '',
+    splitPaneOutput: '%42\n',
+    failCommands: [],
+    afterSplit: null,
+    afterKillPane: null,
 }));
 vi.mock('child_process', async (importOriginal) => {
     const actual = await importOriginal();
     const { promisify: utilPromisify } = await import('util');
+    function runMock(args) {
+        const command = args[0] ?? '';
+        if (command === 'split-window') {
+            tmuxCalls.afterSplit?.();
+            tmuxCalls.afterSplit = null;
+        }
+        else if (command === 'kill-pane') {
+            tmuxCalls.afterKillPane?.();
+            tmuxCalls.afterKillPane = null;
+        }
+        // Launch commands and inbox text use literal send-keys. Notify regression
+        // cases fail only submit keys, while a plain send-keys failure exercises
+        // provider launch cleanup before the pane is registered in runtime state.
+        const lastArg = args[args.length - 1] ?? '';
+        const failureKey = command !== 'send-keys'
+            ? command
+            : args.includes('-l')
+                ? ''
+                : tmuxCalls.failCommands.includes('notify-send-keys') && ['C-m', 'Tab', '1'].includes(lastArg)
+                    ? 'notify-send-keys'
+                    : command;
+        if (failureKey && tmuxCalls.failCommands.includes(failureKey)) {
+            throw new Error(`tmux_${failureKey}_failed`);
+        }
+        if (command === 'split-window') {
+            return { stdout: tmuxCalls.splitPaneOutput, stderr: '' };
+        }
+        if (command === 'send-keys' && args.includes('-l')) {
+            tmuxCalls.lastLiteralSend = args[args.length - 1] ?? '';
+            return { stdout: '', stderr: '' };
+        }
+        if (command === 'send-keys') {
+            tmuxCalls.lastLiteralSend = '';
+            return { stdout: '', stderr: '' };
+        }
+        if (command === 'capture-pane') {
+            return { stdout: `${tmuxCalls.lastLiteralSend}\n${tmuxCalls.capturePaneText}`, stderr: '' };
+        }
+        if (command === 'display-message') {
+            const format = args[args.length - 1] ?? '';
+            return { stdout: format.includes('pane_current_command') ? '0 zsh\n' : '0\n', stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+    }
     function mockExecFile(_cmd, args, cb) {
         tmuxCalls.args.push(args);
-        if (args[0] === 'split-window') {
-            cb(null, '%42\n', '');
+        try {
+            const result = runMock(args);
+            cb(null, result.stdout, result.stderr);
         }
-        else if (args[0] === 'send-keys' && args.includes('-l')) {
-            tmuxCalls.lastLiteralSend = args[args.length - 1] ?? '';
-            cb(null, '', '');
-        }
-        else if (args[0] === 'send-keys') {
-            tmuxCalls.lastLiteralSend = '';
-            cb(null, '', '');
-        }
-        else if (args[0] === 'capture-pane') {
-            cb(null, `${tmuxCalls.lastLiteralSend}\n${tmuxCalls.capturePaneText}`, '');
-        }
-        else if (args[0] === 'display-message') {
-            // pane_dead check → "0" means alive; pane_current_command zsh means shell is ready;
-            // pane_in_mode → "0" means not in copy mode.
-            const format = args[args.length - 1] ?? '';
-            cb(null, format.includes('pane_current_command') ? '0 zsh\n' : '0\n', '');
-        }
-        else {
-            cb(null, '', '');
+        catch (error) {
+            cb(error instanceof Error ? error : new Error(String(error)), '', '');
         }
         return {};
     }
     // Attach custom promisify so util.promisify(execFile) returns {stdout, stderr}
     mockExecFile[utilPromisify.custom] = async (_cmd, args) => {
         tmuxCalls.args.push(args);
-        if (args[0] === 'split-window') {
-            return { stdout: '%42\n', stderr: '' };
-        }
-        if (args[0] === 'send-keys' && args.includes('-l')) {
-            tmuxCalls.lastLiteralSend = args[args.length - 1] ?? '';
-            return { stdout: '', stderr: '' };
-        }
-        if (args[0] === 'send-keys') {
-            tmuxCalls.lastLiteralSend = '';
-            return { stdout: '', stderr: '' };
-        }
-        if (args[0] === 'capture-pane') {
-            return { stdout: `${tmuxCalls.lastLiteralSend}\n${tmuxCalls.capturePaneText}`, stderr: '' };
-        }
-        if (args[0] === 'display-message') {
-            const format = args[args.length - 1] ?? '';
-            return { stdout: format.includes('pane_current_command') ? '0 zsh\n' : '0\n', stderr: '' };
-        }
-        return { stdout: '', stderr: '' };
+        return runMock(args);
     };
     function mockExec(cmd, cb) {
         if (cmd.includes('display-message') && cmd.includes('#{window_width}')) {
@@ -143,12 +157,22 @@ function setupTaskDir(cwd) {
     const workerDir = join(cwd, '.omc/state/team/test-team/workers/worker-1');
     mkdirSync(workerDir, { recursive: true });
 }
+function denyTaskReset(cwd) {
+    writeFileSync(join(cwd, '.omc/state/team/test-team/tasks/1.lock'), JSON.stringify({ pid: process.pid, timestamp: Date.now() }));
+}
+function resetTmuxFailureState() {
+    tmuxCalls.splitPaneOutput = '%42\n';
+    tmuxCalls.failCommands = [];
+    tmuxCalls.afterSplit = null;
+    tmuxCalls.afterKillPane = null;
+}
 describe('spawnWorkerForTask – prompt mode and interactive worker launch', () => {
     let cwd;
     beforeEach(() => {
         tmuxCalls.args = [];
         tmuxCalls.capturePaneText = '❯ ready\n';
         tmuxCalls.lastLiteralSend = '';
+        resetTmuxFailureState();
         delete process.env.OMC_SHELL_READY_TIMEOUT_MS;
         cwd = mkdtempSync(join(tmpdir(), 'runtime-gemini-prompt-'));
         setupTaskDir(cwd);
@@ -175,6 +199,50 @@ describe('spawnWorkerForTask – prompt mode and interactive worker launch', () 
         const launchIndex = tmuxCalls.args.findIndex(args => args[0] === 'send-keys' && args.includes('-l'));
         expect(layoutIndex).toBeGreaterThanOrEqual(0);
         expect(launchIndex).toBeGreaterThan(layoutIndex);
+        rmSync(cwd, { recursive: true, force: true });
+    });
+    it('fails closed with layout rollback evidence when task reset is denied', async () => {
+        const runtime = makeRuntime(cwd, 'codex');
+        tmuxCalls.failCommands = ['select-layout'];
+        tmuxCalls.afterKillPane = () => denyTaskReset(cwd);
+        let failure;
+        try {
+            await spawnWorkerForTask(runtime, 'worker-1', 0);
+        }
+        catch (error) {
+            failure = error;
+        }
+        expect(failure).toBeInstanceOf(Error);
+        const rollbackFailure = failure;
+        expect(rollbackFailure.message).toBe('worker_layout_rollback_unverified:worker-1:%42');
+        expect(rollbackFailure.cause?.layoutError).toBeInstanceOf(Error);
+        expect(rollbackFailure.cause?.paneCleanupError).toBeUndefined();
+        expect(rollbackFailure.cause?.taskCleanupError).toBeInstanceOf(Error);
+        expect((rollbackFailure.cause?.taskCleanupError).message)
+            .toBe('worker_layout_task_reset_unconfirmed:worker-1:1');
+        const task = JSON.parse(readFileSync(join(cwd, '.omc/state/team/test-team/tasks/1.json'), 'utf-8'));
+        expect(task.status).toBe('in_progress');
+        expect(task.owner).toBe('worker-1');
+        rmSync(cwd, { recursive: true, force: true });
+    });
+    it('fails closed when a split returns no pane and task reset is denied', async () => {
+        const runtime = makeRuntime(cwd, 'codex');
+        tmuxCalls.splitPaneOutput = '';
+        tmuxCalls.afterSplit = () => denyTaskReset(cwd);
+        let failure;
+        try {
+            await spawnWorkerForTask(runtime, 'worker-1', 0);
+        }
+        catch (error) {
+            failure = error;
+        }
+        expect(failure).toBeInstanceOf(Error);
+        const rollbackFailure = failure;
+        expect(rollbackFailure.message).toBe('worker_startup_task_reset_unconfirmed:worker-1:1');
+        expect(rollbackFailure.cause?.taskCleanupError).toBeInstanceOf(Error);
+        const task = JSON.parse(readFileSync(join(cwd, '.omc/state/team/test-team/tasks/1.json'), 'utf-8'));
+        expect(task.status).toBe('in_progress');
+        expect(task.owner).toBe('worker-1');
         rmSync(cwd, { recursive: true, force: true });
     });
     it('antigravity worker launch args lead with --dangerously-skip-permissions and pass the instruction as the -p value', async () => {
@@ -270,6 +338,71 @@ describe('spawnWorkerForTask – prompt mode and interactive worker launch', () 
         expect(task.owner).toBeNull();
         rmSync(cwd, { recursive: true, force: true });
     });
+    it('fails closed with startup rollback evidence when readiness cleanup reset is denied', async () => {
+        const runtime = makeRuntime(cwd, 'claude');
+        tmuxCalls.capturePaneText = 'still booting\n';
+        tmuxCalls.afterKillPane = () => denyTaskReset(cwd);
+        process.env.OMC_SHELL_READY_TIMEOUT_MS = '40';
+        let failure;
+        try {
+            await spawnWorkerForTask(runtime, 'worker-1', 0);
+        }
+        catch (error) {
+            failure = error;
+        }
+        expect(failure).toBeInstanceOf(Error);
+        const rollbackFailure = failure;
+        expect(rollbackFailure.message).toBe('worker_startup_rollback_unverified:worker-1:%42');
+        expect((rollbackFailure.cause?.startupError).message).toBe('worker_pane_not_ready:worker-1');
+        expect(rollbackFailure.cause?.paneCleanupError).toBeUndefined();
+        expect((rollbackFailure.cause?.taskCleanupError).message)
+            .toBe('worker_startup_task_reset_unconfirmed:worker-1:1');
+        const task = JSON.parse(readFileSync(join(cwd, '.omc/state/team/test-team/tasks/1.json'), 'utf-8'));
+        expect(task.status).toBe('in_progress');
+        expect(task.owner).toBe('worker-1');
+        rmSync(cwd, { recursive: true, force: true });
+    });
+    it('fails closed with startup rollback evidence when notify cleanup fails', async () => {
+        const runtime = makeRuntime(cwd, 'claude');
+        tmuxCalls.failCommands = ['notify-send-keys', 'kill-pane'];
+        let failure;
+        try {
+            await spawnWorkerForTask(runtime, 'worker-1', 0);
+        }
+        catch (error) {
+            failure = error;
+        }
+        expect(failure).toBeInstanceOf(Error);
+        const rollbackFailure = failure;
+        expect(rollbackFailure.message).toBe('worker_startup_rollback_unverified:worker-1:%42');
+        expect((rollbackFailure.cause?.startupError).message)
+            .toBe('worker_notify_failed:worker-1:initial-inbox');
+        expect(rollbackFailure.cause?.paneCleanupError).toBeInstanceOf(Error);
+        expect(rollbackFailure.cause?.taskCleanupError).toBeUndefined();
+        const task = JSON.parse(readFileSync(join(cwd, '.omc/state/team/test-team/tasks/1.json'), 'utf-8'));
+        expect(task.status).toBe('pending');
+        expect(task.owner).toBeNull();
+        rmSync(cwd, { recursive: true, force: true });
+    });
+    it('fails closed with startup rollback evidence when provider launch fails', async () => {
+        const runtime = makeRuntime(cwd, 'codex');
+        tmuxCalls.failCommands = ['send-keys'];
+        let failure;
+        try {
+            await spawnWorkerForTask(runtime, 'worker-1', 0);
+        }
+        catch (error) {
+            failure = error;
+        }
+        expect(failure).toBeInstanceOf(Error);
+        const rollbackFailure = failure;
+        expect(rollbackFailure.message).toBe('tmux_send-keys_failed');
+        expect(rollbackFailure.cause).toBeUndefined();
+        const task = JSON.parse(readFileSync(join(cwd, '.omc/state/team/test-team/tasks/1.json'), 'utf-8'));
+        expect(task.status).toBe('pending');
+        expect(task.owner).toBeNull();
+        rmSync(cwd, { recursive: true, force: true });
+    });
     it('returns empty and skips spawn when task is already in_progress (claim already taken)', async () => {
         const taskPath = join(cwd, '.omc/state/team/test-team/tasks/1.json');
         writeFileSync(taskPath, JSON.stringify({
@@ -297,6 +430,7 @@ describe('spawnWorkerForTask – model passthrough from environment variables', 
         tmuxCalls.args = [];
         tmuxCalls.capturePaneText = '❯ ready\n';
         tmuxCalls.lastLiteralSend = '';
+        resetTmuxFailureState();
         delete process.env.OMC_SHELL_READY_TIMEOUT_MS;
         // Clear model/provider env vars before each test
         delete process.env.OMC_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL;

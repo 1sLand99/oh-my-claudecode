@@ -713,164 +713,202 @@ export async function spawnWorkerForTask(
     ? runtime.leaderPaneId
     : runtime.workerPaneIds[runtime.workerPaneIds.length - 1];
   const splitDirection = runtime.workerPaneIds.length === 0 ? 'right' : 'down';
-  const paneId = await splitTeamWorkerPane(splitTarget, splitDirection, runtime.cwd);
-  if (!paneId) {
+  const resetTaskAfterSplitFailure = async (startupError?: unknown): Promise<void> => {
+    let taskCleanupError: unknown;
     try {
-      await resetTaskToPending(root, taskId, runtime.teamName, runtime.cwd);
-    } catch {
-      // best-effort revert
+      if (!await resetTaskToPending(root, taskId, runtime.teamName, runtime.cwd)) {
+        taskCleanupError = new Error(`worker_startup_task_reset_unconfirmed:${workerNameValue}:${taskId}`);
+      }
+    } catch (cleanupError) {
+      taskCleanupError = cleanupError;
     }
+    if (taskCleanupError) {
+      const rollbackError = new Error(`worker_startup_task_reset_unconfirmed:${workerNameValue}:${taskId}`);
+      (rollbackError as Error & { cause?: unknown }).cause = {
+        ...(startupError !== undefined ? { startupError } : {}),
+        taskCleanupError,
+      };
+      throw rollbackError;
+    }
+    if (startupError !== undefined) {
+      if (startupError instanceof Error) throw startupError;
+      throw new Error(String(startupError));
+    }
+  };
+
+  let paneId: string | null;
+  try {
+    paneId = await splitTeamWorkerPane(splitTarget, splitDirection, runtime.cwd);
+  } catch (error) {
+    await resetTaskAfterSplitFailure(error);
+    return '';
+  }
+  if (!paneId) {
+    await resetTaskAfterSplitFailure();
     return '';
   }
 
-  const usePromptMode = isPromptModeAgent(agentType);
-
-  // Build the initial task instruction and write inbox before spawn.
-  // For prompt-mode agents the instruction is passed via CLI flag;
-  // for interactive agents it is sent via tmux send-keys after startup.
-  const instruction = buildInitialTaskInstruction(runtime.teamName, workerNameValue, task, taskId);
-  await composeInitialInbox(runtime.teamName, workerNameValue, instruction, runtime.cwd);
-
-  const envVars = getModelWorkerEnv(runtime.teamName, workerNameValue, agentType);
-  const resolvedBinaryPath = runtime.resolvedBinaryPaths?.[agentType] ?? resolveValidatedBinaryPath(agentType);
-  if (!runtime.resolvedBinaryPaths) {
-    runtime.resolvedBinaryPaths = {};
-  }
-  runtime.resolvedBinaryPaths[agentType] = resolvedBinaryPath;
-
-  // Resolve model from environment variables based on agent type.
-  // For Claude agents on Bedrock/Vertex, resolve the provider-specific model
-  // so workers don't fall back to invalid Anthropic API model names. (#1695)
-  const modelForAgent = (() => {
-    if (agentType === 'codex') {
-      return process.env.OMC_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL
-        || process.env.OMC_CODEX_DEFAULT_MODEL
-        || undefined;
-    }
-    if (agentType === 'gemini') {
-      return process.env.OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL
-        || process.env.OMC_GEMINI_DEFAULT_MODEL
-        || undefined;
-    }
-    if (agentType === 'antigravity') {
-      return process.env.OMC_EXTERNAL_MODELS_DEFAULT_ANTIGRAVITY_MODEL
-        || process.env.OMC_ANTIGRAVITY_DEFAULT_MODEL
-        || undefined;
-    }
-    if (agentType === 'grok') {
-      return process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL
-        || process.env.OMC_GROK_DEFAULT_MODEL
-        || undefined;
-    }
-    if (agentType === 'cursor') {
-      return undefined;
-    }
-    // Claude agents: resolve Bedrock/Vertex model when on those providers
-    return resolveClaudeWorkerModel();
-  })();
-
-  const [launchBinary, ...launchArgs] = buildWorkerArgv(agentType, {
-    teamName: runtime.teamName,
-    workerName: workerNameValue,
-    cwd: runtime.cwd,
-    resolvedBinaryPath,
-    model: modelForAgent,
-  });
-
-  // For prompt-mode agents (e.g. Gemini Ink TUI, Antigravity --print), pass
-  // instruction via CLI flag so tmux send-keys never needs to interact with
-  // the TUI input widget.
-  // Codex and Claude team workers are persistent interactive panes and are
-  // nudged through the inbox transport instead of `codex exec`/print modes.
-  if (usePromptMode) {
-    const promptArgs = getPromptModeArgs(agentType, generateTriggerMessage(runtime.teamName, workerNameValue));
-    launchArgs.push(...promptArgs);
-  }
-
-  const paneConfig: WorkerPaneConfig = {
-    teamName: runtime.teamName,
-    workerName: workerNameValue,
-    envVars,
-    launchBinary,
-    launchArgs,
-    cwd: runtime.cwd,
-  };
-
-  try {
-    await applyMainVerticalLayout(runtime.sessionName, { required: true });
-  } catch (error) {
+  const rollbackStartupFailure = async (
+    startupError: unknown,
+    rollbackMessage: string,
+    taskResetMarker: string,
+    causeKey: 'startupError' | 'layoutError',
+  ): Promise<never> => {
     let paneCleanupError: unknown;
     try {
-      await killTeamPane(paneId);
+      await killWorkerPane(runtime, workerNameValue, paneId);
     } catch (cleanupError) {
       paneCleanupError = cleanupError;
     }
     let taskCleanupError: unknown;
     try {
       if (!await resetTaskToPending(root, taskId, runtime.teamName, runtime.cwd)) {
-        taskCleanupError = new Error(`worker_layout_task_reset_unconfirmed:${workerNameValue}:${taskId}`);
+        taskCleanupError = new Error(taskResetMarker);
       }
     } catch (cleanupError) {
       taskCleanupError = cleanupError;
     }
     if (paneCleanupError || taskCleanupError) {
-      const rollbackError = new Error(`worker_layout_rollback_unverified:${workerNameValue}:${paneId}`);
+      const rollbackError = new Error(rollbackMessage);
       (rollbackError as Error & { cause?: unknown }).cause = {
-        layoutError: error,
+        [causeKey]: startupError,
         paneCleanupError,
         taskCleanupError,
       };
       throw rollbackError;
     }
-    throw error;
-  }
-  await spawnWorkerInPane(runtime.sessionName, paneId, paneConfig);
+    throw startupError instanceof Error ? startupError : new Error(String(startupError));
+  };
 
-  runtime.workerPaneIds.push(paneId);
-  runtime.activeWorkers.set(workerNameValue, { paneId, taskId, spawnedAt: Date.now() });
-
+  let rollbackMessage = `worker_startup_rollback_unverified:${workerNameValue}:${paneId}`;
+  let taskResetMarker = `worker_startup_task_reset_unconfirmed:${workerNameValue}:${taskId}`;
+  let rollbackCauseKey: 'startupError' | 'layoutError' = 'startupError';
   try {
-    await writePanesTrackingFileIfPresent(runtime);
-  } catch {
-    // panes tracking is best-effort
-  }
+    const usePromptMode = isPromptModeAgent(agentType);
 
-  if (!usePromptMode) {
-    // Interactive mode: wait for pane readiness, handle trust-confirm, then
-    // send instruction via tmux send-keys.
-    const paneReady = await waitForPaneReady(paneId, { provider: agentType });
-    if (!paneReady) {
-      await killWorkerPane(runtime, workerNameValue, paneId);
-      await resetTaskToPending(root, taskId, runtime.teamName, runtime.cwd);
-      throw new Error(`worker_pane_not_ready:${workerNameValue}`);
+    // Build the initial task instruction and write inbox before spawn.
+    // For prompt-mode agents the instruction is passed via CLI flag;
+    // for interactive agents it is sent via tmux send-keys after startup.
+    const instruction = buildInitialTaskInstruction(runtime.teamName, workerNameValue, task, taskId);
+    await composeInitialInbox(runtime.teamName, workerNameValue, instruction, runtime.cwd);
+
+    const envVars = getModelWorkerEnv(runtime.teamName, workerNameValue, agentType);
+    const resolvedBinaryPath = runtime.resolvedBinaryPaths?.[agentType] ?? resolveValidatedBinaryPath(agentType);
+    if (!runtime.resolvedBinaryPaths) {
+      runtime.resolvedBinaryPaths = {};
     }
+    runtime.resolvedBinaryPaths[agentType] = resolvedBinaryPath;
 
-    if (agentType === 'gemini') {
-      const confirmed = await notifyPaneWithRetry(runtime.sessionName, paneId, '1');
-      if (!confirmed) {
-        await killWorkerPane(runtime, workerNameValue, paneId);
-        await resetTaskToPending(root, taskId, runtime.teamName, runtime.cwd);
-        throw new Error(`worker_notify_failed:${workerNameValue}:trust-confirm`);
+    // Resolve model from environment variables based on agent type.
+    // For Claude agents on Bedrock/Vertex, resolve the provider-specific model
+    // so workers don't fall back to invalid Anthropic API model names. (#1695)
+    const modelForAgent = (() => {
+      if (agentType === 'codex') {
+        return process.env.OMC_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL
+          || process.env.OMC_CODEX_DEFAULT_MODEL
+          || undefined;
       }
-      await new Promise(r => setTimeout(r, 800));
+      if (agentType === 'gemini') {
+        return process.env.OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL
+          || process.env.OMC_GEMINI_DEFAULT_MODEL
+          || undefined;
+      }
+      if (agentType === 'antigravity') {
+        return process.env.OMC_EXTERNAL_MODELS_DEFAULT_ANTIGRAVITY_MODEL
+          || process.env.OMC_ANTIGRAVITY_DEFAULT_MODEL
+          || undefined;
+      }
+      if (agentType === 'grok') {
+        return process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL
+          || process.env.OMC_GROK_DEFAULT_MODEL
+          || undefined;
+      }
+      if (agentType === 'cursor') {
+        return undefined;
+      }
+      // Claude agents: resolve Bedrock/Vertex model when on those providers
+      return resolveClaudeWorkerModel();
+    })();
+
+    const [launchBinary, ...launchArgs] = buildWorkerArgv(agentType, {
+      teamName: runtime.teamName,
+      workerName: workerNameValue,
+      cwd: runtime.cwd,
+      resolvedBinaryPath,
+      model: modelForAgent,
+    });
+
+    // For prompt-mode agents (e.g. Gemini Ink TUI, Antigravity --print), pass
+    // instruction via CLI flag so tmux send-keys never needs to interact with
+    // the TUI input widget.
+    // Codex and Claude team workers are persistent interactive panes and are
+    // nudged through the inbox transport instead of `codex exec`/print modes.
+    if (usePromptMode) {
+      const promptArgs = getPromptModeArgs(agentType, generateTriggerMessage(runtime.teamName, workerNameValue));
+      launchArgs.push(...promptArgs);
     }
 
-    const notified = await notifyPaneWithRetry(
-      runtime.sessionName,
-      paneId,
-      generateTriggerMessage(runtime.teamName, workerNameValue),
-      1
-    );
-    if (!notified) {
-      await killWorkerPane(runtime, workerNameValue, paneId);
-      await resetTaskToPending(root, taskId, runtime.teamName, runtime.cwd);
-      throw new Error(`worker_notify_failed:${workerNameValue}:initial-inbox`);
+    const paneConfig: WorkerPaneConfig = {
+      teamName: runtime.teamName,
+      workerName: workerNameValue,
+      envVars,
+      launchBinary,
+      launchArgs,
+      cwd: runtime.cwd,
+    };
+
+    try {
+      await applyMainVerticalLayout(runtime.sessionName, { required: true });
+    } catch (error) {
+      rollbackMessage = `worker_layout_rollback_unverified:${workerNameValue}:${paneId}`;
+      taskResetMarker = `worker_layout_task_reset_unconfirmed:${workerNameValue}:${taskId}`;
+      rollbackCauseKey = 'layoutError';
+      throw error;
     }
+    await spawnWorkerInPane(runtime.sessionName, paneId, paneConfig);
+
+    runtime.workerPaneIds.push(paneId);
+    runtime.activeWorkers.set(workerNameValue, { paneId, taskId, spawnedAt: Date.now() });
+
+    try {
+      await writePanesTrackingFileIfPresent(runtime);
+    } catch {
+      // panes tracking is best-effort
+    }
+
+    if (!usePromptMode) {
+      // Interactive mode: wait for pane readiness, handle trust-confirm, then
+      // send instruction via tmux send-keys.
+      const paneReady = await waitForPaneReady(paneId, { provider: agentType });
+      if (!paneReady) {
+        throw new Error(`worker_pane_not_ready:${workerNameValue}`);
+      }
+
+      if (agentType === 'gemini') {
+        const confirmed = await notifyPaneWithRetry(runtime.sessionName, paneId, '1');
+        if (!confirmed) {
+          throw new Error(`worker_notify_failed:${workerNameValue}:trust-confirm`);
+        }
+        await new Promise(r => setTimeout(r, 800));
+      }
+
+      const notified = await notifyPaneWithRetry(
+        runtime.sessionName,
+        paneId,
+        generateTriggerMessage(runtime.teamName, workerNameValue),
+        1
+      );
+      if (!notified) {
+        throw new Error(`worker_notify_failed:${workerNameValue}:initial-inbox`);
+      }
+    }
+    // Prompt-mode agents: instruction already passed via CLI flag at spawn.
+    // No trust-confirm or tmux send-keys interaction needed.
+
+    return paneId;
+  } catch (error) {
+    return await rollbackStartupFailure(error, rollbackMessage, taskResetMarker, rollbackCauseKey);
   }
-  // Prompt-mode agents: instruction already passed via CLI flag at spawn.
-  // No trust-confirm or tmux send-keys interaction needed.
-
-  return paneId;
 }
 
 /**
@@ -881,11 +919,9 @@ export async function killWorkerPane(
   workerNameValue: string,
   paneId: string
 ): Promise<void> {
-  try {
-    await killTeamPane(paneId);
-  } catch {
-    // idempotent: pane may already be gone
-  }
+  // Propagate pane cleanup failures so startup rollback can fail closed instead
+  // of reporting success while an orphaned worker pane may still be running.
+  await killTeamPane(paneId);
 
   const paneIndex = runtime.workerPaneIds.indexOf(paneId);
   if (paneIndex >= 0) {

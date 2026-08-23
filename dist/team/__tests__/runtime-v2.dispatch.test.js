@@ -5,7 +5,7 @@ import { promisify } from 'util';
 import { execFileSync } from 'child_process';
 import { tmpdir } from 'os';
 import { listDispatchRequests } from '../dispatch-queue.js';
-import { promptModeRecoveryRequiresProgressEvidence } from '../runtime-v2.js';
+import { getWorkerStartupEvidencePolicy, promptModeRecoveryRequiresProgressEvidence, waitForStartupEvidenceBudget, } from '../runtime-v2.js';
 const mocks = vi.hoisted(() => ({
     createTeamSession: vi.fn(),
     spawnWorkerInPane: vi.fn(),
@@ -307,6 +307,7 @@ describe('runtime v2 startup inbox dispatch', () => {
         });
     });
     afterEach(async () => {
+        vi.useRealTimers();
         process.chdir(originalCwd);
         if (cwd)
             await rm(cwd, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
@@ -1025,6 +1026,72 @@ describe('runtime v2 startup inbox dispatch', () => {
         const requests = await listDispatchRequests('dispatch-team', cwd, { kind: 'inbox' });
         expect(requests).toHaveLength(1);
         expect(requests[0]?.status).toBe('failed');
+    });
+    it('accepts delayed Codex evidence at exactly 18s within the provider evidence budget', async () => {
+        vi.useFakeTimers();
+        const policy = getWorkerStartupEvidencePolicy('codex');
+        const startedAt = Date.now();
+        let hasEvidence = false;
+        setTimeout(() => { hasEvidence = true; }, 18_000);
+        const wait = (budgetMs) => waitForStartupEvidenceBudget(async () => hasEvidence, budgetMs);
+        const evidencePromise = (async () => {
+            if (await wait(policy.initialBudgetMs))
+                return true;
+            return wait(policy.finalRecheckBudgetMs);
+        })();
+        let settled = false;
+        void evidencePromise.finally(() => { settled = true; });
+        await vi.advanceTimersByTimeAsync(17_999);
+        expect(settled).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        await expect(evidencePromise).resolves.toBe(true);
+        expect(Date.now() - startedAt).toBe(18_000);
+        expect(policy.resubmitAttempts).toBe(0);
+    });
+    it('times out Codex evidence at exactly 31s after one read-only recheck window', async () => {
+        vi.useFakeTimers();
+        const policy = getWorkerStartupEvidencePolicy('codex');
+        const startedAt = Date.now();
+        const wait = (budgetMs) => waitForStartupEvidenceBudget(async () => false, budgetMs);
+        const evidencePromise = (async () => {
+            if (await wait(policy.initialBudgetMs))
+                return true;
+            return wait(policy.finalRecheckBudgetMs);
+        })();
+        let settled = false;
+        void evidencePromise.finally(() => { settled = true; });
+        await vi.advanceTimersByTimeAsync(30_999);
+        expect(settled).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        await expect(evidencePromise).resolves.toBe(false);
+        expect(Date.now() - startedAt).toBe(31_000);
+        expect(policy).toMatchObject({
+            initialBudgetMs: 30_000,
+            finalRecheckBudgetMs: 1_000,
+            resubmitAttempts: 0,
+            resubmitBudgetMs: 0,
+        });
+    });
+    it('accepts Codex evidence at 30.25s only through the final read-only recheck', async () => {
+        vi.useFakeTimers();
+        const policy = getWorkerStartupEvidencePolicy('codex');
+        const startedAt = Date.now();
+        let hasEvidence = false;
+        setTimeout(() => { hasEvidence = true; }, 30_250);
+        const wait = (budgetMs) => waitForStartupEvidenceBudget(async () => hasEvidence, budgetMs);
+        const evidencePromise = (async () => {
+            if (await wait(policy.initialBudgetMs))
+                return true;
+            return wait(policy.finalRecheckBudgetMs);
+        })();
+        await vi.advanceTimersByTimeAsync(30_249);
+        let settled = false;
+        void evidencePromise.finally(() => { settled = true; });
+        expect(settled).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        await expect(evidencePromise).resolves.toBe(true);
+        expect(Date.now() - startedAt).toBe(30_250);
+        expect(policy.resubmitAttempts).toBe(0);
     });
     it('rejects a stale worker status that predates the current startup trigger', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-stale-status-'));

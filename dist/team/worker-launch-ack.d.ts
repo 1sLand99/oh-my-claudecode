@@ -1,5 +1,7 @@
 import type { CliAgentType } from './model-contract.js';
 declare const WORKER_LAUNCH_SCHEMA_VERSION: 1;
+/** Internal handoff marker for a recovery gate nested inside this bootstrap. */
+export declare const WORKER_LAUNCH_RECOVERY_GATE_CONTAINED_ENV: "OMC_WORKER_LAUNCH_RECOVERY_GATE_CONTAINED";
 export declare function buildWindowsSupervisorSource(): string;
 interface WorkerLaunchIdentity {
     schema_version: typeof WORKER_LAUNCH_SCHEMA_VERSION;
