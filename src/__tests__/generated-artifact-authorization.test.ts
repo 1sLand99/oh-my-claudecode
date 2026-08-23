@@ -269,35 +269,59 @@ describe('generated-artifact base trust root workflow', () => {
     expect(workflow).not.toMatch(/^\s+run: (?!node scripts\/verify-generated-artifact-authorization\.mjs$)/m);
   });
 
-  it('covers both the main promotion and the retained dev authorization targets', () => {
+  it('allows future bounded authorization entries while enforcing manifest invariants', () => {
     const workflow = readFileSync(WORKFLOW_PATH, 'utf8');
 
     expect(workflow).toContain('workflow bytes from the default branch, main');
     expect(workflow).toContain('branches: [main, dev]');
-    expect(manifest.authorizations.map(entry => [entry.pullNumber, entry.targetRef])).toEqual([
-      [3537, 'main'],
-      [3538, 'dev'],
-      [3539, 'dev'],
-      [3541, 'dev'],
-      [3572, 'dev'],
-      [3588, 'dev'],
-      [3602, 'dev'],
-      [3603, 'dev'],
-      [3610, 'dev'],
-      [3651, 'dev'],
-      [3660, 'dev'],
-      [3690, 'main'],
-      [3692, 'dev'],
-      [3697, 'dev'],
-      [3749, 'main'],
-      [3772, 'dev'],
-      [3823, 'dev'],
-    ]);
-    expect(manifest.authorizations.find(entry => entry.pullNumber === 3538)).toMatchObject({
-      targetRef: 'dev',
-      headSha: '24e4e2f0e92dc4c4f61636d32fc411614fae3728',
-      mergeBaseSha: '3219495628cbf7680632f37e261351929508f295',
+    expect(manifest.authorizations).not.toHaveLength(0);
+    expect(verifier.validateAuthorizationManifest(manifest)).toMatchObject({
+      repository: REPOSITORY,
+      owner: OWNER,
+      authorizations: expect.arrayContaining([
+        expect.objectContaining({
+          pullNumber: expect.any(Number),
+          targetRef: expect.any(String),
+          mergeBaseSha: expect.stringMatching(/^[0-9a-f]{40}$/),
+          headSha: expect.stringMatching(/^[0-9a-f]{40}$/),
+          generatedDelta: {
+            count: expect.any(Number),
+            sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+          },
+          generatedFiles: expect.any(Array),
+        }),
+      ]),
     });
+
+    const malformedRecord = clone(manifest);
+    delete (malformedRecord.authorizations[0].generatedFiles[0] as Partial<CanonicalRecord>).sha;
+    expect(() => verifier.validateAuthorizationManifest(malformedRecord)).toThrow('unexpected or missing fields');
+
+    const duplicate = clone(manifest);
+    duplicate.authorizations.push(clone(duplicate.authorizations[0]));
+    expect(() => verifier.validateAuthorizationManifest(duplicate)).toThrow('duplicate pull numbers');
+
+    for (const targetRef of ['*', 'main/**', '../main']) {
+      const wildcardOrFallback = clone(manifest);
+      wildcardOrFallback.authorizations[0].targetRef = targetRef;
+      expect(() => verifier.validateAuthorizationManifest(wildcardOrFallback)).toThrow('targetRef is not a canonical ref name');
+    }
+
+    const invalidMergeBase = clone(manifest);
+    invalidMergeBase.authorizations[0].mergeBaseSha = 'A'.repeat(40);
+    expect(() => verifier.validateAuthorizationManifest(invalidMergeBase)).toThrow('mergeBaseSha must be a lowercase 40-character SHA-1');
+
+    const invalidHead = clone(manifest);
+    invalidHead.authorizations[0].headSha = 'A'.repeat(40);
+    expect(() => verifier.validateAuthorizationManifest(invalidHead)).toThrow('headSha must be a lowercase 40-character SHA-1');
+
+    const invalidCount = clone(manifest);
+    invalidCount.authorizations[0].generatedDelta.count += 1;
+    expect(() => verifier.validateAuthorizationManifest(invalidCount)).toThrow('count and digest');
+
+    const invalidDigest = clone(manifest);
+    invalidDigest.authorizations[0].generatedDelta.sha256 = 'b'.repeat(64);
+    expect(() => verifier.validateAuthorizationManifest(invalidDigest)).toThrow('count and digest');
   });
 
   it('is immune to candidate workflow and checker replacement because the trusted workflow checks out only base bytes', () => {
