@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "94e37820ba42480ff5f7f9dba5c28839f917f171",
-    "sourceSha256": "603d9e16b3f52ce077db549de8ba3a5f91ea423c739dc9cb7519167f1b0a8175",
+    "head": "3d8ed518a6c7b6e73f2607a4e1c23769e1ad8b4b",
+    "sourceSha256": "13ae1b63eaef1a212309108154afe5cc65da4a7fdbfe62750b9bbe431c32c709",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "94e37820ba42480ff5f7f9dba5c28839f917f171",
-  "sourceSha256": "603d9e16b3f52ce077db549de8ba3a5f91ea423c739dc9cb7519167f1b0a8175",
+  "head": "3d8ed518a6c7b6e73f2607a4e1c23769e1ad8b4b",
+  "sourceSha256": "13ae1b63eaef1a212309108154afe5cc65da4a7fdbfe62750b9bbe431c32c709",
   "counts": {
     "public": {
       "skills": 31,
@@ -28,8 +28,8 @@
       "toolFiles": 56,
       "libFiles": 34,
       "templateHooks": 20,
-      "srcFiles": 1279,
-      "total": 1299
+      "srcFiles": 1280,
+      "total": 1300
     },
     "generated": {
       "distFiles": 4994,
@@ -34961,6 +34961,11 @@
         "path": "src/__tests__/shared-state-locking.test.ts"
       },
       {
+        "id": "src/__tests__/skill-entitlements-cross-surface.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/skill-entitlements-cross-surface.test.ts"
+      },
+      {
         "id": "src/__tests__/skill-entitlements.test.ts",
         "kind": "src",
         "path": "src/__tests__/skill-entitlements.test.ts"
@@ -48038,6 +48043,41 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/skill-entitlements-cross-surface.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/skill-entitlements-cross-surface.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/skill-entitlements-cross-surface.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/skill-entitlements-cross-surface.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/skill-entitlements-cross-surface.test.ts",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/skill-entitlements-cross-surface.test.ts",
+        "to": "src/features/delegation-enforcer.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/skill-entitlements-cross-surface.test.ts",
+        "to": "src/installer/index.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/skill-entitlements.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -48049,7 +48089,17 @@
       },
       {
         "from": "src/__tests__/skill-entitlements.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/skill-entitlements.test.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/skill-entitlements.test.ts",
+        "to": "external:url",
         "kind": "imports"
       },
       {
@@ -75009,12 +75059,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6835,
-      "edgeCount": 6901,
-      "importEdgeCount": 5655,
+      "nodeCount": 6836,
+      "edgeCount": 6910,
+      "importEdgeCount": 5664,
       "registerEdgeCount": 52
     }
   },
-  "inventorySha256": "29b32fa25bd49115c6c270c4bbf0bf6932d970ecd2e1dc473992fd03894d2532",
-  "manifestSha256": "e1ca47fee12485b1b51b0513bdeef17c097168e35e1ad398355bf3012197ce5e"
+  "inventorySha256": "7b06508f1671189dcd48da9982cc750567688b0a7e1ffbf2ba1f2d712a0b3176",
+  "manifestSha256": "51e2fbbdd8c84ee00c3786cbaed827be89cee8d5cb59475e50a10fa51a363e63"
 }
