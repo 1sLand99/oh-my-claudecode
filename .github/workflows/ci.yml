@@ -103,6 +103,38 @@ jobs:
           src/installer/__tests__/claude-md-transaction.test.ts
           src/team/__tests__/cli-detection.windows.integration.test.ts
 
+  test-precompact-restore:
+    name: PreCompact restore (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shipped restore implementation
+        run: npm run build
+
+      - name: Run portable restore and SessionStart interleaving tests
+        env:
+          OMC_PRECOMPACT_DIST_INTERLEAVINGS: '1'
+        run: >-
+          npx vitest run
+          src/hooks/__tests__/precompact-restore.test.ts
+          src/__tests__/session-start-precompact-restore.test.ts
+
   build:
     name: Build
     runs-on: ubuntu-latest

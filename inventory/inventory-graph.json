@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "3d8ed518a6c7b6e73f2607a4e1c23769e1ad8b4b",
-    "sourceSha256": "13ae1b63eaef1a212309108154afe5cc65da4a7fdbfe62750b9bbe431c32c709",
+    "head": "32710d4b74fb1472f82c15c2ed3ecc9eed223664",
+    "sourceSha256": "5f1a97dba0282c327c69423ff83e8877a2bde2229e01507e582313177ef6139e",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "3d8ed518a6c7b6e73f2607a4e1c23769e1ad8b4b",
-  "sourceSha256": "13ae1b63eaef1a212309108154afe5cc65da4a7fdbfe62750b9bbe431c32c709",
+  "head": "32710d4b74fb1472f82c15c2ed3ecc9eed223664",
+  "sourceSha256": "5f1a97dba0282c327c69423ff83e8877a2bde2229e01507e582313177ef6139e",
   "counts": {
     "public": {
       "skills": 31,
@@ -27,9 +27,9 @@
       "featureFiles": 68,
       "toolFiles": 56,
       "libFiles": 34,
-      "templateHooks": 20,
+      "templateHooks": 21,
       "srcFiles": 1280,
-      "total": 1300
+      "total": 1301
     },
     "generated": {
       "distFiles": 4994,
@@ -616,6 +616,7 @@
       "templates/hooks/lib/cache-occupancy.mjs",
       "templates/hooks/lib/config-dir.mjs",
       "templates/hooks/lib/model-routing-override-message.mjs",
+      "templates/hooks/lib/precompact-publisher.mjs",
       "templates/hooks/lib/precompact-restore.mjs",
       "templates/hooks/lib/skill-entitlements.mjs",
       "templates/hooks/lib/state-root.mjs",
@@ -741,6 +742,7 @@
       "scripts/lib/hud-wrapper-template.txt",
       "scripts/lib/model-routing-override-message.mjs",
       "scripts/lib/pre-tool-enforcer-preflight.mjs",
+      "scripts/lib/precompact-publisher.mjs",
       "scripts/lib/precompact-restore.mjs",
       "scripts/lib/skill-entitlements.mjs",
       "scripts/lib/state-root.cjs",
@@ -33101,6 +33103,11 @@
         "path": "scripts/lib/pre-tool-enforcer-preflight.mjs"
       },
       {
+        "id": "scripts/lib/precompact-publisher.mjs",
+        "kind": "script",
+        "path": "scripts/lib/precompact-publisher.mjs"
+      },
+      {
         "id": "scripts/lib/precompact-restore.mjs",
         "kind": "script",
         "path": "scripts/lib/precompact-restore.mjs"
@@ -40251,6 +40258,11 @@
         "path": "templates/hooks/lib/model-routing-override-message.mjs"
       },
       {
+        "id": "templates/hooks/lib/precompact-publisher.mjs",
+        "kind": "template-hook",
+        "path": "templates/hooks/lib/precompact-publisher.mjs"
+      },
+      {
         "id": "templates/hooks/lib/precompact-restore.mjs",
         "kind": "template-hook",
         "path": "templates/hooks/lib/precompact-restore.mjs"
@@ -41543,6 +41555,26 @@
         "kind": "imports"
       },
       {
+        "from": "scripts/lib/precompact-publisher.mjs",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/precompact-publisher.mjs",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/precompact-publisher.mjs",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/precompact-restore.mjs",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
         "from": "scripts/lib/precompact-restore.mjs",
         "to": "external:crypto",
         "kind": "imports"
@@ -41555,6 +41587,11 @@
       {
         "from": "scripts/lib/precompact-restore.mjs",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/precompact-restore.mjs",
+        "to": "external:url",
         "kind": "imports"
       },
       {
@@ -53174,6 +53211,11 @@
       },
       {
         "from": "src/hooks/__tests__/precompact-restore.test.ts",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/__tests__/precompact-restore.test.ts",
         "to": "external:fs",
         "kind": "imports"
       },
@@ -53185,6 +53227,11 @@
       {
         "from": "src/hooks/__tests__/precompact-restore.test.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/__tests__/precompact-restore.test.ts",
+        "to": "external:url",
         "kind": "imports"
       },
       {
@@ -57319,6 +57366,11 @@
       },
       {
         "from": "src/hooks/pre-compact/restore.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/pre-compact/restore.ts",
         "to": "external:crypto",
         "kind": "imports"
       },
@@ -57329,12 +57381,12 @@
       },
       {
         "from": "src/hooks/pre-compact/restore.ts",
-        "to": "external:fs",
-        "kind": "type-imports"
+        "to": "external:path",
+        "kind": "imports"
       },
       {
         "from": "src/hooks/pre-compact/restore.ts",
-        "to": "external:path",
+        "to": "external:url",
         "kind": "imports"
       },
       {
@@ -74248,6 +74300,36 @@
         "kind": "projects"
       },
       {
+        "from": "templates/hooks/lib/precompact-publisher.mjs",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "templates/hooks/lib/precompact-publisher.mjs",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "templates/hooks/lib/precompact-publisher.mjs",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "templates/hooks/lib/precompact-publisher.mjs",
+        "to": "hooks/hooks.json",
+        "kind": "projects"
+      },
+      {
+        "from": "templates/hooks/lib/precompact-publisher.mjs",
+        "to": "src/hooks/bridge.ts",
+        "kind": "projects"
+      },
+      {
+        "from": "templates/hooks/lib/precompact-restore.mjs",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
         "from": "templates/hooks/lib/precompact-restore.mjs",
         "to": "external:crypto",
         "kind": "imports"
@@ -74260,6 +74342,11 @@
       {
         "from": "templates/hooks/lib/precompact-restore.mjs",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "templates/hooks/lib/precompact-restore.mjs",
+        "to": "external:url",
         "kind": "imports"
       },
       {
@@ -75059,12 +75146,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6836,
-      "edgeCount": 6910,
-      "importEdgeCount": 5664,
+      "nodeCount": 6838,
+      "edgeCount": 6925,
+      "importEdgeCount": 5678,
       "registerEdgeCount": 52
     }
   },
-  "inventorySha256": "7b06508f1671189dcd48da9982cc750567688b0a7e1ffbf2ba1f2d712a0b3176",
-  "manifestSha256": "51e2fbbdd8c84ee00c3786cbaed827be89cee8d5cb59475e50a10fa51a363e63"
+  "inventorySha256": "4eaef9dd6b734acf7c47e6b313fbe4b075bacdf4f3f6bb174263233412aea6a3",
+  "manifestSha256": "7041b8363fbdac8c4b7415c0528be94f743ffdfd26437a61b659ee8f02df113a"
 }
