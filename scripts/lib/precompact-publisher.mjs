@@ -156,6 +156,7 @@ function claimNameFor(marker) {
   if (!validSession(marker?.session_id) || typeof marker?.checkpoint !== 'string' ||
     typeof marker?.checkpoint_created_at !== 'string' || typeof marker?.checkpoint_mtime_ms !== 'number' ||
     typeof marker?.checkpoint_sha256 !== 'string' || !Number.isFinite(Date.parse(marker.checkpoint_created_at)) ||
+    !Number.isSafeInteger(marker.checkpoint_mtime_ms) || marker.checkpoint_mtime_ms < 0 ||
     !/^[0-9a-f]{64}$/.test(marker.checkpoint_sha256)) return null;
   const digest = createHash('sha256').update(
     `${marker.session_id}\0${marker.checkpoint}\0${marker.checkpoint_created_at}\0${marker.checkpoint_mtime_ms}\0${marker.checkpoint_sha256}`,

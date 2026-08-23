@@ -1131,6 +1131,29 @@ syncBuiltinESMExports();
     expect(restorePreCompactCheckpoint(tempDir, sessionId)?.marker_status).toBe('written');
   });
 
+  it('rejects a correctly digested claim with a fractional marker mtime', () => {
+    const sessionId = 'fractional-claim-mtime';
+    const createdAt = new Date().toISOString();
+    const checkpoint = writeCheckpoint(tempDir, createdAt, { session_id: sessionId });
+    const checkpointSha = createHash('sha256').update(readFileSync(checkpoint)).digest('hex');
+    const fractionalMtime = Math.trunc(statSync(checkpoint).mtimeMs) + 0.5;
+    const digest = createHash('sha256').update(
+      `${sessionId}\0${realpathSync(checkpoint)}\0${createdAt}\0${fractionalMtime}\0${checkpointSha}`,
+    ).digest('hex');
+    const claimName = `restored-${digest}.json`;
+    const markerParent = join(getOmcRootForTest(tempDir), 'state', 'checkpoints-restored', sessionId);
+    mkdirSync(markerParent, { recursive: true });
+    writeFileSync(join(markerParent, claimName), JSON.stringify({
+      session_id: sessionId,
+      checkpoint: realpathSync(checkpoint),
+      checkpoint_created_at: createdAt,
+      checkpoint_mtime_ms: fractionalMtime,
+      checkpoint_sha256: checkpointSha,
+      claim_id: claimName,
+    }));
+    expect(restorePreCompactCheckpoint(tempDir, sessionId)?.marker_status).toBe('written');
+  });
+
   it('rejects a deterministic claim backed by a checkpoint outside the canonical root', () => {
     const sessionId = 'external-claim-provenance';
     const localCreatedAt = new Date(Date.now() - 2_000).toISOString();
