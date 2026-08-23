@@ -175,7 +175,7 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
   });
 
   afterEach(() => {
-    rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    rmSync(tempDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 200 });
   });
 
   it('restores the newest checkpoint when source=compact', () => {
@@ -1156,7 +1156,11 @@ fs.openSync = function(path, flags, mode) {
   if (!swapped && String(path).startsWith('.restored-stage-')) {
     swapped = true;
     fs.renameSync(process.env.MARKER_PARENT, process.env.MARKER_PARENT_BACKUP);
-    fs.symlinkSync(process.env.EXTERNAL_MARKER_PARENT, process.env.MARKER_PARENT, 'dir');
+    fs.symlinkSync(
+      process.env.EXTERNAL_MARKER_PARENT,
+      process.env.MARKER_PARENT,
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
     fs.writeFileSync(process.env.MARKER_SIGNAL, 'swapped');
   }
   return originalOpenSync.call(fs, path, flags, mode);

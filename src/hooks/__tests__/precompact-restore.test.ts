@@ -574,7 +574,11 @@ fs.openSync = function(path, flags, mode) {
   if (!swapped && String(path).startsWith('.restored-stage-')) {
     swapped = true;
     fs.renameSync(process.env.MARKER_PARENT, process.env.MARKER_PARENT_BACKUP);
-    fs.symlinkSync(process.env.EXTERNAL_MARKER_PARENT, process.env.MARKER_PARENT, 'dir');
+    fs.symlinkSync(
+      process.env.EXTERNAL_MARKER_PARENT,
+      process.env.MARKER_PARENT,
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
     fs.writeFileSync(process.env.MARKER_SIGNAL, 'swapped');
   }
   return originalOpenSync.call(fs, path, flags, mode);
