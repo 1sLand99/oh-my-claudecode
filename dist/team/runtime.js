@@ -624,17 +624,28 @@ export async function spawnWorkerForTask(runtime, workerNameValue, taskIndex) {
         await applyMainVerticalLayout(runtime.sessionName, { required: true });
     }
     catch (error) {
+        let paneCleanupError;
         try {
             await killTeamPane(paneId);
         }
-        catch {
-            // Preserve the required-layout failure after best-effort pane cleanup.
+        catch (cleanupError) {
+            paneCleanupError = cleanupError;
         }
+        let taskCleanupError;
         try {
             await resetTaskToPending(root, taskId, runtime.teamName, runtime.cwd);
         }
-        catch {
-            // Preserve the required-layout failure after best-effort task cleanup.
+        catch (cleanupError) {
+            taskCleanupError = cleanupError;
+        }
+        if (paneCleanupError || taskCleanupError) {
+            const rollbackError = new Error(`worker_layout_rollback_unverified:${workerNameValue}:${paneId}`);
+            rollbackError.cause = {
+                layoutError: error,
+                paneCleanupError,
+                taskCleanupError,
+            };
+            throw rollbackError;
         }
         throw error;
     }
