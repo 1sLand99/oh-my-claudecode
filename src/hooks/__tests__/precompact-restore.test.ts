@@ -61,15 +61,15 @@ function withPublisherPreload<T>(
   env: Record<string, string>,
   callback: () => T,
 ): T {
-  const previousNodeOptions = process.env.NODE_OPTIONS;
+  const previousPreload = process.env.OMC_PRECOMPACT_PUBLISHER_IMPORT;
   const previous = new Map(Object.keys(env).map((key) => [key, process.env[key]]));
-  process.env.NODE_OPTIONS = `${previousNodeOptions ? `${previousNodeOptions} ` : ''}--import=${pathToFileURL(preloadPath).href}`;
+  process.env.OMC_PRECOMPACT_PUBLISHER_IMPORT = pathToFileURL(preloadPath).href;
   Object.assign(process.env, env);
   try {
     return callback();
   } finally {
-    if (previousNodeOptions === undefined) delete process.env.NODE_OPTIONS;
-    else process.env.NODE_OPTIONS = previousNodeOptions;
+    if (previousPreload === undefined) delete process.env.OMC_PRECOMPACT_PUBLISHER_IMPORT;
+    else process.env.OMC_PRECOMPACT_PUBLISHER_IMPORT = previousPreload;
     for (const [key, value] of previous) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;

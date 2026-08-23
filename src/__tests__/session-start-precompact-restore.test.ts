@@ -541,6 +541,7 @@ process.stdout.write(JSON.stringify(result));`;
         MARKER_SESSION: `marker-process-${_label}`,
         MARKER_SIGNAL: signal,
         MARKER_RELEASE: release,
+        OMC_PRECOMPACT_PUBLISHER_IMPORT: pathToFileURL(preload).href,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -606,7 +607,14 @@ syncBuiltinESMExports();
 process.stdout.write(JSON.stringify(restorePreCompactCheckpoint(process.env.OMC_ROOT, process.env.MARKER_SESSION)));`;
     const inputRoot = usesOmcRoot ? join(project, '.omc') : project;
     const delayed = spawn(NODE, ['--import', pathToFileURL(preload).href, '--input-type=module', '-e', code], {
-      env: { ...process.env, OMC_ROOT: inputRoot, MARKER_SESSION: `duplicate-${_label}`, MARKER_SIGNAL: signal, MARKER_RELEASE: release },
+      env: {
+        ...process.env,
+        OMC_ROOT: inputRoot,
+        MARKER_SESSION: `duplicate-${_label}`,
+        MARKER_SIGNAL: signal,
+        MARKER_RELEASE: release,
+        OMC_PRECOMPACT_PUBLISHER_IMPORT: pathToFileURL(preload).href,
+      },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let delayedStdout = '';
@@ -932,7 +940,7 @@ process.stdout.write(JSON.stringify(restorePreCompactCheckpoint(process.env.OMC_
       project,
       home,
       {
-        NODE_OPTIONS: `--import=${preloadPath}`,
+        NODE_OPTIONS: `--import=${pathToFileURL(preloadPath).href}`,
         OMC_REDIRECT_CHECKPOINT: checkpointPath,
         OMC_REDIRECT_STATE: statePath,
         OMC_REDIRECT_STATE_BACKUP: stateBackupPath,
@@ -1155,8 +1163,8 @@ fs.openSync = function(path, flags, mode) {
 };
 syncBuiltinESMExports();
 `);
-      const previousNodeOptions = process.env.NODE_OPTIONS;
-      process.env.NODE_OPTIONS = `${previousNodeOptions ? `${previousNodeOptions} ` : ''}--import=${pathToFileURL(preloadPath).href}`;
+      const previousPublisherPreload = process.env.OMC_PRECOMPACT_PUBLISHER_IMPORT;
+      process.env.OMC_PRECOMPACT_PUBLISHER_IMPORT = pathToFileURL(preloadPath).href;
       process.env.MARKER_PARENT = markerParent;
       process.env.MARKER_PARENT_BACKUP = markerParentBackup;
       process.env.EXTERNAL_MARKER_PARENT = externalMarkerParent;
@@ -1169,8 +1177,8 @@ syncBuiltinESMExports();
         expect(existsSync(signalPath)).toBe(true);
         expect(existsSync(join(externalMarkerParent, 'restored.json'))).toBe(false);
       } finally {
-        if (previousNodeOptions === undefined) delete process.env.NODE_OPTIONS;
-        else process.env.NODE_OPTIONS = previousNodeOptions;
+        if (previousPublisherPreload === undefined) delete process.env.OMC_PRECOMPACT_PUBLISHER_IMPORT;
+        else process.env.OMC_PRECOMPACT_PUBLISHER_IMPORT = previousPublisherPreload;
         delete process.env.MARKER_PARENT;
         delete process.env.MARKER_PARENT_BACKUP;
         delete process.env.EXTERNAL_MARKER_PARENT;

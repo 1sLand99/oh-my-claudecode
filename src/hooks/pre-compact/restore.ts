@@ -218,17 +218,8 @@ function publisherPath(): string {
 }
 
 function publisherExecArgs(): string[] {
-  const args: string[] = [];
-  for (let index = 0; index < process.execArgv.length; index += 1) {
-    const argument = process.execArgv[index];
-    if (argument === '--import' && process.execArgv[index + 1]) {
-      args.push(argument, process.execArgv[index + 1]);
-      index += 1;
-    } else if (argument.startsWith('--import=')) {
-      args.push(argument);
-    }
-  }
-  return args;
+  const preload = process.env.OMC_PRECOMPACT_PUBLISHER_IMPORT;
+  return typeof preload === 'string' && preload.startsWith('file:') ? ['--import', preload] : [];
 }
 
 function runPublisher(request: Record<string, unknown>, cwd: string): { status?: string } | null {
