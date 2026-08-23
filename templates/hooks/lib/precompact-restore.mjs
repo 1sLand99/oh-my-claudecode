@@ -31,9 +31,11 @@ const RESTORE_CLAIM_PATTERN = /^restored-[0-9a-f]{64}\.json$/;
 
 // Mirrors SESSION_ID_REGEX from src/lib/worktree-paths.ts::validateSessionId.
 const SESSION_ID_ALLOWLIST = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
+const WINDOWS_RESERVED_SESSION_ID = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 
 function isValidSessionId(sessionId) {
-  return typeof sessionId === 'string' && SESSION_ID_ALLOWLIST.test(sessionId);
+  return typeof sessionId === 'string' && SESSION_ID_ALLOWLIST.test(sessionId) &&
+    !WINDOWS_RESERVED_SESSION_ID.test(sessionId);
 }
 
 function compareCheckpointNames(a, b) {
@@ -273,7 +275,11 @@ function checkpointOrderForSession(omcRoot, checkpointPath, sessionId) {
     const raw = readBoundedCheckpoint(resolved.path, resolved);
     if (raw === null) return null;
     const checkpoint = JSON.parse(raw);
-    if (checkpoint?.session_id !== sessionId || typeof checkpoint?.created_at !== 'string') return null;
+    if (checkpoint.session_id !== sessionId || typeof checkpoint.created_at !== 'string' ||
+      !Number.isFinite(Date.parse(checkpoint.created_at))) return null;
+    if (checkpoint.active_modes !== undefined &&
+      (checkpoint.active_modes === null || typeof checkpoint.active_modes !== 'object' || Array.isArray(checkpoint.active_modes) ||
+       Object.values(checkpoint.active_modes).some((mode) => mode !== null && (typeof mode !== 'object' || Array.isArray(mode))))) return null;
     const stat = lstatSync(resolved.path);
     if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink > 1 ||
       stat.dev !== resolved.dev || stat.ino !== resolved.ino) return null;
@@ -373,7 +379,9 @@ function markerEntryOrder(omcRoot, target, sessionId, name) {
       return null;
     }
     const order = checkpointOrderForSession(omcRoot, marker.checkpoint, sessionId);
-    return markerOrderMatches(marker, order) ? { checkpoint: marker.checkpoint, order } : null;
+    return markerOrderMatches(marker, order) && marker.checkpoint === order?.path
+      ? { checkpoint: marker.checkpoint, order }
+      : null;
   } catch {
     return null;
   }

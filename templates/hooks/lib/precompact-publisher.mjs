@@ -21,11 +21,13 @@ const MARKER_ROOT_NAME = 'checkpoints-restored';
 const MARKER_MAX_BYTES = 16 * 1024;
 const CHECKPOINT_MAX_BYTES = 256 * 1024;
 const SESSION_ID_ALLOWLIST = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
+const WINDOWS_RESERVED_SESSION_ID = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 const CLAIM_PATTERN = /^restored-[0-9a-f]{64}\.json$/;
 const CHECKPOINT_PATTERN = /^checkpoint-.+\.json$/;
 
 function validSession(sessionId) {
-  return typeof sessionId === 'string' && SESSION_ID_ALLOWLIST.test(sessionId);
+  return typeof sessionId === 'string' && SESSION_ID_ALLOWLIST.test(sessionId) &&
+    !WINDOWS_RESERVED_SESSION_ID.test(sessionId);
 }
 
 function code(error) {
@@ -145,8 +147,12 @@ function checkpointMatches(request, checkpointRoot = request.checkpointRoot) {
     const raw = readFileBounded(request.checkpointPath, CHECKPOINT_MAX_BYTES);
     if (raw === null || createHash('sha256').update(raw).digest('hex') !== request.checkpointSha256) return false;
     const checkpoint = JSON.parse(raw.toString('utf8'));
-    return checkpoint?.session_id === request.sessionId && checkpoint?.created_at === request.checkpointCreatedAt &&
-      normalizeMtimeMs(stat.mtimeMs) === normalizeMtimeMs(request.checkpointMtimeMs);
+    if (checkpoint?.session_id !== request.sessionId || checkpoint?.created_at !== request.checkpointCreatedAt ||
+      !Number.isFinite(Date.parse(checkpoint.created_at))) return false;
+    if (checkpoint.active_modes !== undefined &&
+      (checkpoint.active_modes === null || typeof checkpoint.active_modes !== 'object' || Array.isArray(checkpoint.active_modes) ||
+       Object.values(checkpoint.active_modes).some((mode) => mode !== null && (typeof mode !== 'object' || Array.isArray(mode))))) return false;
+    return normalizeMtimeMs(stat.mtimeMs) === normalizeMtimeMs(request.checkpointMtimeMs);
   } catch {
     return false;
   }

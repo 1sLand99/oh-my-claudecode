@@ -36,6 +36,7 @@ const CHECKPOINT_FILE_PATTERN = /^checkpoint-.+\.json$/;
 const RESTORE_MARKER_DIR = 'checkpoints-restored';
 const RESTORE_CLAIM_PATTERN = /^restored-[0-9a-f]{64}\.json$/;
 const SESSION_ID_ALLOWLIST = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
+const WINDOWS_RESERVED_SESSION_ID = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 
 type MarkerStatus = 'written' | 'existing' | 'contended' | 'unsupported' | 'failed' | 'invalid_session_id';
 export type RestoreMarkerStatus = MarkerStatus;
@@ -111,7 +112,8 @@ function errorCode(error: unknown): string | undefined {
 }
 
 function isValidSessionId(sessionId: unknown): sessionId is string {
-  return typeof sessionId === 'string' && SESSION_ID_ALLOWLIST.test(sessionId);
+  return typeof sessionId === 'string' && SESSION_ID_ALLOWLIST.test(sessionId) &&
+    !WINDOWS_RESERVED_SESSION_ID.test(sessionId);
 }
 
 function compareCheckpointNames(a: string, b: string): number {
@@ -366,7 +368,12 @@ function checkpointOrderForSession(
     const raw = readBoundedCheckpoint(resolved.path, resolved);
     if (raw === null) return null;
     const checkpoint = JSON.parse(raw) as { session_id?: string; created_at?: string };
-    if (checkpoint.session_id !== sessionId || typeof checkpoint.created_at !== 'string') return null;
+    if (checkpoint.session_id !== sessionId || typeof checkpoint.created_at !== 'string' ||
+        !Number.isFinite(Date.parse(checkpoint.created_at))) return null;
+    const activeModes = (checkpoint as { active_modes?: unknown }).active_modes;
+    if (activeModes !== undefined &&
+        (activeModes === null || typeof activeModes !== 'object' || Array.isArray(activeModes) ||
+         Object.values(activeModes).some((mode) => mode !== null && (typeof mode !== 'object' || Array.isArray(mode))))) return null;
     const stat = lstatSync(resolved.path);
     if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink > 1 ||
         stat.dev !== resolved.dev || stat.ino !== resolved.ino) return null;
@@ -469,7 +476,9 @@ function markerEntryOrder(
       if (claimRaw !== raw) return null;
     } else if (expectedClaimName !== name) return null;
     const order = checkpointOrderForSession(directory, marker.checkpoint, sessionId);
-    return markerOrderMatches(marker, order) ? { checkpoint: marker.checkpoint, order: order! } : null;
+    return markerOrderMatches(marker, order) && marker.checkpoint === order?.path
+      ? { checkpoint: marker.checkpoint, order: order! }
+      : null;
   } catch {
     return null;
   }

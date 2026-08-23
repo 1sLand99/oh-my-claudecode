@@ -28,7 +28,7 @@ import {
   realpathSync,
 } from 'fs';
 import * as nodeFs from 'fs';
-import { basename, join } from 'path';
+import { basename, dirname, join, sep } from 'path';
 import { tmpdir } from 'os';
 import { pathToFileURL } from 'url';
 import { createHash } from 'crypto';
@@ -1154,6 +1154,65 @@ syncBuiltinESMExports();
     expect(restorePreCompactCheckpoint(tempDir, sessionId)?.marker_status).toBe('written');
   });
 
+  it('rejects a correctly digested claim whose checkpoint spelling is not canonical', () => {
+    const sessionId = 'alias-claim-path';
+    const createdAt = new Date().toISOString();
+    const checkpoint = writeCheckpoint(tempDir, createdAt, { session_id: sessionId });
+    const canonicalCheckpoint = realpathSync(checkpoint);
+    mkdirSync(join(dirname(canonicalCheckpoint), 'alias'));
+    const aliasCheckpoint = `${dirname(canonicalCheckpoint)}${sep}alias${sep}..${sep}${basename(canonicalCheckpoint)}`;
+    const checkpointMtime = Math.trunc(statSync(checkpoint).mtimeMs);
+    const checkpointSha = createHash('sha256').update(readFileSync(checkpoint)).digest('hex');
+    const digest = createHash('sha256').update(
+      `${sessionId}\0${aliasCheckpoint}\0${createdAt}\0${checkpointMtime}\0${checkpointSha}`,
+    ).digest('hex');
+    const claimName = `restored-${digest}.json`;
+    const markerParent = join(getOmcRootForTest(tempDir), 'state', 'checkpoints-restored', sessionId);
+    mkdirSync(markerParent, { recursive: true });
+    writeFileSync(join(markerParent, claimName), JSON.stringify({
+      session_id: sessionId,
+      checkpoint: aliasCheckpoint,
+      checkpoint_created_at: createdAt,
+      checkpoint_mtime_ms: checkpointMtime,
+      checkpoint_sha256: checkpointSha,
+      claim_id: claimName,
+    }));
+    expect(restorePreCompactCheckpoint(tempDir, sessionId)?.marker_status).toBe('written');
+  });
+
+  it('rejects a deterministic claim backed by a malformed checkpoint shape', () => {
+    const sessionId = 'malformed-claim-shape';
+    writeCheckpoint(tempDir, new Date(Date.now() - 2_000).toISOString(), { session_id: sessionId });
+    const checkpointRoot = join(getOmcRootForTest(tempDir), 'state', 'checkpoints');
+    const malformedPath = join(checkpointRoot, 'checkpoint-malformed-claim.json');
+    const createdAt = new Date().toISOString();
+    writeFileSync(malformedPath, JSON.stringify({
+      created_at: createdAt,
+      session_id: sessionId,
+      trigger: 'auto',
+      active_modes: 'invalid',
+      todo_summary: { pending: 1, in_progress: 0, completed: 0 },
+      wisdom_exported: false,
+    }));
+    const checkpointMtime = Math.trunc(statSync(malformedPath).mtimeMs);
+    const checkpointSha = createHash('sha256').update(readFileSync(malformedPath)).digest('hex');
+    const digest = createHash('sha256').update(
+      `${sessionId}\0${realpathSync(malformedPath)}\0${createdAt}\0${checkpointMtime}\0${checkpointSha}`,
+    ).digest('hex');
+    const claimName = `restored-${digest}.json`;
+    const markerParent = join(getOmcRootForTest(tempDir), 'state', 'checkpoints-restored', sessionId);
+    mkdirSync(markerParent, { recursive: true });
+    writeFileSync(join(markerParent, claimName), JSON.stringify({
+      session_id: sessionId,
+      checkpoint: realpathSync(malformedPath),
+      checkpoint_created_at: createdAt,
+      checkpoint_mtime_ms: checkpointMtime,
+      checkpoint_sha256: checkpointSha,
+      claim_id: claimName,
+    }));
+    expect(restorePreCompactCheckpoint(tempDir, sessionId)?.marker_status).toBe('written');
+  });
+
   it('rejects a deterministic claim backed by a checkpoint outside the canonical root', () => {
     const sessionId = 'external-claim-provenance';
     const localCreatedAt = new Date(Date.now() - 2_000).toISOString();
@@ -1291,7 +1350,7 @@ describe('writer → restore lifecycle (issue #3730)', () => {
 
   it('rejects empty and separator session IDs at restore', async () => {
     writeCheckpoint(tempDir, new Date().toISOString());
-    for (const bad of ['', 'a/b', 'a\\b', 'a..b', 'a b']) {
+    for (const bad of ['', 'a/b', 'a\\b', 'a..b', 'a b', 'CON', 'lpt1']) {
       const candidate = await findLatestCheckpointForRestore(tempDir, bad);
       expect(candidate.ok).toBe(false);
       if (!candidate.ok) {
