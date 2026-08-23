@@ -758,7 +758,7 @@ Signal when Critic approves the plan: PLANNING_COMPLETE
   if (fromPhase === "planning" && toPhase === "execution") {
     return `## PHASE TRANSITION: Planning → Execution
 
-The plan has been approved. Starting execution phase with Ralph + Ultrawork.
+The plan has been approved. Starting execution with executor agents and Ralph persistence.
 
 Execute tasks from the plan in parallel where possible.
 
