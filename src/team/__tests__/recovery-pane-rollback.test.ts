@@ -163,13 +163,13 @@ describe('recovery pane rollback evidence', () => {
     expect(paneMocks.applyMainVerticalLayout).toHaveBeenCalledWith(`${teamName}:0`, { required: true });
     expect(paneMocks.applyMainVerticalLayout.mock.invocationCallOrder[0])
       .toBeLessThan(paneMocks.spawnOwnedWorkerInPane.mock.invocationCallOrder[0]);
-    expect(paneMocks.killTeamPane).toHaveBeenCalledTimes(2);
+    expect(paneMocks.killTeamPane).not.toHaveBeenCalled();
     const evidenceRoot = absPath(cwd, `.omc/state/team/${teamName}/recovery/rollback-failures/${recoveryId}`);
     const evidenceFiles = readdirSync(evidenceRoot);
     expect(evidenceFiles).toHaveLength(1);
     const evidence = JSON.parse(readFileSync(join(evidenceRoot, evidenceFiles[0]!), 'utf8'));
     expect(evidence).toMatchObject({ schema_version: 1, team_name: teamName, worker_name: 'worker-1',
-      request_id: requestId, recovery_id: recoveryId, pane_id: '%2', reason: 'spawn failed --api-key=<redacted> after pane creation', liveness: 'alive' });
+      request_id: requestId, recovery_id: recoveryId, pane_id: '%2', reason: 'spawn failed --api-key=<redacted> after pane creation:provider_cleanup_unverified', liveness: 'alive' });
     await expectRecoveryLockReleased(teamName, 'worker-1', 'cleanup-failure');
   });
 

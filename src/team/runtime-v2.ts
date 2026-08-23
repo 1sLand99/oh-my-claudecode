@@ -1310,7 +1310,10 @@ async function cleanupRecoveryPaneAttempt(
   pending: PendingRecoveryPane,
   reason: string,
 ): Promise<boolean> {
-  let providerStopped = true;
+  // A spawn rejection can occur after its bootstrap created an owned process
+  // but before it returned the launch context. Without that context, cleanup
+  // containment is unproven and the pane must be retained for investigation.
+  let providerStopped = false;
   if (pending.startupContext) {
     providerStopped = await retireAndCleanupCurrentWorkerLaunchAttempt(
       pending.startupContext.attempt,
