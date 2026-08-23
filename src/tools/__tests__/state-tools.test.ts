@@ -269,7 +269,7 @@ describe('state-tools', () => {
       expect(listResult.content[0].text).not.toContain('ultrawork');
 
       const statusResult = await stateGetStatusTool.handler({ mode: 'ultrawork', workingDirectory: TEST_DIR });
-      expect(statusResult.content[0].text).toContain('Active: No');
+      expect(statusResult.content[0].text).toContain('**Active:** No');
       const allStatusResult = await stateGetStatusTool.handler({ workingDirectory: TEST_DIR });
       expect(allStatusResult.content[0].text).not.toContain('[ACTIVE] **ultrawork**');
 

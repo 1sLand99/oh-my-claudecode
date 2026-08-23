@@ -306,7 +306,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
   });
 
   it('uses legacy mode files when session_id is not provided', () => {
-    writeJson(join(tempDir, '.omc', 'state', 'ultrawork-state.json'), {
+    writeJson(join(tempDir, '.omc', 'state', 'ralph-state.json'), {
       active: true,
     });
 
