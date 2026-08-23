@@ -202,7 +202,6 @@ function canonicalChildDirectory(
     return null;
   }
 }
-
 function getRestoreMarkerTarget(
   omcRoot: string,
   sessionId: string,
@@ -745,4 +744,3 @@ export function restorePreCompactCheckpoint(directory: string, sessionId: string
     return null;
   }
 }
-
