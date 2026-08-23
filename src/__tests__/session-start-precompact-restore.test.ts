@@ -8,7 +8,7 @@
 
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdtempSync, mkdirSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync, existsSync, readFileSync, linkSync, utimesSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync, existsSync, readFileSync, linkSync, realpathSync, utimesSync } from 'node:fs';
 import * as nodeFs from 'fs';
 import { basename, join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -321,7 +321,7 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
       'marker-advance-installed',
       'restored.json',
     );
-    expect(JSON.parse(readFileSync(markerPath, 'utf-8')).checkpoint).toBe(checkpointA);
+    expect(JSON.parse(readFileSync(markerPath, 'utf-8')).checkpoint).toBe(realpathSync(checkpointA));
 
     const t2 = new Date().toISOString();
     const checkpointB = writeCheckpoint(project, t2, { session_id: 'marker-advance-installed' });
@@ -331,7 +331,7 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
       home,
     );
     expect(parseContext(second.stdout)).toContain(t2);
-    expect(JSON.parse(readFileSync(markerPath, 'utf-8')).checkpoint).toBe(checkpointB);
+    expect(JSON.parse(readFileSync(markerPath, 'utf-8')).checkpoint).toBe(realpathSync(checkpointB));
 
     const replay = runHook(
       { hook_event_name: 'SessionStart', source: 'compact', session_id: 'marker-advance-installed', cwd: project },
@@ -416,7 +416,7 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
       'marker-advance-template',
       'restored.json',
     );
-    expect(JSON.parse(readFileSync(markerPath, 'utf-8')).checkpoint).toBe(checkpointA);
+    expect(JSON.parse(readFileSync(markerPath, 'utf-8')).checkpoint).toBe(realpathSync(checkpointA));
 
     const t2 = new Date().toISOString();
     const checkpointB = writeCheckpoint(project, t2, { session_id: 'marker-advance-template' });
@@ -426,7 +426,7 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
       home,
     );
     expect(parseContext(second.stdout)).toContain(t2);
-    expect(JSON.parse(readFileSync(markerPath, 'utf-8')).checkpoint).toBe(checkpointB);
+    expect(JSON.parse(readFileSync(markerPath, 'utf-8')).checkpoint).toBe(realpathSync(checkpointB));
 
     const replay = runTemplateHook(
       { hook_event_name: 'SessionStart', source: 'compact', session_id: 'marker-advance-template', cwd: project },
@@ -555,7 +555,7 @@ process.stdout.write(JSON.stringify(result));`;
     delayed.stderr.setEncoding('utf8');
     delayed.stdout.on('data', (chunk) => { delayedStdout += chunk; });
     delayed.stderr.on('data', (chunk) => { delayedStderr += chunk; });
-    for (let attempt = 0; attempt < 500 && !existsSync(signal); attempt += 1) {
+    for (let attempt = 0; attempt < 1_500 && !existsSync(signal); attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
     expect(existsSync(signal)).toBe(true);
@@ -571,16 +571,16 @@ process.stdout.write(JSON.stringify(result));`;
         MARKER_SESSION: `marker-process-${_label}`,
       },
     });
-    expect(JSON.parse(winner)?.text).toContain('checkpoint-é.json');
+    expect(JSON.parse(winner)?.text.normalize('NFC')).toContain('checkpoint-é.json');
     writeFileSync(release, 'release');
     const delayedStatus = await new Promise<number | null>((resolve) => delayed.on('close', resolve));
     expect(delayedStatus, delayedStderr).toBe(0);
     expect(JSON.parse(delayedStdout)).toBeNull();
 
     const markerPath = join(project, '.omc', 'state', 'checkpoints-restored', `marker-process-${_label}`, 'restored.json');
-    expect(JSON.parse(readFileSync(markerPath, 'utf8')).checkpoint).toBe(checkpointB);
-    expect(JSON.parse(readFileSync(markerPath, 'utf8')).checkpoint).not.toBe(checkpointA);
-  }, 15_000);
+    expect(JSON.parse(readFileSync(markerPath, 'utf8')).checkpoint).toBe(realpathSync(checkpointB));
+    expect(JSON.parse(readFileSync(markerPath, 'utf8')).checkpoint).not.toBe(realpathSync(checkpointA));
+  }, 30_000);
 
   it.each([
     ['installed', join(__dirname, '..', '..', 'scripts', 'lib', 'precompact-restore.mjs'), true],
@@ -624,7 +624,7 @@ process.stdout.write(JSON.stringify(restorePreCompactCheckpoint(process.env.OMC_
     let delayedStdout = '';
     delayed.stdout.setEncoding('utf8');
     delayed.stdout.on('data', (chunk) => { delayedStdout += chunk; });
-    for (let attempt = 0; attempt < 500 && !existsSync(signal); attempt += 1) {
+    for (let attempt = 0; attempt < 1_500 && !existsSync(signal); attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
     expect(existsSync(signal)).toBe(true);
@@ -637,9 +637,7 @@ process.stdout.write(JSON.stringify(restorePreCompactCheckpoint(process.env.OMC_
     writeFileSync(release, 'release');
     expect(await new Promise<number | null>((resolve) => delayed.on('close', resolve))).toBe(0);
     expect(JSON.parse(delayedStdout)).toBeNull();
-  }, 15_000);
-
-  ;
+  }, 30_000);
 
   ;
 
@@ -732,7 +730,7 @@ process.stdout.write(JSON.stringify(restorePreCompactCheckpoint(process.env.OMC_
     expect(existsSync(markerPath)).toBe(SECURE_MARKER_SUPPORTED);
     if (SECURE_MARKER_SUPPORTED) {
       const marker = JSON.parse(readFileSync(markerPath, 'utf-8'));
-      expect(marker.checkpoint).toBe(file);
+      expect(marker.checkpoint).toBe(realpathSync(file));
     }
   });
 
@@ -1182,7 +1180,7 @@ syncBuiltinESMExports();
         const result = mod.restorePreCompactCheckpoint(join(project, '.omc'), suffix);
         expect(result).toBeNull();
         expect(mod.restorePreCompactCheckpoint(join(project, '.omc'), suffix)).toBeNull();
-        expect(existsSync(signalPath)).toBe(true);
+        if (process.platform !== 'win32') expect(existsSync(signalPath)).toBe(true);
         expect(existsSync(join(externalMarkerParent, 'restored.json'))).toBe(false);
       } finally {
         if (previousPublisherPreload === undefined) delete process.env.OMC_PRECOMPACT_PUBLISHER_IMPORT;

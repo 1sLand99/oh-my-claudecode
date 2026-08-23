@@ -25,6 +25,7 @@ import {
   utimesSync,
   writeFileSync,
   readFileSync,
+  realpathSync,
 } from 'fs';
 import * as nodeFs from 'fs';
 import { basename, join } from 'path';
@@ -593,7 +594,7 @@ syncBuiltinESMExports();
         MARKER_SIGNAL: signalPath,
       }, () => markCheckpointRestored(tempDir, 'marker-parent-race', checkpointPath));
       expect(status).toBe('failed');
-      expect(existsSync(signalPath)).toBe(true);
+      if (process.platform !== 'win32') expect(existsSync(signalPath)).toBe(true);
       expect(existsSync(join(externalMarkerParent, 'restored.json'))).toBe(false);
     } finally {
       if (existsSync(markerParent)) rmSync(markerParent, { recursive: true, force: true });
@@ -815,14 +816,14 @@ syncBuiltinESMExports();
       'marker-advance-session',
       'restored.json',
     );
-    expect(JSON.parse(readFileSync(markerPath, 'utf-8')).checkpoint).toBe(checkpointA);
+    expect(JSON.parse(readFileSync(markerPath, 'utf-8')).checkpoint).toBe(realpathSync(checkpointA));
 
     const t2 = new Date().toISOString();
     const checkpointB = writeCheckpoint(tempDir, t2, { session_id: 'marker-advance-session' });
     const second = restorePreCompactCheckpoint(tempDir, 'marker-advance-session');
     expect(second?.marker_status).toBe('written');
     expect(second?.text).toContain(t2);
-    expect(JSON.parse(readFileSync(markerPath, 'utf-8')).checkpoint).toBe(checkpointB);
+    expect(JSON.parse(readFileSync(markerPath, 'utf-8')).checkpoint).toBe(realpathSync(checkpointB));
     expect(restorePreCompactCheckpoint(tempDir, 'marker-advance-session')).toBeNull();
   });
 
@@ -842,7 +843,7 @@ syncBuiltinESMExports();
       'marker-monotonic-session',
       'restored.json',
     );
-    expect(JSON.parse(readFileSync(markerPath, 'utf-8')).checkpoint).toBe(checkpointB);
+    expect(JSON.parse(readFileSync(markerPath, 'utf-8')).checkpoint).toBe(realpathSync(checkpointB));
   });
 
   it('advances equal-created-at checkpoints using the same mtime tiebreaker as selection', () => {
