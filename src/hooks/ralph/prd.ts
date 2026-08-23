@@ -601,14 +601,18 @@ export function consumeCompletionArchitectApproval(
   directory: string,
   expectedCriteriaRevision: string,
   sessionId?: string,
+  consume?: () => boolean,
+  beforeCommit?: () => void,
 ): boolean {
   const prdPath = findPrdPath(directory, sessionId);
   if (!prdPath) return false;
   const result = withStateFileMutationLock(prdPath, () => {
+    beforeCommit?.();
     const prd = readPrdFromPath(prdPath).prd;
-    return prd !== undefined
+    const current = prd !== undefined
       && getPrdGoverningCriteriaRevision(prd) === expectedCriteriaRevision
       && getPrdStatus(prd).allComplete;
+    return current && (consume?.() ?? true);
   }, true);
   return result.acquired && result.value === true;
 }

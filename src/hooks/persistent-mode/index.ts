@@ -1258,17 +1258,24 @@ async function checkRalphLoop(
         } else {
           // Architect approved - truly complete
           const criticMode = verificationState.critic_mode;
-          const consumed = (!prdStatus.hasPrd || consumeCompletionArchitectApproval(
-            workingDir,
-            verificationState.criteria_revision ?? '',
-            sessionId,
-          )) && consumeVerificationRequest(workingDir, verificationState.request_id, sessionId);
-          if (!consumed) {
-            verificationState = null;
-          } else {
-            // Also deactivate ultrawork if it was active alongside ralph.
+          const finish = () => {
+            if (!consumeVerificationRequest(workingDir, verificationState!.request_id, sessionId)) {
+              return false;
+            }
             clearRalphState(workingDir, sessionId);
             deactivateUltrawork(workingDir, sessionId);
+            return true;
+          };
+          const consumed = !prdStatus.hasPrd
+            ? finish()
+            : consumeCompletionArchitectApproval(
+              workingDir,
+              verificationState.criteria_revision ?? '',
+              sessionId,
+              finish,
+            );
+          if (!consumed) {
+            verificationState = null;
           }
           if (!consumed) {
             return {
