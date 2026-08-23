@@ -97,15 +97,17 @@ async function markTaskInProgress(root, taskId, owner, teamName, cwd) {
     return result ?? false;
 }
 async function resetTaskToPending(root, taskId, teamName, cwd) {
-    await withTaskLock(teamName, taskId, async () => {
+    const result = await withTaskLock(teamName, taskId, async () => {
         const task = await readTask(root, taskId);
         if (!task)
-            return;
+            return false;
         task.status = 'pending';
         task.owner = null;
         task.assignedAt = undefined;
         await writeTask(root, task);
+        return true;
     }, { cwd });
+    return result ?? false;
 }
 async function markTaskFromDone(root, teamName, cwd, taskId, status, summary) {
     await withTaskLock(teamName, taskId, async () => {
@@ -633,7 +635,9 @@ export async function spawnWorkerForTask(runtime, workerNameValue, taskIndex) {
         }
         let taskCleanupError;
         try {
-            await resetTaskToPending(root, taskId, runtime.teamName, runtime.cwd);
+            if (!await resetTaskToPending(root, taskId, runtime.teamName, runtime.cwd)) {
+                taskCleanupError = new Error(`worker_layout_task_reset_unconfirmed:${workerNameValue}:${taskId}`);
+            }
         }
         catch (cleanupError) {
             taskCleanupError = cleanupError;
