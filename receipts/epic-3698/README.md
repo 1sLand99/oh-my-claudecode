@@ -31,9 +31,13 @@ Kind-specific payload requirements enforced by the verifier:
   `byCanonical` counts; canonical share = canonicalUses / (canonicalUses + aliasUses).
   The release-window fields are supplied by #3711 receipts once releases ship.
 - `ci-evidence`: `pullRequests[]` with `number`, `headSha`, and `checks[]`; each check
-  must bind the exact head via `sha` (must equal `headSha`) or `exactHead: true`, and
-  have conclusion `success|skipped|neutral`.
-- `child-terminal`: `state` (`merged|closed`) plus non-empty `evidence`.
+  binds the exact head via `sha` (must equal `headSha`) and records its completed
+  GitHub conclusion. `exactHeadCi` passes only for `success|skipped|neutral`; a
+  recorded non-green conclusion is authenticated truth and keeps that gate failed.
+- `child-terminal`: `state` (`merged|closed`) plus structured `evidence` containing
+  the expected `pullRequest` (except direct child #3709), `commit`, and exact-head
+  `status`. A non-green terminal PR is representable; it proves terminality but
+  never proves green CI.
 - `metrics-snapshot`: public/internal counts plus `measurementSha256`.
 - `install-verification`: scoped command/verdict/evidence rows for pack/install/smoke.
 - `remaining-risk`: the register lives at `remaining-risk.json` (not a `.receipt.json`
@@ -42,7 +46,11 @@ Kind-specific payload requirements enforced by the verifier:
 
 ## Current receipts
 
-- `ci-evidence-merged.receipt.json` — exact-head CI for 7 green PRs (#3701, #3715, #3716, #3720, #3721, #3723, #3729). PRs #3724/#3725 excluded (CI failure).
+- `ci-evidence-merged.receipt.json` — historical exact-head evidence. Fresh
+  collection covers every expected child PR: #3715, #3716, #3719, #3720,
+  #3721, #3723, #3724, #3725, and #3729. Immutable non-green results for
+  #3719/#3724/#3725 are retained as truth; they are never excluded or promoted
+  to green evidence.
 - `metrics-2026-08-12.receipt.json` — measured surface counts at origin/dev `570028b24ede`.
 - `install-verification-2026-08-12.receipt.json` — pack/install/smoke evidence at the same head.
 - `child-3702/3703/3704/3705/3706/3707/3708/3709/3710/3711-terminal.receipt.json` (all 10 children terminal).
