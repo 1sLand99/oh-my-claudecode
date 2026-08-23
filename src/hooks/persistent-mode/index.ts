@@ -1241,8 +1241,11 @@ async function checkRalphLoop(
             verificationState.story_id,
             verificationState.criteria_revision ?? '',
             sessionId,
+            undefined,
+            undefined,
+            () => consumeVerificationRequest(workingDir, verificationState!.request_id, sessionId),
           );
-          if (!consumed || !consumeVerificationRequest(workingDir, verificationState.request_id, sessionId)) {
+          if (!consumed) {
             verificationState = null;
           }
 
@@ -1262,9 +1265,8 @@ async function checkRalphLoop(
             if (!consumeVerificationRequest(workingDir, verificationState!.request_id, sessionId)) {
               return false;
             }
-            clearRalphState(workingDir, sessionId);
-            deactivateUltrawork(workingDir, sessionId);
-            return true;
+            return clearRalphState(workingDir, sessionId)
+              && deactivateUltrawork(workingDir, sessionId);
           };
           const consumed = !prdStatus.hasPrd
             ? finish()
