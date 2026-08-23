@@ -135,12 +135,20 @@ describe('processHook - Routing Matrix', () => {
       '/ultraqa ask codex to review',
       '/ccg build me an app',
       '/claude-codex-gemini ask codex to review',
+      '/울트라워크 build me an app',
+      '/ウルトラワーク ask codex to review',
+      '/씨씨지 build me an app',
+      '/シーシージー ask codex to review',
       '/omc:ultrawork build me an app',
       '/oh-my-claudecode:ulw ask codex to review',
       '/omc:ultraqa build me an app',
       '/oh-my-claudecode:ultraqa ask codex to review',
       '/omc:ccg build me an app',
       '/oh-my-claudecode:claude-codex-gemini ask codex to review',
+      '/omc:울트라워크 build me an app',
+      '/oh-my-claudecode:ウルトラワーク ask codex to review',
+      '/omc:씨씨지 build me an app',
+      '/oh-my-claudecode:シーシージー ask codex to review',
     ])('passes retired slash command %s without guidance', async (prompt) => {
       const result = await processHook('keyword-detector', {
         sessionId: 'test-session',
@@ -774,7 +782,7 @@ $ ultrawork search the codebase`,
       }
     });
 
-    it('clears awaiting confirmation when Skill tool actually invokes ralph', async () => {
+    it('clears only Ralph confirmation when Skill invokes Ralph', async () => {
       const tempDir = mkdtempSync(join(tmpdir(), 'bridge-routing-confirm-ralph-'));
       try {
         execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
@@ -827,7 +835,7 @@ $ ultrawork search the codebase`,
 
         expect(ralphState.awaiting_confirmation).toBeUndefined();
         expect(ralphState.awaiting_confirmation_set_at).toBeUndefined();
-        expect(ultraworkState.awaiting_confirmation).toBeUndefined();
+        expect(ultraworkState.awaiting_confirmation).toBe(true);
         expect(ultraworkState.awaiting_confirmation_set_at).toBeUndefined();
       } finally {
         rmSync(tempDir, { recursive: true, force: true });

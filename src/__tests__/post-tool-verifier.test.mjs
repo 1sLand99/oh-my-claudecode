@@ -979,6 +979,24 @@ describe('Skill active state cleanup on PostToolUse (issue #2103)', () => {
     });
   });
 
+  it('activates only ralph state for the template post-tool hook path', () => {
+    withTempDir((tempDir) => {
+      const sessionId = 'ralph-template-no-ultrawork';
+      const out = runHookScript(TEMPLATE_HOOK_PATH, {
+        tool_name: 'Skill',
+        tool_input: { skill: 'oh-my-claudecode:ralph' },
+        tool_response: { ok: true },
+        session_id: sessionId,
+        cwd: tempDir,
+      });
+
+      expect(out).toEqual({ continue: true, suppressOutput: true });
+      const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+      expect(existsSync(join(stateDir, 'ralph-state.json'))).toBe(true);
+      expect(existsSync(join(stateDir, 'ultrawork-state.json'))).toBe(false);
+    });
+  });
+
   it('deactivates ralplan state when the ralplan skill completes in post-tool-verifier', () => {
     withTempDir((tempDir) => {
       const sessionId = 'ralplan-complete-script';

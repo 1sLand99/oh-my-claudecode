@@ -14,7 +14,6 @@ import { readFileSync, existsSync } from "fs";
 import { fileURLToPath } from "url";
 import { homedir } from "os";
 import { getClaudeConfigDir } from '../utils/config-dir.js';
-import { getDefaultUltraworkMessage } from '../hooks/keyword-detector/ultrawork/index.js';
 
 // =============================================================================
 // TEMPLATE LOADER (loads hook scripts from templates/hooks/)
@@ -107,12 +106,6 @@ function buildHookCommand(filename: string): string {
 
   return `node ${quoteCommandPath(join(getClaudeConfigDir(), 'hooks', filename).replace(/\\/g, '/'))}`;
 }
-
-/**
- * Ultrawork message - injected when ultrawork/ulw keyword detected
- * Ported from oh-my-opencode's keyword-detector/constants.ts
- */
-export const ULTRAWORK_MESSAGE = getDefaultUltraworkMessage();
 
 /**
  * Ultrathink/Think mode message

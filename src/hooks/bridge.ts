@@ -40,6 +40,8 @@ import {
   applyRalplanGate,
   sanitizeForKeywordDetection,
   NON_LATIN_SCRIPT_PATTERN,
+  parseExplicitWorkflowSlashInvocation,
+  isRetiredWorkflowSlashInvocation,
 } from "./keyword-detector/index.js";
 import {
   processOrchestratorPreTool,
@@ -84,7 +86,6 @@ import {
   writeSkillActiveStateCopies,
   type ActiveSkillSlot,
 } from "./skill-state/index.js";
-import { parseExplicitWorkflowSlashInvocation } from "./keyword-detector/index.js";
 import { resolveWorkflowInputWithWarning } from "../workflow/alias-resolver.js";
 import {
   ULTRATHINK_MESSAGE,
@@ -170,8 +171,7 @@ const TASK_OUTPUT_ID_PATTERN = /<task_id>([^<]+)<\/task_id>/i;
 const TASK_OUTPUT_STATUS_PATTERN = /<status>([^<]+)<\/status>/i;
 const SAFE_SESSION_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
 const MODE_CONFIRMATION_SKILL_MAP: Record<string, string[]> = {
-  ralph: ["ralph", "ultrawork"],
-  ultrawork: ["ultrawork"],
+  ralph: ["ralph"],
   autopilot: ["autopilot"],
   ralplan: ["ralplan"],
 };
@@ -203,7 +203,6 @@ function buildSessionStartAdditionalContext(messages: string[]): string {
   const priorityOrder = [
     /\[MODEL ROUTING OVERRIDE/,
     /\[AUTOPILOT MODE RESTORED\]/,
-    /\[ULTRAWORK MODE RESTORED\]/,
     /\[RALPLAN MODE RESTORED\]/,
     /\[TEAM MODE RESTORED\]/,
     /\[ROOT AGENTS\.md LOADED\]/,
@@ -783,7 +782,6 @@ async function seedAutopilotStartupState(
     },
     execution: {
       ralph_iterations: 0,
-      ultrawork_active: false,
       tasks_completed: 0,
       tasks_total: 0,
       files_created: [],
@@ -1462,6 +1460,10 @@ async function processKeywordDetector(input: HookInput): Promise<HookOutput> {
     return { continue: true };
   }
 
+  if (isRetiredWorkflowSlashInvocation(promptText)) {
+    return { continue: true };
+  }
+
   // `/ask <provider> ...` delegates the remainder of the prompt to an
   // external advisor. Do not interpret magic keywords inside that payload as
   // instructions for the current Claude Code session.
@@ -1965,7 +1967,6 @@ async function processSessionStart(input: HookInput): Promise<HookOutput> {
   // Lazy-load session-start dependencies
   const { initSilentAutoUpdate } = await import("../features/auto-update.js");
   const { readAutopilotState } = await import("./autopilot/index.js");
-  const { readUltraworkState } = await import("./ultrawork/index.js");
   const { checkIncompleteTodos } = await import("./todo-continuation/index.js");
   const { buildAgentsOverlay } = await import("./agents-overlay.js");
 
@@ -2035,25 +2036,6 @@ Original idea: ${autopilotState.originalIdea}
 Current phase: ${autopilotState.phase}
 
 Treat this as prior-session context only. Prioritize the user's newest request, and resume autopilot only if the user explicitly asks to continue it.
-
-</session-restore>
-
----
-
-`);
-  }
-
-  // Check for active ultrawork state - only restore if it belongs to this session
-  const ultraworkState = readUltraworkState(directory, sessionId);
-  if (ultraworkState?.active && ultraworkState.session_id === sessionId) {
-    messages.push(`<session-restore>
-
-[ULTRAWORK MODE RESTORED]
-
-You have an active ultrawork session from ${ultraworkState.started_at}.
-Original task: ${ultraworkState.original_prompt}
-
-Treat this as prior-session context only. Prioritize the user's newest request, and resume ultrawork only if the user explicitly asks to continue it.
 
 </session-restore>
 

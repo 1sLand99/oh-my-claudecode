@@ -89,8 +89,7 @@ export interface AutopilotPlanning {
 export interface AutopilotExecution {
   /** Number of ralph persistence iterations */
   ralph_iterations: number;
-  /** Whether ultrawork parallel execution is active */
-  ultrawork_active: boolean;
+
   /** Number of tasks completed from the plan */
   tasks_completed: number;
   /** Total number of tasks in the plan */

@@ -337,7 +337,6 @@ export function initAutopilot(
 
     execution: {
       ralph_iterations: 0,
-      ultrawork_active: false,
       tasks_completed: 0,
       tasks_total: 0,
       files_created: [],
@@ -559,7 +558,6 @@ export function transitionRalphToUltraQA(
       ralph_iterations:
         ralphState?.iteration ?? autopilotState.execution.ralph_iterations,
       ralph_completed_at: new Date().toISOString(),
-      ultrawork_active: false,
     },
     sessionId,
   );

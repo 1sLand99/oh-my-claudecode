@@ -2675,12 +2675,20 @@ This article argues that fake popularity signals damage trust in open source.`;
       '/ultraqa ask codex to review',
       '/ccg build me an app',
       '/claude-codex-gemini ask codex to review',
+      '/울트라워크 build me an app',
+      '/ウルトラワーク build me an app',
+      '/씨씨지 ask codex to review',
+      '/シーシージー build me an app',
       '/omc:ultrawork build me an app',
       '/oh-my-claudecode:ulw ask codex to review',
       '/omc:ultraqa build me an app',
       '/oh-my-claudecode:ultraqa ask codex to review',
       '/omc:ccg build me an app',
       '/oh-my-claudecode:claude-codex-gemini ask codex to review',
+      '/omc:울트라워크 build me an app',
+      '/oh-my-claudecode:ウルトラワーク ask codex to review',
+      '/omc:씨씨지 build me an app',
+      '/oh-my-claudecode:シーシージー ask codex to review',
     ])('passes retired slash command %s through without scanning active arguments', (prompt) => {
       expect(detectKeywordsWithType(prompt)).toEqual([]);
     });
@@ -2755,11 +2763,17 @@ This article argues that fake popularity signals damage trust in open source.`;
       expect(result!.args).toBe('');
     });
 
-    it('does not parse retired /ultrawork or /ultraqa invocations', () => {
+    it('does not parse retired workflow invocations', () => {
       expect(parseExplicitWorkflowSlashInvocation('/ultrawork investigate this report')).toBeNull();
+      expect(parseExplicitWorkflowSlashInvocation('/ulw investigate this report')).toBeNull();
+      expect(parseExplicitWorkflowSlashInvocation('/uw investigate this report')).toBeNull();
       expect(parseExplicitWorkflowSlashInvocation('/ultraqa run tests')).toBeNull();
+      expect(parseExplicitWorkflowSlashInvocation('/ccg review this')).toBeNull();
+      expect(parseExplicitWorkflowSlashInvocation('/claude-codex-gemini review this')).toBeNull();
       expect(parseExplicitWorkflowSlashInvocation('/omc:ultrawork investigate this report')).toBeNull();
+      expect(parseExplicitWorkflowSlashInvocation('/omc:ccg review this')).toBeNull();
       expect(parseExplicitWorkflowSlashInvocation('/oh-my-claudecode:ultraqa run tests')).toBeNull();
+      expect(parseExplicitWorkflowSlashInvocation('/oh-my-claudecode:claude-codex-gemini review this')).toBeNull();
     });
 
     it('returns null for /ralph-logs/foo.txt (path lookahead prevents match)', () => {
