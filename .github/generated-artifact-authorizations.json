@@ -10036,6 +10036,80 @@
           "previousFilename": null
         }
       ]
+    },
+    {
+      "pullNumber": 3823,
+      "targetRef": "dev",
+      "mergeBaseSha": "c5bf8d060f364495cedc275820282256a29a7a33",
+      "headSha": "b7cae61fa3c22df02081ba76d84903dc42a2d505",
+      "owner": "Yeachan-Heo",
+      "expiresAt": "2026-08-30T00:00:00.000Z",
+      "generatedDelta": {
+        "count": 10,
+        "sha256": "ca0689221d664f1e9428d4ec9f0049d153fce99ba6152c9dc2b0c43e247d4c11"
+      },
+      "generatedFiles": [
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/ralph-prd-amendment.test.js",
+          "sha": "244106b7ea92925bafb8d125d40a0f53e0a25682",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/ralph-prd-amendment.test.js.map",
+          "sha": "f74f7d5182008d0fe0f8dc1aac30c2ca8b3a910f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/persistent-mode/__tests__/ralph-verification-flow.test.js",
+          "sha": "11240f4e621de3182a2c67fae8a642e008650223",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/persistent-mode/__tests__/ralph-verification-flow.test.js.map",
+          "sha": "31ebec735f106bb9add0a7fc52f1fe7a70a8dc12",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/persistent-mode/index.d.ts.map",
+          "sha": "0bb79a0517b0a67fd30b27f729fe63bf76a29e7b",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/persistent-mode/index.js",
+          "sha": "869b8efc69710bbbdb6725a2c141f0da1a388111",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/persistent-mode/index.js.map",
+          "sha": "e18e539cf1d853f34ec0cceedcae9de59503f26d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/prd.d.ts.map",
+          "sha": "1ebd8a0bc76596e9655b088e808388712bc7d0c8",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/prd.js",
+          "sha": "5ba62acf3532b1c4bb2caeef036724b736da9be0",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/prd.js.map",
+          "sha": "9c38a7f622ff38072f944ca0109aec0f208ab280",
+          "previousFilename": null
+        }
+      ]
     }
   ]
 }
