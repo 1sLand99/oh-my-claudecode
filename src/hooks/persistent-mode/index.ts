@@ -1186,7 +1186,6 @@ async function checkRalphLoop(
     if (teamPhase === 'complete') {
       clearRalphState(workingDir, sessionId);
       clearVerificationState(workingDir, sessionId);
-      clearModeStateFile('ultrawork', workingDir, sessionId);
       return {
         shouldBlock: false,
         message: `[RALPH LOOP COMPLETE - TEAM] Team pipeline completed successfully. Ralph loop ending after ${state.iteration} iteration(s).`,
@@ -1196,7 +1195,6 @@ async function checkRalphLoop(
     if (teamPhase === 'failed') {
       clearRalphState(workingDir, sessionId);
       clearVerificationState(workingDir, sessionId);
-      clearModeStateFile('ultrawork', workingDir, sessionId);
       return {
         shouldBlock: false,
         message: `[RALPH LOOP STOPPED - TEAM FAILED] Team pipeline failed. Ralph loop ending after ${state.iteration} iteration(s).`,
@@ -1206,7 +1204,6 @@ async function checkRalphLoop(
     if (teamPhase === 'cancelled') {
       clearRalphState(workingDir, sessionId);
       clearVerificationState(workingDir, sessionId);
-      clearModeStateFile('ultrawork', workingDir, sessionId);
       return {
         shouldBlock: false,
         message: `[RALPH LOOP CANCELLED - TEAM] Team pipeline was cancelled. Ralph loop ending after ${state.iteration} iteration(s).`,
@@ -1281,12 +1278,8 @@ async function checkRalphLoop(
           const verificationPath = resolveVerificationStatePath(workingDir, sessionId);
           const verificationCleanupSnapshot = captureStateFileGeneration(verificationPath);
           const ralphSnapshot = readRalphState(workingDir, sessionId);
-          const ultraworkSnapshot = readModeState('ultrawork', workingDir, sessionId);
           const ralphCleanupSnapshot: ModeStateCleanupSnapshot | undefined = ralphSnapshot
             ? captureModeStateCleanup('ralph', workingDir, sessionId)
-            : undefined;
-          const ultraworkCleanupSnapshot: ModeStateCleanupSnapshot | undefined = ultraworkSnapshot
-            ? captureModeStateCleanup('ultrawork', workingDir, sessionId)
             : undefined;
           const consume = () => {
             const consumed = verificationCleanupSnapshot
@@ -1312,20 +1305,10 @@ async function checkRalphLoop(
                   ralphSnapshot as unknown as Record<string, unknown>,
                   ralphCleanupSnapshot,
                 );
-              const ultraworkCleared = !ultraworkSnapshot || !ultraworkCleanupSnapshot
-                ? !ultraworkSnapshot
-                : clearModeStateFile(
-                  'ultrawork',
-                  workingDir,
-                  sessionId,
-                  ultraworkSnapshot as unknown as Record<string, unknown>,
-                  ultraworkCleanupSnapshot,
-                );
-              return ralphCleared && ultraworkCleared;
+              return ralphCleared;
             }, true);
             if (locked.acquired && locked.value === true) return true;
             if (ralphSnapshot) restoreRalphStateIfAbsent(workingDir, ralphSnapshot, sessionId);
-            if (ultraworkSnapshot) writeModeStateIfAbsent('ultrawork', ultraworkSnapshot as unknown as Record<string, unknown>, workingDir, sessionId);
             restoreVerificationRequestIfAbsent(workingDir, snapshot, sessionId);
             return false;
           };
