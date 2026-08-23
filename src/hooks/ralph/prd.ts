@@ -266,12 +266,14 @@ function normalizeStory(candidate: unknown): UserStory | null {
   const completionCriteriaRevision = typeof story.completionCriteriaRevision === 'string'
     ? story.completionCriteriaRevision
     : undefined;
-  const passes = story.passes === true && completionCriteriaRevision === governingCriteriaRevision;
+  const passes = story.passes === true && (completionCriteriaRevision === governingCriteriaRevision
+    || (completionCriteriaRevision === undefined && criterionAmendments === undefined));
   const architectVerificationCriteriaRevision = typeof story.architectVerificationCriteriaRevision === 'string'
     ? story.architectVerificationCriteriaRevision
     : undefined;
   const architectVerified = passes && story.architectVerified === true
-    && architectVerificationCriteriaRevision === governingCriteriaRevision;
+    && (architectVerificationCriteriaRevision === governingCriteriaRevision
+      || (architectVerificationCriteriaRevision === undefined && criterionAmendments === undefined));
 
   return {
     id: story.id,
@@ -296,11 +298,19 @@ function getGoverningCriteriaRevision(
   return `sha256:${createHash('sha256').update(JSON.stringify({ acceptanceCriteria, criterionAmendments: criterionAmendments ?? [] })).digest('hex')}`;
 }
 
+export function getStoryGoverningCriteriaRevision(story: Pick<UserStory, 'acceptanceCriteria' | 'criterionAmendments'>): string {
+  return getGoverningCriteriaRevision(story.acceptanceCriteria, story.criterionAmendments);
+}
+
 export function getPrdGoverningCriteriaRevision(prd: PRD): string {
   return `sha256:${createHash('sha256').update(JSON.stringify(prd.userStories.map(story => ({
     id: story.id,
     governingCriteriaRevision: getGoverningCriteriaRevision(story.acceptanceCriteria, story.criterionAmendments),
   })))).digest('hex')}`;
+}
+
+export function getPrdRevision(prd: PRD): string {
+  return `sha256:${createHash('sha256').update(JSON.stringify(prd)).digest('hex')}`;
 }
 
 function bindCompletionClaims(prd: PRD): PRD {
@@ -309,14 +319,16 @@ function bindCompletionClaims(prd: PRD): PRD {
     userStories: prd.userStories.map(story => {
       const governingCriteriaRevision = getGoverningCriteriaRevision(story.acceptanceCriteria, story.criterionAmendments);
       const passes = story.passes === true
-        && (story.completionCriteriaRevision === undefined || story.completionCriteriaRevision === governingCriteriaRevision);
+        && (story.completionCriteriaRevision === governingCriteriaRevision
+          || (story.completionCriteriaRevision === undefined && story.criterionAmendments === undefined));
       const architectVerified = passes && story.architectVerified === true
-        && (story.architectVerificationCriteriaRevision === undefined || story.architectVerificationCriteriaRevision === governingCriteriaRevision);
+        && (story.architectVerificationCriteriaRevision === governingCriteriaRevision
+          || (story.architectVerificationCriteriaRevision === undefined && story.criterionAmendments === undefined));
       return {
         ...story,
         governingCriteriaRevision,
-        completionCriteriaRevision: passes ? governingCriteriaRevision : undefined,
-        architectVerificationCriteriaRevision: architectVerified ? governingCriteriaRevision : undefined,
+        completionCriteriaRevision: passes ? story.completionCriteriaRevision : undefined,
+        architectVerificationCriteriaRevision: architectVerified ? story.architectVerificationCriteriaRevision : undefined,
         passes,
         architectVerified,
       };
@@ -570,10 +582,14 @@ export function writePrdIfRevision(
   const prdPath = findPrdPath(directory, sessionId);
   if (!prdPath) return false;
   const result = withStateFileMutationLock(prdPath, () => {
-    const current = readPrdFromPath(prdPath).prd;
-    if (!current || getPrdGoverningCriteriaRevision(current) !== expectedRevision) return false;
-    atomicWriteJsonSync(prdPath, bindCompletionClaims(prd));
-    return true;
+    try {
+      const current = readPrdFromPath(prdPath).prd;
+      if (!current || getPrdRevision(current) !== expectedRevision) return false;
+      atomicWriteJsonSync(prdPath, bindCompletionClaims(prd));
+      return true;
+    } catch {
+      return false;
+    }
   }, true);
   return result.acquired && result.value === true;
 }
@@ -616,17 +632,17 @@ export function consumeStoryArchitectApproval(
     const parsed = readPrdFromPath(prdPath).prd;
     const story = parsed?.userStories.find(candidate => candidate.id === storyId);
     if (!parsed || !story || !story.passes || story.governingCriteriaRevision !== expectedCriteriaRevision
-      || story.completionCriteriaRevision !== expectedCriteriaRevision) {
+      || (story.completionCriteriaRevision !== expectedCriteriaRevision
+        && !(story.completionCriteriaRevision === undefined && story.criterionAmendments === undefined))) {
       return false;
     }
-    const original = JSON.stringify(parsed);
+    story.completionCriteriaRevision = expectedCriteriaRevision;
     story.architectVerified = true;
     story.architectVerificationCriteriaRevision = expectedCriteriaRevision;
     if (notes) story.notes = notes;
     try {
       atomicWriteJsonSync(prdPath, bindCompletionClaims(parsed));
       if (consume?.() ?? true) return true;
-      atomicWriteJsonSync(prdPath, JSON.parse(original) as PRD);
       return false;
     } catch {
       return false;

@@ -9,6 +9,7 @@ import {
   getPrdStatus,
   getSessionPrdPath,
   markStoryComplete,
+  getStoryGoverningCriteriaRevision,
   markStoryIncomplete,
   markStoryArchitectVerified,
   getStory,
@@ -103,10 +104,15 @@ describe('Ralph PRD Module', () => {
       expect(readPrd(testDir)).toBeNull();
     });
 
-    it('should write and read prd correctly', () => {
-      expect(writePrd(testDir, samplePrd)).toBe(true);
+    it('should write and read revision-bound completion claims', () => {
+      const prd = structuredClone(samplePrd);
+      const completed = prd.userStories[1];
+      const revision = getStoryGoverningCriteriaRevision(completed);
+      completed.completionCriteriaRevision = revision;
+      completed.architectVerificationCriteriaRevision = revision;
+      expect(writePrd(testDir, prd)).toBe(true);
       const read = readPrd(testDir);
-      expect(read).toMatchObject(samplePrd);
+      expect(read).toMatchObject(prd);
     });
 
     it('should create .omc directory when writing', () => {
@@ -251,6 +257,10 @@ describe('Ralph PRD Module', () => {
           { id: 'US-001', title: 'A', description: '', acceptanceCriteria: [], priority: 1, passes: false, architectVerified: false }
         ]
       };
+      const completed = prd.userStories[0];
+      const revision = getStoryGoverningCriteriaRevision(completed);
+      completed.completionCriteriaRevision = revision;
+      completed.architectVerificationCriteriaRevision = revision;
       writePrd(testDir, prd);
     });
 

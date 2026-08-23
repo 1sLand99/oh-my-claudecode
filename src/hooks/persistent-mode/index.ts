@@ -1221,11 +1221,12 @@ async function checkRalphLoop(
         })());
 
     if (staleVerification) {
-      clearVerificationState(workingDir, sessionId);
-      const refreshedState = readRalphState(workingDir, sessionId);
-      if (refreshedState) {
-        refreshedState.current_story_id = prdStatus.nextStory?.id;
-        writeRalphState(workingDir, refreshedState, sessionId);
+      if (consumeVerificationRequest(workingDir, verificationState.request_id, sessionId)) {
+        const refreshedState = readRalphState(workingDir, sessionId);
+        if (refreshedState) {
+          refreshedState.current_story_id = prdStatus.nextStory?.id;
+          writeRalphState(workingDir, refreshedState, sessionId);
+        }
       }
       verificationState = null;
     }

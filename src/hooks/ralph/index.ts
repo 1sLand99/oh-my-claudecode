@@ -73,6 +73,8 @@ export {
   consumeStoryArchitectApproval,
   consumeCompletionArchitectApproval,
   getPrdGoverningCriteriaRevision,
+  getPrdRevision,
+  getStoryGoverningCriteriaRevision,
   getStory,
   getNextStory,
   amendCriterion,

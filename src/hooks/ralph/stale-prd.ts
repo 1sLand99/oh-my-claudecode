@@ -62,7 +62,7 @@ import { readModeState } from '../../lib/mode-state-io.js';
 import { ensureSessionStateDir, getOmcRoot, getSessionStateDir } from '../../lib/worktree-paths.js';
 import {
   findPrdPath,
-  getPrdGoverningCriteriaRevision,
+  getPrdRevision,
   readPrd,
   writePrdIfRevision,
 } from './prd.js';
@@ -517,7 +517,7 @@ export function reconcileStalePrd(directory: string, sessionId?: string): Reconc
   if (!prd) {
     return null;
   }
-  const initialRevision = getPrdGoverningCriteriaRevision(prd);
+  const initialRevision = getPrdRevision(prd);
 
   const checksByStory = prd.reconciliation?.observableChecks ?? {};
   const autoReconcile = prd.reconciliation?.autoReconcile !== false;
