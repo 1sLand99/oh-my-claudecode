@@ -114,7 +114,11 @@ function isValidSessionId(sessionId: unknown): sessionId is string {
 }
 
 function compareCheckpointNames(a: string, b: string): number {
-  return Buffer.compare(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'));
+  return Buffer.compare(Buffer.from(a), Buffer.from(b));
+}
+
+function normalizeMtimeMs(value: number): number {
+  return Math.trunc(value);
 }
 
 function compareCheckpointOrder(a: CheckpointOrder, b: CheckpointOrder): number {
@@ -367,7 +371,7 @@ function checkpointOrderForSession(
         stat.dev !== resolved.dev || stat.ino !== resolved.ino) return null;
     return {
       createdAt: checkpoint.created_at,
-      mtimeMs: stat.mtimeMs,
+      mtimeMs: normalizeMtimeMs(stat.mtimeMs),
       name: basename(resolved.path),
       contentSha256: createHash('sha256').update(raw).digest('hex'),
     };
@@ -519,7 +523,7 @@ export function markCheckpointRestored(
     const candidateOrder = checkpointOrderForSession(directory, checkpointPath, sessionId);
     if (!candidateOrder) return 'failed';
     if (checkpointCreatedAt !== undefined && candidateOrder.createdAt !== checkpointCreatedAt) return 'contended';
-    if (checkpointMtimeMs !== undefined && candidateOrder.mtimeMs !== checkpointMtimeMs) return 'contended';
+    if (checkpointMtimeMs !== undefined && candidateOrder.mtimeMs !== normalizeMtimeMs(checkpointMtimeMs)) return 'contended';
     if (checkpointSha256 !== undefined && candidateOrder.contentSha256 !== checkpointSha256) return 'contended';
     const result = runPublisher({
       operation: 'publish',
@@ -598,7 +602,7 @@ function listCheckpointCandidates(
       const verified = resolveContainedRegularPath(context, omcRoot, path);
       if (!verified) continue;
       const stat = lstatSync(verified.path);
-      candidates.push({ name, path, mtimeMs: stat.mtimeMs, verified });
+      candidates.push({ name, path, mtimeMs: normalizeMtimeMs(stat.mtimeMs), verified });
     } catch { /* skip unreadable */ }
   }
   return candidates;

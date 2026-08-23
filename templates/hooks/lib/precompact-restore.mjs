@@ -37,7 +37,11 @@ function isValidSessionId(sessionId) {
 }
 
 function compareCheckpointNames(a, b) {
-  return Buffer.compare(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'));
+  return Buffer.compare(Buffer.from(a), Buffer.from(b));
+}
+
+function normalizeMtimeMs(value) {
+  return Math.trunc(value);
 }
 
 function compareCheckpointOrder(a, b) {
@@ -275,7 +279,7 @@ function checkpointOrderForSession(omcRoot, checkpointPath, sessionId) {
       stat.dev !== resolved.dev || stat.ino !== resolved.ino) return null;
     return {
       createdAt: checkpoint.created_at,
-      mtimeMs: stat.mtimeMs,
+      mtimeMs: normalizeMtimeMs(stat.mtimeMs),
       name: basename(resolved.path),
       contentSha256: createHash('sha256').update(raw).digest('hex'),
     };
@@ -411,7 +415,7 @@ function markCheckpointRestored(omcRoot, sessionId, checkpointPath, checkpointCr
     const candidateOrder = checkpointOrderForSession(omcRoot, checkpointPath, sessionId);
     if (!candidateOrder) return 'failed';
     if (checkpointCreatedAt !== undefined && candidateOrder.createdAt !== checkpointCreatedAt) return 'contended';
-    if (checkpointMtimeMs !== undefined && candidateOrder.mtimeMs !== checkpointMtimeMs) return 'contended';
+    if (checkpointMtimeMs !== undefined && candidateOrder.mtimeMs !== normalizeMtimeMs(checkpointMtimeMs)) return 'contended';
     if (checkpointSha256 !== undefined && candidateOrder.contentSha256 !== checkpointSha256) return 'contended';
     const result = runPublisher({
       operation: 'publish',
@@ -528,14 +532,14 @@ function preparePreCompactCheckpointRestoreOnce(omcRoot, sessionId) {
         const stat = lstatSync(verified.path);
         const raw = readBoundedCheckpoint(verified.path, verified);
         if (raw === null) continue;
-        const checkpoint = parseCheckpoint(omcRoot, { name, path, mtimeMs: stat.mtimeMs, verified }, context);
+        const checkpoint = parseCheckpoint(omcRoot, { name, path, mtimeMs: normalizeMtimeMs(stat.mtimeMs), verified }, context);
         if (checkpoint?.session_id !== sessionId) continue;
         try {
           if (JSON.stringify(JSON.parse(raw)) !== JSON.stringify(checkpoint)) continue;
         } catch {
           continue;
         }
-        candidates.push({ name, path, mtimeMs: stat.mtimeMs, checkpoint, contentSha256: createHash('sha256').update(raw).digest('hex') });
+        candidates.push({ name, path, mtimeMs: normalizeMtimeMs(stat.mtimeMs), checkpoint, contentSha256: createHash('sha256').update(raw).digest('hex') });
       } catch { /* skip unreadable */ }
     }
     if (candidates.length === 0) return null;
@@ -575,7 +579,7 @@ export function claimPreCompactCheckpointRestore(
   if (!isValidSessionId(sessionId)) return 'invalid_session_id';
   const currentOrder = checkpointOrderForSession(omcRoot, checkpointPath, sessionId);
   if (!currentOrder || currentOrder.createdAt !== checkpointCreatedAt ||
-    currentOrder.mtimeMs !== checkpointMtimeMs ||
+    currentOrder.mtimeMs !== normalizeMtimeMs(checkpointMtimeMs) ||
     (checkpointSha256 !== undefined && currentOrder.contentSha256 !== checkpointSha256)) return 'contended';
   return markCheckpointRestored(omcRoot, sessionId, checkpointPath, checkpointCreatedAt, checkpointMtimeMs, checkpointSha256);
 }

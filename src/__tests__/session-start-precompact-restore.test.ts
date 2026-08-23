@@ -175,7 +175,11 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
   });
 
   afterEach(() => {
-    rmSync(tempDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 200 });
+    try {
+      rmSync(tempDir, { recursive: true, force: true, maxRetries: 20, retryDelay: 200 });
+    } catch (error) {
+      if (process.platform !== 'win32' || (error as NodeJS.ErrnoException).code !== 'EBUSY') throw error;
+    }
   });
 
   it('restores the newest checkpoint when source=compact', () => {

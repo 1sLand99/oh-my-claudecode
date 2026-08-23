@@ -32,6 +32,10 @@ function code(error) {
   return error?.code;
 }
 
+function normalizeMtimeMs(value) {
+  return Math.trunc(value);
+}
+
 function verifyCwd(expected) {
   try {
     const stat = lstatSync('.');
@@ -142,7 +146,7 @@ function checkpointMatches(request, checkpointRoot = request.checkpointRoot) {
     if (raw === null || createHash('sha256').update(raw).digest('hex') !== request.checkpointSha256) return false;
     const checkpoint = JSON.parse(raw.toString('utf8'));
     return checkpoint?.session_id === request.sessionId && checkpoint?.created_at === request.checkpointCreatedAt &&
-      stat.mtimeMs === request.checkpointMtimeMs;
+      normalizeMtimeMs(stat.mtimeMs) === normalizeMtimeMs(request.checkpointMtimeMs);
   } catch {
     return false;
   }
