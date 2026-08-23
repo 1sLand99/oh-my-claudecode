@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { checkPersistentModes } from '../index.js';
-import { amendCriterion, readPrd, writePrd, type PRD } from '../../ralph/prd.js';
+import { amendCriterion, getStoryGoverningCriteriaRevision, readPrd, writePrd as writeRawPrd, type PRD } from '../../ralph/prd.js';
 import { readRalphState } from '../../ralph/loop.js';
 
 describe('Ralph verification flow', () => {
@@ -77,6 +77,20 @@ describe('Ralph verification flow', () => {
     ]);
   }
 
+  function bindCompletedStories(prd: PRD): PRD {
+    for (const story of prd.userStories) {
+      if (!story.passes) continue;
+      const revision = getStoryGoverningCriteriaRevision(story);
+      story.completionCriteriaRevision = revision;
+      if (story.architectVerified) story.architectVerificationCriteriaRevision = revision;
+    }
+    return prd;
+  }
+
+  function writePrd(directory: string, prd: PRD, sessionId?: string): boolean {
+    return writeRawPrd(directory, bindCompletedStories(prd), sessionId);
+  }
+
   it('enters verification instead of completing immediately when PRD is done', async () => {
     const sessionId = 'ralph-prd-complete';
     const prd: PRD = {
@@ -94,7 +108,7 @@ describe('Ralph verification flow', () => {
       }],
     };
 
-    writePrd(testDir, prd);
+    writePrd(testDir, bindCompletedStories(prd));
     writeRalphState(sessionId, { critic_mode: 'codex' });
 
     const result = await checkPersistentModes(sessionId, testDir);
@@ -194,7 +208,7 @@ describe('Ralph verification flow', () => {
       ],
     };
 
-    writePrd(testDir, prd);
+    writePrd(testDir, bindCompletedStories(prd));
     writeRalphState(sessionId, { current_story_id: 'US-001' });
 
     const result = await checkPersistentModes(sessionId, testDir);

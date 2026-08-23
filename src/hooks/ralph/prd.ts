@@ -266,14 +266,12 @@ function normalizeStory(candidate: unknown): UserStory | null {
   const completionCriteriaRevision = typeof story.completionCriteriaRevision === 'string'
     ? story.completionCriteriaRevision
     : undefined;
-  const passes = story.passes === true && (completionCriteriaRevision === governingCriteriaRevision
-    || (completionCriteriaRevision === undefined && criterionAmendments === undefined));
+  const passes = story.passes === true && completionCriteriaRevision === governingCriteriaRevision;
   const architectVerificationCriteriaRevision = typeof story.architectVerificationCriteriaRevision === 'string'
     ? story.architectVerificationCriteriaRevision
     : undefined;
   const architectVerified = passes && story.architectVerified === true
-    && (architectVerificationCriteriaRevision === governingCriteriaRevision
-      || (architectVerificationCriteriaRevision === undefined && criterionAmendments === undefined));
+    && architectVerificationCriteriaRevision === governingCriteriaRevision;
 
   return {
     id: story.id,
@@ -319,16 +317,14 @@ function bindCompletionClaims(prd: PRD): PRD {
     userStories: prd.userStories.map(story => {
       const governingCriteriaRevision = getGoverningCriteriaRevision(story.acceptanceCriteria, story.criterionAmendments);
       const passes = story.passes === true
-        && (story.completionCriteriaRevision === governingCriteriaRevision
-          || (story.completionCriteriaRevision === undefined && story.criterionAmendments === undefined));
+        && story.completionCriteriaRevision === governingCriteriaRevision;
       const architectVerified = passes && story.architectVerified === true
-        && (story.architectVerificationCriteriaRevision === governingCriteriaRevision
-          || (story.architectVerificationCriteriaRevision === undefined && story.criterionAmendments === undefined));
+        && story.architectVerificationCriteriaRevision === governingCriteriaRevision;
       return {
         ...story,
         governingCriteriaRevision,
-        completionCriteriaRevision: passes ? story.completionCriteriaRevision : undefined,
-        architectVerificationCriteriaRevision: architectVerified ? story.architectVerificationCriteriaRevision : undefined,
+        completionCriteriaRevision: passes ? governingCriteriaRevision : undefined,
+        architectVerificationCriteriaRevision: architectVerified ? governingCriteriaRevision : undefined,
         passes,
         architectVerified,
       };
@@ -641,9 +637,9 @@ export function consumeStoryArchitectApproval(
     story.architectVerificationCriteriaRevision = expectedCriteriaRevision;
     if (notes) story.notes = notes;
     try {
+      if (!(consume?.() ?? true)) return false;
       atomicWriteJsonSync(prdPath, bindCompletionClaims(parsed));
-      if (consume?.() ?? true) return true;
-      return false;
+      return true;
     } catch {
       return false;
     }

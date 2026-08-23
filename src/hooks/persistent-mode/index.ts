@@ -1263,9 +1263,9 @@ async function checkRalphLoop(
           // Architect approved - truly complete
           const criticMode = verificationState.critic_mode;
           const finish = () => {
-            if (!clearRalphState(workingDir, sessionId)
-              || !deactivateUltrawork(workingDir, sessionId)) return false;
-            return consumeVerificationRequest(workingDir, verificationState!.request_id, sessionId);
+            return consumeVerificationRequest(workingDir, verificationState!.request_id, sessionId)
+              && clearRalphState(workingDir, sessionId)
+              && deactivateUltrawork(workingDir, sessionId);
           };
           const consumed = !prdStatus.hasPrd
             ? finish()

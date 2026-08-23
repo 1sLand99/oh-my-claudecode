@@ -311,6 +311,9 @@ describe('Ralph PRD Module', () => {
           { id: 'US-002', title: 'Second', description: '', acceptanceCriteria: [], priority: 2, passes: false, architectVerified: false }
         ]
       };
+      const revision = getStoryGoverningCriteriaRevision(prd.userStories[0]);
+      prd.userStories[0].completionCriteriaRevision = revision;
+      prd.userStories[0].architectVerificationCriteriaRevision = revision;
       writePrd(testDir, prd);
     });
 

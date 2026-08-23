@@ -63,6 +63,7 @@ import { ensureSessionStateDir, getOmcRoot, getSessionStateDir } from '../../lib
 import {
   findPrdPath,
   getPrdRevision,
+  getStoryGoverningCriteriaRevision,
   readPrd,
   writePrdIfRevision,
 } from './prd.js';
@@ -558,6 +559,8 @@ export function reconcileStalePrd(directory: string, sessionId?: string): Reconc
     if (autoReconcile && allPass) {
       story.passes = true;
       story.architectVerified = false;
+      story.completionCriteriaRevision = getStoryGoverningCriteriaRevision(story);
+      story.architectVerificationCriteriaRevision = undefined;
       story.notes = appendStoryNote(story.notes, `Reconciled from observable evidence on ${new Date().toISOString()}: ${evidence}`);
       reconciled.push(story.id);
       entries.push({
