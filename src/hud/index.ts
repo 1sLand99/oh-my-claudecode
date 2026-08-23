@@ -26,7 +26,6 @@ import {
 } from "./state.js";
 import {
   readRalphStateForHud,
-  readUltraworkStateForHud,
   readPrdStateForHud,
   readAutopilotStateForHud,
 } from "./omc-state.js";
@@ -320,10 +319,6 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
 
     // Read OMC state files
     const ralph = readRalphStateForHud(cwd, currentSessionId ?? undefined);
-    const ultrawork = readUltraworkStateForHud(
-      cwd,
-      currentSessionId ?? undefined,
-    );
     const prd = readPrdStateForHud(cwd);
     const autopilot = readAutopilotStateForHud(
       cwd,
@@ -462,7 +457,7 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
       modelName: getModelName(stdin),
       modelId: getModelId(stdin),
       ralph,
-      ultrawork,
+      ultrawork: null,
       prd,
       autopilot,
       activeAgents: transcriptData.agents.filter((a) => a.status === "running"),

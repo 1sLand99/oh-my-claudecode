@@ -671,7 +671,6 @@ const MODE_STATE_FILES = [
   'ultrapilot-state.json',
   'ralph-state.json',
   'ultragoal-state.json',
-  'ultrawork-state.json',
   'pipeline-state.json',
   'team-state.json',
   'omc-teams-state.json',
@@ -1474,7 +1473,6 @@ const SKILL_PROTECTION_CONFIGS = {
 
 const SKILL_PROTECTION_MAP = {
   // === Already have mode state → no additional protection ===
-  autopilot: 'none', ralph: 'none', ultragoal: 'none', ultrawork: 'none', team: 'none',
   'omc-teams': 'none', cancel: 'none',
 
   // === Instant / read-only → no protection needed ===
@@ -1495,7 +1493,7 @@ const SKILL_PROTECTION_MAP = {
   'mcp-setup': 'medium', 'project-session-manager': 'medium',
   psm: 'medium',          // alias for project-session-manager
   'writer-memory': 'medium', 'ralph-init': 'medium',
-  release: 'medium', ccg: 'medium',
+  release: 'medium',
 
   // === Heavy protection (long-running, 10 reinforcements) ===
   deepinit: 'heavy',

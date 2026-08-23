@@ -61,7 +61,6 @@ export const CANONICAL_WORKFLOW_SKILLS = [
   'autopilot',
   'ralph',
   'team',
-  'ultrawork',
   'deep-interview',
   'ralplan',
   'self-improve',
@@ -96,7 +95,7 @@ const PROTECTION_CONFIGS: Record<SkillProtectionLevel, SkillStateConfig> = {
 /**
  * Maps each skill name to its support-skill protection level.
  *
- * Workflow skills (autopilot, ralph, ultrawork, team, ralplan,
+ * Workflow skills (autopilot, ralph, team, ralplan,
  * deep-interview, self-improve) have dedicated mode state and workflow slots,
  * so their support-skill protection is 'none'. They flow through the
  * `active_skills` branch instead.
@@ -106,7 +105,6 @@ const SKILL_PROTECTION: Record<string, SkillProtectionLevel> = {
   autopilot: 'none',
   autoresearch: 'none',
   ralph: 'none',
-  ultrawork: 'none',
   team: 'none',
   'omc-teams': 'none',
   ralplan: 'none',
@@ -144,17 +142,19 @@ const SKILL_PROTECTION: Record<string, SkillProtectionLevel> = {
   'writer-memory': 'medium',
   'ralph-init': 'medium',
   release: 'medium',
-  ccg: 'medium',
 
   // === Heavy protection (long-running, 10 reinforcements) ===
   deepinit: 'heavy',
 };
+
+const RETIRED_SKILL_NAMES = new Set(['ultrawork', 'ccg']);
 
 export function getSkillProtection(skillName: string, rawSkillName?: string): SkillProtectionLevel {
   if (rawSkillName != null && !rawSkillName.toLowerCase().startsWith('oh-my-claudecode:')) {
     return 'none';
   }
   const normalized = skillName.toLowerCase().replace(/^oh-my-claudecode:/, '');
+  if (RETIRED_SKILL_NAMES.has(normalized)) return 'none';
   return SKILL_PROTECTION[normalized] ?? 'none';
 }
 
@@ -405,7 +405,14 @@ export function pruneExpiredWorkflowSkillTombstones(
 export function resolveAuthoritativeWorkflowSkill(
   state: SkillActiveStateV2,
 ): ActiveSkillSlot | null {
-  const live = Object.values(state.active_skills).filter((s) => !s.completed_at);
+  const live = Object.entries(state.active_skills)
+    .filter(([name, slot]) =>
+      isCanonicalWorkflowSkill(name) &&
+      typeof slot.skill_name === 'string' &&
+      isCanonicalWorkflowSkill(slot.skill_name) &&
+      !slot.completed_at,
+    )
+    .map(([, slot]) => slot);
   if (live.length === 0) return null;
 
   const isLiveAncestor = (name: string | null | undefined): boolean => {
@@ -435,6 +442,7 @@ export function isWorkflowSkillLive(
   skillName: string,
 ): boolean {
   const normalized = skillName.toLowerCase().replace(/^oh-my-claudecode:/, '');
+  if (!isCanonicalWorkflowSkill(normalized)) return false;
   const slot = state.active_skills[normalized];
   return !!slot && !slot.completed_at;
 }
@@ -697,6 +705,15 @@ export function checkSkillActiveState(
   // Session isolation
   if (sessionId && state.session_id && state.session_id !== sessionId) {
     return { shouldBlock: false, message: '' };
+  }
+
+  // Retired skills may leave support-state records behind, but those records
+  // are cleanup-only and must never re-arm stop enforcement.
+  const normalizedSupportSkill = typeof state.skill_name === 'string'
+    ? state.skill_name.toLowerCase().replace(/^oh-my-claudecode:/, '')
+    : '';
+  if (RETIRED_SKILL_NAMES.has(normalizedSupportSkill)) {
+    return { shouldBlock: false, message: '', skillName: state.skill_name };
   }
 
   // Staleness check

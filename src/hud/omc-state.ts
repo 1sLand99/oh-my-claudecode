@@ -1,7 +1,7 @@
 /**
  * OMC HUD - State Readers
  *
- * Read ralph, ultrawork, and PRD state from existing OMC files.
+ * Read ralph and PRD state from existing OMC files.
  * These are read-only functions that don't modify the state files.
  */
 
@@ -11,7 +11,6 @@ import { join } from 'path';
 import { getOmcRoot } from '../lib/worktree-paths.js';
 import type {
   RalphStateForHud,
-  UltraworkStateForHud,
   PrdStateForHud,
 } from './types.js';
 import type { AutopilotStateForHud } from './elements/autopilot.js';
@@ -154,47 +153,6 @@ export function readRalphStateForHud(directory: string, sessionId?: string): Ral
       maxIterations: state.max_iterations,
       prdMode: state.prd_mode,
       currentStoryId: state.current_story_id,
-    };
-  } catch {
-    return null;
-  }
-}
-
-// ============================================================================
-// Ultrawork State
-// ============================================================================
-
-interface UltraworkState {
-  active: boolean;
-  reinforcement_count: number;
-}
-
-/**
- * Read Ultrawork state for HUD display.
- * Checks only local .omc/state location.
- */
-export function readUltraworkStateForHud(
-  directory: string,
-  sessionId?: string
-): UltraworkStateForHud | null {
-  // Check local state only (with new path fallback)
-  const localFile = resolveStatePath(directory, 'ultrawork-state.json', sessionId);
-
-  if (!localFile || isStateFileStale(localFile)) {
-    return null;
-  }
-
-  try {
-    const content = readFileSync(localFile, 'utf-8');
-    const state = JSON.parse(content) as UltraworkState;
-
-    if (!state.active) {
-      return null;
-    }
-
-    return {
-      active: state.active,
-      reinforcementCount: state.reinforcement_count,
     };
   } catch {
     return null;
@@ -380,10 +338,9 @@ export function readAutopilotStateForHud(directory: string, sessionId?: string):
  */
 export function isAnyModeActive(directory: string, sessionId?: string): boolean {
   const ralph = readRalphStateForHud(directory, sessionId);
-  const ultrawork = readUltraworkStateForHud(directory, sessionId);
   const autopilot = readAutopilotStateForHud(directory, sessionId);
 
-  return (ralph?.active ?? false) || (ultrawork?.active ?? false) || (autopilot?.active ?? false);
+  return (ralph?.active ?? false) || (autopilot?.active ?? false);
 }
 
 /**
@@ -400,11 +357,6 @@ export function getActiveSkills(directory: string, sessionId?: string): string[]
   const ralph = readRalphStateForHud(directory, sessionId);
   if (ralph?.active) {
     skills.push('ralph');
-  }
-
-  const ultrawork = readUltraworkStateForHud(directory, sessionId);
-  if (ultrawork?.active) {
-    skills.push('ultrawork');
   }
 
   return skills;

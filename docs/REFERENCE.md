@@ -93,7 +93,7 @@ Configure omc for all Claude Code sessions:
 | Feature           | Without     | With omc Config         |
 | ----------------- | ----------- | ----------------------- |
 | Agent delegation  | Manual only | Automatic based on task |
-| Keyword detection | Disabled    | ultrawork, search       |
+| Keyword detection | Disabled    | supported prompt triggers |
 | Todo continuation | Basic       | Enforced completion     |
 | Model routing     | Default     | Smart tier selection    |
 | Skill composition | None        | Auto-combines skills    |
@@ -969,7 +969,7 @@ For each UserPromptSubmit command, 30s is the outer host fuse, including any lau
 
 The `workflow-drift-guard` blocks only supported source-associated local selection forks with a known minimum of two live alternatives—including exact binary questions and cardinality templates; explicit open input and every unsupported or ambiguous form fail open.
 
-> **Note**: autopilot, ralph, and ultrawork are **skills** (activated via keyword-detector), not hooks. The `persistent-mode.mjs` hook enforces their continuation by blocking the Stop event. A fresh unconfirmed ultragoal does not enforce matching `/goal`; confirmed runs remain fail-closed.
+> **Note**: autopilot and ralph are **skills** (activated via keyword-detector), not hooks. The `persistent-mode.mjs` hook enforces their continuation by blocking the Stop event. A fresh unconfirmed ultragoal does not enforce matching `/goal`; confirmed runs remain fail-closed.
 
 ### Code Simplifier Hook
 
@@ -1024,11 +1024,9 @@ Use these trigger phrases in natural language prompts to activate enhanced modes
 
 | Keyword                                                                        | Effect                                                                                        |
 | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
-| `ultrawork`, `ulw`, `uw`                                                       | Activates parallel agent orchestration                                                        |
 | `autopilot`, `build me`, `I want a`, `handle it all`, `end to end`, `e2e this` | Full autonomous execution                                                                     |
 | `deslop`, `anti-slop`, cleanup/refactor + slop smells                          | Anti-slop cleanup workflow (`ai-slop-cleaner`)                                                |
 | `ralph`, `don't stop`, `must complete`, `until done`                           | Persistence until verified complete                                                           |
-| `ccg`, `claude-codex-gemini`                                                   | Claude-Codex-Gemini orchestration (use `antigravity` when using the Antigravity CLI)         |
 | `ralplan`                                                                      | Iterative planning consensus with structured deliberation (`--deliberate` for high-risk mode) |
 | `deep interview`, `ouroboros`                                                  | Deep Socratic interview with mathematical clarity gating                                      |
 | `deepsearch`, `search the codebase`, `find in codebase`                        | Codebase-focused search mode                                                                  |
@@ -1047,10 +1045,8 @@ The keyword detector recognizes localized aliases in addition to the English tri
 | ---------------- | ----------- | ------------------ |
 | `ralph`          | 랄프        | ラルフ             |
 | `autopilot`      | 오토파일럿  | オートパイロット   |
-| `ultrawork`      | 울트라워크  | ウルトラワーク     |
 | `ralplan`        | 랄플랜      | ラルプラン         |
 | `ultrathink`     | 울트라씽크  | ウルトラシンク     |
-| `ccg`            | 씨씨지      | シーシージー       |
 | `deep-interview` | 딥인터뷰    | ディープインタビュー |
 | `tdd`            | 테스트 퍼스트 | テスト ファースト |
 | `code-review`    | 코드 리뷰   | コード レビュー    |
@@ -1071,9 +1067,6 @@ The keyword detector recognizes localized aliases in addition to the English tri
 
 ```bash
 # In Claude Code:
-
-# Maximum parallelism
-ultrawork implement user authentication with OAuth
 
 # Enhanced search
 deepsearch for files that import the utils module

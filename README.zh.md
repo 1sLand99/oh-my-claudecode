@@ -87,10 +87,11 @@ Team 按阶段化流水线运行：
 /omc-teams 1:claude  "implement the payment flow"
 ```
 
-如需在一个命令中混合使用 Codex + Gemini，请使用 **`/ccg`** 技能：
+如需同时参考 Codex 和 Gemini 的建议，请使用 `/ask codex` 和 `/ask gemini`，再由 Claude 汇总结果：
 
 ```bash
-/ccg Review this PR — architecture (Codex) and UI components (Gemini)
+/ask codex "Review this PR — architecture"
+/ask gemini "Review this PR — UI components"
 ```
 
 | 技能 | 工作者 | 最适合 |
@@ -98,7 +99,6 @@ Team 按阶段化流水线运行：
 | `/omc-teams N:codex` | N 个 Codex CLI 窗格 | 代码审查、安全分析、架构 |
 | `/omc-teams N:gemini` | N 个 Gemini CLI 窗格 | UI/UX 设计、文档、大上下文任务 |
 | `/omc-teams N:claude` | N 个 Claude CLI 窗格 | 通过 tmux 中的 Claude CLI 处理通用任务 |
-| `/ccg` | 1 个 Codex + 1 个 Gemini | 并行三模型编排 |
 
 工作者按需生成，任务完成后自动退出 — 无空闲资源浪费。需要安装 `codex` / `gemini` CLI 并有活跃的 tmux 会话。
 
@@ -152,9 +152,7 @@ Team 按阶段化流水线运行：
 |------|---------|---------|
 | **Team（推荐）** | 阶段化流水线 | 在共享任务列表上协作的 Claude 智能体 |
 | **omc-teams** | tmux CLI 工作者 | Codex/Gemini CLI 任务；按需生成，完成后退出 |
-| **ccg** | 三模型并行 | Codex（分析）+ Gemini（设计），Claude 合成 |
 | **Autopilot** | 自主执行 | 最小化繁琐配置的端到端功能开发 |
-| **Ultrawork** | 最大并行 | 不需要 Team 的并行修复/重构 |
 | **Ralph** | 持久模式 | 必须完整完成的任务 |
 | **Pipeline** | 顺序处理 | 需要严格顺序的多阶段转换 |
 | **Swarm / Ultrapilot（旧版）** | 路由到 Team | 现有工作流和旧文档 |
@@ -167,7 +165,7 @@ Team 按阶段化流水线运行：
 
 ### 开发者体验
 
-- **魔法关键词** - `ralph`、`ulw`、`plan` 提供显式控制
+- **魔法关键词** - `ralph`、`ralplan` 提供显式控制；并行任务请使用 `/team`
 - **HUD 状态栏** - 状态栏实时显示编排指标
   - 如果你直接使用 `claude --plugin-dir <path>` 启动 Claude Code（绕过 `omc` shim），请在 shell 中导出 `OMC_PLUGIN_ROOT=<path>`，以便 HUD bundle 解析到与插件加载器相同的 checkout。详情见 [REFERENCE.md 中的 Plugin directory flags 部分](./docs/REFERENCE.md#plugin-directory-flags)。
 
@@ -218,10 +216,8 @@ source: extracted
 |---------|--------|---------|
 | `team` | 标准 Team 编排 | `/team 3:executor "fix all TypeScript errors"` |
 | `omc-teams` | tmux CLI 工作者 (codex/gemini/claude) | `/omc-teams 2:codex "security review"` |
-| `ccg` | 三模型 Codex+Gemini 编排 | `/ccg review this PR` |
 | `autopilot` | 全自动执行 | `autopilot: build a todo app` |
 | `ralph` | 持久模式 | `ralph: refactor auth` |
-| `ulw` | 最大并行化 | `ulw fix all errors` |
 | `plan` | 规划访谈 | `plan the API` |
 | `ralplan` | 迭代规划共识 | `ralplan this feature` |
 | `deep-interview` | 苏格拉底式需求澄清 | `deep-interview "vague idea"` |
@@ -229,7 +225,7 @@ source: extracted
 | `ultrapilot` | **已弃用** — 请使用 `team` | `ultrapilot: build a fullstack app` |
 
 **注意：**
-- **ralph 包含 ultrawork：** 激活 ralph 模式时，会自动包含 ultrawork 的并行执行。无需组合关键词。
+- **并行任务请使用 Team 或 executor 委派：** 需要协调多个任务时使用 `/team`，单个实现任务交给 executor；需要持续验证直至完成时使用 Ralph。
 - `swarm N agents` 语法仍可被识别用于提取智能体数量，但运行时在 v4.1.7+ 中由 Team 支持。
 
 ---

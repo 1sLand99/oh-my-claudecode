@@ -27,6 +27,16 @@ function runKeywordHook(scriptPath: string, prompt: string) {
   ) as Record<string, unknown>;
 }
 
+function runPersistentModeHook(scriptPath: string, payload: Record<string, unknown>) {
+  const output = execFileSync('node', [scriptPath], {
+    cwd: packageRoot,
+    input: JSON.stringify(payload),
+    encoding: 'utf-8',
+  }).trim();
+  const lines = output ? output.split('\n') : [];
+  return JSON.parse(lines.at(-1) ?? '{}') as Record<string, unknown>;
+}
+
 function runPreToolHook(scriptPath: string, command: string) {
   return runPreToolPayload(scriptPath, {
     tool_name: 'Bash',
@@ -1026,6 +1036,43 @@ describe('atomic write packaged helpers', () => {
 });
 
 describe('workflow profile runtime packaged artifacts (#3487)', () => {
+  it('ignores legacy Ultrawork state in packaged persistent hooks', () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'persistent-mode-retired-ultrawork-'));
+    const sessionId = 'retired-ultrawork-template-test';
+    const sessionDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+    const statePath = join(sessionDir, 'ultrawork-state.json');
+    const legacyState = {
+      active: true,
+      session_id: sessionId,
+      started_at: new Date().toISOString(),
+      last_checked_at: new Date().toISOString(),
+      reinforcement_count: 0,
+      original_prompt: 'legacy Ultrawork work must not block the stop hook',
+    };
+
+    try {
+      mkdirSync(sessionDir, { recursive: true });
+      writeFileSync(statePath, JSON.stringify(legacyState));
+      execFileSync('git', ['init', '-q'], { cwd: tempDir });
+
+      for (const script of [
+        join(packageRoot, 'scripts', 'persistent-mode.mjs'),
+        join(packageRoot, 'templates', 'hooks', 'persistent-mode.mjs'),
+      ]) {
+        const output = runPersistentModeHook(script, {
+          cwd: tempDir,
+          directory: tempDir,
+          session_id: sessionId,
+        });
+        expect(output.continue).toBe(true);
+        expect(output.decision).not.toBe('block');
+        expect(JSON.parse(readFileSync(statePath, 'utf-8'))).toEqual(legacyState);
+      }
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('ships the same descriptor and stop-transition helper with plugin and standalone hook payloads', () => {
     const templateHelper = readFileSync(join(packageRoot, 'templates', 'hooks', 'lib', 'workflow-profile-runtime.mjs'), 'utf-8');
     const pluginHelper = readFileSync(join(packageRoot, 'scripts', 'lib', 'workflow-profile-runtime.mjs'), 'utf-8');

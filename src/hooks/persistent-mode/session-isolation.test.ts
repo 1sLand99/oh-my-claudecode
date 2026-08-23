@@ -5,7 +5,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { execSync } from "child_process";
 import { checkPersistentModes, createHookOutput } from "./index.js";
-import { activateUltrawork, deactivateUltrawork } from "../ultrawork/index.js";
+import { clearModeStateFile, writeModeState } from "../../lib/mode-state-io.js";
 import { initAutopilot } from "../autopilot/index.js";
 
 function writePendingTodo(tempDir: string, content: string): void {
@@ -22,6 +22,21 @@ function writePendingTodo(tempDir: string, content: string): void {
       ],
     }),
   );
+}
+
+function activateUltrawork(prompt: string, sessionId: string | undefined, directory: string): boolean {
+  return writeModeState('ultrawork', {
+    active: true,
+    original_prompt: prompt,
+    session_id: sessionId,
+    started_at: new Date().toISOString(),
+    last_checked_at: new Date().toISOString(),
+    reinforcement_count: 0,
+  }, directory, sessionId);
+}
+
+function deactivateUltrawork(directory: string, sessionId?: string): boolean {
+  return clearModeStateFile('ultrawork', directory, sessionId);
 }
 
 describe("Persistent Mode Session Isolation (Issue #311)", () => {

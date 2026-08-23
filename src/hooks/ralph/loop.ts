@@ -41,8 +41,9 @@ import {
   addPattern,
 } from "./progress.js";
 import {
-  readUltraworkState as readUltraworkStateFromModule,
-} from "../ultrawork/index.js";
+  resolveSessionStatePath,
+  getOmcRoot,
+} from "../../lib/worktree-paths.js";
 import { readTeamPipelineState } from "../team-pipeline/state.js";
 import type { TeamPipelinePhase } from "../team-pipeline/types.js";
 
@@ -159,7 +160,7 @@ export function clearLinkedUltraworkState(
   directory: string,
   sessionId?: string,
 ): boolean {
-  const state = readUltraworkStateFromModule(directory, sessionId);
+  const state = readModeState<{ linked_to_ralph?: boolean }>("ultrawork", directory, sessionId);
 
   // Only clear if it was linked to ralph (auto-activated)
   if (!state || !state.linked_to_ralph) {

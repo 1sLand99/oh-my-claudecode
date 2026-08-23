@@ -42,7 +42,6 @@ const PROTECTION_CONFIGS = {
 
 const SKILL_PROTECTION = {
   // Already have mode state → no protection needed
-  autopilot: 'none', ralph: 'none', ultrawork: 'none', team: 'none',
   'omc-teams': 'none', cancel: 'none',
   // Instant / read-only → no protection needed
   trace: 'none', hud: 'none', 'omc-doctor': 'none', 'omc-help': 'none',
@@ -55,13 +54,16 @@ const SKILL_PROTECTION = {
   ralplan: 'medium', review: 'medium', 'external-context': 'medium',
   sciomc: 'medium', skillify: 'medium', learner: 'medium', 'omc-setup': 'medium',
   'mcp-setup': 'medium', 'project-session-manager': 'medium',
-  'writer-memory': 'medium', 'ralph-init': 'medium', ccg: 'medium',
+  'writer-memory': 'medium', 'ralph-init': 'medium',
   // Heavy protection (10 reinforcements)
   deepinit: 'heavy',
 };
 
+const RETIRED_SKILL_NAMES = new Set(['ultrawork', 'ccg']);
+
 function getSkillProtection(skillName) {
   const normalized = (skillName || '').toLowerCase().replace(/^oh-my-claudecode:/, '');
+  if (RETIRED_SKILL_NAMES.has(normalized)) return 'none';
   return SKILL_PROTECTION[normalized] || 'light';
 }
 

@@ -16,13 +16,6 @@ import { join } from 'path';
 import { getHardMaxIterations } from '../../lib/security-config.js';
 import { getClaudeConfigDir } from '../../utils/config-dir.js';
 import { getGlobalOmcConfigCandidates } from '../../utils/paths.js';
-import {
-  readUltraworkState,
-  writeUltraworkState,
-  restoreUltraworkStateIfAbsent,
-  incrementReinforcement,
-  deactivateUltrawork,
-} from '../ultrawork/index.js';
 import { resolveToWorktreeRoot, resolveSessionStatePath, resolveStatePath, getOmcRoot } from '../../lib/worktree-paths.js';
 import {
   captureModeStateCleanup,
@@ -31,6 +24,7 @@ import {
   clearStateFileLockedIf,
   readModeState,
   writeModeState,
+  writeModeStateIfAbsent,
   withStateFileMutationLock,
   type ModeStateCleanupSnapshot,
 } from '../../lib/mode-state-io.js';
@@ -92,7 +86,7 @@ export interface PersistentModeResult {
   /** Message to inject into context */
   message: string;
   /** Which mode triggered the block */
-  mode: 'ralph' | 'ultrawork' | 'todo-continuation' | 'autopilot' | 'autoresearch' | 'team' | 'ralplan' | 'none';
+  mode: 'ralph' | 'todo-continuation' | 'autopilot' | 'autoresearch' | 'team' | 'ralplan' | 'skill-active' | 'none';
   /** Additional metadata */
   metadata?: {
     todoCount?: number;
@@ -314,7 +308,7 @@ function isSessionCancelInProgress(directory: string, sessionId?: string): Sessi
         if (Number.isFinite(expiresAt) && expiresAt <= now && existsSync(cancelSignalPath!)) unlinkSync(cancelSignalPath!);
         return isAuthenticatedAutopilotCancelSignal(raw, target);
       }
-      // A requested-at-only signal belongs to Ralph/Ultrawork. It must never be
+      // A requested-at-only signal belongs to Ralph. It must never be
       // interpreted as an unauthenticated autopilot cancellation.
       if (
         raw.mode === 'autopilot' ||
@@ -344,7 +338,7 @@ function isSessionCancelInProgress(directory: string, sessionId?: string): Sessi
   };
 
   // A target-bearing signal must hold both locks. On runtimes without flock,
-  // requested-at-only Ralph/Ultrawork cancellation may proceed only after
+  // requested-at-only Ralph cancellation may proceed only after
   // canonical discovery proves this session has no enforceable autopilot state.
   const locked = withStateFileMutationLock(autopilotPath, () => {
     const current = readAutopilotTarget(directory, sessionId);
@@ -1192,7 +1186,7 @@ async function checkRalphLoop(
     if (teamPhase === 'complete') {
       clearRalphState(workingDir, sessionId);
       clearVerificationState(workingDir, sessionId);
-      deactivateUltrawork(workingDir, sessionId);
+      clearModeStateFile('ultrawork', workingDir, sessionId);
       return {
         shouldBlock: false,
         message: `[RALPH LOOP COMPLETE - TEAM] Team pipeline completed successfully. Ralph loop ending after ${state.iteration} iteration(s).`,
@@ -1202,7 +1196,7 @@ async function checkRalphLoop(
     if (teamPhase === 'failed') {
       clearRalphState(workingDir, sessionId);
       clearVerificationState(workingDir, sessionId);
-      deactivateUltrawork(workingDir, sessionId);
+      clearModeStateFile('ultrawork', workingDir, sessionId);
       return {
         shouldBlock: false,
         message: `[RALPH LOOP STOPPED - TEAM FAILED] Team pipeline failed. Ralph loop ending after ${state.iteration} iteration(s).`,
@@ -1212,7 +1206,7 @@ async function checkRalphLoop(
     if (teamPhase === 'cancelled') {
       clearRalphState(workingDir, sessionId);
       clearVerificationState(workingDir, sessionId);
-      deactivateUltrawork(workingDir, sessionId);
+      clearModeStateFile('ultrawork', workingDir, sessionId);
       return {
         shouldBlock: false,
         message: `[RALPH LOOP CANCELLED - TEAM] Team pipeline was cancelled. Ralph loop ending after ${state.iteration} iteration(s).`,
@@ -1287,7 +1281,7 @@ async function checkRalphLoop(
           const verificationPath = resolveVerificationStatePath(workingDir, sessionId);
           const verificationCleanupSnapshot = captureStateFileGeneration(verificationPath);
           const ralphSnapshot = readRalphState(workingDir, sessionId);
-          const ultraworkSnapshot = readUltraworkState(workingDir, sessionId);
+          const ultraworkSnapshot = readModeState('ultrawork', workingDir, sessionId);
           const ralphCleanupSnapshot: ModeStateCleanupSnapshot | undefined = ralphSnapshot
             ? captureModeStateCleanup('ralph', workingDir, sessionId)
             : undefined;
@@ -1331,7 +1325,7 @@ async function checkRalphLoop(
             }, true);
             if (locked.acquired && locked.value === true) return true;
             if (ralphSnapshot) restoreRalphStateIfAbsent(workingDir, ralphSnapshot, sessionId);
-            if (ultraworkSnapshot) restoreUltraworkStateIfAbsent(ultraworkSnapshot, workingDir, sessionId);
+            if (ultraworkSnapshot) writeModeStateIfAbsent('ultrawork', ultraworkSnapshot as unknown as Record<string, unknown>, workingDir, sessionId);
             restoreVerificationRequestIfAbsent(workingDir, snapshot, sessionId);
             return false;
           };
@@ -1598,7 +1592,7 @@ function writeStopBreaker(directory: string, name: string, count: number, sessio
 // ---------------------------------------------------------------------------
 // Thinking-only streak guard (issue #3280)
 //
-// A persistent mode (ralph/autopilot/team/ralplan/ultrawork/…) re-injects a
+// A persistent mode (ralph/autopilot/team/ralplan/…) re-injects a
 // continuation prompt on every Stop while the mode is active. If the agent
 // answers each continuation with only thinking blocks and never a tool_use,
 // no work happens but tokens keep burning. Bound that failure: count
@@ -2330,8 +2324,8 @@ async function resolvePersistentModeBlock(
   }
 
   // Explicit /cancel paths must always bypass continuation re-enforcement.
-  // This prevents cancel races where stop-hook persistence can re-arm Ralph/Ultrawork
-  // (self-heal, max-iteration extension, reinforcement) during shutdown.
+  // This prevents cancel races where stop-hook persistence can re-arm Ralph
+  // (max-iteration extension or reinforcement) during shutdown.
   if (isExplicitCancelCommand(stopContext)) {
     return {
       shouldBlock: false,
@@ -2401,7 +2395,7 @@ async function resolvePersistentModeBlock(
 
   // Oversized tool outputs can cause Claude Code to end the current turn after
   // redirecting the payload to a `tool-results/*.txt` file pointer. That stop is
-  // not a real idle/stall signal: injecting a visible Ralph/Ultrawork/todo
+  // not a real idle/stall signal: injecting a visible Ralph/todo
   // continuation banner immediately after the redirect spams the transcript
   // while the agent is still mid-task. Suppress only a small consecutive window
   // of such redirects; if redirects keep repeating, fall through to the normal
@@ -2506,7 +2500,7 @@ async function resolvePersistentModeBlock(
   };
 
   if (cancelInProgress) {
-    // Requested-at-only signals may cancel Ralph/Ultrawork, never autopilot.
+    // Requested-at-only signals may cancel Ralph, never autopilot.
     // Recheck autopilot after signal consumption so an active replacement wins.
     const autopilotResult = await runAutopilotPriority();
     // Terminal named diagnostics are not enforceable autopilot targets and
@@ -2571,7 +2565,7 @@ async function resolvePersistentModeBlock(
       return {
         shouldBlock: true,
         message: skillResult.message,
-        mode: 'ultrawork' as const, // Reuse ultrawork mode type for compatibility
+        mode: 'skill-active',
         metadata: {
           phase: `skill:${skillResult.skillName || 'unknown'}`,
         }
