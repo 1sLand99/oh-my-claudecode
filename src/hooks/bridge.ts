@@ -96,7 +96,6 @@ import {
   RALPH_MESSAGE,
   PROMPT_TRANSLATION_MESSAGE,
 } from "../installer/hooks.js";
-import { getUltraworkMessage } from "./keyword-detector/ultrawork/index.js";
 // Agent dashboard is used in pre/post-tool-use hot path
 import { getAgentDashboard } from "./subagent-tracker/index.js";
 // Session replay recordFileTouch is used in pre-tool-use hot path
@@ -1449,7 +1448,7 @@ async function seedModeStateForExplicitWorkflowSlash(
 /**
  * Process keyword detection hook
  * Detects magic keywords and returns injection message
- * Also activates persistent state for modes that require it (ralph, ultrawork)
+ * Also activates persistent state for modes that require it.
  */
 async function processKeywordDetector(input: HookInput): Promise<HookOutput> {
   // Team worker guard: prevent keyword detection inside team workers to avoid
@@ -1477,9 +1476,8 @@ async function processKeywordDetector(input: HookInput): Promise<HookOutput> {
   const directory = resolveToWorktreeRoot(input.directory);
   const messages: string[] = [];
 
-  // Unified explicit slash invocation handler — covers the canonical
-  // workflow skills (autopilot, ralph, team, ultrawork,
-  // deep-interview, ralplan, self-improve). Seeds the workflow slot via the
+  // Unified explicit slash invocation handler for active workflow skills.
+  // Seeds the workflow slot via the
   // sanctioned dual-copy helper BEFORE the Skill tool fires, and seeds the
   // mode-specific state file when the mode requires pre-Skill state. The
   // ralplan path additionally returns the legacy [RALPLAN INIT] context
@@ -1684,7 +1682,7 @@ async function processKeywordDetector(input: HookInput): Promise<HookOutput> {
         const criticMode = detectCriticModeFlag(promptText) ?? undefined;
         const cleanPrompt = stripCriticModeFlag(promptText);
 
-        // Activate ralph state which also auto-activates ultrawork
+        // Activate Ralph state.
         const hook = createRalphLoopHook(directory);
         const started = hook.startLoop(
           sessionId,
@@ -1694,27 +1692,10 @@ async function processKeywordDetector(input: HookInput): Promise<HookOutput> {
           },
         );
         if (started) {
-          markModeAwaitingConfirmation(directory, sessionId, 'ralph', 'ultrawork');
+          markModeAwaitingConfirmation(directory, sessionId, 'ralph');
         }
 
         messages.push(RALPH_MESSAGE);
-        break;
-      }
-
-      case "ultrawork": {
-        // Lazy-load ultrawork module
-        const { activateUltrawork } = await import("./ultrawork/index.js");
-        // Activate persistent ultrawork state
-        const activated = activateUltrawork(promptText, sessionId, directory);
-        if (activated) {
-          markModeAwaitingConfirmation(directory, sessionId, 'ultrawork');
-        }
-        messages.push(
-          getUltraworkMessage(
-            getHookContextString(input, "agentName", "agent_name"),
-            getHookContextString(input, "model", "modelId", "model_id"),
-          ),
-        );
         break;
       }
 

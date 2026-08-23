@@ -137,18 +137,14 @@ describe('Keyword Detector', () => {
   });
 
   describe('detectKeywordsWithType', () => {
-    it('should detect ultrawork keyword', () => {
+    it('should NOT detect retired ultrawork keyword', () => {
       const detected = detectKeywordsWithType('I need ultrawork mode');
-      expect(detected).toHaveLength(1);
-      expect(detected[0].type).toBe('ultrawork');
-      expect(detected[0].keyword).toBe('ultrawork');
+      expect(detected).toEqual([]);
     });
 
-    it('should detect ulw abbreviation', () => {
+    it('should NOT detect retired ulw abbreviation', () => {
       const detected = detectKeywordsWithType('Use ulw for this task');
-      expect(detected).toHaveLength(1);
-      expect(detected[0].type).toBe('ultrawork');
-      expect(detected[0].keyword).toBe('ulw');
+      expect(detected).toEqual([]);
     });
 
     it('should detect ultrathink keyword', () => {
@@ -195,8 +191,7 @@ describe('Keyword Detector', () => {
       const variants = ['ULTRAWORK', 'UltraWork', 'uLtRaWoRk'];
       for (const variant of variants) {
         const detected = detectKeywordsWithType(variant);
-        expect(detected).toHaveLength(1);
-        expect(detected[0].type).toBe('ultrawork');
+        expect(detected).toEqual([]);
       }
     });
 
@@ -204,8 +199,7 @@ describe('Keyword Detector', () => {
       // Should not match partial words
       const text = 'multiwork is not ultrawork';
       const detected = detectKeywordsWithType(text);
-      expect(detected).toHaveLength(1);
-      expect(detected[0].keyword).toBe('ultrawork');
+      expect(detected).toEqual([]);
     });
 
     it('should include position information', () => {
@@ -366,7 +360,7 @@ describe('Keyword Detector', () => {
 
   describe('hasKeyword', () => {
     it('should return true when keyword exists', () => {
-      expect(hasKeyword('use ultrawork mode')).toBe(true);
+      expect(hasKeyword('use ultrawork mode')).toBe(false);
       expect(hasKeyword('search the codebase')).toBe(true);
       expect(hasKeyword('deep analyze the bug')).toBe(true);
     });
@@ -393,11 +387,11 @@ describe('Keyword Detector', () => {
 
   describe('getPrimaryKeyword', () => {
     it('should return highest priority keyword', () => {
-      // ultrawork has highest priority
-      const text = 'search and analyze with ultrawork';
+      // Retired ultrawork must not displace surviving search detection.
+      const text = 'search the codebase and analyze with ultrawork';
       const primary = getPrimaryKeyword(text);
       expect(primary).not.toBeNull();
-      expect(primary!.type).toBe('ultrawork');
+      expect(primary!.type).toBe('deepsearch');
     });
 
     it('should return ultrathink when present', () => {
@@ -1233,14 +1227,14 @@ describe('Hook Output Structure', () => {
     it('should serialize to valid JSON', () => {
       const output = {
         continue: true,
-        message: 'ULTRAWORK MODE ACTIVATED'
+        message: 'AUTOPILOT MODE ACTIVATED'
       };
 
       const json = JSON.stringify(output);
       const parsed = JSON.parse(json);
 
       expect(parsed.continue).toBe(true);
-      expect(parsed.message).toBe('ULTRAWORK MODE ACTIVATED');
+      expect(parsed.message).toBe('AUTOPILOT MODE ACTIVATED');
     });
 
     it('should handle multiline messages', () => {
@@ -1288,12 +1282,12 @@ describe('Hook Output Structure', () => {
 
     it('should format keyword detection message', () => {
       const keyword: DetectedKeyword = {
-        type: 'ultrawork',
-        keyword: 'ultrawork',
+        type: 'autopilot',
+        keyword: 'autopilot',
         position: 0
       };
-      const message = `ULTRAWORK MODE ACTIVATED - Detected keyword: ${keyword.keyword}`;
-      expect(message).toContain('ULTRAWORK MODE');
+      const message = `AUTOPILOT MODE ACTIVATED - Detected keyword: ${keyword.keyword}`;
+      expect(message).toContain('AUTOPILOT MODE');
       expect(message).toContain(keyword.keyword);
     });
 
@@ -1346,13 +1340,13 @@ Now deep analyze the bug
     expect(detected.some(d => d.type === 'deepsearch')).toBe(true);
   });
 
-  it('should prioritize ultrawork even with other keywords', () => {
+  it('should preserve surviving search detection alongside retired ultrawork', () => {
     const text = 'search the codebase, deep analyze the bug, and use ultrawork mode';
     const primary = getPrimaryKeyword(text);
 
     expect(primary).not.toBeNull();
-    expect(primary!.type).toBe('ultrawork');
-    expect(primary!.keyword).toBe('ultrawork');
+    expect(primary!.type).toBe('deepsearch');
+    expect(primary!.keyword).toBe('search the codebase');
   });
 });
 

@@ -10,17 +10,15 @@
  * 2. ralph: Persistence mode until task completion
  * 3. autopilot: Full autonomous execution
  * 4. team: Explicit-only via /team (not auto-triggered)
- * 5. ultrawork/ulw: Maximum parallel execution
- * 6. ccg: Claude-Codex-Gemini tri-model orchestration
- * 7. ralplan: Iterative planning with consensus
- * 8. deep interview: Socratic interview workflow
- * 9. ai-slop-cleaner: Cleanup/deslop anti-slop workflow
- * 10. tdd: Test-driven development
- * 11. code review: Comprehensive review mode
- * 12. security review: Security-focused review mode
- * 13. ultrathink: Extended reasoning
- * 14. deepsearch: Codebase search (restricted patterns)
- * 15. analyze: Analysis mode (restricted patterns)
+ * 5. ralplan: Iterative planning with consensus
+ * 6. deep interview: Socratic interview workflow
+ * 7. ai-slop-cleaner: Cleanup/deslop anti-slop workflow
+ * 8. tdd: Test-driven development
+ * 9. code review: Comprehensive review mode
+ * 10. security review: Security-focused review mode
+ * 11. ultrathink: Extended reasoning
+ * 12. deepsearch: Codebase search (restricted patterns)
+ * 13. analyze: Analysis mode (restricted patterns)
  */
 
 import { writeFileSync, mkdirSync, existsSync, unlinkSync, readFileSync } from 'fs';
@@ -148,6 +146,10 @@ function extractPrompt(input) {
 
 function isExplicitAskSlashInvocation(prompt) {
   return /^\s*\/(?:oh-my-claudecode:)?ask\s+(?:claude|codex|gemini|grok)\b/i.test(prompt);
+}
+
+function isRetiredSlashInvocation(prompt) {
+  return /^\s*\/(?:omc:|oh-my-claudecode:)?(?:ultrawork|ulw|uw|ultraqa|ccg|claude-codex-gemini)(?=\s|$|[?!.,;:])/i.test(prompt);
 }
 
 // Sanitize text to prevent false positives from code blocks, XML tags, URLs, and file paths
@@ -1138,7 +1140,7 @@ Preferred invocation: /oh-my-claudecode:${s.name}${argsText}
 ${pathStatus}`;
   }).join('\n\n');
 
-  // Multi-skill routing (e.g. `/ralph ultrawork`) must carry the same
+  // Multi-skill routing (e.g. `/ralph deep-interview`) must carry the same
   // disambiguation notice as the single-skill path, or it becomes a bypass.
   const ralphLoopNotice = skills.some((s) => s.name === 'ralph')
     ? findOfficialRalphLoopNotice(directory)
@@ -1174,8 +1176,8 @@ function resolveConflicts(matches) {
   // Team keyword detection removed — team is now explicit-only via /team skill.
 
   // Sort by priority order
-  const priorityOrder = ['cancel','ralph','autopilot','ultrawork',
-    'ccg','ralplan','deep-interview','ai-slop-cleaner','tdd','code-review','security-review','ultrathink','deepsearch','analyze'];
+  const priorityOrder = ['cancel','ralph','autopilot','ralplan',
+    'deep-interview','ai-slop-cleaner','tdd','code-review','security-review','ultrathink','deepsearch','analyze'];
   resolved.sort((a, b) => priorityOrder.indexOf(a.name) - priorityOrder.indexOf(b.name));
 
   return resolved;
@@ -1550,6 +1552,11 @@ async function main() {
       return;
     }
 
+    if (isRetiredSlashInvocation(prompt)) {
+      console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+      return;
+    }
+
     // `/ask <provider> ...` delegates the remainder of the prompt to an
     // advisor process. Magic keywords inside that delegated payload must not
     // activate modes in the current Claude Code session.
@@ -1583,17 +1590,6 @@ async function main() {
 
     // Team keyword detection removed — team mode is now explicit-only via /team skill.
     // This prevents infinite spawning when Claude workers receive prompts containing "team".
-
-    // Ultrawork keywords
-    if (hasActionableKeyword(cleanPrompt, /\b(ultrawork|ulw)\b|(울트라워크)|(ウルトラワーク)/i)) {
-      matches.push({ name: 'ultrawork', args: '' });
-    }
-
-
-    // CCG keywords (Claude-Codex-Gemini tri-model orchestration)
-    if (hasActionableKeyword(cleanPrompt, /\b(ccg|claude-codex-gemini)\b|(씨씨지)|(シーシージー)/i)) {
-      matches.push({ name: 'ccg', args: '' });
-    }
 
     // Ralplan keyword
     if (hasActionableRalplanKeyword(cleanPrompt, /\b(ralplan)\b|(랄플랜)|(ラルプラン)/i)) {
@@ -1686,20 +1682,13 @@ async function main() {
 
     // Activate states for modes that need them
     const sessionId = data.sessionId || data.session_id || data.sessionid || '';
-    const stateModes = resolved.filter(m => ['ralph', 'autopilot', 'ultrawork'].includes(m.name));
+    const stateModes = resolved.filter(m => ['ralph', 'autopilot'].includes(m.name));
     for (const mode of stateModes) {
       const activationError = await activateState(directory, prompt, mode.name, sessionId);
       if (activationError === 'workflow_descriptor_integrity_failed') {
         console.log(JSON.stringify(createHookOutput('workflow_descriptor_integrity_failed')));
         return;
       }
-    }
-
-    // Special: Ralph with ultrawork (ralph always includes ultrawork)
-    const hasRalph = resolved.some(m => m.name === 'ralph');
-    const hasUltrawork = resolved.some(m => m.name === 'ultrawork');
-    if (hasRalph && !hasUltrawork) {
-      await activateState(directory, prompt, 'ultrawork', sessionId);
     }
 
     const additionalContextParts = [];

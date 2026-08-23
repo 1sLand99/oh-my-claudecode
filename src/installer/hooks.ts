@@ -242,16 +242,15 @@ Incomplete tasks remain in your todo list. Continue working on the next pending 
 
 /**
  * Ralph mode message - injected when ralph keyword detected
- * Auto-activates ultrawork for parallel execution
  */
-export const RALPH_MESSAGE = `[RALPH + ULTRAWORK MODE ACTIVATED]
+export const RALPH_MESSAGE = `[RALPH MODE ACTIVATED]
 
-Ralph mode auto-activates Ultrawork for maximum parallel execution. Follow these rules:
+Ralph mode persists until the requested work is verified complete. Follow these rules:
 
-### Parallel Execution
-- **PARALLEL**: Fire independent calls simultaneously - NEVER wait sequentially
-- **BACKGROUND FIRST**: Use Task(run_in_background=true) for long operations
-- **DELEGATE**: Route tasks to specialist agents immediately
+### Execution
+- Work through every remaining requirement
+- Delegate independent specialist work when it improves correctness
+- Keep the durable Ralph state aligned with actual progress
 
 ### Completion Requirements
 - Verify ALL requirements from the original task are met

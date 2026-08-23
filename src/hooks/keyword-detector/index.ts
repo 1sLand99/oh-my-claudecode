@@ -19,7 +19,6 @@ export type KeywordType =
   | 'ralph'       // Priority 2
   | 'autopilot'   // Priority 3
   | 'team'        // Priority 4.5 (team mode)
-  | 'ultrawork'   // Priority 5
   | 'ralplan'     // Priority 8
   | 'tdd'         // Priority 9
   | 'code-review' // Priority 10
@@ -31,8 +30,7 @@ export type KeywordType =
   | 'codex'       // Priority 15
   | 'gemini'      // Priority 16
   | 'cursor'      // Priority 17
-  | 'antigravity' // Priority 18
-  | 'ccg';        // Priority 8.5 (Claude-Codex-Gemini orchestration)
+  | 'antigravity'; // Priority 18
 
 export interface DetectedKeyword {
   type: KeywordType;
@@ -47,7 +45,6 @@ const KEYWORD_PATTERNS: Record<KeywordType, RegExp> = {
   cancel: /\b(cancelomc|stopomc)\b/i,
   ralph: /\b(ralph)\b(?!-)|(랄프)(?!로렌)|(ラルフ)(?!・?ローレン)/i,
   autopilot: /\b(autopilot|auto[\s-]?pilot|fullsend|full\s+auto)\b|\b(?:build|create|make)\s+me\s+(?:an?\s+)?(?:app|feature|project|tool|plugin|website|api|server|cli|script|system|service|dashboard|bot|extension)\b|\bi\s+want\s+an?\s+(?:app|feature|project|tool|plugin|website|api|server|cli|script|system|service|dashboard|bot|extension)\b|(오토파일럿)|(オートパイロット)/i,
-  ultrawork: /\b(ultrawork|ulw)\b|(울트라워크)|(ウルトラワーク)/i,
   // Team keyword detection disabled — team mode is now explicit-only via /team skill.
   // This prevents infinite spawning when Claude workers receive prompts containing "team".
   team: /(?!x)x/,  // never-match placeholder (type system requires the key)
@@ -59,7 +56,6 @@ const KEYWORD_PATTERNS: Record<KeywordType, RegExp> = {
   deepsearch: /\b(deepsearch)\b|\bsearch\s+the\s+codebase\b|\bfind\s+in\s+(the\s+)?codebase\b|(딥\s?서치)|(ディープ\s?サーチ)/i,
   analyze: /\b(deep[\s-]?analyze|deepanalyze)\b|(딥\s?분석)|(ディープ\s?アナライズ)/i,
   'deep-interview': /\b(deep[\s-]interview|ouroboros)\b|(딥인터뷰)|(ディープインタビュー)/i,
-  ccg: /\b(ccg|claude-codex-gemini)\b|(씨씨지)|(シーシージー)/i,
   codex: /\b(ask|use|delegate\s+to)\s+(codex|gpt)\b/i,
   gemini: /\b(ask|use|delegate\s+to)\s+gemini\b/i,
   cursor: /\b(ask|use|delegate\s+to)\s+cursor\b/i,
@@ -92,22 +88,24 @@ const KEYWORD_SKIP_PREDICATES: Partial<Record<KeywordType, (text: string) => boo
  * Priority order for keyword detection
  */
 const KEYWORD_PRIORITY: KeywordType[] = [
-  'cancel', 'ralph', 'autopilot', 'team', 'ultrawork',
-  'ccg', 'ralplan', 'tdd', 'code-review', 'security-review',
+  'cancel', 'ralph', 'autopilot', 'team',
+  'ralplan', 'tdd', 'code-review', 'security-review',
   'ultrathink', 'deepsearch', 'analyze', 'deep-interview', 'codex', 'gemini', 'cursor', 'antigravity'
 ];
 
+const RETIRED_WORKFLOW_SLASH_PATTERN =
+  /^\s*\/(?:oh-my-claudecode:|omc:)?(?:ultrawork|ulw|uw|ultraqa|ccg|claude-codex-gemini)(?=\s|$|[?!.,;:])/i;
+
 /**
  * Canonical workflow skills detected via explicit slash invocation.
- * Mirrors `CANONICAL_WORKFLOW_SKILLS` in `skill-state/index.ts`. Listed here
- * (rather than imported) to keep the keyword-detector free of cross-module
- * dependencies on skill-state.
+ * This is intentionally narrower than the state compatibility registry:
+ * removed-not-aliased workflows may retain legacy state readers, but must not
+ * be parsed as active slash routes.
  */
 const CANONICAL_WORKFLOW_SLASH_SKILLS = [
   'autopilot',
   'ralph',
   'team',
-  'ultrawork',
   'deep-interview',
   'ralplan',
   'self-improve',
@@ -119,9 +117,9 @@ export type CanonicalWorkflowSlashSkill =
 /**
  * Map workflow slash skills to keyword types so explicit slash invocations
  * surface alongside ordinary keyword detection. Skills with no dedicated
- * KeywordType (`self-improve`) is intentionally absent — the
- * bridge handles their seeding via the parser result instead of through the
- * keyword-priority loop.
+ * KeywordType (`self-improve`) is intentionally absent — the bridge handles
+ * their seeding via the parser result instead of through the keyword-priority
+ * loop.
  */
 const SLASH_SKILL_TO_KEYWORD_TYPE: Partial<
   Record<CanonicalWorkflowSlashSkill, KeywordType>
@@ -129,7 +127,6 @@ const SLASH_SKILL_TO_KEYWORD_TYPE: Partial<
   autopilot: 'autopilot',
   ralph: 'ralph',
   team: 'team',
-  ultrawork: 'ultrawork',
   'deep-interview': 'deep-interview',
   ralplan: 'ralplan',
 };
@@ -415,7 +412,7 @@ const QUESTION_FOLLOWUP_PATTERNS: RegExp[] = [
   /(?:ทำไม|อะไร|ยังไง|อย่างไร|เท่าไหร่|กี่|มั้ย|ไหม|เหรอ|หรอ|หรือไม่|หรือเปล่า|ใช่ไหม|ถูกมั้ย)/u,
 ];
 const MODE_REFERENCE_PATTERN =
-  /\b(?:ralph|autopilot|auto[\s-]?pilot|ultrawork|ulw|ralplan|ultrathink|deepsearch|deep[\s-]?analyze|deepanalyze|deep[\s-]interview|ouroboros|ccg|claude-codex-gemini|deerflow)\b/gi;
+  /\b(?:ralph|autopilot|auto[\s-]?pilot|ralplan|ultrathink|deepsearch|deep[\s-]?analyze|deepanalyze|deep[\s-]interview|ouroboros|deerflow)\b/gi;
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -575,16 +572,13 @@ function hasDiagnosticIntentNearKeyword(context: string, keyword: string): boole
   return patterns.some((pattern) => pattern.test(context));
 }
 
-function isRalphUltraworkMetaOrBanterContext(context: string, keywordText: string): boolean {
+function isRalphMetaOrBanterContext(context: string, keywordText: string): boolean {
   const normalizedKeyword = keywordText.toLowerCase().replace(/\s+/g, '');
-  if (!['ralph', '랄프', 'ラルフ', 'ultrawork', 'ulw', 'uw', '울트라워크', 'ウルトラワーク'].includes(normalizedKeyword)) {
+  if (!['ralph', '랄프', 'ラルフ'].includes(normalizedKeyword)) {
     return false;
   }
 
-  const currentKeywordAliases = normalizedKeyword === 'ralph' || normalizedKeyword === '랄프' || normalizedKeyword === 'ラルフ'
-    ? ['랄프', 'ラルフ']
-    : ['울트라워크', 'ウルトラワーク'];
-  const currentKeywordPattern = currentKeywordAliases.join('|');
+  const currentKeywordPattern = ['ralph', '랄프', 'ラルフ'].join('|');
   const imperativeVerbPattern = '켜|켜줘|실행|시작|돌려|돌려줘|써|써줘|사용해|진행해';
   const koreanImperativePatterns = [
     new RegExp(`(?:${currentKeywordPattern})[^?？\n]{0,16}(?:${imperativeVerbPattern})`, 'u'),
@@ -597,7 +591,7 @@ function isRalphUltraworkMetaOrBanterContext(context: string, keywordText: strin
   const metaOrBanterPatterns = [
     /[?？].{0,12}(?:ㅋ{1,}|ㅎ{1,}|lol|lmao)/iu,
     /(?:ㅋ{1,}|ㅎ{1,}|lol|lmao).{0,40}[?？]/iu,
-    /(?:ralph|랄프|ultrawork|ulw|uw|울트라워크).{0,40}(?:라도|줘야\s*해|쥐어\s*줘야\s*해|해야\s*해).{0,20}[?？]/iu,
+    /(?:ralph|랄프|ラルフ).{0,40}(?:라도|줘야\s*해|쥐어\s*줘야\s*해|해야\s*해).{0,20}[?？]/iu,
     /(?:관계|관련|연관|차이|비교).{0,40}(?:뭐|무엇|어떻게|설명|알려|궁금|인가|야|냐|니|까|[?？])/u,
     /(?:뭐|무엇|어떻게|설명|알려|궁금).{0,40}(?:관계|관련|연관|차이|비교)/u,
   ];
@@ -707,7 +701,7 @@ function isInformationalKeywordContext(text: string, position: number, keywordLe
       return false;
     }
 
-    if (isRalphUltraworkMetaOrBanterContext(context, keywordText)) {
+    if (isRalphMetaOrBanterContext(context, keywordText)) {
       return true;
     }
 
@@ -807,6 +801,10 @@ export function detectKeywordsWithType(
   _agentName?: string
 ): DetectedKeyword[] {
   const detected: DetectedKeyword[] = [];
+
+  if (RETIRED_WORKFLOW_SLASH_PATTERN.test(text)) {
+    return detected;
+  }
 
   // Check for an explicit canonical workflow slash invocation BEFORE sanitization.
   // The general sanitizer strips bare `/word` tokens as file paths, so bare
@@ -917,7 +915,7 @@ export interface TaskSizeAwareKeywordsResult {
 
 /**
  * Get all keywords with task-size-based filtering applied.
- * For small tasks, heavy orchestration modes (ralph/autopilot/team/ultrawork etc.)
+ * For small tasks, heavy orchestration modes (ralph/autopilot/team etc.)
  * are suppressed to avoid over-orchestration.
  *
  * This is the recommended function to use in the bridge hook for keyword detection.
@@ -991,7 +989,6 @@ export const EXECUTION_GATE_KEYWORDS = new Set<KeywordType>([
   'ralph',
   'autopilot',
   'team',
-  'ultrawork',
 ]);
 
 /**
@@ -1057,7 +1054,7 @@ export function isUnderspecifiedForExecution(text: string): boolean {
 
   // Strip mode keywords for effective word counting
   const stripped = trimmed
-    .replace(/\b(?:ralph|autopilot|team|ultrawork|ulw)\b/gi, '')
+    .replace(/\b(?:ralph|autopilot|team)\b/gi, '')
     .trim();
   const effectiveWords = stripped.split(/\s+/).filter(w => w.length > 0).length;
 
