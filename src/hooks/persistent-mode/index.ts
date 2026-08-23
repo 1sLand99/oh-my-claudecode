@@ -42,6 +42,7 @@ import {
   consumeCompletionArchitectApproval,
   getPrdGoverningCriteriaRevision,
   readVerificationState,
+  writeVerificationState,
   startVerification,
   recordArchitectFeedback,
   getArchitectVerificationPrompt,
@@ -1263,9 +1264,11 @@ async function checkRalphLoop(
           // Architect approved - truly complete
           const criticMode = verificationState.critic_mode;
           const finish = () => {
-            return consumeVerificationRequest(workingDir, verificationState!.request_id, sessionId)
-              && clearRalphState(workingDir, sessionId)
-              && deactivateUltrawork(workingDir, sessionId);
+            const snapshot = { ...verificationState! };
+            if (!consumeVerificationRequest(workingDir, snapshot.request_id, sessionId)) return false;
+            if (clearRalphState(workingDir, sessionId) && deactivateUltrawork(workingDir, sessionId)) return true;
+            writeVerificationState(workingDir, snapshot, sessionId);
+            return false;
           };
           const consumed = !prdStatus.hasPrd
             ? finish()

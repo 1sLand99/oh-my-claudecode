@@ -638,6 +638,10 @@ export function consumeStoryArchitectApproval(
     if (notes) story.notes = notes;
     try {
       if (!(consume?.() ?? true)) return false;
+      const current = readPrdFromPath(prdPath).prd;
+      const currentStory = current?.userStories.find(candidate => candidate.id === storyId);
+      if (!current || !currentStory || currentStory.governingCriteriaRevision !== expectedCriteriaRevision
+        || currentStory.completionCriteriaRevision !== expectedCriteriaRevision) return false;
       atomicWriteJsonSync(prdPath, bindCompletionClaims(parsed));
       return true;
     } catch {
@@ -663,7 +667,11 @@ export function consumeCompletionArchitectApproval(
     const current = prd !== undefined
       && getPrdGoverningCriteriaRevision(prd) === expectedCriteriaRevision
       && getPrdStatus(prd).allComplete;
-    return current && (consume?.() ?? true);
+    if (!current || !(consume?.() ?? true)) return false;
+    const revalidated = readPrdFromPath(prdPath).prd;
+    return revalidated !== undefined
+      && getPrdGoverningCriteriaRevision(revalidated) === expectedCriteriaRevision
+      && getPrdStatus(revalidated).allComplete;
   }, true);
   return result.acquired && result.value === true;
 }

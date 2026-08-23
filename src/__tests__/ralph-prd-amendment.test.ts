@@ -111,6 +111,7 @@ describe('Ralph PRD Criterion Amendment', () => {
         ...samplePrd,
         userStories: [{ ...samplePrd.userStories[0], passes: true, architectVerified: false }],
       });
+      expect(markStoryComplete(testDir, 'US-001')).toBe(true);
       const prdPath = findPrdPath(testDir)!;
       const expectedRevision = readPrd(testDir)?.userStories[0].governingCriteriaRevision;
       if (!expectedRevision) {
@@ -129,6 +130,28 @@ describe('Ralph PRD Criterion Amendment', () => {
         acceptanceCriteria: [FDFT_REPLACEMENT],
         passes: false,
         architectVerified: false,
+      });
+    });
+
+    it('does not overwrite a direct amendment injected after story request consumption', () => {
+      writeSamplePrd({
+        ...samplePrd,
+        userStories: [{ ...samplePrd.userStories[0], passes: true, architectVerified: false }],
+      });
+      expect(markStoryComplete(testDir, 'US-001')).toBe(true);
+      const prdPath = findPrdPath(testDir)!;
+      const expectedRevision = readPrd(testDir)?.userStories[0].governingCriteriaRevision;
+      if (!expectedRevision) throw new Error('Expected governing criteria revision');
+
+      expect(consumeStoryArchitectApproval(testDir, 'US-001', expectedRevision, undefined, undefined, undefined, () => {
+        const handEdited = JSON.parse(readFileSync(prdPath, 'utf8')) as PRD;
+        handEdited.userStories[0].acceptanceCriteria = [FDFT_REPLACEMENT];
+        handEdited.userStories[0].criterionAmendments = [resultAmendment()];
+        writeFileSync(prdPath, JSON.stringify(handEdited, null, 2));
+        return true;
+      })).toBe(false);
+      expect(readPrd(testDir)?.userStories[0]).toMatchObject({
+        acceptanceCriteria: [FDFT_REPLACEMENT], passes: false, architectVerified: false,
       });
     });
 
