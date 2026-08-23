@@ -1,6 +1,8 @@
-import { execFileSync } from 'child_process';
-import { readFileSync } from 'fs';
+import { execFileSync, spawnSync } from 'child_process';
+import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
 import { join } from 'path';
+import { pathToFileURL } from 'url';
 import { describe, expect, it } from 'vitest';
 
 const root = process.cwd();
@@ -10,6 +12,32 @@ const projectionPaths = [
   join(root, 'scripts', 'lib', 'skill-entitlements.mjs'),
   join(root, 'templates', 'hooks', 'lib', 'skill-entitlements.mjs'),
 ];
+
+function generateFixtureProjections(skills: unknown[]): { root: string; projectionPaths: string[] } {
+  const fixtureRoot = mkdtempSync(join(tmpdir(), 'omc-skill-entitlements-'));
+  mkdirSync(join(fixtureRoot, 'scripts'), { recursive: true });
+  mkdirSync(join(fixtureRoot, 'scripts', 'lib'), { recursive: true });
+  mkdirSync(join(fixtureRoot, 'src', 'config'), { recursive: true });
+  mkdirSync(join(fixtureRoot, 'templates', 'hooks', 'lib'), { recursive: true });
+  cpSync(generator, join(fixtureRoot, 'scripts', 'generate-skill-entitlements.mjs'));
+  writeFileSync(
+    join(fixtureRoot, 'src', 'config', 'builtin-skill-entitlements.json'),
+    JSON.stringify({ schemaVersion: 1, skininthegamebrosOnlySkills: skills }),
+  );
+
+  execFileSync(process.execPath, [join(fixtureRoot, 'scripts', 'generate-skill-entitlements.mjs')], {
+    cwd: fixtureRoot,
+    stdio: 'pipe',
+  });
+
+  return {
+    root: fixtureRoot,
+    projectionPaths: [
+      join(fixtureRoot, 'scripts', 'lib', 'skill-entitlements.mjs'),
+      join(fixtureRoot, 'templates', 'hooks', 'lib', 'skill-entitlements.mjs'),
+    ],
+  };
+}
 
 describe('builtin skill entitlement projections', () => {
   it('derives every standalone-hook entitlement helper from the canonical v5 manifest', () => {
@@ -42,7 +70,67 @@ describe('builtin skill entitlement projections', () => {
       expect(readFileSync(path, 'utf8')).toContain(normalizedExpression);
     }
     expect(readFileSync(generator, 'utf8')).toContain(
-      'map(skill => skill.trim().toLowerCase())',
+      'const normalized = skill.trim().toLowerCase()',
     );
+  });
+
+  it('projects nonempty mixed-case entitlements identically for packaged and standalone installs', async () => {
+    const fixture = generateFixtureProjections([' Remember ', 'VERIFY', 'debug', 'remember']);
+    try {
+      const projections = fixture.projectionPaths.map(path => readFileSync(path, 'utf8'));
+      expect(new Set(projections).size).toBe(1);
+      expect(projections[0]).toContain('new Set(["debug","remember","verify"])');
+
+      const priorUserType = process.env.USER_TYPE;
+      try {
+        for (const projectionPath of fixture.projectionPaths) {
+          const helper = await import(pathToFileURL(projectionPath).href);
+          delete process.env.USER_TYPE;
+          for (const skill of ['ReMeMbEr', 'VERIFY', 'Debug']) {
+            expect(helper.isSkillVisibleToUser(skill)).toBe(false);
+          }
+          expect(helper.isSkillVisibleToUser('plan')).toBe(true);
+
+          process.env.USER_TYPE = 'ant';
+          for (const skill of ['ReMeMbEr', 'VERIFY', 'Debug']) {
+            expect(helper.isSkillVisibleToUser(skill)).toBe(true);
+          }
+        }
+      } finally {
+        if (priorUserType === undefined) delete process.env.USER_TYPE;
+        else process.env.USER_TYPE = priorUserType;
+      }
+
+      const packageFiles = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { files: string[] };
+      expect(packageFiles.files).toEqual(expect.arrayContaining(['scripts', 'templates']));
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ['whitespace-only', ['   '], 'Invalid builtin skill entitlement'],
+    ['malformed punctuation', ['remember/verify'], 'Invalid builtin skill entitlement'],
+    ['non-string', [42], 'Invalid src/config/builtin-skill-entitlements.json manifest'],
+  ])('rejects %s entitlement fixture values', (_name, skills, expectedError) => {
+    const fixtureRoot = mkdtempSync(join(tmpdir(), 'omc-skill-entitlements-invalid-'));
+    try {
+      mkdirSync(join(fixtureRoot, 'scripts'), { recursive: true });
+      mkdirSync(join(fixtureRoot, 'src', 'config'), { recursive: true });
+      cpSync(generator, join(fixtureRoot, 'scripts', 'generate-skill-entitlements.mjs'));
+      writeFileSync(
+        join(fixtureRoot, 'src', 'config', 'builtin-skill-entitlements.json'),
+        JSON.stringify({ schemaVersion: 1, skininthegamebrosOnlySkills: skills }),
+      );
+
+      const result = spawnSync(process.execPath, [join(fixtureRoot, 'scripts', 'generate-skill-entitlements.mjs')], {
+        cwd: fixtureRoot,
+        encoding: 'utf8',
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(expectedError);
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
   });
 });
