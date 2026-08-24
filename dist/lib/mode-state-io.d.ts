@@ -11,22 +11,47 @@ export declare function withStateFileMutationLock<T>(filePath: string, callback:
     value: T | undefined;
 };
 export declare function writeStateFileLocked(filePath: string, state: Record<string, unknown>): boolean;
-export declare function clearStateFileLocked(filePath: string): boolean;
+export declare function clearStateFileLocked(filePath: string, expectedGeneration?: StateFileGeneration): boolean;
 export type EmergencyStateAuthorization = (state: Record<string, unknown>) => boolean;
 export interface EmergencyRecoveryOptions {
     /** Evaluated under the recovery claim before a recovered generation is mutated. */
     authorizeState?: EmergencyStateAuthorization;
 }
 export type ConditionalClearResult = 'cleared' | 'skipped' | 'failed';
-export declare function clearStateFileLockedIf(filePath: string, predicate: (current: Record<string, unknown>) => boolean, recoveryOptions?: EmergencyRecoveryOptions): ConditionalClearResult;
+export declare function clearStateFileLockedIf(filePath: string, predicate: (current: Record<string, unknown>) => boolean, recoveryOptions?: EmergencyRecoveryOptions, expectedGeneration?: StateFileGeneration): ConditionalClearResult;
 export type ConditionalWriteResult = 'written' | 'skipped' | 'failed';
 export declare function writeStateFileLockedIf(filePath: string, predicate: (current: Record<string, unknown>) => boolean, transform: (current: Record<string, unknown>) => Record<string, unknown>): ConditionalWriteResult;
 export declare function writeStateFileLockedCreateIf(filePath: string, predicate: (current: Record<string, unknown> | null) => boolean, transform: (current: Record<string, unknown> | null) => Record<string, unknown>): ConditionalWriteResult;
+/** A stable file generation used to bind cleanup to one publication. */
+export interface StateFileGeneration {
+    dev: number;
+    ino: number;
+    digest: string;
+}
+export interface CapturedStateFile {
+    path: string;
+    generation: StateFileGeneration;
+    raw: string;
+}
+/** State and runtime surfaces captured before a terminal cleanup transaction. */
+export interface ModeStateCleanupSnapshot {
+    direct: CapturedStateFile | null;
+    artifacts: CapturedStateFile[];
+    legacy: CapturedStateFile[];
+}
+/** Capture one exact publication for callers whose state file is not a mode file. */
+export declare function captureStateFileGeneration(path: string): CapturedStateFile | null;
 /** A dead transaction is recovered under a state-scoped, generation-verified exclusive claim. */
 export declare function recoverEmergencyStateFile(filePath: string, options?: EmergencyRecoveryOptions): boolean;
 export declare function emergencyMutateStateFileIf(filePath: string, predicate: (current: Record<string, unknown>) => boolean, transform: ((current: Record<string, unknown>) => Record<string, unknown>) | null, recoveryOptions?: EmergencyRecoveryOptions): boolean;
 export declare function getStateSessionOwner(state: Record<string, unknown> | null | undefined): string | undefined;
 export declare function canClearStateForSession(state: Record<string, unknown> | null | undefined, sessionId: string): boolean;
+/**
+ * Capture every cleanup surface before a terminal request is consumed.
+ * Missing/unreadable surfaces are deliberately not synthesized: a later
+ * clear can only touch generations that were authenticated at this boundary.
+ */
+export declare function captureModeStateCleanup(mode: string, directory?: string, sessionId?: string): ModeStateCleanupSnapshot;
 /**
  * Find session-scoped state files that belong to the requested session.
  *
@@ -69,6 +94,8 @@ export declare function findCompletedSessionStateFiles(mode: string, directory?:
  * @returns true on success, false on failure
  */
 export declare function writeModeState(mode: string, state: Record<string, unknown>, directory?: string, sessionId?: string): boolean;
+/** Restore a mode state only when no newer state has been published. */
+export declare function writeModeStateIfAbsent(mode: string, state: Record<string, unknown>, directory?: string, sessionId?: string): boolean;
 /**
  * Read mode state from disk.
  *
@@ -91,5 +118,5 @@ export declare function readModeState<T = Record<string, unknown>>(mode: string,
  *
  * @returns true on success (or file already absent), false on failure.
  */
-export declare function clearModeStateFile(mode: string, directory?: string, sessionId?: string, expectedState?: Record<string, unknown>): boolean;
+export declare function clearModeStateFile(mode: string, directory?: string, sessionId?: string, expectedState?: Record<string, unknown>, cleanupSnapshot?: ModeStateCleanupSnapshot): boolean;
 //# sourceMappingURL=mode-state-io.d.ts.map

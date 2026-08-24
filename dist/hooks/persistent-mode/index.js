@@ -16,8 +16,8 @@ import { getHardMaxIterations } from '../../lib/security-config.js';
 import { getClaudeConfigDir } from '../../utils/config-dir.js';
 import { getGlobalOmcConfigCandidates } from '../../utils/paths.js';
 import { resolveToWorktreeRoot, resolveSessionStatePath, resolveStatePath, getOmcRoot } from '../../lib/worktree-paths.js';
-import { readModeState, writeModeState, withStateFileMutationLock } from '../../lib/mode-state-io.js';
-import { readRalphState, writeRalphState, incrementRalphIteration, clearRalphState, findPrdPath, getPrdCompletionStatus, getRalphContext, getStory, markStoryIncomplete, markStoryArchitectVerified, readVerificationState, startVerification, recordArchitectFeedback, getArchitectVerificationPrompt, getArchitectRejectionContinuationPrompt, detectArchitectApproval, detectArchitectRejection, clearVerificationState, } from '../ralph/index.js';
+import { captureModeStateCleanup, captureStateFileGeneration, clearModeStateFile, clearStateFileLockedIf, readModeState, writeModeState, withStateFileMutationLock, } from '../../lib/mode-state-io.js';
+import { readRalphState, writeRalphState, restoreRalphStateIfAbsent, incrementRalphIteration, clearRalphState, findPrdPath, getPrdCompletionStatus, getRalphContext, readPrd, getStory, markStoryIncomplete, consumeStoryArchitectApproval, consumeCompletionArchitectApproval, getPrdGoverningCriteriaRevision, readVerificationState, startVerification, recordArchitectFeedback, getArchitectVerificationPrompt, getArchitectRejectionContinuationPrompt, detectArchitectApproval, detectArchitectRejection, clearVerificationState, consumeVerificationRequest, restoreVerificationRequestIfAbsent, } from '../ralph/index.js';
 import { checkIncompleteTodos, getNextPendingTodo, isUserAbort, isContextLimitStop, isRateLimitStop, isExplicitCancelCommand, isAuthenticationError, isScheduledWakeupStop, isOversizeToolResultRedirectStop } from '../todo-continuation/index.js';
 import { TODO_CONTINUATION_PROMPT } from '../../installer/hooks.js';
 import { isAutopilotActive, readAutopilotState, } from '../autopilot/index.js';
@@ -46,6 +46,29 @@ const TERMINAL_WORKFLOW_PHASES = new Set([
     'done',
     'stopped',
 ]);
+/** Deterministic test-only publication between request consumption and cleanup. */
+function forceTerminalCleanupReplacementForTest() {
+    if (process.env.NODE_ENV !== 'test' ||
+        !process.env.OMC_TEST_TERMINAL_CLEANUP_REPLACEMENTS_BASE64) {
+        return;
+    }
+    try {
+        const replacements = JSON.parse(Buffer.from(process.env.OMC_TEST_TERMINAL_CLEANUP_REPLACEMENTS_BASE64, 'base64').toString('utf8'));
+        for (const replacement of replacements) {
+            if (typeof replacement?.path !== 'string' || replacement.path.length === 0)
+                continue;
+            atomicWriteJsonSync(replacement.path, replacement.content);
+        }
+    }
+    finally {
+        delete process.env.OMC_TEST_TERMINAL_CLEANUP_REPLACEMENTS_BASE64;
+    }
+}
+function resolveVerificationStatePath(workingDir, sessionId) {
+    return sessionId
+        ? resolveSessionStatePath('ralph-verification', sessionId, workingDir)
+        : join(getOmcRoot(workingDir), 'ralph-verification.json');
+}
 function hasNamedWorkflowMarkers(state) {
     return Boolean(state &&
         typeof state === 'object' &&
@@ -919,13 +942,19 @@ async function checkRalphLoop(sessionId, directory, cancelInProgress) {
             : undefined;
         const staleVerification = verificationState.verification_scope === 'story'
             ? !verifiedStory?.passes || verifiedStory.architectVerified === true
-            : prdStatus.hasPrd && !prdStatus.allComplete;
+                || verifiedStory.governingCriteriaRevision !== verificationState.criteria_revision
+            : prdStatus.hasPrd && (!prdStatus.allComplete
+                || (() => {
+                    const prd = readPrd(workingDir, sessionId);
+                    return !prd || getPrdGoverningCriteriaRevision(prd) !== verificationState.criteria_revision;
+                })());
         if (staleVerification) {
-            clearVerificationState(workingDir, sessionId);
-            const refreshedState = readRalphState(workingDir, sessionId);
-            if (refreshedState) {
-                refreshedState.current_story_id = prdStatus.nextStory?.id;
-                writeRalphState(workingDir, refreshedState, sessionId);
+            if (consumeVerificationRequest(workingDir, verificationState.request_id, sessionId)) {
+                const refreshedState = readRalphState(workingDir, sessionId);
+                if (refreshedState) {
+                    refreshedState.current_story_id = prdStatus.nextStory?.id;
+                    writeRalphState(workingDir, refreshedState, sessionId);
+                }
             }
             verificationState = null;
         }
@@ -935,24 +964,73 @@ async function checkRalphLoop(sessionId, directory, cancelInProgress) {
                 // Check for architect approval
                 if (checkArchitectApprovalInTranscript(sessionId, verificationState)) {
                     if (verificationState.verification_scope === 'story' && verificationState.story_id) {
-                        markStoryArchitectVerified(workingDir, verificationState.story_id, undefined, sessionId);
-                        clearVerificationState(workingDir, sessionId);
-                        const refreshedState = readRalphState(workingDir, sessionId);
-                        if (refreshedState) {
-                            const refreshedPrd = getPrdCompletionStatus(workingDir, sessionId);
-                            refreshedState.current_story_id = refreshedPrd.nextStory?.id;
-                            writeRalphState(workingDir, refreshedState, sessionId);
+                        const consumed = consumeStoryArchitectApproval(workingDir, verificationState.story_id, verificationState.criteria_revision ?? '', sessionId, undefined, undefined, () => consumeVerificationRequest(workingDir, verificationState.request_id, sessionId));
+                        if (!consumed) {
+                            verificationState = null;
+                        }
+                        if (consumed) {
+                            const refreshedState = readRalphState(workingDir, sessionId);
+                            if (refreshedState) {
+                                const refreshedPrd = getPrdCompletionStatus(workingDir, sessionId);
+                                refreshedState.current_story_id = refreshedPrd.nextStory?.id;
+                                writeRalphState(workingDir, refreshedState, sessionId);
+                            }
                         }
                         verificationState = readVerificationState(workingDir, sessionId);
                     }
                     else {
                         // Architect approved - truly complete
-                        // Also clear legacy mode state if it was active alongside ralph
-                        clearVerificationState(workingDir, sessionId);
-                        clearRalphState(workingDir, sessionId);
-                        const criticLabel = verificationState.critic_mode === 'codex'
+                        const criticMode = verificationState.critic_mode;
+                        // Capture every terminal cleanup target before consuming the request.
+                        // A same-session replacement may be published immediately after the
+                        // request disappears; cleanup must remain bound to these generations.
+                        const snapshot = { ...verificationState };
+                        const verificationPath = resolveVerificationStatePath(workingDir, sessionId);
+                        const verificationCleanupSnapshot = captureStateFileGeneration(verificationPath);
+                        const ralphSnapshot = readRalphState(workingDir, sessionId);
+                        const ralphCleanupSnapshot = ralphSnapshot
+                            ? captureModeStateCleanup('ralph', workingDir, sessionId)
+                            : undefined;
+                        const consume = () => {
+                            const consumed = verificationCleanupSnapshot
+                                ? clearStateFileLockedIf(verificationPath, current => current.request_id === verificationState.request_id, undefined, verificationCleanupSnapshot.generation) === 'cleared'
+                                : false;
+                            if (consumed)
+                                forceTerminalCleanupReplacementForTest();
+                            return consumed;
+                        };
+                        const cleanup = () => {
+                            const locked = withStateFileMutationLock(verificationPath, () => {
+                                if (existsSync(verificationPath))
+                                    return false;
+                                const ralphCleared = !ralphSnapshot || !ralphCleanupSnapshot
+                                    ? !ralphSnapshot
+                                    : clearModeStateFile('ralph', workingDir, sessionId, ralphSnapshot, ralphCleanupSnapshot);
+                                return ralphCleared;
+                            }, true);
+                            if (locked.acquired && locked.value === true)
+                                return true;
+                            if (ralphSnapshot)
+                                restoreRalphStateIfAbsent(workingDir, ralphSnapshot, sessionId);
+                            restoreVerificationRequestIfAbsent(workingDir, snapshot, sessionId);
+                            return false;
+                        };
+                        const consumed = !prdStatus.hasPrd
+                            ? consume() && cleanup()
+                            : consumeCompletionArchitectApproval(workingDir, verificationState.criteria_revision ?? '', sessionId, consume, undefined, cleanup);
+                        if (!consumed) {
+                            verificationState = null;
+                        }
+                        if (!consumed) {
+                            return {
+                                shouldBlock: true,
+                                message: '[RALPH VERIFICATION INVALIDATED] The PRD changed while approval was being consumed. Re-run verification against the current criteria.',
+                                mode: 'ralph',
+                            };
+                        }
+                        const criticLabel = criticMode === 'codex'
                             ? 'Codex critic'
-                            : verificationState.critic_mode === 'critic'
+                            : criticMode === 'critic'
                                 ? 'Critic'
                                 : 'Architect';
                         return {
@@ -1081,7 +1159,7 @@ async function checkRalphLoop(sessionId, directory, cancelInProgress) {
     const ralphContext = getRalphContext(workingDir, sessionId);
     const activePrdPath = prdStatus.hasPrd ? findPrdPath(workingDir, sessionId) : null;
     const prdInstruction = prdStatus.hasPrd
-        ? `2. Check ${activePrdPath ?? 'prd.json'} - verify the current story's acceptance criteria are met, then mark it passes: true. If implementation proves an acceptance criterion empirically false, record an evidence-backed amendment (replace or supersede it, retaining the original verbatim in the story's criterionAmendments ledger with reason, evidence, authority, and timestamp) instead of silently deleting the criterion or claiming it passes. Are ALL stories complete?`
+        ? `2. Check ${activePrdPath ?? 'prd.json'} - verify the current story's acceptance criteria are met, then create a revision-bound completion claim: set passes to true and set completionCriteriaRevision to the story's current governingCriteriaRevision. If implementation proves an acceptance criterion empirically false, record an evidence-backed amendment (replace or supersede it, retaining the original verbatim in the story's criterionAmendments ledger with reason, evidence, authority, and timestamp) instead of silently deleting the criterion or claiming it passes. Are ALL stories complete?`
         : `2. Check your todo list - are ALL items marked complete?`;
     const continuationPrompt = `<ralph-continuation>
 ${errorGuidance ? errorGuidance + '\n' : ''}

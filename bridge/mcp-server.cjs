@@ -22994,7 +22994,7 @@ var pythonReplTool = {
 };
 
 // src/tools/state-tools.ts
-var import_crypto8 = require("crypto");
+var import_crypto9 = require("crypto");
 var import_fs26 = require("fs");
 var import_os4 = require("os");
 var import_path27 = require("path");
@@ -23153,8 +23153,13 @@ function guardedLockRemoval(path13, operation, owner) {
   return "unverifiable";
 }
 function acquireLockAt(path13, requireExclusive = false) {
+  const flock = flockPath();
+  if (!flock) {
+    if (requireExclusive) return null;
+    (0, import_fs14.mkdirSync)((0, import_path14.dirname)(path13), { recursive: true });
+    return { unlocked: true };
+  }
   (0, import_fs14.mkdirSync)((0, import_path14.dirname)(path13), { recursive: true });
-  if (!flockPath()) return requireExclusive ? null : { unlocked: true };
   const processStart = processStartIdentity(process.pid);
   if (!processStart || processStart === "absent") {
     console.error(`[omc-lock] state_mutation_lock_owner_unverifiable: ${path13}`);
@@ -23217,7 +23222,7 @@ function writeStateFileLocked(filePath, state) {
     releaseMutationLock(lock);
   }
 }
-function clearStateFileLockedIf(filePath, predicate, recoveryOptions) {
+function clearStateFileLockedIf(filePath, predicate, recoveryOptions, expectedGeneration) {
   if (!recoverEmergencyStateFile(filePath, recoveryOptions)) return "failed";
   if (process.env.NODE_ENV === "test" && process.env.OMC_TEST_CONDITIONAL_CLEAR_REPLACEMENT_PATH === filePath && process.env.OMC_TEST_CONDITIONAL_CLEAR_REPLACEMENT_BASE64) {
     try {
@@ -23232,6 +23237,7 @@ function clearStateFileLockedIf(filePath, predicate, recoveryOptions) {
   if (!lock) return "failed";
   try {
     if (!(0, import_fs14.existsSync)(filePath)) return "skipped";
+    if (expectedGeneration && !sameStateFileGeneration(filePath, expectedGeneration)) return "skipped";
     let current;
     try {
       current = JSON.parse((0, import_fs14.readFileSync)(filePath, "utf8"));
@@ -23239,6 +23245,10 @@ function clearStateFileLockedIf(filePath, predicate, recoveryOptions) {
       return "failed";
     }
     if (!predicate(current)) return "skipped";
+    if (expectedGeneration) {
+      replaceGenerationForTest(filePath);
+      if (!sameStateFileGeneration(filePath, expectedGeneration)) return "skipped";
+    }
     (0, import_fs14.unlinkSync)(filePath);
     return "cleared";
   } catch {
@@ -23494,6 +23504,27 @@ function fileIdentity(path13) {
     return { dev: stat.dev, ino: stat.ino };
   } catch {
     return null;
+  }
+}
+function sameStateFileGeneration(path13, expected) {
+  try {
+    const identity = fileIdentity(path13);
+    if (!identity || identity.dev !== expected.dev || identity.ino !== expected.ino) return false;
+    return stateDigest((0, import_fs14.readFileSync)(path13, "utf8")) === expected.digest;
+  } catch {
+    return false;
+  }
+}
+function replaceGenerationForTest(path13) {
+  if (process.env.NODE_ENV !== "test" || process.env.OMC_TEST_GENERATION_CLEAR_REPLACEMENT_PATH !== path13 || !process.env.OMC_TEST_GENERATION_CLEAR_REPLACEMENT_BASE64) return;
+  try {
+    const replacement = JSON.parse(
+      Buffer.from(process.env.OMC_TEST_GENERATION_CLEAR_REPLACEMENT_BASE64, "base64").toString("utf8")
+    );
+    atomicWriteJsonSync(path13, replacement);
+  } finally {
+    delete process.env.OMC_TEST_GENERATION_CLEAR_REPLACEMENT_PATH;
+    delete process.env.OMC_TEST_GENERATION_CLEAR_REPLACEMENT_BASE64;
   }
 }
 function sameFile(path13, expected) {
@@ -24299,11 +24330,11 @@ function getActiveSessionsForMode(mode, cwd) {
 
 // src/hooks/autopilot/named-workflow-resume-validator.ts
 var import_fs24 = require("fs");
-var import_crypto7 = require("crypto");
+var import_crypto8 = require("crypto");
 var import_path25 = require("path");
 
 // src/hooks/autopilot/pipeline.ts
-var import_crypto6 = require("crypto");
+var import_crypto7 = require("crypto");
 
 // src/config/plan-output.ts
 var import_path16 = require("path");
@@ -24600,6 +24631,7 @@ var import_child_process12 = require("child_process");
 var import_path22 = require("path");
 
 // src/hooks/ralph/prd.ts
+var import_crypto5 = require("crypto");
 var import_fs17 = require("fs");
 var import_path18 = require("path");
 
@@ -24622,7 +24654,7 @@ var import_fs20 = require("fs");
 var import_path21 = require("path");
 
 // src/hooks/ralph/verifier.ts
-var import_crypto5 = require("crypto");
+var import_crypto6 = require("crypto");
 var import_fs22 = require("fs");
 var import_path23 = require("path");
 
@@ -24718,7 +24750,7 @@ function createWorkflowDescriptor(workflowName, profile) {
     workflowName,
     profileVersion: 1,
     stages: normalized.stages,
-    profileHash: (0, import_crypto6.createHash)("sha256").update(canonical).digest("hex")
+    profileHash: (0, import_crypto7.createHash)("sha256").update(canonical).digest("hex")
   };
 }
 function verifyWorkflowDescriptor(descriptor) {
@@ -25643,7 +25675,7 @@ function isExactNamedPauseRequest(record2) {
   return record2.active === false && typeof record2.workflowRunId === "string" && Object.keys(record2).every((key) => allowed.has(key)) && (!hasOwnProperty(record2, "target_state_sha256") || typeof record2.target_state_sha256 === "string" && /^[a-f0-9]{64}$/.test(record2.target_state_sha256));
 }
 function matchesNamedPauseTarget(current, sessionId, workflowRunId, stateDigest2) {
-  return current.active === true && current.workflowRunId === workflowRunId && hasValidatedNamedWorkflowTuple(current) && getStateSessionOwner(current) === sessionId && (stateDigest2 === void 0 || (0, import_crypto8.createHash)("sha256").update(JSON.stringify(current)).digest("hex") === stateDigest2);
+  return current.active === true && current.workflowRunId === workflowRunId && hasValidatedNamedWorkflowTuple(current) && getStateSessionOwner(current) === sessionId && (stateDigest2 === void 0 || (0, import_crypto9.createHash)("sha256").update(JSON.stringify(current)).digest("hex") === stateDigest2);
 }
 function listSessionIdsUnderOmcRoot(omcRoot) {
   const sessionsDir = (0, import_path27.join)(omcRoot, "state", "sessions");
@@ -26024,7 +26056,7 @@ function writeSessionCancelSignal(root, sessionId, mode, candidate) {
     mode,
     source: "state_clear",
     ...candidate?.workflowRunId ? { target_workflow_run_id: candidate.workflowRunId } : {},
-    ...candidate ? { target_state_sha256: (0, import_crypto8.createHash)("sha256").update(candidate.snapshot).digest("hex") } : {}
+    ...candidate ? { target_state_sha256: (0, import_crypto9.createHash)("sha256").update(candidate.snapshot).digest("hex") } : {}
   };
   if (!writeStateFileLocked(cancelSignalPath, payload)) {
     throw new Error(`state mutation lock unavailable for cancel signal: ${cancelSignalPath}`);
@@ -26063,7 +26095,7 @@ function isValidPublicWorkflowDescriptor(descriptor) {
   const allowed = /* @__PURE__ */ new Set(["ralplan,execution", "ralplan,execution,ralph", "ralplan,execution,qa", "ralplan,execution,ralph,qa"]);
   if (!allowed.has(stages.join(","))) return false;
   const canonical = canonicalWorkflowJson({ descriptorVersion: 1, workflowName: descriptor.workflowName, profileVersion: 1, stages });
-  return (0, import_crypto8.createHash)("sha256").update(canonical).digest("hex") === descriptor.profileHash;
+  return (0, import_crypto9.createHash)("sha256").update(canonical).digest("hex") === descriptor.profileHash;
 }
 function redactAutopilotPublicState(state) {
   if (!state || typeof state !== "object") {
@@ -26382,7 +26414,7 @@ var stateWriteTool = {
             const snapshot = JSON.stringify(currentState);
             const written = emergencyMutateStateFileIf(
               statePath,
-              (current) => JSON.stringify(current) === snapshot && isExactEmergencyNamedMutation(current, requestedRunId) && (requestedStateDigest === void 0 || (0, import_crypto8.createHash)("sha256").update(JSON.stringify(current)).digest("hex") === requestedStateDigest),
+              (current) => JSON.stringify(current) === snapshot && isExactEmergencyNamedMutation(current, requestedRunId) && (requestedStateDigest === void 0 || (0, import_crypto9.createHash)("sha256").update(JSON.stringify(current)).digest("hex") === requestedStateDigest),
               (current) => ({ ...current, active: false })
             );
             if (!written) throw new Error("autopilot run changed before deactivation");
@@ -26598,7 +26630,7 @@ var stateClearTool = {
             mode,
             source: "state_clear",
             ...candidate.workflowRunId ? { target_workflow_run_id: candidate.workflowRunId } : {},
-            target_state_sha256: (0, import_crypto8.createHash)("sha256").update(candidate.snapshot).digest("hex")
+            target_state_sha256: (0, import_crypto9.createHash)("sha256").update(candidate.snapshot).digest("hex")
           };
           try {
             writeStateFileLocked(signalPath, payload);
@@ -26820,7 +26852,7 @@ var stateClearTool = {
           const legacyPayload = {
             ...cancelSignalPayload,
             ...legacyCandidate.workflowRunId ? { target_workflow_run_id: legacyCandidate.workflowRunId } : {},
-            target_state_sha256: (0, import_crypto8.createHash)("sha256").update(legacyCandidate.snapshot).digest("hex")
+            target_state_sha256: (0, import_crypto9.createHash)("sha256").update(legacyCandidate.snapshot).digest("hex")
           };
           try {
             writeStateFileLocked(legacySignalPath, legacyPayload);
@@ -31304,7 +31336,7 @@ var import_os7 = require("os");
 
 // src/hooks/learner/loader.ts
 var import_fs36 = require("fs");
-var import_crypto9 = require("crypto");
+var import_crypto10 = require("crypto");
 var import_path44 = require("path");
 
 // src/hooks/learner/finder.ts
@@ -31563,7 +31595,7 @@ function parseArrayValue(rawValue, lines, currentIndex) {
 
 // src/hooks/learner/loader.ts
 function createContentHash(content) {
-  return (0, import_crypto9.createHash)("sha256").update(content).digest("hex").slice(0, 16);
+  return (0, import_crypto10.createHash)("sha256").update(content).digest("hex").slice(0, 16);
 }
 function loadAllSkills(projectRoot) {
   const candidates = findSkillFiles(projectRoot);

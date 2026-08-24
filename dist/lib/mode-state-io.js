@@ -91,9 +91,17 @@ function guardedLockRemoval(path, operation, owner) {
     return 'unverifiable';
 }
 function acquireLockAt(path, requireExclusive = false) {
+    const flock = flockPath();
+    if (!flock) {
+        // Non-exclusive mode state retains its historical best-effort behavior,
+        // but safety-critical callers (notably PRD mutations) must fail closed
+        // rather than silently running without an inter-process lock.
+        if (requireExclusive)
+            return null;
+        mkdirSync(dirname(path), { recursive: true });
+        return { unlocked: true };
+    }
     mkdirSync(dirname(path), { recursive: true });
-    if (!flockPath())
-        return requireExclusive ? null : { unlocked: true };
     const processStart = processStartIdentity(process.pid);
     if (!processStart || processStart === 'absent') {
         console.error(`[omc-lock] state_mutation_lock_owner_unverifiable: ${path}`);
@@ -176,15 +184,23 @@ export function writeStateFileLocked(filePath, state) {
         releaseMutationLock(lock);
     }
 }
-export function clearStateFileLocked(filePath) {
+export function clearStateFileLocked(filePath, expectedGeneration) {
     if (!recoverEmergencyStateFile(filePath))
         return false;
     const lock = acquireMutationLock(filePath);
     if (!lock)
         return false;
     try {
-        if (existsSync(filePath))
+        if (existsSync(filePath)) {
+            if (expectedGeneration && !sameStateFileGeneration(filePath, expectedGeneration))
+                return false;
+            if (expectedGeneration) {
+                replaceGenerationForTest(filePath);
+                if (!sameStateFileGeneration(filePath, expectedGeneration))
+                    return false;
+            }
             unlinkSync(filePath);
+        }
         return true;
     }
     catch {
@@ -194,7 +210,7 @@ export function clearStateFileLocked(filePath) {
         releaseMutationLock(lock);
     }
 }
-export function clearStateFileLockedIf(filePath, predicate, recoveryOptions) {
+export function clearStateFileLockedIf(filePath, predicate, recoveryOptions, expectedGeneration) {
     if (!recoverEmergencyStateFile(filePath, recoveryOptions))
         return 'failed';
     if (process.env.NODE_ENV === 'test' && process.env.OMC_TEST_CONDITIONAL_CLEAR_REPLACEMENT_PATH === filePath && process.env.OMC_TEST_CONDITIONAL_CLEAR_REPLACEMENT_BASE64) {
@@ -213,6 +229,8 @@ export function clearStateFileLockedIf(filePath, predicate, recoveryOptions) {
     try {
         if (!existsSync(filePath))
             return 'skipped';
+        if (expectedGeneration && !sameStateFileGeneration(filePath, expectedGeneration))
+            return 'skipped';
         let current;
         try {
             current = JSON.parse(readFileSync(filePath, 'utf8'));
@@ -222,6 +240,11 @@ export function clearStateFileLockedIf(filePath, predicate, recoveryOptions) {
         }
         if (!predicate(current))
             return 'skipped';
+        if (expectedGeneration) {
+            replaceGenerationForTest(filePath);
+            if (!sameStateFileGeneration(filePath, expectedGeneration))
+                return 'skipped';
+        }
         unlinkSync(filePath);
         return 'cleared';
     }
@@ -526,6 +549,61 @@ function fileIdentity(path) {
     }
     catch {
         return null;
+    }
+}
+function sameFileIdentity(left, right) {
+    return left.dev === right.dev && left.ino === right.ino;
+}
+function captureStateFile(path) {
+    try {
+        const before = fileIdentity(path);
+        if (!before)
+            return null;
+        const raw = readFileSync(path, 'utf8');
+        const after = fileIdentity(path);
+        if (!after || !sameFileIdentity(before, after))
+            return null;
+        const confirm = readFileSync(path, 'utf8');
+        if (confirm !== raw || !sameFile(path, before))
+            return null;
+        return {
+            path,
+            generation: { ...before, digest: stateDigest(raw) },
+            raw,
+        };
+    }
+    catch {
+        return null;
+    }
+}
+/** Capture one exact publication for callers whose state file is not a mode file. */
+export function captureStateFileGeneration(path) {
+    return captureStateFile(path);
+}
+function sameStateFileGeneration(path, expected) {
+    try {
+        const identity = fileIdentity(path);
+        if (!identity || identity.dev !== expected.dev || identity.ino !== expected.ino)
+            return false;
+        return stateDigest(readFileSync(path, 'utf8')) === expected.digest;
+    }
+    catch {
+        return false;
+    }
+}
+/** Deterministic test-only publication at the final generation-clear boundary. */
+function replaceGenerationForTest(path) {
+    if (process.env.NODE_ENV !== 'test' ||
+        process.env.OMC_TEST_GENERATION_CLEAR_REPLACEMENT_PATH !== path ||
+        !process.env.OMC_TEST_GENERATION_CLEAR_REPLACEMENT_BASE64)
+        return;
+    try {
+        const replacement = JSON.parse(Buffer.from(process.env.OMC_TEST_GENERATION_CLEAR_REPLACEMENT_BASE64, 'base64').toString('utf8'));
+        atomicWriteJsonSync(path, replacement);
+    }
+    finally {
+        delete process.env.OMC_TEST_GENERATION_CLEAR_REPLACEMENT_PATH;
+        delete process.env.OMC_TEST_GENERATION_CLEAR_REPLACEMENT_BASE64;
     }
 }
 function sameFile(path, expected) {
@@ -1090,6 +1168,24 @@ function getRuntimeArtifactCandidates(mode, directory, sessionId) {
     }
     return [...candidateDirs].flatMap((dir) => artifactNames.map((name) => join(dir, name)));
 }
+/**
+ * Capture every cleanup surface before a terminal request is consumed.
+ * Missing/unreadable surfaces are deliberately not synthesized: a later
+ * clear can only touch generations that were authenticated at this boundary.
+ */
+export function captureModeStateCleanup(mode, directory, sessionId) {
+    const baseDir = resolveStateRoot(directory);
+    const direct = captureStateFile(resolveFile(mode, directory, sessionId));
+    const artifacts = getRuntimeArtifactCandidates(mode, baseDir, sessionId)
+        .map(captureStateFile)
+        .filter((candidate) => candidate !== null);
+    const legacy = sessionId
+        ? getLegacyStateCandidates(mode, baseDir)
+            .map(captureStateFile)
+            .filter((candidate) => candidate !== null)
+        : [];
+    return { direct, artifacts, legacy };
+}
 function discoverStateFile(path, extra = {}) {
     try {
         const state = JSON.parse(readFileSync(path, 'utf-8'));
@@ -1196,6 +1292,21 @@ export function writeModeState(mode, state, directory, sessionId) {
         return false;
     }
 }
+/** Restore a mode state only when no newer state has been published. */
+export function writeModeStateIfAbsent(mode, state, directory, sessionId) {
+    try {
+        const baseDir = resolveStateRoot(directory);
+        if (sessionId)
+            ensureSessionStateDir(sessionId, baseDir);
+        else
+            ensureOmcDir('state', baseDir);
+        const result = writeStateFileLockedCreateIf(resolveFile(mode, directory, sessionId), current => current === null, () => state);
+        return result === 'written';
+    }
+    catch {
+        return false;
+    }
+}
 /**
  * Read mode state from disk.
  *
@@ -1236,36 +1347,101 @@ export function readModeState(mode, directory, sessionId) {
  *
  * @returns true on success (or file already absent), false on failure.
  */
-export function clearModeStateFile(mode, directory, sessionId, expectedState) {
+export function clearModeStateFile(mode, directory, sessionId, expectedState, cleanupSnapshot) {
     let success = true;
     const baseDir = resolveStateRoot(directory);
+    const captured = expectedState
+        ? cleanupSnapshot ?? captureModeStateCleanup(mode, baseDir, sessionId)
+        : undefined;
     const unlinkIfPresent = (filePath) => {
         if (!clearStateFileLocked(filePath))
             success = false;
     };
+    const unlinkCapturedIfPresent = (candidate) => {
+        if (!clearStateFileLocked(candidate.path, candidate.generation))
+            success = false;
+    };
+    const markUncapturedPresent = (paths, capturedPaths) => {
+        for (const path of paths) {
+            if (existsSync(path) && !capturedPaths.has(path))
+                success = false;
+        }
+    };
     if (sessionId) {
         const directPath = resolveFile(mode, directory, sessionId);
         if (expectedState) {
+            if (!captured?.direct)
+                return false;
             const expectedSnapshot = JSON.stringify(Object.fromEntries(Object.entries(expectedState).filter(([key]) => key !== '_meta')));
-            const result = clearStateFileLockedIf(directPath, (current) => JSON.stringify(Object.fromEntries(Object.entries(current).filter(([key]) => key !== '_meta'))) === expectedSnapshot);
+            const result = clearStateFileLockedIf(directPath, (current) => JSON.stringify(Object.fromEntries(Object.entries(current).filter(([key]) => key !== '_meta'))) === expectedSnapshot, undefined, captured.direct.generation);
             if (result === 'failed' || (result === 'skipped' && existsSync(directPath)))
                 return false;
+            const artifactPaths = getRuntimeArtifactCandidates(mode, baseDir, sessionId);
+            const artifactPathsCaptured = new Set(captured.artifacts.map(candidate => candidate.path));
+            markUncapturedPresent(artifactPaths, artifactPathsCaptured);
+            for (const candidate of captured.artifacts)
+                unlinkCapturedIfPresent(candidate);
+            const legacyPaths = getLegacyStateCandidates(mode, baseDir);
+            const legacyPathsCaptured = new Set(captured.legacy.map(candidate => candidate.path));
+            for (const legacyPath of legacyPaths) {
+                if (!existsSync(legacyPath) || legacyPathsCaptured.has(legacyPath))
+                    continue;
+                try {
+                    const current = JSON.parse(readFileSync(legacyPath, 'utf8'));
+                    if (canClearStateForSession(current, sessionId))
+                        success = false;
+                }
+                catch {
+                    // Preserve unreadable/foreign legacy state exactly as the historical
+                    // ghost cleanup path does.
+                }
+            }
+            for (const candidate of captured.legacy) {
+                try {
+                    const observed = JSON.parse(candidate.raw);
+                    if (!canClearStateForSession(observed, sessionId))
+                        continue;
+                    const observedSnapshot = JSON.stringify(observed);
+                    const legacyResult = clearStateFileLockedIf(candidate.path, (current) => canClearStateForSession(current, sessionId) && JSON.stringify(current) === observedSnapshot, undefined, candidate.generation);
+                    if (legacyResult === 'failed') {
+                        success = false;
+                    }
+                    else if (legacyResult === 'skipped' && existsSync(candidate.path)) {
+                        try {
+                            const current = JSON.parse(readFileSync(candidate.path, 'utf8'));
+                            if (canClearStateForSession(current, sessionId))
+                                success = false;
+                        }
+                        catch {
+                            // Preserve unreadable/foreign replacements.
+                        }
+                    }
+                }
+                catch {
+                    success = false;
+                }
+            }
         }
         else {
             unlinkIfPresent(directPath);
-        }
-        for (const artifactPath of getRuntimeArtifactCandidates(mode, baseDir, sessionId)) {
-            unlinkIfPresent(artifactPath);
+            for (const artifactPath of getRuntimeArtifactCandidates(mode, baseDir, sessionId)) {
+                unlinkIfPresent(artifactPath);
+            }
         }
     }
     else if (expectedState) {
         const directPath = resolveFile(mode, directory);
+        if (!captured?.direct)
+            return false;
         const expectedSnapshot = JSON.stringify(Object.fromEntries(Object.entries(expectedState).filter(([key]) => key !== '_meta')));
-        const result = clearStateFileLockedIf(directPath, (current) => JSON.stringify(Object.fromEntries(Object.entries(current).filter(([key]) => key !== '_meta'))) === expectedSnapshot);
+        const result = clearStateFileLockedIf(directPath, (current) => JSON.stringify(Object.fromEntries(Object.entries(current).filter(([key]) => key !== '_meta'))) === expectedSnapshot, undefined, captured.direct.generation);
         if (result === 'failed' || (result === 'skipped' && existsSync(directPath)))
             return false;
-        for (const artifactPath of getRuntimeArtifactCandidates(mode, baseDir))
-            unlinkIfPresent(artifactPath);
+        const artifactPaths = getRuntimeArtifactCandidates(mode, baseDir);
+        const artifactPathsCaptured = new Set(captured.artifacts.map(candidate => candidate.path));
+        markUncapturedPresent(artifactPaths, artifactPathsCaptured);
+        for (const candidate of captured.artifacts)
+            unlinkCapturedIfPresent(candidate);
     }
     else {
         for (const legacyPath of getLegacyStateCandidates(mode, baseDir))
@@ -1275,8 +1451,10 @@ export function clearModeStateFile(mode, directory, sessionId, expectedState) {
         for (const artifactPath of getRuntimeArtifactCandidates(mode, baseDir))
             unlinkIfPresent(artifactPath);
     }
-    // Ghost-legacy cleanup: if sessionId provided, also check legacy path
-    if (sessionId) {
+    // Ghost-legacy cleanup: if sessionId provided, also check legacy path.
+    // Expected-state clears already process only their pre-captured legacy
+    // generations above; recapturing here would make a replacement deletable.
+    if (sessionId && !expectedState) {
         for (const legacyPath of getLegacyStateCandidates(mode, baseDir)) {
             if (!existsSync(legacyPath)) {
                 continue;

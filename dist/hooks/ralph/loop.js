@@ -11,7 +11,7 @@
  */
 import { execFileSync } from "child_process";
 import { basename } from "path";
-import { writeModeState, readModeState, clearModeStateFile, } from "../../lib/mode-state-io.js";
+import { writeModeState, writeModeStateIfAbsent, readModeState, clearModeStateFile, } from "../../lib/mode-state-io.js";
 import { ensurePrdForStartup, findPrdPath, readPrd, getPrdStatus, formatNextStoryPrompt, formatPrdStatus, } from "./prd.js";
 import { detectStalePrd, formatStalePrdWarning, reconcileStalePrdForStartup, } from "./stale-prd.js";
 import { findProgressPath, getProgressContext, appendProgress, initProgress, addPattern, } from "./progress.js";
@@ -39,11 +39,14 @@ export function readRalphState(directory, sessionId) {
 export function writeRalphState(directory, state, sessionId) {
     return writeModeState("ralph", state, directory, sessionId);
 }
+export function restoreRalphStateIfAbsent(directory, state, sessionId) {
+    return writeModeStateIfAbsent('ralph', state, directory, sessionId);
+}
 /**
  * Clear Ralph Loop state (includes ghost-legacy cleanup)
  */
-export function clearRalphState(directory, sessionId) {
-    return clearModeStateFile("ralph", directory, sessionId);
+export function clearRalphState(directory, sessionId, expectedState) {
+    return clearModeStateFile("ralph", directory, sessionId, expectedState);
 }
 /**
  * Increment Ralph Loop iteration

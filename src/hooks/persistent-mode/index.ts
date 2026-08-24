@@ -24,7 +24,6 @@ import {
   clearStateFileLockedIf,
   readModeState,
   writeModeState,
-  writeModeStateIfAbsent,
   withStateFileMutationLock,
   type ModeStateCleanupSnapshot,
 } from '../../lib/mode-state-io.js';
