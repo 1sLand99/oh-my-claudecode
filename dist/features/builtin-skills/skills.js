@@ -18,6 +18,7 @@ import { renderSkillResourcesGuidance } from '../../utils/skill-resources.js';
 import { renderSkillRuntimeGuidance } from './runtime-guidance.js';
 import { isSkininthegamebrosUser } from '../../utils/skininthegamebros-user.js';
 import { getClaudeConfigDir } from '../../utils/config-dir.js';
+import entitlementManifest from '../../config/builtin-skill-entitlements.json' with { type: 'json' };
 function getPackageDir() {
     if (typeof __dirname !== 'undefined' && __dirname) {
         const currentDirName = basename(__dirname);
@@ -59,11 +60,7 @@ const CC_NATIVE_COMMANDS = new Set([
     'compact',
     'memory',
 ]);
-const SKININTHEGAMEBROS_ONLY_SKILLS = new Set([
-    'remember',
-    'verify',
-    'debug',
-]);
+const SKININTHEGAMEBROS_ONLY_SKILLS = new Set(entitlementManifest.skininthegamebrosOnlySkills.map((skill) => skill.trim().toLowerCase()));
 const DEFAULT_DEEP_INTERVIEW_AMBIGUITY_THRESHOLD = 0.2;
 function toSafeSkillName(name) {
     const normalized = name.trim();
@@ -258,7 +255,7 @@ function loadSkillsFromDirectory() {
         for (const entry of entries) {
             if (!entry.isDirectory())
                 continue;
-            if (SKININTHEGAMEBROS_ONLY_SKILLS.has(entry.name) && !isSkininthegamebrosUser()) {
+            if (SKININTHEGAMEBROS_ONLY_SKILLS.has(entry.name.toLowerCase()) && !isSkininthegamebrosUser()) {
                 continue;
             }
             const skillPath = join(SKILLS_DIR, entry.name, 'SKILL.md');

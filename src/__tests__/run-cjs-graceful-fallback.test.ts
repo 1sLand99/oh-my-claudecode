@@ -37,6 +37,32 @@ describe('run.cjs — graceful fallback for stale plugin paths', () => {
     return versionDir;
   }
 
+  it('passes the session-lifetime host PID instead of the transient runner PID', () => {
+    const output = join(tmpDir, 'owner.json');
+    const target = join(tmpDir, 'owner-probe.cjs');
+    writeFileSync(target, `require('node:fs').writeFileSync(process.env.OWNER_OUT, JSON.stringify({ owner: process.env.OMC_SESSION_OWNER_PID, parent: process.ppid }));`);
+    const result = spawnSync(NODE, [RUN_CJS_PATH, target], {
+      env: { ...process.env, OWNER_OUT: output },
+      encoding: 'utf8',
+    });
+    expect(result.status, result.stderr).toBe(0);
+    const probe = JSON.parse(readFileSync(output, 'utf8')) as { owner: string; parent: number };
+    expect(Number(probe.owner)).toBe(process.pid);
+    expect(Number(probe.owner)).not.toBe(probe.parent);
+  });
+
+  it('preserves an inherited session owner across runner supervisor layers', () => {
+    const output = join(tmpDir, 'inherited-owner.json');
+    const target = join(tmpDir, 'inherited-owner-probe.cjs');
+    writeFileSync(target, `require('node:fs').writeFileSync(process.env.OWNER_OUT, process.env.OMC_SESSION_OWNER_PID);`);
+    const result = spawnSync(NODE, [RUN_CJS_PATH, target], {
+      env: { ...process.env, OWNER_OUT: output, OMC_SESSION_OWNER_PID: '424242' },
+      encoding: 'utf8',
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(readFileSync(output, 'utf8')).toBe('424242');
+  });
+
   function runCjs(target: string, env: Record<string, string> = {}, args: string[] = []): { status: number; stdout: string; stderr: string } {
     const result = spawnSync(NODE, [RUN_CJS_PATH, target, ...args], {
       encoding: 'utf-8',

@@ -15,11 +15,13 @@ detectKeywordsWithType, extractPromptText, removeCodeBlocks } from './keyword-de
 export { 
 // Ralph Hook (consolidated: loop, PRD, progress, verifier)
 // Loop
-createRalphLoopHook, readRalphState, writeRalphState, clearRalphState, clearLinkedUltraworkState, incrementRalphIteration, isUltraQAActive, 
+createRalphLoopHook, readRalphState, writeRalphState, clearRalphState, clearLinkedUltraworkState, incrementRalphIteration, 
 // PRD Integration
 hasPrd, getPrdCompletionStatus, getRalphContext, setCurrentStory, enablePrdMode, recordStoryProgress, recordPattern, shouldCompleteByPrd, 
+// PRD Stale-State Detection & Reconciliation (#3669)
+detectStalePrd, formatStalePrdWarning, getSessionEndStalePrdWarning, reconcileStalePrd, reconcileStalePrdForStartup, runObservableCheck, PRD_RECONCILIATION_AUDIT_FILENAME, DEFAULT_STALE_PRD_AFTER_MS, 
 // PRD (Structured Task Tracking)
-readPrd, writePrd, findPrdPath, getPrdPath, getOmcPrdPath, getPrdStatus, markStoryComplete, markStoryIncomplete, getStory, getNextStory, createPrd, createSimplePrd, initPrd, formatPrdStatus, formatStory, formatPrd, formatNextStoryPrompt, PRD_FILENAME, PRD_EXAMPLE_FILENAME, 
+readPrd, writePrd, findPrdPath, getPrdPath, getOmcPrdPath, getPrdStatus, markStoryComplete, markStoryIncomplete, getStory, getNextStory, amendCriterion, supersedeCriterion, createPrd, createSimplePrd, initPrd, formatPrdStatus, formatStory, formatPrd, formatNextStoryPrompt, formatCriterionAmendments, PRD_FILENAME, PRD_EXAMPLE_FILENAME, 
 // Progress (Memory Persistence)
 readProgress, readProgressRaw, parseProgress, findProgressPath, getProgressPath, getOmcProgressPath, initProgress, appendProgress, addPattern, getPatterns, getRecentLearnings, formatPatternsForContext, formatProgressForContext, formatLearningsForContext, getProgressContext, PROGRESS_FILENAME, PATTERNS_HEADER, ENTRY_SEPARATOR, 
 // Verifier (Architect Verification)
@@ -89,9 +91,6 @@ export {
 // Plugin Patterns (Popular Community Patterns)
 getFormatter, isFormatterAvailable, formatFile, getLinter, lintFile, validateCommitMessage, runTypeCheck, runTests, runLint, runPreCommitChecks, getPreCommitReminderMessage, getAutoFormatMessage } from './plugin-patterns/index.js';
 export { 
-// UltraQA Loop (QA cycling workflow)
-readUltraQAState, writeUltraQAState, clearUltraQAState, startUltraQA, recordFailure, completeUltraQA, stopUltraQA, cancelUltraQA, getGoalCommand, formatProgressMessage } from './ultraqa/index.js';
-export { 
 // Notepad (Compaction-Resilient Memory)
 initNotepad, readNotepad, getPriorityContext, getWorkingMemory, getManualSection, setPriorityContext, addWorkingMemoryEntry, addManualEntry, pruneOldEntries, getNotepadStats, formatNotepadContext, formatFullNotepad, getNotepadPath, DEFAULT_CONFIG as NOTEPAD_DEFAULT_CONFIG, NOTEPAD_FILENAME, PRIORITY_HEADER, WORKING_MEMORY_HEADER, MANUAL_HEADER } from './notepad/index.js';
 export { 
@@ -116,7 +115,10 @@ export {
 processSubagentStart, processSubagentStop, handleSubagentStart, handleSubagentStop, readTrackingState, writeTrackingState, getStateFilePath as getSubagentStateFilePath, getStaleAgents, cleanupStaleAgents, getActiveAgentCount, getAgentsByType, getRunningAgents, getTrackingStats, clearTrackingState } from './subagent-tracker/index.js';
 export { 
 // PreCompact Hook
-processPreCompact, getCheckpointPath, exportWisdomToNotepad, saveModeSummary, createCompactCheckpoint, formatCompactSummary as formatPreCompactSummary, isCompactionInProgress, getCompactionQueueDepth } from './pre-compact/index.js';
+processPreCompact, getCheckpointPath, exportWisdomToNotepad, saveModeSummary, createCompactCheckpoint, collectPlanRefs, formatCompactSummary as formatPreCompactSummary, isCompactionInProgress, getCompactionQueueDepth } from './pre-compact/index.js';
+export { 
+// PreCompact Restore (issue #3730)
+findLatestCheckpointForRestore, formatCheckpointRestoreContext, markCheckpointRestored, CHECKPOINT_MAX_AGE_MS, CHECKPOINT_MAX_BYTES } from './pre-compact/restore.js';
 export { 
 // Permission Handler Hook
 processPermissionRequest, handlePermissionRequest, isSafeCommand, isActiveModeRunning } from './permission-handler/index.js';

@@ -1203,6 +1203,25 @@ async function checkRalphLoop(
   let verificationState = readVerificationState(workingDir, sessionId);
 
   if (verificationState?.pending) {
+    const prdStatus = getPrdCompletionStatus(workingDir, sessionId);
+    const verifiedStory = verificationState.verification_scope === 'story' && verificationState.story_id
+      ? getStory(workingDir, verificationState.story_id, sessionId)
+      : undefined;
+    const staleVerification = verificationState.verification_scope === 'story'
+      ? !verifiedStory?.passes || verifiedStory.architectVerified === true
+      : prdStatus.hasPrd && !prdStatus.allComplete;
+
+    if (staleVerification) {
+      clearVerificationState(workingDir, sessionId);
+      const refreshedState = readRalphState(workingDir, sessionId);
+      if (refreshedState) {
+        refreshedState.current_story_id = prdStatus.nextStory?.id;
+        writeRalphState(workingDir, refreshedState, sessionId);
+      }
+      verificationState = null;
+    }
+
+    if (verificationState?.pending) {
     // Verification is in progress - check for architect's response
     if (sessionId) {
       // Check for architect approval
@@ -1261,6 +1280,7 @@ async function checkRalphLoop(
           };
         }
       }
+    }
     }
 
     if (verificationState?.pending) {
@@ -1381,7 +1401,7 @@ async function checkRalphLoop(
   const ralphContext = getRalphContext(workingDir, sessionId);
   const activePrdPath = prdStatus.hasPrd ? findPrdPath(workingDir, sessionId) : null;
   const prdInstruction = prdStatus.hasPrd
-    ? `2. Check ${activePrdPath ?? 'prd.json'} - verify the current story's acceptance criteria are met, then mark it passes: true. Are ALL stories complete?`
+    ? `2. Check ${activePrdPath ?? 'prd.json'} - verify the current story's acceptance criteria are met, then mark it passes: true. If implementation proves an acceptance criterion empirically false, record an evidence-backed amendment (replace or supersede it, retaining the original verbatim in the story's criterionAmendments ledger with reason, evidence, authority, and timestamp) instead of silently deleting the criterion or claiming it passes. Are ALL stories complete?`
     : `2. Check your todo list - are ALL items marked complete?`;
 
   const continuationPrompt = `<ralph-continuation>

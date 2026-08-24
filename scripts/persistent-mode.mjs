@@ -5,7 +5,7 @@
  * Minimal continuation enforcer for all OMC modes.
  * Stripped down for reliability — no optional imports, no PRD, no notepad pruning.
  *
- * Supported modes: ralph, ultragoal, autopilot, ultrapilot, swarm, ultrawork, ultraqa, pipeline, team
+ * Supported modes: ralph, ultragoal, autopilot, ultrapilot, swarm, ultrawork, pipeline, team
  */
 
 import {
@@ -96,7 +96,7 @@ process.on("unhandledRejection", (error) => {
   forceSafeExit(`[persistent-mode] Unhandled rejection: ${error?.message || error}`);
 });
 const { advanceWorkflowOnStop, isValidWorkflowDescriptor, isValidWorkflowTrackingState, isWorkflowRuntimeSupported, refreshWorkflowBoundaryForCommit, resolveWorkflowStagePrompt, takeWorkflowTranscriptFailure } = await import(pathToFileURL(join(__dirname, "lib", "workflow-profile-runtime.mjs")).href);
-const { acquireStateFileLockSync, atomicWriteFileSync, releaseStateFileLockSync, withStateFileLockSync } = await import(pathToFileURL(join(__dirname, "lib", "atomic-write.mjs")).href);
+const { acquireStateFileLockSync, atomicWriteFileSync, isStateFileLockingSupported, releaseStateFileLockSync, withStateFileLockSync } = await import(pathToFileURL(join(__dirname, "lib", "atomic-write.mjs")).href);
 
 const { getClaudeConfigDir } = await import(pathToFileURL(join(__dirname, "lib", "config-dir.mjs")).href);
 const { readStdin } = await import(
@@ -792,7 +792,12 @@ function isSessionCancelInProgress(stateDir, sessionId, currentAutopilotPath, ca
     if (!existsSync(signalPath)) return false;
     if (!currentAutopilotPath || !cancellationContext) return validateSignal(signalPath, null);
     const stateLock = acquireStateFileLockSync(currentAutopilotPath, 50, true);
-    if (!stateLock) return false;
+    if (!stateLock) {
+      if (isStateFileLockingSupported()) return false;
+      const currentAutopilot = readJsonFile(currentAutopilotPath);
+      if (isEnforceableAutopilotCancellationTarget(currentAutopilot, cancellationContext.directory, cancellationContext.isGlobal, cancellationContext.hasValidSessionId, sessionId)) return false;
+      return validateSignal(signalPath, null);
+    }
     try {
       const currentAutopilot = readJsonFile(currentAutopilotPath);
       if (!isEnforceableAutopilotCancellationTarget(currentAutopilot, cancellationContext.directory, cancellationContext.isGlobal, cancellationContext.hasValidSessionId, sessionId)) return validateSignal(signalPath, null);
@@ -915,13 +920,27 @@ function isValidSessionId(sessionId) {
 
 /**
  * Count incomplete Tasks from Claude Code's native Task system.
+ *
+ * Identity contract (issue #3732): the task store is read at
+ * ~/.claude/tasks/<identity>/ where <identity> is the
+ * CLAUDE_CODE_TASK_LIST_ID env override when set and valid, otherwise the
+ * session id. Hook payloads expose no observable team/teammate identity
+ * field, so no implicit team inference is attempted.
  */
 function countIncompleteTasks(sessionId) {
   if (!sessionId || typeof sessionId !== "string") return 0;
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) return 0;
 
+  const override = process.env.CLAUDE_CODE_TASK_LIST_ID;
+  const identity =
+    typeof override === "string" &&
+    override.trim() &&
+    /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(override)
+      ? override.trim()
+      : sessionId;
+
   const cfgDir = getClaudeConfigDir();
-  const taskDir = join(cfgDir, "tasks", sessionId);
+  const taskDir = join(cfgDir, "tasks", identity);
   if (!existsSync(taskDir)) return 0;
 
   let count = 0;
@@ -1283,12 +1302,6 @@ async function main() {
       stateDir,
       globalStateDir,
       "ultrawork-state.json",
-      sessionId,
-    );
-    const ultraqa = readStateFileWithSession(
-      stateDir,
-      globalStateDir,
-      "ultraqa-state.json",
       sessionId,
     );
     const pipeline = readStateFileWithSession(
@@ -1755,40 +1768,6 @@ async function main() {
             return;
           }
         }
-      }
-    }
-
-    // Priority 7: UltraQA (QA cycling)
-    if (
-      ultraqa.state?.active &&
-      !isStaleState(ultraqa.state) &&
-      (hasValidSessionId
-        ? ultraqa.state.session_id === sessionId
-        : !ultraqa.state.session_id || ultraqa.state.session_id === sessionId) &&
-      isStateForCurrentProject(ultraqa.state, directory, ultraqa.isGlobal)
-    ) {
-      const cycle = ultraqa.state.cycle || 1;
-      const maxCycles = ultraqa.state.max_cycles || 10;
-      if (cycle < maxCycles && !ultraqa.state.all_passing) {
-        const toolError = readLastToolError(stateDir);
-        const errorGuidance = getToolErrorRetryGuidance(toolError);
-
-        ultraqa.state.cycle = cycle + 1;
-        ultraqa.state.last_checked_at = new Date().toISOString();
-        writeJsonFile(ultraqa.path, ultraqa.state);
-
-        let reason = `[ULTRAQA - Cycle ${cycle + 1}/${maxCycles}] Tests not all passing. Continue fixing. When all tests pass, run /oh-my-claudecode:cancel to cleanly exit and clean up state files. If cancel fails, retry with /oh-my-claudecode:cancel --force.`;
-        if (errorGuidance) {
-          reason = errorGuidance + reason;
-        }
-
-        console.log(
-          JSON.stringify({
-            decision: "block",
-            reason,
-          }),
-        );
-        return;
       }
     }
 

@@ -11,8 +11,7 @@
  */
 
 import { execFileSync } from "child_process";
-import { readFileSync } from "fs";
-import { basename, join } from "path";
+import { basename } from "path";
 import {
   writeModeState,
   readModeState,
@@ -29,6 +28,11 @@ import {
   type UserStory,
 } from "./prd.js";
 import {
+  detectStalePrd,
+  formatStalePrdWarning,
+  reconcileStalePrdForStartup,
+} from "./stale-prd.js";
+import {
   findProgressPath,
   getProgressContext,
   appendProgress,
@@ -40,51 +44,9 @@ import {
   readUltraworkState as readUltraworkStateFromModule,
   writeUltraworkState as writeUltraworkStateFromModule,
 } from "../ultrawork/index.js";
-import {
-  resolveSessionStatePath,
-  getOmcRoot,
-} from "../../lib/worktree-paths.js";
 import { readTeamPipelineState } from "../team-pipeline/state.js";
 import type { TeamPipelinePhase } from "../team-pipeline/types.js";
 
-// Forward declaration to avoid circular import - check ultraqa state file directly
-export function isUltraQAActive(
-  directory: string,
-  sessionId?: string,
-): boolean {
-  // When sessionId is provided, ONLY check session-scoped path — no legacy fallback
-  if (sessionId) {
-    const sessionFile = resolveSessionStatePath(
-      "ultraqa",
-      sessionId,
-      directory,
-    );
-    try {
-      const content = readFileSync(sessionFile, "utf-8");
-      const state = JSON.parse(content);
-      return state && state.active === true;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        return false;
-      }
-      return false; // NO legacy fallback
-    }
-  }
-
-  // No sessionId: legacy path (backward compat)
-  const omcDir = getOmcRoot(directory);
-  const stateFile = join(omcDir, "state", "ultraqa-state.json");
-  try {
-    const content = readFileSync(stateFile, "utf-8");
-    const state = JSON.parse(content);
-    return state && state.active === true;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return false;
-    }
-    return false;
-  }
-}
 
 export interface RalphLoopState {
   /** Whether the loop is currently active */
@@ -285,14 +247,6 @@ export function createRalphLoopHook(directory: string): RalphLoopHook {
     prompt: string,
     options?: RalphLoopOptions,
   ): boolean => {
-    // Mutual exclusion check: cannot start Ralph Loop if UltraQA is active
-    if (isUltraQAActive(directory, sessionId)) {
-      console.error(
-        "Cannot start Ralph Loop while UltraQA is active. Cancel UltraQA first with /oh-my-claudecode:cancel.",
-      );
-      return false;
-    }
-
     const enableUltrawork = !options?.disableUltrawork;
     const now = new Date().toISOString();
     const normalizedPrompt = stripCriticModeFlag(stripNoPrdFlag(prompt));
@@ -321,6 +275,15 @@ export function createRalphLoopHook(directory: string): RalphLoopHook {
     if (!startupPrd.ok) {
       console.error(`[RALPH PRD REQUIRED] ${startupPrd.error}`);
       return false;
+    }
+
+    // Stale-state reconciliation (#3669): if the active PRD was left unfinished
+    // by an abnormal/non-Step 8 exit, reconcile it from configured observable
+    // evidence (bounded: content checks only, never PR/merge status) and
+    // surface any remaining divergence at the moment it is cheapest to fix.
+    const staleReconcile = reconcileStalePrdForStartup(directory, sessionId);
+    if (staleReconcile.warning) {
+      console.error(staleReconcile.warning);
     }
 
     if (!findProgressPath(directory)) {
@@ -440,6 +403,14 @@ export function getPrdCompletionStatus(directory: string, sessionId?: string): {
  */
 export function getRalphContext(directory: string, sessionId?: string): string {
   const parts: string[] = [];
+
+  // Add stale-unfinished-PRD warning (#3669): the live loop excludes the
+  // active-ralph-state signal (it is the normal case here) and only reports
+  // divergence backed by age / stale-pointer signals.
+  const staleDetection = detectStalePrd(directory, sessionId, { includeAbnormalExit: false });
+  if (staleDetection?.stale) {
+    parts.push(`<stale-prd-warning>\n${formatStalePrdWarning(staleDetection)}\n</stale-prd-warning>\n`);
+  }
 
   // Add progress context (patterns, learnings)
   const progressContext = getProgressContext(directory);

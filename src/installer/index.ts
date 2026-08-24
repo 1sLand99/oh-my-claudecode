@@ -33,6 +33,7 @@ import { OMC_PLUGIN_ROOT_ENV } from '../lib/env-vars.js';
 import { analyzeLegacyClaudeMd, OMC_END_MARKER, OMC_START_MARKER, parseClaudeMdMarkers, removeClaudeMdRanges } from './claude-md-analysis.js';
 import { executeClaudeMdTransaction } from './claude-md-transaction.js';
 import { HISTORICAL_AGENT_OWNERSHIP, type HistoricalAgentOwnership } from './historical-agent-ownership.js';
+import entitlementManifest from '../config/builtin-skill-entitlements.json' with { type: 'json' };
 
 /** Claude Code configuration directory */
 export const CLAUDE_CONFIG_DIR = getClaudeConfigDir();
@@ -72,11 +73,9 @@ const CC_NATIVE_COMMANDS = new Set([
   'memory',
 ]);
 
-const SKININTHEGAMEBROS_ONLY_SKILLS = new Set([
-  'remember',
-  'verify',
-  'debug',
-]);
+const SKININTHEGAMEBROS_ONLY_SKILLS = new Set<string>(
+  entitlementManifest.skininthegamebrosOnlySkills.map((skill: string) => skill.trim().toLowerCase()),
+);
 
 function isSafeAgentFilename(filename: string): boolean {
   return /^[a-z0-9-]+\.md$/.test(filename);
@@ -1140,26 +1139,39 @@ export function prunePluginDuplicateAgents(log: (msg: string) => void): string[]
  * that contain a SKILL.md with OMC frontmatter but are no longer shipped by
  * the current package version. User-created skills are preserved.
  */
-export function cleanupStaleSkills(log: (msg: string) => void): string[] {
+export function cleanupStaleSkills(
+  log: (msg: string) => void,
+  options?: { safeStandaloneNames?: boolean },
+): string[] {
   const skillsDir = currentSkillsDir();
   if (!existsSync(skillsDir)) return [];
 
   const packageSkillsDir = join(getPackageDir(), 'skills');
   const currentSkillNames = new Set<string>();
 
+  // The keep-set must contain only the directory names the *current* install
+  // mode actually writes. Holding both the raw and `omc-`prefixed variants
+  // stranded the pre-rename copy whenever a skill collided with a Claude Code
+  // native command (e.g. `plan` -> `omc-plan`), leaving both installed.
+  const usesSafeNames = options?.safeStandaloneNames === true;
+
   if (existsSync(packageSkillsDir)) {
     for (const entry of readdirSync(packageSkillsDir, { withFileTypes: true })) {
       if (entry.isDirectory()) {
-        currentSkillNames.add(entry.name);
-        // Also add the safe standalone name variant
+        if (!usesSafeNames) {
+          currentSkillNames.add(entry.name);
+          continue;
+        }
         const skillMdPath = join(packageSkillsDir, entry.name, 'SKILL.md');
+        let rawName = entry.name;
         if (existsSync(skillMdPath)) {
           const content = readFileSync(skillMdPath, 'utf-8');
           const { metadata } = parseFrontmatter(content);
           if (typeof metadata.name === 'string' && metadata.name.trim().length > 0) {
-            currentSkillNames.add(toSafeStandaloneSkillName(metadata.name));
+            rawName = metadata.name;
           }
         }
+        currentSkillNames.add(toSafeStandaloneSkillName(rawName));
       }
     }
   }
@@ -2177,7 +2189,7 @@ function syncBundledSkillDefinitions(log: (msg: string) => void, options?: { saf
 
   for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
-    if (SKININTHEGAMEBROS_ONLY_SKILLS.has(entry.name) && !isSkininthegamebrosUser()) {
+    if (SKININTHEGAMEBROS_ONLY_SKILLS.has(entry.name.toLowerCase()) && !isSkininthegamebrosUser()) {
       continue;
     }
 
@@ -2557,6 +2569,11 @@ export function install(options: InstallOptions = {}): InstallResult {
       log('Skipping agent/command/hook files (managed by plugin system)');
     }
 
+    // Single source of truth for the installed-directory naming mode: stale
+    // cleanup must evaluate the same mode the sync used, or a renamed skill
+    // leaves its pre-rename directory behind.
+    const useSafeStandaloneSkillNames = !enabledOmcPlugin || options.noPlugin === true;
+
     if (shouldInstallBundledSkills) {
       log(options.noPlugin
         ? 'Installing bundled skills from local package (--no-plugin)...'
@@ -2564,7 +2581,7 @@ export function install(options: InstallOptions = {}): InstallResult {
           ? 'Installing bundled skills from local package (no enabled OMC plugin detected)...'
           : 'Installing bundled skills from local package (enabled plugin skill files not found)...');
       result.installedSkills.push(...syncBundledSkillDefinitions(log, {
-        safeStandaloneNames: !enabledOmcPlugin || options.noPlugin === true,
+        safeStandaloneNames: useSafeStandaloneSkillNames,
       }));
     } else if (pluginProvidesSkillFiles) {
       log('Skipping bundled skill installation (plugin-provided skills are available). Use --no-plugin to force local skill sync.');
@@ -2579,7 +2596,9 @@ export function install(options: InstallOptions = {}): InstallResult {
 
     // Clean up stale OMC-created skills from previous versions
     if (existsSync(SKILLS_DIR)) {
-      const removedSkills = cleanupStaleSkills(log);
+      const removedSkills = cleanupStaleSkills(log, {
+        safeStandaloneNames: useSafeStandaloneSkillNames,
+      });
       if (removedSkills.length > 0) {
         log(`Cleaned up ${removedSkills.length} stale skill(s)`);
       }

@@ -905,6 +905,46 @@ async function hasCurrentWorkerStartupEvidence(
   return currentClaim || currentStatus;
 }
 
+export interface WorkerStartupEvidencePolicy {
+  initialBudgetMs: number;
+  finalRecheckBudgetMs: number;
+  resubmitAttempts: number;
+  resubmitBudgetMs: number;
+}
+
+const WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS = 250;
+const WORKER_STARTUP_EVIDENCE_POLICIES: Readonly<Record<CliAgentType, WorkerStartupEvidencePolicy>> = {
+  // Claude's interactive transport can lose a submit, so retain the existing
+  // bounded resubmit behavior and its effective 6 + (4 * 12) poll windows.
+  claude: { initialBudgetMs: 1_250, finalRecheckBudgetMs: 0, resubmitAttempts: 4, resubmitBudgetMs: 2_750 },
+  // External providers can be visibly ready before they publish task/status
+  // evidence. Give that distinct evidence gate enough time for a cold start,
+  // then perform one bounded read-only recheck without duplicating the inbox.
+  codex: { initialBudgetMs: 30_000, finalRecheckBudgetMs: 1_000, resubmitAttempts: 0, resubmitBudgetMs: 0 },
+  gemini: { initialBudgetMs: 30_000, finalRecheckBudgetMs: 1_000, resubmitAttempts: 0, resubmitBudgetMs: 0 },
+  cursor: { initialBudgetMs: 30_000, finalRecheckBudgetMs: 1_000, resubmitAttempts: 0, resubmitBudgetMs: 0 },
+  grok: { initialBudgetMs: 30_000, finalRecheckBudgetMs: 1_000, resubmitAttempts: 0, resubmitBudgetMs: 0 },
+  antigravity: { initialBudgetMs: 30_000, finalRecheckBudgetMs: 1_000, resubmitAttempts: 0, resubmitBudgetMs: 0 },
+};
+
+export function getWorkerStartupEvidencePolicy(agentType: CliAgentType): WorkerStartupEvidencePolicy {
+  return WORKER_STARTUP_EVIDENCE_POLICIES[agentType];
+}
+
+export async function waitForStartupEvidenceBudget(
+  hasEvidence: () => Promise<boolean>,
+  budgetMs: number,
+  delayMs = WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS,
+): Promise<boolean> {
+  const deadline = Date.now() + Math.max(0, budgetMs);
+  for (;;) {
+    if (await hasEvidence()) return true;
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) return false;
+    await new Promise(resolve => setTimeout(resolve, Math.min(delayMs, remainingMs)));
+  }
+}
+
 async function waitForWorkerStartupEvidence(
   teamName: string,
   workerName: string,
@@ -912,14 +952,14 @@ async function waitForWorkerStartupEvidence(
   cwd: string,
   baseline: WorkerStartupBaseline,
   launchAttemptId: string,
-  attempts = 3,
-  delayMs = 250,
+  budgetMs: number,
+  delayMs = WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS,
 ): Promise<boolean> {
-  for (let attempt = 1; attempt <= attempts; attempt++) {
-    if (await hasCurrentWorkerStartupEvidence(teamName, workerName, taskId, cwd, baseline, launchAttemptId)) return true;
-    if (attempt < attempts) await new Promise(resolve => setTimeout(resolve, delayMs));
-  }
-  return false;
+  return waitForStartupEvidenceBudget(
+    () => hasCurrentWorkerStartupEvidence(teamName, workerName, taskId, cwd, baseline, launchAttemptId),
+    budgetMs,
+    delayMs,
+  );
 }
 
 async function waitForWorkerStatusTransition(
@@ -928,16 +968,14 @@ async function waitForWorkerStatusTransition(
   cwd: string,
   baselineFingerprint: string,
   launchAttemptId: string,
-  attempts = 12,
+  budgetMs: number,
   delayMs = 250,
 ): Promise<boolean> {
-  for (let attempt = 1; attempt <= attempts; attempt++) {
+  return waitForStartupEvidenceBudget(async () => {
     const status = await readWorkerStatus(teamName, workerName, cwd);
-    if (status.state !== 'unknown' && status.launch_attempt_id === launchAttemptId
-      && workerStatusStartupFingerprint(status) !== baselineFingerprint) return true;
-    if (attempt < attempts) await new Promise(resolve => setTimeout(resolve, delayMs));
-  }
-  return false;
+    return status.state !== 'unknown' && status.launch_attempt_id === launchAttemptId
+      && workerStatusStartupFingerprint(status) !== baselineFingerprint;
+  }, budgetMs, delayMs);
 }
 
 export function promptModeRecoveryRequiresProgressEvidence(
@@ -945,6 +983,30 @@ export function promptModeRecoveryRequiresProgressEvidence(
   continuationCount: number,
 ): boolean {
   return promptMode && continuationCount > 0;
+}
+
+async function applyRequiredLayoutBeforeOwnedLaunch(
+  sessionName: string,
+  ownership: WorkerPaneOwnership,
+  workerName: string,
+): Promise<void> {
+  try {
+    await applyMainVerticalLayout(sessionName, { required: true });
+  } catch (error) {
+    let cleaned = false;
+    try {
+      await killOwnedWorkerPane(ownership);
+      cleaned = await getWorkerPaneLiveness(ownership.paneId) === 'dead';
+    } catch {
+      // Preserve the layout failure unless pane cleanup cannot be verified.
+    }
+    if (!cleaned) {
+      const cleanupError = new Error(`worker_layout_cleanup_unverified:${workerName}:${ownership.paneId}`);
+      (cleanupError as Error & { cause?: unknown }).cause = error;
+      throw cleanupError;
+    }
+    throw error;
+  }
 }
 
 /**
@@ -978,6 +1040,9 @@ async function spawnV2Worker(opts: SpawnV2WorkerOptions): Promise<SpawnV2WorkerR
   })) throw new Error(`worker_pane_membership_unverified:${ownershipResult.ownership.paneId}`);
   const ownership = ownershipResult.ownership;
   const paneId = ownership.paneId;
+  if (launchProvider === 'tmux') {
+    await applyRequiredLayoutBeforeOwnedLaunch(opts.sessionName, ownership, opts.workerName);
+  }
   const usePromptMode = isPromptModeAgent(opts.agentType);
 
   const injectContract = shouldInjectContract(opts.role ?? null, opts.agentType);
@@ -1037,12 +1102,11 @@ async function spawnV2Worker(opts: SpawnV2WorkerOptions): Promise<SpawnV2WorkerR
     launchStateCwd: opts.cwd,
     launchContext: { kind: 'initial' },
   };
-  let startupContext: StartupPaneContext;
-  try {
-    startupContext = await spawnOwnedWorkerInPane(opts.sessionName, ownership, paneConfig);
-  } catch (error) {
-    throw error;
-  }
+  const startupContext: StartupPaneContext = await spawnOwnedWorkerInPane(
+    opts.sessionName,
+    ownership,
+    paneConfig,
+  );
   const inboxTriggerMessage = `${generateTriggerMessage(opts.teamName, opts.workerName, instructionStateRoot)} ` +
     `[launch:${startupContext.attempt.attempt_id.slice(0, 12)}]`;
   const cleanupStartedLaunch = async (reason: string): Promise<void> => {
@@ -1057,22 +1121,22 @@ async function spawnV2Worker(opts: SpawnV2WorkerOptions): Promise<SpawnV2WorkerR
     }).catch(() => false);
     if (!cleaned) throw new Error(`worker_startup_cleanup_unverified:${opts.workerName}:${paneId}`);
   };
-  try {
-    await applyMainVerticalLayout(opts.sessionName);
-  } catch (error) {
-    await cleanupStartedLaunch('startup_layout_failed');
-    throw error;
-  }
-
-  const waitForCurrentEvidence = (attempts = 12) => waitForWorkerStartupEvidence(
+  const evidencePolicy = getWorkerStartupEvidencePolicy(opts.agentType);
+  const waitForCurrentEvidence = (budgetMs: number) => waitForWorkerStartupEvidence(
     opts.teamName,
     opts.workerName,
     opts.taskId,
     opts.cwd,
     startupBaseline,
     startupContext.attempt.attempt_id,
-    attempts,
+    budgetMs,
   );
+  const waitForBoundedStartupEvidence = async (): Promise<boolean> => {
+    if (await waitForCurrentEvidence(evidencePolicy.initialBudgetMs)) return true;
+    return evidencePolicy.finalRecheckBudgetMs > 0
+      ? waitForCurrentEvidence(evidencePolicy.finalRecheckBudgetMs)
+      : false;
+  };
   const fencedDispatch = await (async () => {
     try {
       return await withWorkerLaunchAttemptFence(startupContext.attempt, async () => {
@@ -1094,7 +1158,7 @@ async function spawnV2Worker(opts: SpawnV2WorkerOptions): Promise<SpawnV2WorkerR
     inboxCorrelationKey: `startup:${opts.workerName}:${opts.taskId}:${startupContext.attempt.attempt_id}`,
     notify: async (_target, triggerMessage) => {
       if (usePromptMode) {
-        const settled = await waitForCurrentEvidence();
+        const settled = await waitForBoundedStartupEvidence();
         return settled
           ? { ok: true, transport: 'prompt_stdin' as const, reason: 'prompt_mode_worker_confirmed' }
           : { ok: false, transport: 'prompt_stdin' as const, reason: `${opts.agentType}_startup_evidence_missing` };
@@ -1104,10 +1168,13 @@ async function spawnV2Worker(opts: SpawnV2WorkerOptions): Promise<SpawnV2WorkerR
       if (!attempted.ok) {
         return { ok: false, transport: 'tmux_send_keys' as const, reason: `worker_notify_failed:${attempted.reason}` };
       }
-      let settled = await waitForCurrentEvidence(opts.agentType === 'claude' ? 6 : 12);
-      for (let attempt = 1; !settled && opts.agentType === 'claude' && attempt <= 4; attempt++) {
+      let settled = await waitForCurrentEvidence(evidencePolicy.initialBudgetMs);
+      for (let attempt = 1; !settled && attempt <= evidencePolicy.resubmitAttempts; attempt++) {
         if (!await retryStartupInboxSubmit(startupContext, triggerMessage, { attemptAlreadyFenced: true })) break;
-        settled = await waitForCurrentEvidence();
+        settled = await waitForCurrentEvidence(evidencePolicy.resubmitBudgetMs);
+      }
+      if (!settled && evidencePolicy.finalRecheckBudgetMs > 0) {
+        settled = await waitForCurrentEvidence(evidencePolicy.finalRecheckBudgetMs);
       }
       return settled
         ? { ok: true, transport: 'tmux_send_keys' as const, reason: 'worker_startup_confirmed' }
@@ -1236,7 +1303,10 @@ async function cleanupRecoveryPaneAttempt(
   pending: PendingRecoveryPane,
   reason: string,
 ): Promise<boolean> {
-  let providerStopped = true;
+  // A spawn rejection can occur after its bootstrap created an owned process
+  // but before it returned the launch context. Without that context, cleanup
+  // containment is unproven and the pane must be retained for investigation.
+  let providerStopped = false;
   if (pending.startupContext) {
     providerStopped = await retireAndCleanupCurrentWorkerLaunchAttempt(
       pending.startupContext.attempt,
@@ -1250,6 +1320,17 @@ async function cleanupRecoveryPaneAttempt(
         }
       },
     ).catch(() => false);
+  }
+  if (!providerStopped) {
+    const liveness = await getWorkerLiveness(pending.ownership.paneId).catch(() => 'unknown' as const);
+    await recordRecoveryPaneRollbackFailure(
+      input,
+      recoveryId,
+      pending,
+      `${reason}:provider_cleanup_unverified`,
+      liveness,
+    );
+    return false;
   }
   let liveness: WorkerPaneLiveness = 'unknown';
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -2528,6 +2609,22 @@ export async function executeRecoverDeadWorkerV2Owner(
           );
           return { ok: false, error: 'worker_activation_failed' };
         }
+        if (recoveryProvider === 'tmux') {
+          try {
+            await applyRequiredLayoutBeforeOwnedLaunch(
+              owner.config.tmux_session!,
+              ownershipResult.ownership,
+              sagaInput.workerName,
+            );
+          } catch (error) {
+            return {
+              ok: false,
+              error: error instanceof Error && error.message.startsWith('worker_layout_cleanup_unverified:')
+                ? 'worker_cleanup_incomplete'
+                : 'spawn_failed',
+            };
+          }
+        }
         let pending: PendingRecoveryPane;
         try {
           pending = await buildRecoveryPaneContext(
@@ -2682,7 +2779,8 @@ export async function executeRecoverDeadWorkerV2Owner(
           : null;
         const statusBaseline = startupBaseline?.statusFingerprint
           ?? workerStatusStartupFingerprint(await readWorkerStatus(input.teamName, sagaInput.workerName, input.cwd));
-        const waitForCurrentEvidence = () => primaryTaskId && startupBaseline
+        const evidencePolicy = getWorkerStartupEvidencePolicy(pending.agentType);
+        const waitForCurrentEvidence = (budgetMs: number) => primaryTaskId && startupBaseline
           ? waitForWorkerStartupEvidence(
               input.teamName,
               sagaInput.workerName,
@@ -2690,7 +2788,7 @@ export async function executeRecoverDeadWorkerV2Owner(
               input.cwd,
               startupBaseline,
               startupAttemptId,
-              12,
+              budgetMs,
             )
           : waitForWorkerStatusTransition(
               input.teamName,
@@ -2698,7 +2796,21 @@ export async function executeRecoverDeadWorkerV2Owner(
               input.cwd,
               statusBaseline,
               startupAttemptId,
+              budgetMs,
             );
+        const waitForBoundedStartupEvidence = async (
+          resubmit?: () => Promise<boolean>,
+        ): Promise<boolean> => {
+          let settled = await waitForCurrentEvidence(evidencePolicy.initialBudgetMs);
+          for (let attempt = 1; !settled && resubmit && attempt <= evidencePolicy.resubmitAttempts; attempt++) {
+            if (!await resubmit()) break;
+            settled = await waitForCurrentEvidence(evidencePolicy.resubmitBudgetMs);
+          }
+          if (!settled && evidencePolicy.finalRecheckBudgetMs > 0) {
+            settled = await waitForCurrentEvidence(evidencePolicy.finalRecheckBudgetMs);
+          }
+          return settled;
+        };
         const instruction = continuations.length > 0
           ? continuations.map(continuation => renderRecoveryContinuationInstruction({
             teamName: input.teamName,
@@ -2764,7 +2876,7 @@ export async function executeRecoverDeadWorkerV2Owner(
         const effects = await withWorkerLaunchAttemptFence(startupContext.attempt, async () => {
           await ensureFence();
           if (promptModeRecoveryRequiresProgressEvidence(pending.promptMode, continuations.length)) {
-            if (!await waitForCurrentEvidence()) return { ok: false as const, error: `${pending.agentType}_startup_evidence_missing` };
+            if (!await waitForBoundedStartupEvidence()) return { ok: false as const, error: `${pending.agentType}_startup_evidence_missing` };
           } else if (pending.promptMode) {
             // Idle prompt-mode recoveries (for example Gemini with no owned tasks)
             // intentionally have no task/status progress to prove. At this point
@@ -2793,7 +2905,9 @@ export async function executeRecoverDeadWorkerV2Owner(
               if (!attempted.ok) {
                 return { ok: false, transport: 'tmux_send_keys' as const, reason: `worker_notify_failed:${attempted.reason}` };
               }
-              const settled = await waitForCurrentEvidence();
+              const settled = await waitForBoundedStartupEvidence(
+                () => retryStartupInboxSubmit(startupContext, triggerMessage, { attemptAlreadyFenced: true }),
+              );
               return settled
                 ? { ok: true, transport: 'tmux_send_keys' as const, reason: 'worker_startup_confirmed' }
                 : { ok: false, transport: 'tmux_send_keys' as const, reason: 'worker_startup_evidence_missing' };
@@ -3390,7 +3504,7 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
     });
 
     if (workerLaunch.paneId) {
-      workerPaneIds.push(workerLaunch.paneId);
+      if (workerLaunch.startupAssigned) workerPaneIds.push(workerLaunch.paneId);
       launchedWorkers.push({
         name: wName, paneId: workerLaunch.paneId,
         ...(workerLaunch.launchAttemptId ? { launchAttemptId: workerLaunch.launchAttemptId } : {}),

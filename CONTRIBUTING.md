@@ -451,6 +451,6 @@ Or check the troubleshooting sections in:
 - **Local Plugin Install**: [docs/LOCAL_PLUGIN_INSTALL.md](./docs/LOCAL_PLUGIN_INSTALL.md)
 - **Getting Started**: [docs/GETTING-STARTED.md](./docs/GETTING-STARTED.md)
 - **GitHub Issues**: https://github.com/Yeachan-Heo/oh-my-claudecode/issues
-- **Discord Community**: https://discord.gg/jq6jnSGABY
+- **Discord Community**: https://discord.gg/wSyUQYfhAw
 
 Happy contributing!

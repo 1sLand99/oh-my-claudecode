@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -22,6 +23,7 @@ import {
   retireAndCleanupCurrentWorkerLaunchAttempt,
   terminateWorkerLaunchProvider,
   revokeWorkerLaunchAttempt,
+  buildProviderEnvironment,
   buildProviderSpawnInvocation,
   materializeProviderSpawnInvocation,
   quoteWindowsCreateProcessArgument,
@@ -267,7 +269,9 @@ describe('worker launch acknowledgement', () => {
     await expect(awaitWorkerLaunchAcknowledgement(launchAttempt, { timeoutMs: 500, pollIntervalMs: 5 })).resolves.toEqual({ ok: true });
     await writeFile(`${launchAttempt.startedPath}.terminal`, JSON.stringify({ ...expected,
       kind: 'worker_launch_provider_terminal', outcome: 'exit', cleanup_verified: true,
-      pid: 999_999, process_start_identity: '1', written_at: new Date().toISOString() }), 'utf8');
+      pid: 999_999, process_start_identity: '1',
+      ...(process.platform !== 'win32' ? { process_group_id: 999_999 } : {}),
+      written_at: new Date().toISOString() }), 'utf8');
     const firstCleanup = vi.fn(async () => true);
     await expect(retireAndCleanupCurrentWorkerLaunchAttempt(launchAttempt, 'partial_shutdown', firstCleanup)).resolves.toBe(true);
     expect(firstCleanup).toHaveBeenCalledOnce();
@@ -276,7 +280,7 @@ describe('worker launch acknowledgement', () => {
     expect(retryCleanup).not.toHaveBeenCalled();
   });
 
-  it.runIf(process.platform !== 'win32')('publishes termination-complete on an identity-bound already-dead retry after a prior request', async () => {
+  it.runIf(process.platform !== 'win32')('does not synthesize completion from an already-dead retry after a prior request', async () => {
     const launchAttempt = await attempt();
     const expected = JSON.parse(await readFile(launchAttempt.expectedPath, 'utf8'));
     await writeFile(launchAttempt.startedPath, JSON.stringify({ ...expected,
@@ -287,11 +291,8 @@ describe('worker launch acknowledgement', () => {
       process_start_identity: '1', containment_nonce: launchAttempt.nonce,
       written_at: new Date().toISOString() }), 'utf8');
 
-    await expect(terminateWorkerLaunchProvider(launchAttempt, 100)).resolves.toBe(true);
-    await expect(readFile(`${launchAttempt.startedPath}.termination-complete`, 'utf8').then(JSON.parse))
-      .resolves.toMatchObject({ ...expected,
-        kind: 'worker_launch_termination_complete', cleanup_verified: true,
-        pid: 999_999_999, process_start_identity: '1' });
+    await expect(terminateWorkerLaunchProvider(launchAttempt, 100)).resolves.toBe(false);
+    await expect(readFile(`${launchAttempt.startedPath}.termination-complete`, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('does not treat a reused provider PID as cleaned without terminal descendant proof', async () => {
@@ -309,12 +310,29 @@ describe('worker launch acknowledgement', () => {
     await writeFile(`${launchAttempt.startedPath}.terminal`, JSON.stringify({ ...expected,
       kind: 'worker_launch_provider_terminal', outcome: 'exit', cleanup_verified: true,
       pid: process.pid, process_start_identity: staleIdentity, written_at: new Date().toISOString() }), 'utf8');
-    await expect(terminateWorkerLaunchProvider(launchAttempt, 100)).resolves.toBe(true);
+    await expect(terminateWorkerLaunchProvider(launchAttempt, 100)).resolves.toBe(false);
     expect(isProcessAlive(process.pid)).toBe(true);
     expect(currentIdentity).toBeTruthy();
     await writeFile(launchAttempt.startedPath, JSON.stringify({ ...expected, kind: 'worker_launch_provider_started',
       pid: process.pid, process_start_identity: currentIdentity, written_at: new Date().toISOString() }), 'utf8');
     await expect(terminateWorkerLaunchProvider(launchAttempt, 0)).resolves.toBe(false);
+    expect(isProcessAlive(process.pid)).toBe(true);
+  });
+
+  it.runIf(process.platform !== 'win32')('rejects terminal cleanup proof bound to the wrong process group', async () => {
+    const launchAttempt = await attempt();
+    const expected = JSON.parse(await readFile(launchAttempt.expectedPath, 'utf8'));
+    const currentIdentity = await getProcessStartIdentity(process.pid);
+    await writeFile(launchAttempt.startedPath, JSON.stringify({ ...expected,
+      kind: 'worker_launch_provider_started', pid: process.pid,
+      process_start_identity: currentIdentity, process_group_id: 999_998,
+      written_at: new Date().toISOString() }), 'utf8');
+    await writeFile(`${launchAttempt.startedPath}.terminal`, JSON.stringify({ ...expected,
+      kind: 'worker_launch_provider_terminal', outcome: 'exit', cleanup_verified: true,
+      pid: process.pid, process_start_identity: currentIdentity, process_group_id: 999_999,
+      written_at: new Date().toISOString() }), 'utf8');
+
+    await expect(terminateWorkerLaunchProvider(launchAttempt, 100)).resolves.toBe(false);
     expect(isProcessAlive(process.pid)).toBe(true);
   });
 
@@ -403,7 +421,7 @@ describe('worker launch acknowledgement', () => {
     }, { timeout: 2_000, interval: 20 });
   });
 
-  it('retires and terminates the exact started provider process tree', async () => {
+  it('terminates the exact started provider process group before failed-startup pane cleanup', async () => {
     const launchAttempt = await attempt();
     const pidMarker = join(cwd, 'started-provider-tree-pids.json');
     const providerScript = [
@@ -426,8 +444,21 @@ describe('worker launch acknowledgement', () => {
       timeoutMs: 2_000,
       pollIntervalMs: 5,
     })).resolves.toBe(true);
-    await expect(retireWorkerLaunchAttempt(launchAttempt, 'pane_cleanup')).resolves.toBe(true);
-    await expect(terminateWorkerLaunchProvider(launchAttempt)).resolves.toBe(true);
+    const started = JSON.parse(await readFile(launchAttempt.startedPath, 'utf8')) as { process_group_id: number };
+    const cleanup = vi.fn(async () => {
+      const pids = JSON.parse(await readFile(pidMarker, 'utf8')) as { parent: number; child: number };
+      expect(isProcessAlive(pids.parent)).toBe(false);
+      expect(isProcessAlive(pids.child)).toBe(false);
+      expect(isProcessAlive(process.pid)).toBe(true);
+      expect(() => process.kill(-started.process_group_id, 0)).toThrow(expect.objectContaining({ code: 'ESRCH' }));
+      return true;
+    });
+    await expect(retireAndCleanupCurrentWorkerLaunchAttempt(
+      launchAttempt,
+      'startup_dispatch_failed',
+      cleanup,
+    )).resolves.toBe(true);
+    expect(cleanup).toHaveBeenCalledOnce();
     await expect(bootstrap).resolves.toMatchObject({ outcome: 'ran' });
     const pids = JSON.parse(await readFile(pidMarker, 'utf8')) as { parent: number; child: number };
     await vi.waitFor(() => {
@@ -694,7 +725,12 @@ describe('worker launch acknowledgement', () => {
       nonce: launchAttempt.nonce,
     });
     expect(descriptor.provider_argv).toEqual(providerArgv);
-    expect(descriptor.provider_env).toEqual(providerEnv);
+    const homeKey = process.platform === 'win32' ? 'USERPROFILE' : 'HOME';
+    const ambientHome = process.env[homeKey];
+    expect(descriptor.provider_env).toEqual({
+      ...providerEnv,
+      ...(ambientHome ? { [homeKey]: ambientHome } : {}),
+    });
     await expect(materializeWorkerLaunchTransport({
       attempt: launchAttempt,
       providerArgv: ['codex'],
@@ -760,6 +796,72 @@ describe('worker launch acknowledgement', () => {
     await expect(readFile(launchAttempt.bootstrapDescriptorPath, 'utf8')).resolves.toContain(launchAttempt.attempt_id);
   });
 
+  it('propagates only the canonical home variable for each platform', () => {
+    const posix = buildProviderEnvironment(undefined, {
+      PATH: '/usr/bin:/bin',
+      HOME: '/home/provider',
+      USERPROFILE: 'C:\\Users\\wrong-platform',
+      GH_TOKEN: 'ambient-secret',
+    }, 'linux');
+    expect(posix).toEqual({ PATH: '/usr/bin:/bin', HOME: '/home/provider' });
+
+    const windows = buildProviderEnvironment(undefined, {
+      PATH: 'C:\\Windows\\System32',
+      HOME: '/home/wrong-platform',
+      USERPROFILE: 'C:\\Users\\provider',
+      SystemRoot: 'C:\\Windows',
+      GH_TOKEN: 'ambient-secret',
+    }, 'win32');
+    expect(windows).toEqual({
+      PATH: 'C:\\Windows\\System32',
+      SystemRoot: 'C:\\Windows',
+      USERPROFILE: 'C:\\Users\\provider',
+    });
+  });
+
+  it('omits missing or empty ambient homes while preserving explicit overrides', () => {
+    expect(buildProviderEnvironment(undefined, { PATH: '/usr/bin:/bin' }, 'linux'))
+      .toEqual({ PATH: '/usr/bin:/bin' });
+    expect(buildProviderEnvironment(undefined, {
+      PATH: '/usr/bin:/bin', HOME: '', USERPROFILE: 'C:\\Users\\wrong-platform',
+    }, 'linux')).toEqual({ PATH: '/usr/bin:/bin' });
+    expect(buildProviderEnvironment(undefined, {
+      PATH: 'C:\\Windows\\System32', USERPROFILE: '', HOME: '/home/wrong-platform',
+    }, 'win32')).toEqual({ PATH: 'C:\\Windows\\System32' });
+
+    expect(buildProviderEnvironment({ HOME: '/home/explicit' }, {
+      PATH: '/usr/bin:/bin', HOME: '/home/ambient',
+    }, 'linux')).toMatchObject({ PATH: '/usr/bin:/bin', HOME: '/home/explicit' });
+    expect(buildProviderEnvironment({ USERPROFILE: 'D:\\Users\\explicit' }, {
+      PATH: 'C:\\Windows\\System32', USERPROFILE: 'C:\\Users\\ambient',
+    }, 'win32')).toMatchObject({ PATH: 'C:\\Windows\\System32', USERPROFILE: 'D:\\Users\\explicit' });
+    expect(buildProviderEnvironment({ userprofile: 'D:\\Users\\mixed-case' }, {
+      PATH: 'C:\\Windows\\System32', USERPROFILE: 'C:\\Users\\ambient',
+    }, 'win32')).toEqual({ PATH: 'C:\\Windows\\System32', userprofile: 'D:\\Users\\mixed-case' });
+    expect(buildProviderEnvironment({ HOME: '' }, {
+      PATH: '/usr/bin:/bin', HOME: '/home/ambient',
+    }, 'linux')).toMatchObject({ PATH: '/usr/bin:/bin', HOME: '' });
+  });
+
+  it.runIf(process.platform !== 'win32' && Boolean(process.env.HOME) && existsSync('/bin/bash'))(
+    'passes HOME to a real set -u bash provider wrapper',
+    async () => {
+      const launchAttempt = await attempt();
+      const marker = join(cwd, 'provider-home.txt');
+      const spec = buildWorkerLaunchBootstrapSpec(
+        launchAttempt,
+        ['/bin/bash', '--noprofile', '--norc', '-u', '-c', 'set -u; printf "%s" "$HOME" > "$1"; sleep 0.2', 'bash-provider', marker],
+        cwd,
+        { releaseAfterSpawn: true },
+      );
+      const bootstrap = runWorkerLaunchBootstrap(spec);
+      await expect(awaitWorkerLaunchAcknowledgement(launchAttempt, { timeoutMs: 2_000, pollIntervalMs: 5 }))
+        .resolves.toEqual({ ok: true });
+      await expect(bootstrap).resolves.toEqual({ outcome: 'ran', exitCode: 0, signal: null });
+      await expect(readFile(marker, 'utf8')).resolves.toBe(process.env.HOME);
+    },
+  );
+
   it('validates provider environment keys and propagates only explicit provider values', async () => {
     const launchAttempt = await attempt();
     expect(() => buildWorkerLaunchBootstrapSpec(launchAttempt, ['codex'], cwd, {
@@ -791,6 +893,19 @@ describe('worker launch acknowledgement', () => {
       value: 'provider-value',
       attempt: launchAttempt.attempt_id,
     });
+  });
+
+  it('rejects provider environment tampering through the authority digest', async () => {
+    const launchAttempt = await attempt();
+    const spec = buildWorkerLaunchBootstrapSpec(launchAttempt, ['codex'], cwd, {
+      providerEnv: { HOME: '/home/authority-original' },
+    });
+    const tampered = {
+      ...spec,
+      provider_env: { ...spec.provider_env, HOME: '/home/authority-tampered' },
+    };
+    expect(tampered.authority_digest).toBe(spec.authority_digest);
+    await expect(runWorkerLaunchBootstrap(tampered)).resolves.toEqual({ outcome: 'invalid_spec' });
   });
 
   it('routes native Windows batch shims through a percent-safe temporary wrapper without changing POSIX argv', async () => {
@@ -935,7 +1050,7 @@ describe('worker launch acknowledgement', () => {
   it('excludes ambient secret environment values and rejects Windows aliases', async () => {
     const launchAttempt = await attempt();
     const spec = buildWorkerLaunchBootstrapSpec(launchAttempt, ['codex'], cwd, { providerEnv: { EXPLICIT: 'yes' } });
-    for (const key of ['GH_TOKEN', 'AWS_SECRET_ACCESS_KEY', 'ANTHROPIC_API_KEY', 'NODE_OPTIONS', 'HTTPS_PROXY', 'HOME', 'USERPROFILE']) {
+    for (const key of ['GH_TOKEN', 'AWS_SECRET_ACCESS_KEY', 'ANTHROPIC_API_KEY', 'NODE_OPTIONS', 'HTTPS_PROXY']) {
       expect(spec.provider_env).not.toHaveProperty(key);
     }
     const originalPlatform = process.platform;
@@ -962,6 +1077,9 @@ describe('worker launch acknowledgement', () => {
     expect(assign).toBeGreaterThan(create);
     expect(resume).toBeGreaterThan(assign);
     expect(source).toContain('TerminateJobObject');
+    expect(source).toContain('if (-not [O]::TerminateJobObject');
+    expect(source).toContain('WaitForSingleObject($job, 5000)');
+    expect(source).toContain('worker_launch_job_cleanup_timeout');
     expect(source).toContain('process_start_identity=("ticks:" +');
     expect(source).toContain('containment_nonce=$payload.containment_nonce');
     expect(source).toContain('finally {');

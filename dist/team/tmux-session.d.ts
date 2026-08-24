@@ -8,7 +8,9 @@ export declare function detectTeamMultiplexerContext(env?: NodeJS.ProcessEnv): T
  * Tmux panes run bash in this environment, not cmd.exe.
  */
 export declare function isUnixLikeOnWindows(): boolean;
-export declare function applyMainVerticalLayout(teamTarget: string): Promise<void>;
+export declare function applyMainVerticalLayout(teamTarget: string, options?: {
+    required?: boolean;
+}): Promise<void>;
 type MailboxOwnershipCommand = (args: string[]) => Promise<{
     stdout: string;
     stderr: string;
@@ -213,12 +215,13 @@ export declare function sendTeamPaneKey(paneId: string, key: string): Promise<vo
 export declare function killTeamPane(paneId: string): Promise<void>;
 export declare function killOwnedWorkerPane(ownership: WorkerPaneOwnership): Promise<void>;
 export declare function paneHasTrustPrompt(captured: string): boolean;
-export declare function paneHasActiveTask(captured: string): boolean;
-export declare function paneLooksReady(captured: string): boolean;
+export declare function paneHasActiveTask(captured: string, provider?: CliAgentType): boolean;
+export declare function paneLooksReady(captured: string, provider?: CliAgentType): boolean;
 export interface WaitForPaneReadyOptions {
     timeoutMs?: number;
     pollIntervalMs?: number;
     attemptAlreadyFenced?: boolean;
+    provider?: CliAgentType;
 }
 export declare function waitForPaneReady(paneId: string, opts?: WaitForPaneReadyOptions): Promise<boolean>;
 export type StartupPaneReadyResult = {

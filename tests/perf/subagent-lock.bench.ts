@@ -5,7 +5,7 @@
  * strict p99 <= 8ms guard; CI runners use repeated samples and a wider p50/p99
  * envelope so an isolated scheduler/filesystem stall does not fail dev, while
  * still catching sustained lock slowdowns and hangs (median-p50, median-p99,
- * and max-p99 ceilings). GitHub-hosted runners routinely sustain ~23-31ms p50
+ * and second-highest-p99 ceilings). GitHub-hosted runners routinely sustain ~23-31ms p50
  * / ~30-32ms p99 on a healthy path, so the CI ceilings sit above that band.
  */
 
@@ -31,12 +31,13 @@ const MEASURED_RUNS = 5;
 const LOCAL_P99_LIMIT_MS = 8;
 // CI ceilings sit above the GitHub-hosted runner steady-state band (p50
 // ~23-31ms, p99 ~30-32ms) so healthy runs pass, while still catching sustained
-// slowdowns/hangs via the median-p50, median-p99, and max-p99 guards. The
+// slowdowns/hangs via the median-p50, median-p99, and second-highest-p99
+// guards. The
 // strict 8ms target is kept for LOCAL runs only (LOCAL_P99_LIMIT_MS). See #3352.
 const CI_MEDIAN_P50_LIMIT_MS = 40;
 const CI_MEDIAN_P99_LIMIT_MS = 25;
 const CI_MEDIAN_P99_JITTER_MARGIN_MS = 20;
-const CI_MAX_P99_LIMIT_MS = 100;
+const CI_SECOND_HIGHEST_P99_LIMIT_MS = 100;
 const isCi = process.env.CI === "true" || process.env.CI === "1";
 
 function makeEmptyState(): SubagentTrackingState {
@@ -74,6 +75,11 @@ function summarize(sorted: number[]): BenchmarkSummary {
 function median(values: number[]): number {
   const sorted = values.slice().sort((a, b) => a - b);
   return percentile(sorted, 50);
+}
+
+function secondHighest(values: number[]): number {
+  const sorted = values.slice().sort((a, b) => a - b);
+  return sorted[Math.max(0, sorted.length - 2)] ?? 0;
 }
 
 describe("subagent-lock benchmark", () => {
@@ -169,6 +175,11 @@ describe("subagent-lock benchmark", () => {
     return summaries;
   }
 
+  it("keeps one isolated run out of the CI tail guard while retaining repeated-tail detection", () => {
+    expect(secondHighest([1, 2, 3, 4, 101])).toBe(4);
+    expect(secondHighest([1, 2, 3, 101, 102])).toBe(101);
+  });
+
   it("rejects a successful flush when the expected state was not persisted", () => {
     const dir = makeTempDir();
     const sessionId = `bench-write-failure-${Date.now()}`;
@@ -208,13 +219,13 @@ describe("subagent-lock benchmark", () => {
       const p99s = summaries.map((summary) => summary.p99);
       const medianP50 = median(p50s);
       const medianP99 = median(p99s);
-      const maxP99 = Math.max(...p99s);
+      const secondHighestP99 = secondHighest(p99s);
       const ciMedianP99Limit = CI_MEDIAN_P99_LIMIT_MS + CI_MEDIAN_P99_JITTER_MARGIN_MS;
 
       console.log(
         `[subagent-lock bench] Linux CI=${isCi} N=${N} measuredRuns=${MEASURED_RUNS}` +
         ` medianP50=${medianP50.toFixed(3)}ms medianP99=${medianP99.toFixed(3)}ms` +
-        ` ciMedianP99Limit=${ciMedianP99Limit}ms maxP99=${maxP99.toFixed(3)}ms` +
+        ` ciMedianP99Limit=${ciMedianP99Limit}ms secondHighestP99=${secondHighestP99.toFixed(3)}ms` +
         ` p99s=${p99s.map((p99) => p99.toFixed(3)).join(",")}`,
       );
 
@@ -222,10 +233,11 @@ describe("subagent-lock benchmark", () => {
         // GitHub-hosted runners can occasionally pause filesystem lock RMW by
         // a few milliseconds even when the sustained path is healthy. Keep the
         // historical 25ms target plus a narrow jitter margin for median p99,
-        // while median p50 and max-p99 still catch sustained slowdowns/hangs.
+        // while median p50 and a second-highest p99 retain sensitivity to
+        // repeated slowdowns/hangs without rejecting one scheduler pause.
         expect(medianP50).toBeLessThanOrEqual(CI_MEDIAN_P50_LIMIT_MS);
         expect(medianP99).toBeLessThanOrEqual(ciMedianP99Limit);
-        expect(maxP99).toBeLessThanOrEqual(CI_MAX_P99_LIMIT_MS);
+        expect(secondHighestP99).toBeLessThanOrEqual(CI_SECOND_HIGHEST_P99_LIMIT_MS);
       } else {
         expect(medianP99).toBeLessThanOrEqual(LOCAL_P99_LIMIT_MS);
       }

@@ -937,60 +937,78 @@ async function checkRalphLoop(sessionId, directory, cancelInProgress) {
     // Check for existing verification state (architect verification in progress)
     let verificationState = readVerificationState(workingDir, sessionId);
     if (verificationState?.pending) {
-        // Verification is in progress - check for architect's response
-        if (sessionId) {
-            // Check for architect approval
-            if (checkArchitectApprovalInTranscript(sessionId, verificationState)) {
-                if (verificationState.verification_scope === 'story' && verificationState.story_id) {
-                    markStoryArchitectVerified(workingDir, verificationState.story_id, undefined, sessionId);
-                    clearVerificationState(workingDir, sessionId);
-                    const refreshedState = readRalphState(workingDir, sessionId);
-                    if (refreshedState) {
-                        const refreshedPrd = getPrdCompletionStatus(workingDir, sessionId);
-                        refreshedState.current_story_id = refreshedPrd.nextStory?.id;
-                        writeRalphState(workingDir, refreshedState, sessionId);
-                    }
-                    verificationState = readVerificationState(workingDir, sessionId);
-                }
-                else {
-                    // Architect approved - truly complete
-                    // Also deactivate ultrawork if it was active alongside ralph
-                    clearVerificationState(workingDir, sessionId);
-                    clearRalphState(workingDir, sessionId);
-                    deactivateUltrawork(workingDir, sessionId);
-                    const criticLabel = verificationState.critic_mode === 'codex'
-                        ? 'Codex critic'
-                        : verificationState.critic_mode === 'critic'
-                            ? 'Critic'
-                            : 'Architect';
-                    return {
-                        shouldBlock: false,
-                        message: `[RALPH LOOP VERIFIED COMPLETE] ${criticLabel} verified task completion after ${state.iteration} iteration(s). Excellent work!`,
-                        mode: 'none'
-                    };
-                }
+        const prdStatus = getPrdCompletionStatus(workingDir, sessionId);
+        const verifiedStory = verificationState.verification_scope === 'story' && verificationState.story_id
+            ? getStory(workingDir, verificationState.story_id, sessionId)
+            : undefined;
+        const staleVerification = verificationState.verification_scope === 'story'
+            ? !verifiedStory?.passes || verifiedStory.architectVerified === true
+            : prdStatus.hasPrd && !prdStatus.allComplete;
+        if (staleVerification) {
+            clearVerificationState(workingDir, sessionId);
+            const refreshedState = readRalphState(workingDir, sessionId);
+            if (refreshedState) {
+                refreshedState.current_story_id = prdStatus.nextStory?.id;
+                writeRalphState(workingDir, refreshedState, sessionId);
             }
-            // Check for architect rejection
-            const rejection = checkArchitectRejectionInTranscript(sessionId);
-            if (verificationState && rejection.rejected) {
-                if (verificationState.verification_scope === 'story' && verificationState.story_id) {
-                    markStoryIncomplete(workingDir, verificationState.story_id, rejection.feedback, sessionId);
-                }
-                // Architect rejected - continue with feedback
-                recordArchitectFeedback(workingDir, false, rejection.feedback, sessionId);
-                const updatedVerification = readVerificationState(workingDir, sessionId);
-                verificationState = updatedVerification;
-                if (updatedVerification) {
-                    const continuationPrompt = getArchitectRejectionContinuationPrompt(updatedVerification);
-                    return {
-                        shouldBlock: true,
-                        message: continuationPrompt,
-                        mode: 'ralph',
-                        metadata: {
-                            iteration: state.iteration,
-                            maxIterations: state.max_iterations
+            verificationState = null;
+        }
+        if (verificationState?.pending) {
+            // Verification is in progress - check for architect's response
+            if (sessionId) {
+                // Check for architect approval
+                if (checkArchitectApprovalInTranscript(sessionId, verificationState)) {
+                    if (verificationState.verification_scope === 'story' && verificationState.story_id) {
+                        markStoryArchitectVerified(workingDir, verificationState.story_id, undefined, sessionId);
+                        clearVerificationState(workingDir, sessionId);
+                        const refreshedState = readRalphState(workingDir, sessionId);
+                        if (refreshedState) {
+                            const refreshedPrd = getPrdCompletionStatus(workingDir, sessionId);
+                            refreshedState.current_story_id = refreshedPrd.nextStory?.id;
+                            writeRalphState(workingDir, refreshedState, sessionId);
                         }
-                    };
+                        verificationState = readVerificationState(workingDir, sessionId);
+                    }
+                    else {
+                        // Architect approved - truly complete
+                        // Also deactivate ultrawork if it was active alongside ralph
+                        clearVerificationState(workingDir, sessionId);
+                        clearRalphState(workingDir, sessionId);
+                        deactivateUltrawork(workingDir, sessionId);
+                        const criticLabel = verificationState.critic_mode === 'codex'
+                            ? 'Codex critic'
+                            : verificationState.critic_mode === 'critic'
+                                ? 'Critic'
+                                : 'Architect';
+                        return {
+                            shouldBlock: false,
+                            message: `[RALPH LOOP VERIFIED COMPLETE] ${criticLabel} verified task completion after ${state.iteration} iteration(s). Excellent work!`,
+                            mode: 'none'
+                        };
+                    }
+                }
+                // Check for architect rejection
+                const rejection = checkArchitectRejectionInTranscript(sessionId);
+                if (verificationState && rejection.rejected) {
+                    if (verificationState.verification_scope === 'story' && verificationState.story_id) {
+                        markStoryIncomplete(workingDir, verificationState.story_id, rejection.feedback, sessionId);
+                    }
+                    // Architect rejected - continue with feedback
+                    recordArchitectFeedback(workingDir, false, rejection.feedback, sessionId);
+                    const updatedVerification = readVerificationState(workingDir, sessionId);
+                    verificationState = updatedVerification;
+                    if (updatedVerification) {
+                        const continuationPrompt = getArchitectRejectionContinuationPrompt(updatedVerification);
+                        return {
+                            shouldBlock: true,
+                            message: continuationPrompt,
+                            mode: 'ralph',
+                            metadata: {
+                                iteration: state.iteration,
+                                maxIterations: state.max_iterations
+                            }
+                        };
+                    }
                 }
             }
         }
@@ -1088,7 +1106,7 @@ async function checkRalphLoop(sessionId, directory, cancelInProgress) {
     const ralphContext = getRalphContext(workingDir, sessionId);
     const activePrdPath = prdStatus.hasPrd ? findPrdPath(workingDir, sessionId) : null;
     const prdInstruction = prdStatus.hasPrd
-        ? `2. Check ${activePrdPath ?? 'prd.json'} - verify the current story's acceptance criteria are met, then mark it passes: true. Are ALL stories complete?`
+        ? `2. Check ${activePrdPath ?? 'prd.json'} - verify the current story's acceptance criteria are met, then mark it passes: true. If implementation proves an acceptance criterion empirically false, record an evidence-backed amendment (replace or supersede it, retaining the original verbatim in the story's criterionAmendments ledger with reason, evidence, authority, and timestamp) instead of silently deleting the criterion or claiming it passes. Are ALL stories complete?`
         : `2. Check your todo list - are ALL items marked complete?`;
     const continuationPrompt = `<ralph-continuation>
 ${errorGuidance ? errorGuidance + '\n' : ''}

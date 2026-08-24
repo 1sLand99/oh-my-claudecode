@@ -6,7 +6,11 @@ import { execFileSync } from 'child_process';
 import { tmpdir } from 'os';
 
 import { listDispatchRequests } from '../dispatch-queue.js';
-import { promptModeRecoveryRequiresProgressEvidence } from '../runtime-v2.js';
+import {
+  getWorkerStartupEvidencePolicy,
+  promptModeRecoveryRequiresProgressEvidence,
+  waitForStartupEvidenceBudget,
+} from '../runtime-v2.js';
 
 const mocks = vi.hoisted(() => ({
   createTeamSession: vi.fn(),
@@ -28,6 +32,7 @@ const mocks = vi.hoisted(() => ({
   autoStartupEvidence: true,
   nextStartupTaskId: 1,
   nextSplitPaneId: 2,
+  cmuxSplitPaneId: null as string | null,
   workerPaneBelongsToProviderTarget: vi.fn(async () => true),
 }));
 
@@ -126,6 +131,22 @@ vi.mock('../tmux-session.js', async (importOriginal) => {
     sendToWorker: mocks.sendToWorker,
     waitForPaneReady: mocks.waitForPaneReady,
     applyMainVerticalLayout: mocks.applyMainVerticalLayout,
+    splitTeamWorkerPaneWithEvidence: async (
+      splitTarget: string,
+      direction: 'right' | 'down',
+      cwd: string,
+      provider?: 'tmux' | 'cmux',
+    ) => provider === 'cmux' && mocks.cmuxSplitPaneId
+      ? {
+          commandSucceeded: true,
+          provider,
+          splitTarget,
+          direction,
+          rawOutput: `${mocks.cmuxSplitPaneId}\n`,
+          stderr: '',
+          paneId: mocks.cmuxSplitPaneId,
+        }
+      : actual.splitTeamWorkerPaneWithEvidence(splitTarget, direction, cwd, provider),
     workerPaneBelongsToProviderTarget: mocks.workerPaneBelongsToProviderTarget,
     killWorkerPanes: mocks.killWorkerPanes,
     killOwnedWorkerPane: mocks.killOwnedWorkerPane,
@@ -170,10 +191,12 @@ describe('runtime v2 startup inbox dispatch', () => {
     mocks.resolveSplitPaneWorkerPaneIds.mockReset();
     mocks.killOwnedWorkerPane.mockClear();
     mocks.getWorkerLiveness.mockReset();
+    mocks.workerPaneBelongsToProviderTarget.mockReset();
     mocks.killTeamSession.mockResolvedValue(undefined);
     mocks.killWorkerPanes.mockResolvedValue(undefined);
     mocks.resolveSplitPaneWorkerPaneIds.mockImplementation(async (_session: string | undefined, paneIds: string[]) => paneIds);
     mocks.getWorkerLiveness.mockImplementation(async () => mocks.killOwnedWorkerPane.mock.calls.length > 0 ? 'dead' : 'alive');
+    mocks.workerPaneBelongsToProviderTarget.mockResolvedValue(true);
     mocks.execFile.mockReset();
     mocks.spawnSync.mockReset();
     modelContractMocks.buildWorkerArgv.mockReset();
@@ -215,6 +238,7 @@ describe('runtime v2 startup inbox dispatch', () => {
     mocks.autoStartupEvidence = true;
     mocks.nextStartupTaskId = 1;
     mocks.nextSplitPaneId = 2;
+    mocks.cmuxSplitPaneId = null;
     mocks.spawnOwnedWorkerInPane.mockImplementation(async (
       sessionName: string,
       ownership: { paneId: string },
@@ -317,6 +341,7 @@ describe('runtime v2 startup inbox dispatch', () => {
   });
 
   afterEach(async () => {
+    vi.useRealTimers();
     process.chdir(originalCwd);
     if (cwd) await rm(cwd, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
@@ -367,12 +392,94 @@ describe('runtime v2 startup inbox dispatch', () => {
         }),
       }),
     );
-    expect(mocks.applyMainVerticalLayout).toHaveBeenCalledWith('dispatch-session');
+    expect(mocks.applyMainVerticalLayout).toHaveBeenCalledWith('dispatch-session', { required: true });
+    const layoutOrder = mocks.applyMainVerticalLayout.mock.invocationCallOrder[0];
+    const ownedSpawnOrder = mocks.spawnOwnedWorkerInPane.mock.invocationCallOrder[0];
+    const providerOrder = mocks.spawnWorkerInPane.mock.invocationCallOrder[0];
+    const inboxOrder = mocks.deliverStartupInbox.mock.invocationCallOrder[0];
+    expect(layoutOrder).toBeLessThan(ownedSpawnOrder);
+    expect(ownedSpawnOrder).toBeLessThan(providerOrder);
+    expect(layoutOrder).toBeLessThan(providerOrder);
+    expect(providerOrder).toBeLessThan(inboxOrder);
     const config = JSON.parse(await readFile(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'config.json'), 'utf-8'));
     const manifest = JSON.parse(await readFile(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'manifest.json'), 'utf-8'));
     expect(config.workers[0].launch_descriptor).toMatchObject({ provider: 'claude', binary: '/usr/bin/claude', args: [] });
     expect(manifest.workers[0].launch_descriptor).toEqual(config.workers[0].launch_descriptor);
     expect(config.service_descriptor).toMatchObject({ schema_version: 1, auto_merge_enabled: false, cadence_policy: 'disabled' });
+  });
+
+  it('settles every tmux worker between its split and provider spawn', async () => {
+    cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-layout-order-multi-'));
+    mocks.tmuxExecAsync.mockClear();
+    mocks.applyMainVerticalLayout.mockClear();
+    mocks.spawnOwnedWorkerInPane.mockClear();
+    mocks.spawnWorkerInPane.mockClear();
+    const { startTeamV2 } = await import('../runtime-v2.js');
+
+    await startTeamV2({
+      teamName: 'dispatch-team',
+      workerCount: 2,
+      agentTypes: ['claude', 'claude'],
+      tasks: [
+        { subject: 'Dispatch one', description: 'Verify first worker layout ordering' },
+        { subject: 'Dispatch two', description: 'Verify second worker layout ordering' },
+      ],
+      cwd,
+    });
+
+    const splitOrders = mocks.tmuxExecAsync.mock.calls
+      .map((call, index) => ({
+        args: call[0] as string[],
+        order: mocks.tmuxExecAsync.mock.invocationCallOrder[index]!,
+      }))
+      .filter(call => call.args[0] === 'split-window')
+      .map(call => call.order);
+    const layoutOrders = mocks.applyMainVerticalLayout.mock.invocationCallOrder;
+    const ownedSpawnOrders = mocks.spawnOwnedWorkerInPane.mock.invocationCallOrder;
+    const providerOrders = mocks.spawnWorkerInPane.mock.invocationCallOrder;
+
+    expect(splitOrders).toHaveLength(2);
+    expect(layoutOrders).toHaveLength(2);
+    expect(ownedSpawnOrders).toHaveLength(2);
+    expect(providerOrders).toHaveLength(2);
+    for (let index = 0; index < 2; index++) {
+      expect(splitOrders[index]!).toBeLessThan(layoutOrders[index]!);
+      expect(layoutOrders[index]!).toBeLessThan(ownedSpawnOrders[index]!);
+      expect(ownedSpawnOrders[index]!).toBeLessThan(providerOrders[index]!);
+    }
+  });
+
+  it('leaves cmux startup on its native split and provider path', async () => {
+    cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-cmux-layout-isolation-'));
+    mocks.createTeamSession.mockResolvedValueOnce({
+      sessionName: 'cmux:workspace-1',
+      leaderPaneId: 'cmux-leader-1',
+      workerPaneIds: [],
+      sessionMode: 'split-pane',
+    });
+    mocks.cmuxSplitPaneId = 'cmux-worker-1';
+    const { startTeamV2 } = await import('../runtime-v2.js');
+
+    await startTeamV2({
+      teamName: 'dispatch-team',
+      workerCount: 1,
+      agentTypes: ['claude'],
+      tasks: [{ subject: 'Cmux dispatch', description: 'Keep tmux layout commands out of cmux' }],
+      cwd,
+    });
+
+    expect(mocks.applyMainVerticalLayout).not.toHaveBeenCalled();
+    expect(mocks.spawnOwnedWorkerInPane).toHaveBeenCalledWith(
+      'cmux:workspace-1',
+      expect.objectContaining({ provider: 'cmux', paneId: 'cmux-worker-1' }),
+      expect.objectContaining({ workerName: 'worker-1' }),
+    );
+    expect(mocks.spawnWorkerInPane).toHaveBeenCalledWith(
+      'cmux:workspace-1',
+      'cmux-worker-1',
+      expect.objectContaining({ workerName: 'worker-1' }),
+    );
+    expect(mocks.deliverStartupInbox).toHaveBeenCalled();
   });
 
   it('persists startup task delegation plans and gives executable result evidence instructions', async () => {
@@ -976,7 +1083,7 @@ describe('runtime v2 startup inbox dispatch', () => {
     expect(persisted.workers[0].assigned_tasks).toEqual([]);
   });
 
-  it('retires the exact provider when layout fails after launch handoff', async () => {
+  it('cleans the owned pane before provider launch when required layout fails', async () => {
     cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-layout-failure-'));
     mocks.applyMainVerticalLayout.mockRejectedValueOnce(new Error('layout failed'));
     const { startTeamV2 } = await import('../runtime-v2.js');
@@ -988,15 +1095,14 @@ describe('runtime v2 startup inbox dispatch', () => {
       tasks: [{ subject: 'Dispatch test', description: 'Layout failure cleanup' }],
       cwd,
     })).rejects.toThrow('layout failed');
-    expect(launchMocks.retireAndCleanupCurrentWorkerLaunchAttempt).toHaveBeenCalledWith(
-      expect.objectContaining({ attempt_id: 'attempt-worker-1' }),
-      'startup_layout_failed',
-      expect.any(Function),
-    );
-    expect(mocks.killOwnedWorkerPane).toHaveBeenCalled();
+    expect(mocks.spawnOwnedWorkerInPane).not.toHaveBeenCalled();
+    expect(mocks.spawnWorkerInPane).not.toHaveBeenCalled();
+    expect(mocks.deliverStartupInbox).not.toHaveBeenCalled();
+    expect(launchMocks.retireAndCleanupCurrentWorkerLaunchAttempt).not.toHaveBeenCalled();
+    expect(mocks.killOwnedWorkerPane).toHaveBeenCalledWith(expect.objectContaining({ paneId: '%2' }));
   });
 
-  it('tears down the owned worker launch when startup readiness fails', async () => {
+  it('does not retain a torn-down worker pane as a future split target when startup readiness fails', async () => {
     cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-no-autokill-ready-'));
     mocks.deliverStartupInbox.mockResolvedValueOnce({ ok: false, reason: 'readiness_timeout' });
     const { startTeamV2 } = await import('../runtime-v2.js');
@@ -1014,6 +1120,46 @@ describe('runtime v2 startup inbox dispatch', () => {
     expect(mocks.execFile.mock.calls.some((call) => call[1]?.[0] === 'kill-pane')).toBe(false);
     expect(mocks.killOwnedWorkerPane).toHaveBeenCalledWith(expect.objectContaining({ paneId: '%2' }));
   });
+
+  it.each(['readiness_timeout', 'copy_mode'])(
+    'uses a live pane after a cleaned %s startup failure',
+    async (failureReason) => {
+      cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-cleaned-pane-split-'));
+      const deadPaneIds = new Set<string>();
+      mocks.deliverStartupInbox.mockResolvedValueOnce({ ok: false, reason: failureReason });
+      mocks.nextStartupTaskId = 2;
+      mocks.killOwnedWorkerPane.mockImplementationOnce(async (...args: unknown[]) => {
+        const [ownership] = args as [{ paneId: string }];
+        deadPaneIds.add(ownership.paneId);
+      });
+      mocks.workerPaneBelongsToProviderTarget.mockImplementation(async (...args: unknown[]) => {
+        const [{ paneId }] = args as [{ paneId: string }];
+        return !deadPaneIds.has(paneId);
+      });
+      const { startTeamV2 } = await import('../runtime-v2.js');
+
+      const runtime = await startTeamV2({
+        teamName: 'dispatch-team',
+        workerCount: 2,
+        agentTypes: ['claude', 'claude'],
+        tasks: [
+          { subject: 'First dispatch', description: 'This worker fails startup and is cleaned up' },
+          { subject: 'Second dispatch', description: 'This worker starts from a live split target' },
+        ],
+        cwd,
+      });
+
+      expect(runtime.config.workers[0]?.pane_id).toBe('%2');
+      expect(runtime.config.workers[1]).toMatchObject({ pane_id: '%3', assigned_tasks: ['2'] });
+      expect(mocks.spawnWorkerInPane).toHaveBeenNthCalledWith(
+        2,
+        'dispatch-session',
+        '%3',
+        expect.objectContaining({ workerName: 'worker-2' }),
+      );
+      expect(mocks.killOwnedWorkerPane).toHaveBeenCalledWith(expect.objectContaining({ paneId: '%2' }));
+    },
+  );
 
   it('tears down the owned worker launch when startup notification fails', async () => {
     cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-no-autokill-notify-'));
@@ -1078,6 +1224,78 @@ describe('runtime v2 startup inbox dispatch', () => {
     const requests = await listDispatchRequests('dispatch-team', cwd, { kind: 'inbox' });
     expect(requests).toHaveLength(1);
     expect(requests[0]?.status).toBe('failed');
+  });
+
+  it('accepts delayed Codex evidence at exactly 18s within the provider evidence budget', async () => {
+    vi.useFakeTimers();
+    const policy = getWorkerStartupEvidencePolicy('codex');
+    const startedAt = Date.now();
+    let hasEvidence = false;
+    setTimeout(() => { hasEvidence = true; }, 18_000);
+    const wait = (budgetMs: number) => waitForStartupEvidenceBudget(async () => hasEvidence, budgetMs);
+    const evidencePromise = (async () => {
+      if (await wait(policy.initialBudgetMs)) return true;
+      return wait(policy.finalRecheckBudgetMs);
+    })();
+    let settled = false;
+    void evidencePromise.finally(() => { settled = true; });
+
+    await vi.advanceTimersByTimeAsync(17_999);
+    expect(settled).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(evidencePromise).resolves.toBe(true);
+    expect(Date.now() - startedAt).toBe(18_000);
+    expect(policy.resubmitAttempts).toBe(0);
+  });
+
+  it('times out Codex evidence at exactly 31s after one read-only recheck window', async () => {
+    vi.useFakeTimers();
+    const policy = getWorkerStartupEvidencePolicy('codex');
+    const startedAt = Date.now();
+    const wait = (budgetMs: number) => waitForStartupEvidenceBudget(async () => false, budgetMs);
+    const evidencePromise = (async () => {
+      if (await wait(policy.initialBudgetMs)) return true;
+      return wait(policy.finalRecheckBudgetMs);
+    })();
+    let settled = false;
+    void evidencePromise.finally(() => { settled = true; });
+
+    await vi.advanceTimersByTimeAsync(30_999);
+    expect(settled).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(evidencePromise).resolves.toBe(false);
+    expect(Date.now() - startedAt).toBe(31_000);
+    expect(policy).toMatchObject({
+      initialBudgetMs: 30_000,
+      finalRecheckBudgetMs: 1_000,
+      resubmitAttempts: 0,
+      resubmitBudgetMs: 0,
+    });
+  });
+
+  it('accepts Codex evidence at 30.25s only through the final read-only recheck', async () => {
+    vi.useFakeTimers();
+    const policy = getWorkerStartupEvidencePolicy('codex');
+    const startedAt = Date.now();
+    let hasEvidence = false;
+    setTimeout(() => { hasEvidence = true; }, 30_250);
+    const wait = (budgetMs: number) => waitForStartupEvidenceBudget(async () => hasEvidence, budgetMs);
+    const evidencePromise = (async () => {
+      if (await wait(policy.initialBudgetMs)) return true;
+      return wait(policy.finalRecheckBudgetMs);
+    })();
+
+    await vi.advanceTimersByTimeAsync(30_249);
+    let settled = false;
+    void evidencePromise.finally(() => { settled = true; });
+    expect(settled).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(evidencePromise).resolves.toBe(true);
+    expect(Date.now() - startedAt).toBe(30_250);
+    expect(policy.resubmitAttempts).toBe(0);
   });
 
   it('rejects a stale worker status that predates the current startup trigger', async () => {

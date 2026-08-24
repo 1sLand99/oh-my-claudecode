@@ -5,7 +5,7 @@
  * Minimal continuation enforcer for all OMC modes.
  * Stripped down for reliability — no optional imports, no PRD, no notepad pruning.
  *
- * Supported modes: ralph, autopilot, ultrapilot, swarm, ultrawork, ultraqa, pipeline, team
+ * Supported modes: ralph, autopilot, ultrapilot, swarm, ultrawork, pipeline, team
  */
 
 const {
@@ -752,13 +752,27 @@ function getActiveSubagentCount(stateDir) {
 
 /**
  * Count incomplete Tasks from Claude Code's native Task system.
+ *
+ * Identity contract (issue #3732): the task store is read at
+ * ~/.claude/tasks/<identity>/ where <identity> is the
+ * CLAUDE_CODE_TASK_LIST_ID env override when set and valid, otherwise the
+ * session id. Hook payloads expose no observable team/teammate identity
+ * field, so no implicit team inference is attempted.
  */
 function countIncompleteTasks(sessionId) {
   if (!sessionId || typeof sessionId !== "string") return 0;
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) return 0;
 
+  const override = process.env.CLAUDE_CODE_TASK_LIST_ID;
+  const identity =
+    typeof override === "string" &&
+    override.trim() &&
+    /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(override)
+      ? override.trim()
+      : sessionId;
+
   const cfgDir = getClaudeConfigDir();
-  const taskDir = join(cfgDir, "tasks", sessionId);
+  const taskDir = join(cfgDir, "tasks", identity);
   if (!existsSync(taskDir)) return 0;
 
   let count = 0;
@@ -1077,7 +1091,6 @@ async function main() {
     const autopilot = readStateFileWithSession(stateDir, "autopilot-state.json", sessionId);
     const ultrapilot = readStateFileWithSession(stateDir, "ultrapilot-state.json", sessionId);
     const ultrawork = readStateFileWithSession(stateDir, "ultrawork-state.json", sessionId);
-    const ultraqa = readStateFileWithSession(stateDir, "ultraqa-state.json", sessionId);
     const pipeline = readStateFileWithSession(stateDir, "pipeline-state.json", sessionId);
     const team = readStateFileWithSession(stateDir, "team-state.json", sessionId);
     const ralplan = readStateFileWithSession(stateDir, "ralplan-state.json", sessionId);
@@ -1399,28 +1412,6 @@ async function main() {
           );
           return;
         }
-      }
-    }
-
-    // Priority 7: UltraQA (QA cycling)
-    if (ultraqa.state?.active && !isStaleState(ultraqa.state) && isSessionMatch(ultraqa.state, sessionId)) {
-      const cycle = ultraqa.state.cycle || 1;
-      const maxCycles = ultraqa.state.max_cycles || 10;
-      if (cycle < maxCycles && !ultraqa.state.all_passing) {
-        ultraqa.state.cycle = cycle + 1;
-        ultraqa.state.last_checked_at = new Date().toISOString();
-        writeJsonFile(ultraqa.path, ultraqa.state);
-
-        // Fire-and-forget notification
-        sendStopNotification('ultraqa', ultraqa.state, sessionId, directory).catch(() => {});
-
-        console.log(
-          JSON.stringify({
-            decision: "block",
-            reason: `[ULTRAQA - Cycle ${cycle + 1}/${maxCycles}] Tests not all passing. Continue fixing. When all tests pass, run /oh-my-claudecode:cancel to cleanly exit and clean up state files. If cancel fails, retry with /oh-my-claudecode:cancel --force.`,
-          }),
-        );
-        return;
       }
     }
 
