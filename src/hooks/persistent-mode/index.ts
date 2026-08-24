@@ -20,6 +20,7 @@ import { getGlobalOmcConfigCandidates } from '../../utils/paths.js';
 import {
   readUltraworkState,
   writeUltraworkState,
+  restoreUltraworkStateIfAbsent,
   incrementReinforcement,
   deactivateUltrawork,
   getUltraworkPersistenceMessage,
@@ -30,6 +31,7 @@ import { readModeState, writeModeState, withStateFileMutationLock } from '../../
 import {
   readRalphState,
   writeRalphState,
+  restoreRalphStateIfAbsent,
   incrementRalphIteration,
   clearRalphState,
   findPrdPath,
@@ -51,6 +53,7 @@ import {
   detectArchitectRejection,
   clearVerificationState,
   consumeVerificationRequest,
+  restoreVerificationRequestIfAbsent,
   type VerificationState,
 } from '../ralph/index.js';
 import { checkIncompleteTodos, getNextPendingTodo, StopContext, isUserAbort, isContextLimitStop, isRateLimitStop, isExplicitCancelCommand, isAuthenticationError, isScheduledWakeupStop, isOversizeToolResultRedirectStop } from '../todo-continuation/index.js';
@@ -1269,9 +1272,9 @@ async function checkRalphLoop(
             const ralphSnapshot = readRalphState(workingDir, sessionId);
             const ultraworkSnapshot = readUltraworkState(workingDir, sessionId);
             if (clearRalphState(workingDir, sessionId) && deactivateUltrawork(workingDir, sessionId)) return true;
-            if (ralphSnapshot) writeRalphState(workingDir, ralphSnapshot, sessionId);
-            if (ultraworkSnapshot) writeUltraworkState(ultraworkSnapshot, workingDir, sessionId);
-            writeVerificationState(workingDir, snapshot, sessionId);
+            if (ralphSnapshot) restoreRalphStateIfAbsent(workingDir, ralphSnapshot, sessionId);
+            if (ultraworkSnapshot) restoreUltraworkStateIfAbsent(ultraworkSnapshot, workingDir, sessionId);
+            restoreVerificationRequestIfAbsent(workingDir, snapshot, sessionId);
             return false;
           };
           const consumed = !prdStatus.hasPrd

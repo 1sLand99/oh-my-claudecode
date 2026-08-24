@@ -1134,6 +1134,28 @@ export function writeModeState(
   }
 }
 
+/** Restore a mode state only when no newer state has been published. */
+export function writeModeStateIfAbsent(
+  mode: string,
+  state: Record<string, unknown>,
+  directory?: string,
+  sessionId?: string,
+): boolean {
+  try {
+    const baseDir = resolveStateRoot(directory);
+    if (sessionId) ensureSessionStateDir(sessionId, baseDir);
+    else ensureOmcDir('state', baseDir);
+    const result = writeStateFileLockedCreateIf(
+      resolveFile(mode, directory, sessionId),
+      current => current === null,
+      () => state,
+    );
+    return result === 'written';
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Read mode state from disk.
  *

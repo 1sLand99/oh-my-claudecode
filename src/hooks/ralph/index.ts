@@ -13,6 +13,7 @@ export {
   // State management
   readRalphState,
   writeRalphState,
+  restoreRalphStateIfAbsent,
   clearRalphState,
   clearLinkedUltraworkState,
   incrementRalphIteration,
@@ -153,6 +154,7 @@ export {
   writeVerificationState,
   clearVerificationState,
   consumeVerificationRequest,
+  restoreVerificationRequestIfAbsent,
 
   // Verification workflow
   startVerification,

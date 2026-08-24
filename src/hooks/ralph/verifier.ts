@@ -169,6 +169,20 @@ export function consumeVerificationRequest(
   ) === 'cleared';
 }
 
+/** Restore a consumed verification request only when no newer request exists. */
+export function restoreVerificationRequestIfAbsent(
+  directory: string,
+  state: VerificationState,
+  sessionId?: string,
+): boolean {
+  const result = writeStateFileLockedCreateIf(
+    getVerificationStatePath(directory, sessionId),
+    current => current === null,
+    () => state as unknown as Record<string, unknown>,
+  );
+  return result === 'written';
+}
+
 /**
  * Start verification process
  */

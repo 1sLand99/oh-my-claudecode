@@ -7,7 +7,7 @@
  */
 
 import { readFileSync, unlinkSync } from "fs";
-import { writeModeState, readModeState } from "../../lib/mode-state-io.js";
+import { writeModeState, writeModeStateIfAbsent, readModeState } from "../../lib/mode-state-io.js";
 import {
   resolveStatePath,
   resolveSessionStatePath,
@@ -115,6 +115,14 @@ export function writeUltraworkState(
     directory,
     sessionId,
   );
+}
+
+export function restoreUltraworkStateIfAbsent(
+  state: UltraworkState,
+  directory?: string,
+  sessionId?: string,
+): boolean {
+  return writeModeStateIfAbsent('ultrawork', state as unknown as Record<string, unknown>, directory, sessionId);
 }
 
 /**
