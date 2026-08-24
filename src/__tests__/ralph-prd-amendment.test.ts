@@ -184,6 +184,46 @@ describe('Ralph PRD Criterion Amendment', () => {
       expect(readPrd(testDir)?.userStories[0]).toMatchObject({ passes: false, architectVerified: false });
     });
 
+    it('keeps final approval retryable when a post-revalidation raw amendment lands', () => {
+      writeSamplePrd();
+      expect(markStoryComplete(testDir, 'US-001')).toBe(true);
+      const storyRevision = readPrd(testDir)?.userStories[0].governingCriteriaRevision;
+      if (!storyRevision) throw new Error('Expected governing criteria revision');
+      expect(consumeStoryArchitectApproval(testDir, 'US-001', storyRevision)).toBe(true);
+      const expectedRevision = getPrdGoverningCriteriaRevision(readPrd(testDir)!);
+      const prdPath = findPrdPath(testDir)!;
+      let consumed = false;
+      let cleanedUp = false;
+
+      expect(consumeCompletionArchitectApproval(
+        testDir,
+        expectedRevision,
+        undefined,
+        () => {
+          consumed = true;
+          return true;
+        },
+        undefined,
+        () => {
+          cleanedUp = true;
+          return true;
+        },
+        () => {
+          const handEdited = JSON.parse(readFileSync(prdPath, 'utf8')) as PRD;
+          handEdited.userStories[0].acceptanceCriteria = [FDFT_REPLACEMENT];
+          handEdited.userStories[0].criterionAmendments = [resultAmendment()];
+          writeFileSync(prdPath, JSON.stringify(handEdited, null, 2));
+        },
+      )).toBe(false);
+      expect(consumed).toBe(false);
+      expect(cleanedUp).toBe(false);
+      expect(readPrd(testDir)?.userStories[0]).toMatchObject({
+        acceptanceCriteria: [FDFT_REPLACEMENT],
+        passes: false,
+        architectVerified: false,
+      });
+    });
+
     it('rejects approval when a forced interleaving amendment changes the revision before consumption', () => {
       writeSamplePrd({
         ...samplePrd,
@@ -230,6 +270,43 @@ describe('Ralph PRD Criterion Amendment', () => {
       })).toBe(false);
       expect(readPrd(testDir)?.userStories[0]).toMatchObject({
         acceptanceCriteria: [FDFT_REPLACEMENT], passes: false, architectVerified: false,
+      });
+    });
+
+    it('rejects a post-revalidation raw amendment before consuming story approval', () => {
+      writeSamplePrd({
+        ...samplePrd,
+        userStories: [{ ...samplePrd.userStories[0], passes: true, architectVerified: false }],
+      });
+      expect(markStoryComplete(testDir, 'US-001')).toBe(true);
+      const prdPath = findPrdPath(testDir)!;
+      const expectedRevision = readPrd(testDir)?.userStories[0].governingCriteriaRevision;
+      if (!expectedRevision) throw new Error('Expected governing criteria revision');
+      let consumed = false;
+
+      expect(consumeStoryArchitectApproval(
+        testDir,
+        'US-001',
+        expectedRevision,
+        undefined,
+        undefined,
+        undefined,
+        () => {
+          consumed = true;
+          return true;
+        },
+        () => {
+          const handEdited = JSON.parse(readFileSync(prdPath, 'utf8')) as PRD;
+          handEdited.userStories[0].acceptanceCriteria = [FDFT_REPLACEMENT];
+          handEdited.userStories[0].criterionAmendments = [resultAmendment()];
+          writeFileSync(prdPath, JSON.stringify(handEdited, null, 2));
+        },
+      )).toBe(false);
+      expect(consumed).toBe(false);
+      expect(readPrd(testDir)?.userStories[0]).toMatchObject({
+        acceptanceCriteria: [FDFT_REPLACEMENT],
+        passes: false,
+        architectVerified: false,
       });
     });
 

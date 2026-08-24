@@ -560,14 +560,7 @@ export function writePrd(directory: string, prd: PRD, sessionId?: string, expect
 
   try {
     const result = withStateFileMutationLock(prdPath, () => {
-      const currentResult = readPrdFromPath(prdPath);
-      const current = currentResult.prd;
-      if ((existsSync(prdPath) && !current)
-        || (current && (expectedRevision === undefined || getPrdRevision(current) !== expectedRevision))) {
-        return false;
-      }
-      atomicWriteJsonSync(prdPath, bindCompletionClaims(prd));
-      return true;
+      return writePrdAtRevision(prdPath, prd, expectedRevision);
     }, true);
     return result.acquired && result.value === true;
   } catch {
@@ -586,15 +579,27 @@ export function writePrdIfRevision(
   if (!prdPath) return false;
   const result = withStateFileMutationLock(prdPath, () => {
     try {
-      const current = readPrdFromPath(prdPath).prd;
-      if (!current || getPrdRevision(current) !== expectedRevision) return false;
-      atomicWriteJsonSync(prdPath, bindCompletionClaims(prd));
-      return true;
+      return writePrdAtRevision(prdPath, prd, expectedRevision);
     } catch {
       return false;
     }
   }, true);
   return result.acquired && result.value === true;
+}
+
+/**
+ * Publish a PRD only when the complete normalized document still matches the
+ * captured generation. Callers that already hold the mutation lock use this
+ * helper to keep the final compare immediately adjacent to the atomic write.
+ */
+function writePrdAtRevision(prdPath: string, prd: PRD, expectedRevision?: string): boolean {
+  const current = readPrdFromPath(prdPath).prd;
+  if ((existsSync(prdPath) && !current)
+    || (current && (expectedRevision === undefined || getPrdRevision(current) !== expectedRevision))) {
+    return false;
+  }
+  atomicWriteJsonSync(prdPath, bindCompletionClaims(prd));
+  return true;
 }
 
 function mutatePrd<T>(directory: string, sessionId: string | undefined, mutate: (prd: PRD) => T | undefined): T | undefined {
@@ -626,6 +631,7 @@ export function consumeStoryArchitectApproval(
   beforeCommit?: () => void,
   notes?: string,
   consume?: () => boolean,
+  afterRevalidation?: () => void,
 ): boolean {
   const prdPath = findPrdPath(directory, sessionId);
   if (!prdPath) return false;
@@ -640,20 +646,32 @@ export function consumeStoryArchitectApproval(
       return false;
     }
     try {
+      // Revalidate before consuming the request so a direct raw amendment in
+      // the deterministic post-revalidation hook remains retryable. The
+      // request callback is deliberately deferred until this CAS boundary.
+      const validatedRevision = getPrdRevision(initial);
+      afterRevalidation?.();
+      const validated = readPrdFromPath(prdPath).prd;
+      const validatedStory = validated?.userStories.find(candidate => candidate.id === storyId);
+      if (!validated || getPrdRevision(validated) !== validatedRevision
+        || !validatedStory || validatedStory.governingCriteriaRevision !== expectedCriteriaRevision
+        || validatedStory.completionCriteriaRevision !== expectedCriteriaRevision) return false;
+
       if (!(consume?.() ?? true)) return false;
-      // Re-read after consuming the verification request and mutate the
-      // current PRD generation.  Writing `initial` here would publish a stale
-      // full snapshot and erase a concurrent update to another story.
+
+      // The request callback may perform an unrelated direct update (for
+      // example, another story's notes). Re-read after it and publish from
+      // that generation rather than the earlier approval snapshot.
       const current = readPrdFromPath(prdPath).prd;
       const currentStory = current?.userStories.find(candidate => candidate.id === storyId);
       if (!current || !currentStory || currentStory.governingCriteriaRevision !== expectedCriteriaRevision
         || currentStory.completionCriteriaRevision !== expectedCriteriaRevision) return false;
+      const currentRevision = getPrdRevision(current);
       currentStory.completionCriteriaRevision = expectedCriteriaRevision;
       currentStory.architectVerified = true;
       currentStory.architectVerificationCriteriaRevision = expectedCriteriaRevision;
       if (notes) currentStory.notes = notes;
-      atomicWriteJsonSync(prdPath, bindCompletionClaims(current));
-      return true;
+      return writePrdAtRevision(prdPath, current, currentRevision);
     } catch {
       return false;
     }
@@ -669,21 +687,43 @@ export function consumeCompletionArchitectApproval(
   consume?: () => boolean,
   beforeCommit?: () => void,
   afterConsume?: () => boolean,
+  afterRevalidation?: () => void,
 ): boolean {
   const prdPath = findPrdPath(directory, sessionId);
   if (!prdPath) return false;
   const result = withStateFileMutationLock(prdPath, () => {
-    beforeCommit?.();
     const prd = readPrdFromPath(prdPath).prd;
     const current = prd !== undefined
       && getPrdGoverningCriteriaRevision(prd) === expectedCriteriaRevision
       && getPrdStatus(prd).allComplete;
-    if (!current || !(consume?.() ?? true)) return false;
+    if (!current) return false;
+
+    beforeCommit?.();
     const revalidated = readPrdFromPath(prdPath).prd;
     const valid = revalidated !== undefined
       && getPrdGoverningCriteriaRevision(revalidated) === expectedCriteriaRevision
       && getPrdStatus(revalidated).allComplete;
-    return valid && (afterConsume?.() ?? true);
+    if (!valid) return false;
+
+    const revalidatedRevision = getPrdRevision(revalidated);
+    afterRevalidation?.();
+    const beforeConsume = readPrdFromPath(prdPath).prd;
+    const ready = beforeConsume !== undefined
+      && getPrdRevision(beforeConsume) === revalidatedRevision
+      && getPrdGoverningCriteriaRevision(beforeConsume) === expectedCriteriaRevision
+      && getPrdStatus(beforeConsume).allComplete;
+    if (!ready) return false;
+
+    // Consume only after the final pre-request CAS so a direct raw amendment
+    // cannot strand the verification request or trigger terminal cleanup.
+    if (!(consume?.() ?? true)) return false;
+
+    const afterRequest = readPrdFromPath(prdPath).prd;
+    const stillValid = afterRequest !== undefined
+      && getPrdRevision(afterRequest) === revalidatedRevision
+      && getPrdGoverningCriteriaRevision(afterRequest) === expectedCriteriaRevision
+      && getPrdStatus(afterRequest).allComplete;
+    return stillValid && (afterConsume?.() ?? true);
   }, true);
   return result.acquired && result.value === true;
 }
