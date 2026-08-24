@@ -14,6 +14,7 @@ import { execFileSync } from 'child_process';
 import { existsSync, mkdirSync, readFileSync, realpathSync, readdirSync, writeFileSync, unlinkSync } from 'fs';
 import { homedir, tmpdir } from 'os';
 import { resolve, normalize, relative, sep, join, isAbsolute, basename, dirname } from 'path';
+import { pathToFileURL } from 'url';
 import { getClaudeConfigDir } from '../utils/config-dir.js';
 import { encodeProjectPath } from '../utils/encode-project-path.js';
 
@@ -59,6 +60,7 @@ const worktreeCacheMap = new Map<string, string>();
 const toplevelCacheMap = new Map<string, string>();
 /** LRU cache for outermost superproject root lookups, including negative results. */
 const superprojectCacheMap = new Map<string, string | null>();
+const canonicalWorkingDirectoryRoots = new WeakMap<object, { providedRoot: string; trustedRoot: string }>();
 
 /**
  * LRU cache for workspace marker lookups.
@@ -236,20 +238,72 @@ function resolveStateAnchorRoot(worktreeRoot?: string): string {
  * anchoring and would widen the boundary across submodule borders; see #3349
  * and the Codex review on PR #3350).
  */
-export function getGitTopLevel(cwd?: string): string | null {
-  const effectiveCwd = cwd || process.cwd();
+type GitTopLevelProbe =
+  | { status: 'ok'; root: string }
+  | { status: 'not_a_repository' }
+  | { status: 'probe_failed'; detail: string };
 
-  // Return cached value if present (LRU: move to end on access)
-  if (toplevelCacheMap.has(effectiveCwd)) {
-    const root = toplevelCacheMap.get(effectiveCwd)!;
-    toplevelCacheMap.delete(effectiveCwd);
-    toplevelCacheMap.set(effectiveCwd, root);
-    return root || null;
+function gitErrorStderr(error: unknown): string {
+  if (!error || typeof error !== 'object') {
+    return '';
+  }
+  const err = error as { stderr?: Buffer | string; message?: string };
+  if (Buffer.isBuffer(err.stderr)) {
+    return err.stderr.toString('utf8');
+  }
+  if (typeof err.stderr === 'string') {
+    return err.stderr;
+  }
+  return typeof err.message === 'string' ? err.message : '';
+}
+
+function isNotAGitRepositoryError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+  const err = error as { status?: number; code?: string };
+  if (err.code === 'ENOENT' || err.code === 'ETIMEDOUT' || err.code === 'EACCES') {
+    return false;
+  }
+  const stderr = gitErrorStderr(error);
+  return err.status === 128 && /not a git repository/i.test(stderr);
+}
+
+function formatGitProbeDetail(error: unknown): string {
+  if (!error || typeof error !== 'object') {
+    return String(error);
+  }
+  const err = error as { code?: string; status?: number; message?: string };
+  if (err.code === 'ENOENT') {
+    return 'git executable not found';
+  }
+  if (err.code === 'ETIMEDOUT') {
+    return 'git probe timed out';
+  }
+  const stderr = gitErrorStderr(error).trim();
+  if (stderr.length > 0) {
+    return stderr.split('\n')[0] ?? stderr;
+  }
+  if (typeof err.message === 'string' && err.message.length > 0) {
+    return err.message;
+  }
+  if (typeof err.status === 'number') {
+    return `git exited ${err.status}`;
+  }
+  return 'unknown git probe failure';
+}
+
+function probeGitTopLevel(cwd: string): GitTopLevelProbe {
+  if (toplevelCacheMap.has(cwd)) {
+    const root = toplevelCacheMap.get(cwd)!;
+    toplevelCacheMap.delete(cwd);
+    toplevelCacheMap.set(cwd, root);
+    return { status: 'ok', root };
   }
 
   try {
     const root = execFileSync('git', ['rev-parse', '--show-toplevel'], {
-      cwd: effectiveCwd,
+      cwd,
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
@@ -260,12 +314,40 @@ export function getGitTopLevel(cwd?: string): string | null {
       const oldest = toplevelCacheMap.keys().next().value;
       if (oldest !== undefined) toplevelCacheMap.delete(oldest);
     }
-    toplevelCacheMap.set(effectiveCwd, root);
-    return root;
-  } catch {
-    // Not in a git repository - do NOT cache so a later git init re-detects.
-    return null;
+    toplevelCacheMap.set(cwd, root);
+    return { status: 'ok', root };
+  } catch (error) {
+    if (isNotAGitRepositoryError(error)) {
+      return { status: 'not_a_repository' };
+    }
+    return { status: 'probe_failed', detail: formatGitProbeDetail(error) };
   }
+}
+
+export function getGitTopLevel(cwd?: string): string | null {
+  const probe = probeGitTopLevel(cwd || process.cwd());
+  return probe.status === 'ok' ? probe.root : null;
+}
+
+function findGitMetadataDir(start: string): string | null {
+  let current = start;
+  for (;;) {
+    if (existsSync(join(current, '.git'))) {
+      return current;
+    }
+    const parent = dirname(current);
+    if (parent === current) {
+      return null;
+    }
+    current = parent;
+  }
+}
+
+function formatGitProbeFailedMessage(workingDirectory: string): string {
+  return (
+    `workingDirectory '${workingDirectory}' git probe failed and was not used. ` +
+    `Cross-repository access is not permitted; pass a path inside the current repository or start the session there.`
+  );
 }
 
 /**
@@ -1205,25 +1287,50 @@ function formatOutsideTrustedRootMessage(workingDirectory: string, trustedRoot: 
     `is outside the trusted worktree root '${callerVisibleTrustedRootLabel(trustedRoot)}'.`
   );
 }
-function defineOpaqueCanonicalRoots(
+function attachCanonicalWorkingDirectoryRoots(
   target: object,
   providedRoot: string,
   trustedRoot: string,
 ): void {
-  const descriptor = {
-    enumerable: false,
-    writable: false,
-    configurable: false,
-  } as const;
-  Object.defineProperties(target, {
-    providedRoot: { ...descriptor, value: providedRoot },
-    trustedRoot: { ...descriptor, value: trustedRoot },
-  });
+  canonicalWorkingDirectoryRoots.set(target, { providedRoot, trustedRoot });
 }
+
+export function getCanonicalWorkingDirectoryRoots(
+  target: object,
+): { providedRoot: string; trustedRoot: string } {
+  const roots = canonicalWorkingDirectoryRoots.get(target);
+  if (!roots) {
+    throw new Error('canonical working directory roots are not attached');
+  }
+  return roots;
+}
+
+function canonicalRootAliases(root: string): string[] {
+  if (root.length === 0) {
+    return [];
+  }
+  const aliases = new Set<string>([root]);
+  try {
+    aliases.add(pathToFileURL(root).href);
+  } catch {
+    // Ignore roots that cannot be represented as file URLs.
+  }
+  try {
+    const real = realpathSync(root);
+    aliases.add(real);
+    aliases.add(pathToFileURL(real).href);
+  } catch {
+    // Root may not exist on disk (synthetic test paths).
+  }
+  if (sep === '\\') {
+    aliases.add(root.replaceAll('\\', '/'));
+  }
+  return [...aliases].sort((a, b) => b.length - a.length);
+}
+
 function redactCanonicalRoots(text: string, providedRoot: string, trustedRoot: string): string {
   let redacted = text;
-  const roots = [providedRoot, trustedRoot]
-    .filter((root) => root.length > 0)
+  const roots = [...canonicalRootAliases(providedRoot), ...canonicalRootAliases(trustedRoot)]
     .sort((a, b) => b.length - a.length);
   for (const root of roots) {
     redacted = redacted.split(root).join('<redacted>');
@@ -1249,11 +1356,9 @@ function foreignRepositoryResolution(
 ): Extract<WorkingDirectoryResolution, { status: 'foreign_repository' }> {
   const resolution = {
     status: 'foreign_repository' as const,
-    providedRoot,
-    trustedRoot,
     callerLabel,
   };
-  defineOpaqueCanonicalRoots(resolution, providedRoot, trustedRoot);
+  attachCanonicalWorkingDirectoryRoots(resolution, providedRoot, trustedRoot);
   Object.defineProperty(resolution, 'toJSON', {
     enumerable: false,
     writable: false,
@@ -1366,21 +1471,17 @@ function getGitCommonDir(cwd: string): string | null {
  *   Callers MUST NOT use it and MUST NOT silently fall back to the trusted
  *   root; they are expected to surface the rejection to their caller.
  *
- * Canonical `providedRoot` / `trustedRoot` remain readable for internal
- * resolver consumers but are attached as non-enumerable, non-writable data
- * properties so JSON.stringify, object spread, structuredClone, and
- * logger-like wrapping cannot serialize host paths the caller did not
- * supply. Caller-visible text must use `callerLabel` (the original
- * workingDirectory string) and a basename-only trusted-root label — never
- * `providedRoot` / `trustedRoot` verbatim.
- * `callerLabel` stays enumerable so the caller-supplied label is explicit.
+ * Canonical roots are stored in a WeakMap keyed by the resolution or error
+ * object. They are not own properties and cannot be recovered by
+ * JSON.stringify, object spread, structuredClone, showHidden inspection,
+ * or getOwnPropertyNames. Internal consumers use
+ * `getCanonicalWorkingDirectoryRoots()`. Caller-visible text must use
+ * `callerLabel` and a basename-only trusted-root label.
  */
 export type WorkingDirectoryResolution =
   | { status: 'ok'; root: string }
   | {
       status: 'foreign_repository';
-      providedRoot: string;
-      trustedRoot: string;
       callerLabel: string;
     };
 
@@ -1390,15 +1491,10 @@ export type WorkingDirectoryResolution =
  * tool caller; it is never silently substituted (#3858).
  *
  * `.message` is the caller-visible contract: the original workingDirectory
- * label plus a basename-only trusted-root identity. Canonical `providedRoot`
- * and `trustedRoot` stay on the instance for internal validation as
- * non-enumerable opaque fields so serialization and object spread cannot
- * disclose them. `callerLabel` is required and enumerable so a two-argument
- * construction cannot echo canonical `providedRoot` into the message.
+ * label plus a basename-only trusted-root identity. Canonical roots are
+ * WeakMap-only internal diagnostics. `callerLabel` is required and enumerable.
  */
 export class ForeignWorkingDirectoryError extends Error {
-  declare readonly providedRoot: string;
-  declare readonly trustedRoot: string;
   readonly callerLabel: string;
 
   constructor(providedRoot: string, trustedRoot: string, callerLabel: string) {
@@ -1408,7 +1504,7 @@ export class ForeignWorkingDirectoryError extends Error {
     );
     this.name = 'ForeignWorkingDirectoryError';
     this.callerLabel = callerLabel;
-    defineOpaqueCanonicalRoots(this, providedRoot, trustedRoot);
+    attachCanonicalWorkingDirectoryRoots(this, providedRoot, trustedRoot);
     Object.defineProperty(this, 'stack', {
       value: redactErrorStack(this.stack ?? `${this.name}: ${this.message}`, providedRoot, trustedRoot),
       enumerable: false,
@@ -1456,9 +1552,10 @@ export function resolveWorkingDirectoryOrLinkedWorktree(workingDirectory?: strin
     trustedRootReal = trustedRoot;
   }
 
-  const providedRoot = getGitTopLevel(resolved);
+  const providedProbe = probeGitTopLevel(resolved);
 
-  if (providedRoot) {
+  if (providedProbe.status === 'ok') {
+    const providedRoot = providedProbe.root;
     let providedRootReal: string;
     try {
       providedRootReal = realpathSync(providedRoot);
@@ -1488,6 +1585,19 @@ export function resolveWorkingDirectoryOrLinkedWorktree(workingDirectory?: strin
     throw new Error(`workingDirectory '${workingDirectory}' does not exist or is not accessible.`);
   }
 
+  const gitMetadataDir = findGitMetadataDir(resolvedReal);
+  if (gitMetadataDir) {
+    let gitMetadataReal = gitMetadataDir;
+    try {
+      gitMetadataReal = realpathSync(gitMetadataDir);
+    } catch {
+      gitMetadataReal = gitMetadataDir;
+    }
+    if (gitMetadataReal !== trustedRootReal) {
+      throw new Error(formatGitProbeFailedMessage(workingDirectory));
+    }
+  }
+
   const rel = relative(trustedRootReal, resolvedReal);
   if (rel.startsWith('..') || isAbsolute(rel)) {
     throw new Error(formatOutsideTrustedRootMessage(workingDirectory, trustedRoot));
@@ -1511,9 +1621,10 @@ export function resolveWorkingDirectoryOrLinkedWorktree(workingDirectory?: strin
 export function validateWorkingDirectoryOrLinkedWorktree(workingDirectory?: string): string {
   const resolution = resolveWorkingDirectoryOrLinkedWorktree(workingDirectory);
   if (resolution.status === 'foreign_repository') {
+    const roots = getCanonicalWorkingDirectoryRoots(resolution);
     throw new ForeignWorkingDirectoryError(
-      resolution.providedRoot,
-      resolution.trustedRoot,
+      roots.providedRoot,
+      roots.trustedRoot,
       resolution.callerLabel,
     );
   }

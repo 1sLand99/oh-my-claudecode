@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { inspect } from 'node:util';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execSync } from 'node:child_process';
 import {
   mkdtempSync,
@@ -18,6 +18,7 @@ import {
   resolveWorkingDirectoryOrLinkedWorktree,
   validateWorkingDirectoryOrLinkedWorktree,
   ForeignWorkingDirectoryError,
+  getCanonicalWorkingDirectoryRoots,
 } from '../../lib/worktree-paths.js';
 import { wikiQueryTool, wikiReadTool } from '../../tools/wiki-tools.js';
 
@@ -43,28 +44,21 @@ function loggerLikeWrap(value: unknown): unknown {
 }
 
 function assertOpaqueCanonicalSerialization(
-  value: { providedRoot: string; trustedRoot: string; callerLabel: string },
+  value: { callerLabel: string },
   opts: { providedRoot: string; trustedRoot: string; callerLabel: string },
 ): void {
-  expect(value.providedRoot).toBe(opts.providedRoot);
-  expect(value.trustedRoot).toBe(opts.trustedRoot);
+  const roots = getCanonicalWorkingDirectoryRoots(value);
+  expect(roots.providedRoot).toBe(opts.providedRoot);
+  expect(roots.trustedRoot).toBe(opts.trustedRoot);
   expect(value.callerLabel).toBe(opts.callerLabel);
 
-  const provided = Object.getOwnPropertyDescriptor(value, 'providedRoot');
-  const trusted = Object.getOwnPropertyDescriptor(value, 'trustedRoot');
+  expect(Object.getOwnPropertyDescriptor(value, 'providedRoot')).toBeUndefined();
+  expect(Object.getOwnPropertyDescriptor(value, 'trustedRoot')).toBeUndefined();
+  expect(Object.getOwnPropertyNames(value)).not.toContain('providedRoot');
+  expect(Object.getOwnPropertyNames(value)).not.toContain('trustedRoot');
+  expect(Reflect.ownKeys(value)).not.toContain('providedRoot');
+  expect(Reflect.ownKeys(value)).not.toContain('trustedRoot');
   const caller = Object.getOwnPropertyDescriptor(value, 'callerLabel');
-  expect(provided).toMatchObject({
-    enumerable: false,
-    writable: false,
-    configurable: false,
-    value: opts.providedRoot,
-  });
-  expect(trusted).toMatchObject({
-    enumerable: false,
-    writable: false,
-    configurable: false,
-    value: opts.trustedRoot,
-  });
   expect(caller?.enumerable).toBe(true);
   expect(caller?.value).toBe(opts.callerLabel);
   expect(Object.keys(value)).not.toContain('providedRoot');
@@ -77,6 +71,7 @@ function assertOpaqueCanonicalSerialization(
   expect(spread.callerLabel).toBe(opts.callerLabel);
 
   const cloned = structuredClone(value);
+  expect(() => getCanonicalWorkingDirectoryRoots(cloned as object)).toThrow();
   const wrappedError = new Error('logger wrap', { cause: value as unknown as Error });
   const clonedWrapper = structuredClone(wrappedError);
   const payloads = [
@@ -88,6 +83,7 @@ function assertOpaqueCanonicalSerialization(
     JSON.stringify({ err: value, cause: value }),
     JSON.stringify({ ...clonedWrapper, cause: clonedWrapper.cause }),
     inspect(value, { depth: 8, getters: true, showHidden: false }),
+    inspect(value, { depth: 8, getters: true, showHidden: true, customInspect: false }),
   ];
 
   for (const path of [opts.providedRoot, opts.trustedRoot]) {
@@ -158,8 +154,9 @@ describe('shared resolver #3858: foreign repo, linked worktree, non-git, same-ro
     const resolution = resolveWorkingDirectoryOrLinkedWorktree(foreignRepo);
     expect(resolution.status).toBe('foreign_repository');
     if (resolution.status !== 'foreign_repository') return;
-    expect(resolution.providedRoot).toBe(canonicalForeign);
-    expect(resolution.trustedRoot).toBe(canonicalSession);
+    const foreignRoots = getCanonicalWorkingDirectoryRoots(resolution);
+    expect(foreignRoots.providedRoot).toBe(canonicalForeign);
+    expect(foreignRoots.trustedRoot).toBe(canonicalSession);
     expect(resolution.callerLabel).toBe(foreignRepo);
     expect('root' in resolution).toBe(false);
     expect(resolution).toEqual({
@@ -176,8 +173,8 @@ describe('shared resolver #3858: foreign repo, linked worktree, non-git, same-ro
     } catch (error) {
       expect(error).toBeInstanceOf(ForeignWorkingDirectoryError);
       const foreign = error as ForeignWorkingDirectoryError;
-      expect(foreign.providedRoot).toBe(canonicalForeign);
-      expect(foreign.trustedRoot).toBe(canonicalSession);
+      expect(getCanonicalWorkingDirectoryRoots(foreign).providedRoot).toBe(canonicalForeign);
+      expect(getCanonicalWorkingDirectoryRoots(foreign).trustedRoot).toBe(canonicalSession);
       expect(foreign.callerLabel).toBe(foreignRepo);
       expect(foreign.message).toContain('belongs to a different repository');
       expect(foreign.message).toContain('not used');
@@ -194,8 +191,8 @@ describe('shared resolver #3858: foreign repo, linked worktree, non-git, same-ro
       '../foreign-vault',
     );
     expect(error.callerLabel).toBe('../foreign-vault');
-    expect(error.providedRoot).toBe('/canonical/foreign-vault');
-    expect(error.trustedRoot).toBe('/canonical/session-project');
+    expect(getCanonicalWorkingDirectoryRoots(error).providedRoot).toBe('/canonical/foreign-vault');
+    expect(getCanonicalWorkingDirectoryRoots(error).trustedRoot).toBe('/canonical/session-project');
     expect(error.message).toContain('../foreign-vault');
     expect(error.message).toContain('session-project');
     expect(error.message).not.toContain('/canonical/foreign-vault');
@@ -239,6 +236,36 @@ describe('shared resolver #3858: foreign repo, linked worktree, non-git, same-ro
     expect(absoluteFrames).not.toContain(sourceRoot);
     expect(absoluteFrames).not.toContain(sourceFile);
   });
+  it('redacts percent-encoded file-URL stack frames for roots with spaces', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'session project-'));
+    const probe = join(dir, 'probe.mjs');
+    const moduleHref = pathToFileURL(resolve(originalCwd, 'src/lib/worktree-paths.ts')).href;
+    const rootHref = pathToFileURL(dir).href;
+    writeFileSync(
+      probe,
+      `import { ForeignWorkingDirectoryError } from ${JSON.stringify(moduleHref)};
+import { inspect } from 'node:util';
+const root = ${JSON.stringify(dir)};
+const err = new ForeignWorkingDirectoryError(root, root, '../alias');
+const frames = (err.stack ?? '').split('\\n').slice(1).join('\\n');
+process.stdout.write(JSON.stringify({
+  frames,
+  inspect: inspect(err),
+  fileUrl: ${JSON.stringify(rootHref)},
+}));
+`,
+    );
+    const output = execSync(`npx tsx ${JSON.stringify(probe)}`, {
+      encoding: 'utf8',
+      cwd: originalCwd,
+    });
+    const parsed = JSON.parse(output) as { frames: string; inspect: string; fileUrl: string };
+    expect(parsed.frames).not.toContain(dir);
+    expect(parsed.frames).not.toContain(parsed.fileUrl);
+    expect(parsed.inspect).toContain('../alias');
+    expect(parsed.inspect).not.toContain(parsed.fileUrl);
+  });
+
 
   it('foreign_repository resolution and thrown error keep canonical roots opaque under serialization', () => {
     const relativeAlias = join('..', 'foreign-vault');
@@ -275,8 +302,8 @@ describe('shared resolver #3858: foreign repo, linked worktree, non-git, same-ro
     expect(resolution.status).toBe('foreign_repository');
     if (resolution.status !== 'foreign_repository') return;
 
-    expect(resolution.providedRoot).toBe(canonicalForeign);
-    expect(resolution.trustedRoot).toBe(canonicalSession);
+    expect(getCanonicalWorkingDirectoryRoots(resolution).providedRoot).toBe(canonicalForeign);
+    expect(getCanonicalWorkingDirectoryRoots(resolution).trustedRoot).toBe(canonicalSession);
     expect(resolution.callerLabel).toBe(relativeAlias);
 
     try {
@@ -299,7 +326,7 @@ describe('shared resolver #3858: foreign repo, linked worktree, non-git, same-ro
     expect(resolution.status).toBe('foreign_repository');
     if (resolution.status !== 'foreign_repository') return;
 
-    expect(resolution.providedRoot).toBe(canonicalForeign);
+    expect(getCanonicalWorkingDirectoryRoots(resolution).providedRoot).toBe(canonicalForeign);
     expect(resolution.callerLabel).toBe(symlinkAlias);
 
     try {
@@ -371,7 +398,7 @@ describe('shared resolver #3858: foreign repo, linked worktree, non-git, same-ro
     expect(resolution.status).toBe('foreign_repository');
     if (resolution.status !== 'foreign_repository') return;
     expect(resolution.callerLabel).toBe(relativeParent);
-    expect(resolution.providedRoot).toBe(canonicalParent);
+    expect(getCanonicalWorkingDirectoryRoots(resolution).providedRoot).toBe(canonicalParent);
 
     try {
       validateWorkingDirectoryOrLinkedWorktree(relativeParent);
@@ -384,6 +411,37 @@ describe('shared resolver #3858: foreign repo, linked worktree, non-git, same-ro
       expect(foreign.message).not.toContain(canonicalParent);
     }
   });
+
+  it('nested git metadata with a failed probe rejects instead of falling back to the trusted root', () => {
+    const nested = join(sessionRepo, 'vendor', 'nested-foreign');
+    mkdirSync(nested, { recursive: true });
+    git(nested, 'init');
+    git(nested, 'config user.email "test@example.com"');
+    git(nested, 'config user.name "Test User"');
+    writeFileSync(join(nested, 'README.md'), 'nested\n');
+    git(nested, 'add README.md');
+    git(nested, 'commit -m nested');
+    rmSync(join(nested, '.git'), { recursive: true, force: true });
+    writeFileSync(join(nested, '.git'), 'gitdir: /nonexistent-omc-3858-gitdir\n');
+    clearWorktreeCache();
+
+    expect(() => validateWorkingDirectoryOrLinkedWorktree(nested)).toThrow(/git probe failed and was not used/);
+    expect(() => resolveWorkingDirectoryOrLinkedWorktree(nested)).toThrow(/git probe failed and was not used/);
+  });
+  it('same-repo subdirectory still resolves when git is missing from PATH', () => {
+    const sub = join(sessionRepo, 'docs');
+    mkdirSync(sub, { recursive: true });
+    const originalPath = process.env.PATH;
+    process.env.PATH = '';
+    clearWorktreeCache();
+    try {
+      expect(validateWorkingDirectoryOrLinkedWorktree(sub)).toBe(sessionRepo);
+    } finally {
+      process.env.PATH = originalPath;
+      clearWorktreeCache();
+    }
+  });
+
 
   it('linked-worktree wiki flows keep working end to end (no regression from #2880)', async () => {
     const readResult = await wikiReadTool.handler({ page: 'missing', workingDirectory: linkedWorktree });
