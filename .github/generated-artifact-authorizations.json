@@ -10968,25 +10968,25 @@
     {
       "pullNumber": 3827,
       "targetRef": "dev",
-      "mergeBaseSha": "11b400d16ee0ca72d2be0f8250881db2e5f62442",
-      "headSha": "17cbf1a6d525c040e785a54555bac9ae1a5874ea",
+      "mergeBaseSha": "092558afcaa8d4ff25686bf2903b6ebcd9881298",
+      "headSha": "44ccac58f674be8b43e22c5ff5581fd0efed77fb",
       "owner": "Yeachan-Heo",
       "expiresAt": "2026-08-31T00:00:00.000Z",
       "generatedDelta": {
-        "count": 218,
-        "sha256": "5f0e5adb41d02407c3e83fc76aad5f9f94fd834c1d6898214c9545ccc9819028"
+        "count": 245,
+        "sha256": "9e21e7b36a122a4e29da2396e328a8813bb0a43f6ec8abcad5dddd15b59ccbfa"
       },
       "generatedFiles": [
         {
           "status": "modified",
           "filename": "bridge/cli.cjs",
-          "sha": "0ded214d8859339f62fbd0c769338764af5aae39",
+          "sha": "a3ebdbd184dc27b7b367f90ef4cffd2ac285c140",
           "previousFilename": null
         },
         {
           "status": "modified",
           "filename": "bridge/mcp-server.cjs",
-          "sha": "f05fa8daa2a9f6c02be660f48adafe4f249501d9",
+          "sha": "8d8d96a76a74b2849993548e8234decd78300101",
           "previousFilename": null
         },
         {
@@ -11111,14 +11111,50 @@
         },
         {
           "status": "modified",
+          "filename": "dist/__tests__/ralph-prd-amendment.test.js",
+          "sha": "f67c266dcb81443550295afd94fd1de2b737205d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/ralph-prd-amendment.test.js.map",
+          "sha": "d803a90d0bc96130a45951af54fc3b8957eed38f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
           "filename": "dist/__tests__/ralph-prd-mandatory.test.js",
-          "sha": "8c95c70cb3788841a0d041559b4233a2e0b9851e",
+          "sha": "a662a67bb18c2d54e3ab4c96693394b5b5ac1b85",
           "previousFilename": null
         },
         {
           "status": "modified",
           "filename": "dist/__tests__/ralph-prd-mandatory.test.js.map",
-          "sha": "15c4f0243d74e48925595f9c123858c0a68037ea",
+          "sha": "4e5fbd0b10b8f69fae171c26eef7ae83a475a7ec",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/ralph-prd-stale.test.js",
+          "sha": "a8dfc88945ca32e4a1d84c4af3836bf833b5b950",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/ralph-prd-stale.test.js.map",
+          "sha": "e46feca3d26f88a4483347758005a6302622f344",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/ralph-prd.test.js",
+          "sha": "414180fe18c14d6f5f46f5d11639b222bdf1b464",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/ralph-prd.test.js.map",
+          "sha": "d30b4bdfd3c5a8b802830eaecfd994f9fbe438e4",
           "previousFilename": null
         },
         {
@@ -11287,6 +11323,18 @@
           "status": "modified",
           "filename": "dist/hooks/__tests__/bridge-routing.test.js.map",
           "sha": "053c8471882a87c2ba878f19e4198e69e348321d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/__tests__/precompact-restore.test.js",
+          "sha": "e91c3509a742c992a0433ad2422ef01693671ddb",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/__tests__/precompact-restore.test.js.map",
+          "sha": "8e4c99505d1acc0f3dbce783fb04bbd5dfd111e3",
           "previousFilename": null
         },
         {
@@ -11801,6 +11849,18 @@
         },
         {
           "status": "modified",
+          "filename": "dist/hooks/persistent-mode/__tests__/ralph-verification-flow.test.js",
+          "sha": "df4b6ed4fc1ff6bd761ce0fa81cda0e37c65189f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/persistent-mode/__tests__/ralph-verification-flow.test.js.map",
+          "sha": "a40f6ebc97dcf68f5b1102fc90b4e3fa724049be",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
           "filename": "dist/hooks/persistent-mode/index.d.ts",
           "sha": "ad8160257e2e8af5e353d37b5b4c583da9b0ab28",
           "previousFilename": null
@@ -11808,19 +11868,19 @@
         {
           "status": "modified",
           "filename": "dist/hooks/persistent-mode/index.d.ts.map",
-          "sha": "c03064c406f89937c1ec3126538cc995f7a679e2",
+          "sha": "694187ca3452b2f279b084d5bff5d14082350d01",
           "previousFilename": null
         },
         {
           "status": "modified",
           "filename": "dist/hooks/persistent-mode/index.js",
-          "sha": "72a789a297f103ff160ed53fbdbf15bb891ef98e",
+          "sha": "d51e40215b6bbecac30f851da26c8f793cc88e27",
           "previousFilename": null
         },
         {
           "status": "modified",
           "filename": "dist/hooks/persistent-mode/index.js.map",
-          "sha": "bef38400234ebe76bab84a9f69a1409aa1e19a6c",
+          "sha": "9f49e57526c798ad0976c7779f0057d639b08201",
           "previousFilename": null
         },
         {
@@ -11892,49 +11952,115 @@
         {
           "status": "modified",
           "filename": "dist/hooks/ralph/index.d.ts",
-          "sha": "26dd10d68e514b0235701ecd91e2721a9312c865",
+          "sha": "f6bce75d9b11d37cc01f5f0680a0ae4ed5fadd85",
           "previousFilename": null
         },
         {
           "status": "modified",
           "filename": "dist/hooks/ralph/index.d.ts.map",
-          "sha": "bea7e33613ed9222a109eb4589eee1ee589c4d26",
+          "sha": "11c3a8b19e19a07d4dbc7da457cbbd731cdbdaff",
           "previousFilename": null
         },
         {
           "status": "modified",
           "filename": "dist/hooks/ralph/index.js",
-          "sha": "2fc074c8e6a7fb5b1afb7c002af26db8ae37eae6",
+          "sha": "be6abfeca87fea8e9686c9e3e81860d276a5a950",
           "previousFilename": null
         },
         {
           "status": "modified",
           "filename": "dist/hooks/ralph/index.js.map",
-          "sha": "432c95e651bcba65d46ae1fa6f834f20ab492cbb",
+          "sha": "da2c6b2988fc307c97e2f5ea17fe66f875e0d6ef",
           "previousFilename": null
         },
         {
           "status": "modified",
           "filename": "dist/hooks/ralph/loop.d.ts",
-          "sha": "9b8049671401a8dffd8e6e959580d24233154cd5",
+          "sha": "f75a38852613875c49e9fd9c0a97e3e6c03b3c19",
           "previousFilename": null
         },
         {
           "status": "modified",
           "filename": "dist/hooks/ralph/loop.d.ts.map",
-          "sha": "fbd057e1fe03fdc4b5d1040924114c0435d1a438",
+          "sha": "03f5724933e58ff86181f6243906d5e6e4610ed9",
           "previousFilename": null
         },
         {
           "status": "modified",
           "filename": "dist/hooks/ralph/loop.js",
-          "sha": "00b297e6055b156180514b6859718e3332dcdc99",
+          "sha": "9164cb530b8213fd43ff0d18a47b0fea751119c8",
           "previousFilename": null
         },
         {
           "status": "modified",
           "filename": "dist/hooks/ralph/loop.js.map",
-          "sha": "6836b3d2dc8ad1926742428e7328c142b0defa57",
+          "sha": "0ae8c68303575d2f77e982326c0d39f4096c756e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/prd.d.ts",
+          "sha": "39d95340070d4d6183298e3074b5b5f95db12515",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/prd.d.ts.map",
+          "sha": "b796eaba9664360b807bdcc4a3df1d8c90eff0f2",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/prd.js",
+          "sha": "1cd3935f64fd4630dbbbf4bb674bf22429a1de6f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/prd.js.map",
+          "sha": "7464c7eccc36ec6785b17c924c0d5bd93dffb2e6",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/stale-prd.d.ts.map",
+          "sha": "c0e8d4a1ce1c71caea56760bb592fbe06e3825d9",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/stale-prd.js",
+          "sha": "92c9c3229999bcd148805c9b7ad779ac4a81b6c4",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/stale-prd.js.map",
+          "sha": "071d414edb4216c11ac8a7063d3fca4752e7b1e0",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/verifier.d.ts",
+          "sha": "de05025ecd9b221ff30dc197a6b476a73db89c09",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/verifier.d.ts.map",
+          "sha": "2305419061a5cfdbdca1af51fcfcf6961908f107",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/verifier.js",
+          "sha": "056a2aafc8be4d604108c5fb83ae221a5ff31692",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/verifier.js.map",
+          "sha": "5a888dff34311517b05f8e0c374d8d9746ccb57b",
           "previousFilename": null
         },
         {
@@ -12185,6 +12311,18 @@
         },
         {
           "status": "modified",
+          "filename": "dist/lib/__tests__/mode-state-io.test.js",
+          "sha": "5297bbf941204b044cbbebc5d994641e2297bc60",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/__tests__/mode-state-io.test.js.map",
+          "sha": "f303c774e496b92306a38c000ab50a877e11371b",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
           "filename": "dist/lib/mode-names.d.ts",
           "sha": "de360f860ff132bb6b317cac116f494e7aeac0a3",
           "previousFilename": null
@@ -12205,6 +12343,30 @@
           "status": "modified",
           "filename": "dist/lib/mode-names.js.map",
           "sha": "b2a9d347d938bd9ad0d1eed44f60f05b3ab2a71f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/mode-state-io.d.ts",
+          "sha": "d81b6e139237e17ea006e8ed0f0fc125e0d2e270",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/mode-state-io.d.ts.map",
+          "sha": "a74e066fd7f71554b28ffebfd17482f97d947c76",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/mode-state-io.js",
+          "sha": "6670851bb344d273e79373068337d29eb1df96aa",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/mode-state-io.js.map",
+          "sha": "b1803dfe4c5009b500929d0832bc050b887d16d5",
           "previousFilename": null
         },
         {
