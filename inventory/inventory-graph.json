@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "8324d5e62463b7721031d4056e488fc5649513ee",
-    "sourceSha256": "55537698e28449dc22f28cec792cad67d65f73955644f85e921c8c0710183505",
+    "head": "ec434d8ce8292dde9fc6bd4b50532f239f6db79c",
+    "sourceSha256": "8397954ea620996c9d2d1398ed8ddeb02c40e1cc4f40212cfb5e2184b5bfbe63",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "8324d5e62463b7721031d4056e488fc5649513ee",
-  "sourceSha256": "55537698e28449dc22f28cec792cad67d65f73955644f85e921c8c0710183505",
+  "head": "ec434d8ce8292dde9fc6bd4b50532f239f6db79c",
+  "sourceSha256": "8397954ea620996c9d2d1398ed8ddeb02c40e1cc4f40212cfb5e2184b5bfbe63",
   "counts": {
     "public": {
       "skills": 31,
@@ -28,8 +28,8 @@
       "toolFiles": 59,
       "libFiles": 36,
       "templateHooks": 21,
-      "srcFiles": 1274,
-      "total": 1295
+      "srcFiles": 1275,
+      "total": 1296
     },
     "generated": {
       "distFiles": 4955,
@@ -34155,6 +34155,11 @@
         "path": "src/__tests__/issue-2652-runtime-wiring-and-output-contract.test.ts"
       },
       {
+        "id": "src/__tests__/issue-3867-legacy-l-update.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/issue-3867-legacy-l-update.test.ts"
+      },
+      {
         "id": "src/__tests__/job-management-sqlite.test.ts",
         "kind": "src",
         "path": "src/__tests__/job-management-sqlite.test.ts"
@@ -45150,6 +45155,31 @@
         "from": "src/__tests__/issue-2652-runtime-wiring-and-output-contract.test.ts",
         "to": "external:vitest",
         "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/issue-3867-legacy-l-update.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/issue-3867-legacy-l-update.test.ts",
+        "to": "src/features/auto-update.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/issue-3867-legacy-l-update.test.ts",
+        "to": "src/hud/render.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/issue-3867-legacy-l-update.test.ts",
+        "to": "src/hud/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/issue-3867-legacy-l-update.test.ts",
+        "to": "src/hud/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/__tests__/job-management-sqlite.test.ts",
@@ -74848,12 +74878,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6794,
-      "edgeCount": 6921,
-      "importEdgeCount": 5685,
+      "nodeCount": 6795,
+      "edgeCount": 6926,
+      "importEdgeCount": 5689,
       "registerEdgeCount": 52
     }
   },
-  "inventorySha256": "0d46a0037a3546f5d443daa840253235b6826e95064d84f56a0383e06050a6bf",
-  "manifestSha256": "0ddbfd8135e55484d1ed485e6db446df4558cccf8ab76bf8dbe757aba9202d6a"
+  "inventorySha256": "711ee021e41dc6d2e423bcc936e42694dff27bf8cfc06638ceef2d7d44e83b73",
+  "manifestSha256": "7ac1ca26e03c555122956c7c5a09ec5812b7e71c64315a0663a5b125daec6d31"
 }
