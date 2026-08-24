@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "3fd82c66e6903a59d15c65038fe285ac916913d7",
-    "sourceSha256": "d1df7e1a36e48702549feaea3f1befb05d4b1d0890144740a744eb6738e9d515",
+    "head": "9648730ea878dbf31519dcf5d540e540727f2ba4",
+    "sourceSha256": "04926230840e87f5ad8b6010d6df7d25da18021912fa32055dfaf964609e314a",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "3fd82c66e6903a59d15c65038fe285ac916913d7",
-  "sourceSha256": "d1df7e1a36e48702549feaea3f1befb05d4b1d0890144740a744eb6738e9d515",
+  "head": "9648730ea878dbf31519dcf5d540e540727f2ba4",
+  "sourceSha256": "04926230840e87f5ad8b6010d6df7d25da18021912fa32055dfaf964609e314a",
   "counts": {
     "public": {
       "skills": 31,
@@ -32365,6 +32365,11 @@
         "path": "node:url"
       },
       {
+        "id": "external:node:util",
+        "kind": "external",
+        "path": "node:util"
+      },
+      {
         "id": "external:node:worker_threads",
         "kind": "external",
         "path": "node:worker_threads"
@@ -62763,6 +62768,16 @@
       },
       {
         "from": "src/lib/__tests__/worktree-paths-foreign-root.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-foreign-root.test.ts",
+        "to": "external:node:util",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-foreign-root.test.ts",
         "to": "external:vitest",
         "kind": "imports"
       },
@@ -74708,12 +74723,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6789,
-      "edgeCount": 6899,
-      "importEdgeCount": 5663,
+      "nodeCount": 6790,
+      "edgeCount": 6901,
+      "importEdgeCount": 5665,
       "registerEdgeCount": 52
     }
   },
   "inventorySha256": "cb341faca1f2583f56b1e73ca4f9d4223de75d69f790002dab9c02ec8bd31250",
-  "manifestSha256": "a88cb22875ff90013c76f9707e5d10a34b8fb36ba517a574bee06b48f7e9e4b8"
+  "manifestSha256": "618b30a82972ed33eab31200fec37b97fa84a1c1a067c3f40ce047e076dcf8f3"
 }
