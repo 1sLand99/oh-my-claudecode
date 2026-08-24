@@ -56,8 +56,6 @@ export const OmcPaths = {
  */
 const MAX_WORKTREE_CACHE_SIZE = 8;
 const worktreeCacheMap = new Map<string, string>();
-/** LRU cache for literal git-toplevel lookups (getGitTopLevel, no submodule climb). */
-const toplevelCacheMap = new Map<string, string>();
 /** LRU cache for outermost superproject root lookups, including negative results. */
 const superprojectCacheMap = new Map<string, string | null>();
 const canonicalWorkingDirectoryRoots = new WeakMap<object, { providedRoot: string; trustedRoot: string }>();
@@ -956,7 +954,6 @@ export function ensureAllOmcDirs(worktreeRoot?: string): void {
  */
 export function clearWorktreeCache(): void {
   worktreeCacheMap.clear();
-  toplevelCacheMap.clear();
   superprojectCacheMap.clear();
   workspaceCacheMap.clear();
 }
