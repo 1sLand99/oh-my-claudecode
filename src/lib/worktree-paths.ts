@@ -1230,6 +1230,16 @@ function redactCanonicalRoots(text: string, providedRoot: string, trustedRoot: s
   }
   return redacted;
 }
+function redactErrorStack(stack: string, providedRoot: string, trustedRoot: string): string {
+  const newline = stack.includes('\r\n') ? '\r\n' : '\n';
+  const lines = stack.split(/\r?\n/);
+  if (lines.length <= 1) {
+    return stack;
+  }
+  const [header, ...frames] = lines;
+  return [header, ...frames.map((frame) => redactCanonicalRoots(frame, providedRoot, trustedRoot))].join(newline);
+}
+
 
 
 function foreignRepositoryResolution(
@@ -1400,7 +1410,7 @@ export class ForeignWorkingDirectoryError extends Error {
     this.callerLabel = callerLabel;
     defineOpaqueCanonicalRoots(this, providedRoot, trustedRoot);
     Object.defineProperty(this, 'stack', {
-      value: redactCanonicalRoots(this.stack ?? `${this.name}: ${this.message}`, providedRoot, trustedRoot),
+      value: redactErrorStack(this.stack ?? `${this.name}: ${this.message}`, providedRoot, trustedRoot),
       enumerable: false,
       configurable: true,
       writable: true,

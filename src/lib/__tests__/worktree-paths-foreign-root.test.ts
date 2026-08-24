@@ -230,6 +230,14 @@ describe('shared resolver #3858: foreign repo, linked worktree, non-git, same-ro
     expect(rawInspect).not.toContain(sourceFile);
     expect(rawInspect).not.toContain(sourceRoot);
     expect(JSON.stringify({ message: overlapping.message, stack: overlapping.stack })).not.toContain(sourceRoot);
+    const absoluteCaller = sourceFile;
+    const absoluteError = new ForeignWorkingDirectoryError(absoluteCaller, sourceRoot, absoluteCaller);
+    expect(absoluteError.message).toContain(absoluteCaller);
+    expect(absoluteError.stack).toContain(absoluteCaller);
+    expect(inspect(absoluteError)).toContain(absoluteCaller);
+    const absoluteFrames = (absoluteError.stack ?? '').split('\n').slice(1).join('\n');
+    expect(absoluteFrames).not.toContain(sourceRoot);
+    expect(absoluteFrames).not.toContain(sourceFile);
   });
 
   it('foreign_repository resolution and thrown error keep canonical roots opaque under serialization', () => {
