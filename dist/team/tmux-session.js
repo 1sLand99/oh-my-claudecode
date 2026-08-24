@@ -1479,23 +1479,23 @@ export async function deliverStartupInbox(context, message, options = {}) {
 }
 export async function retryStartupInboxSubmit(context, message, options = {}) {
     if (!await startupContextIsActive(context, options.attemptAlreadyFenced))
-        return false;
+        return 'unavailable';
     const copyMode = await paneCopyModeObservation(context.ownership.paneId);
     if (copyMode !== false)
-        return false;
+        return 'unavailable';
     const observation = await capturePaneObservation(context.ownership.paneId, { operation: 'startup-submit-retry' });
     if (!observation.ok || detectPaneTrustPromptKind(observation.captured))
-        return false;
-    if (paneHasActiveTask(observation.captured))
-        return false;
+        return 'unavailable';
+    if (paneHasActiveTask(observation.captured, context.provider))
+        return 'pane_busy';
     if (!paneTailContainsLiteralLine(observation.captured, message))
-        return false;
+        return 'unavailable';
     try {
         await sendTeamPaneKey(context.ownership.paneId, 'Enter');
-        return true;
+        return 'resubmitted';
     }
     catch {
-        return false;
+        return 'unavailable';
     }
 }
 export function shouldAttemptAdaptiveRetry(args) {

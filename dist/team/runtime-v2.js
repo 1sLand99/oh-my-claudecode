@@ -577,18 +577,40 @@ const WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS = 250;
 const WORKER_STARTUP_EVIDENCE_POLICIES = {
     // Claude's interactive transport can lose a submit, so retain the existing
     // bounded resubmit behavior and its effective 6 + (4 * 12) poll windows.
-    claude: { initialBudgetMs: 1_250, finalRecheckBudgetMs: 0, resubmitAttempts: 4, resubmitBudgetMs: 2_750 },
+    // An engaged pane (issue #3849: WSL2 cold starts publish first-turn claim
+    // evidence well after the initial budget) gets one bounded read-only recheck
+    // before teardown; idle, wrong, or dead panes keep the fast fail-closed path.
+    claude: {
+        initialBudgetMs: 1_250,
+        finalRecheckBudgetMs: 0,
+        resubmitAttempts: 4,
+        resubmitBudgetMs: 2_750,
+        engagedPaneRecheckBudgetMs: 30_000,
+    },
     // External providers can be visibly ready before they publish task/status
     // evidence. Give that distinct evidence gate enough time for a cold start,
     // then perform one bounded read-only recheck without duplicating the inbox.
-    codex: { initialBudgetMs: 30_000, finalRecheckBudgetMs: 1_000, resubmitAttempts: 0, resubmitBudgetMs: 0 },
-    gemini: { initialBudgetMs: 30_000, finalRecheckBudgetMs: 1_000, resubmitAttempts: 0, resubmitBudgetMs: 0 },
-    cursor: { initialBudgetMs: 30_000, finalRecheckBudgetMs: 1_000, resubmitAttempts: 0, resubmitBudgetMs: 0 },
-    grok: { initialBudgetMs: 30_000, finalRecheckBudgetMs: 1_000, resubmitAttempts: 0, resubmitBudgetMs: 0 },
-    antigravity: { initialBudgetMs: 30_000, finalRecheckBudgetMs: 1_000, resubmitAttempts: 0, resubmitBudgetMs: 0 },
+    codex: { initialBudgetMs: 30_000, finalRecheckBudgetMs: 1_000, resubmitAttempts: 0, resubmitBudgetMs: 0, engagedPaneRecheckBudgetMs: 0 },
+    gemini: { initialBudgetMs: 30_000, finalRecheckBudgetMs: 1_000, resubmitAttempts: 0, resubmitBudgetMs: 0, engagedPaneRecheckBudgetMs: 0 },
+    cursor: { initialBudgetMs: 30_000, finalRecheckBudgetMs: 1_000, resubmitAttempts: 0, resubmitBudgetMs: 0, engagedPaneRecheckBudgetMs: 0 },
+    grok: { initialBudgetMs: 30_000, finalRecheckBudgetMs: 1_000, resubmitAttempts: 0, resubmitBudgetMs: 0, engagedPaneRecheckBudgetMs: 0 },
+    antigravity: { initialBudgetMs: 30_000, finalRecheckBudgetMs: 1_000, resubmitAttempts: 0, resubmitBudgetMs: 0, engagedPaneRecheckBudgetMs: 0 },
 };
+const ENGAGED_PANE_RECHECK_TIMEOUT_ENV = 'OMC_TEAM_ENGAGED_PANE_RECHECK_MS';
+// The engaged recheck runs while the launch-attempt fence lock is held, so the
+// operator override stays clamped: a runaway value would hold stop/retire
+// contention for the whole window even though containment itself stays terminal.
+const MAX_ENGAGED_PANE_RECHECK_BUDGET_MS = 120_000;
+function resolveEngagedPaneRecheckBudgetMs(fallback) {
+    const raw = process.env[ENGAGED_PANE_RECHECK_TIMEOUT_ENV];
+    const value = raw === undefined ? Number.NaN : Number(raw);
+    if (!Number.isFinite(value) || value <= 0)
+        return fallback;
+    return Math.max(1, Math.min(Math.floor(value), MAX_ENGAGED_PANE_RECHECK_BUDGET_MS));
+}
 export function getWorkerStartupEvidencePolicy(agentType) {
-    return WORKER_STARTUP_EVIDENCE_POLICIES[agentType];
+    const policy = WORKER_STARTUP_EVIDENCE_POLICIES[agentType];
+    return { ...policy, engagedPaneRecheckBudgetMs: resolveEngagedPaneRecheckBudgetMs(policy.engagedPaneRecheckBudgetMs) };
 }
 export async function waitForStartupEvidenceBudget(hasEvidence, budgetMs, delayMs = WORKER_STARTUP_EVIDENCE_POLL_INTERVAL_MS) {
     const deadline = Date.now() + Math.max(0, budgetMs);
@@ -610,6 +632,37 @@ async function waitForWorkerStatusTransition(teamName, workerName, cwd, baseline
         return status.state !== 'unknown' && status.launch_attempt_id === launchAttemptId
             && workerStatusStartupFingerprint(status) !== baselineFingerprint;
     }, budgetMs, delayMs);
+}
+/**
+ * Settle worker startup evidence under a provider-aware policy.
+ *
+ * The resubmit loop exists to recover a lost interactive submit. When the probe
+ * reports `pane_busy`, the owned worker demonstrably consumed the trigger and is
+ * actively working, so resubmitting would duplicate the inbox and stopping the
+ * wait would tear down a healthy provider (issue #3849). In that case the loop
+ * stops resubmitting and one bounded read-only engaged-pane recheck runs before
+ * the caller's fail-closed teardown. Panes that are idle, wrong, or dead never
+ * earn that recheck and keep the existing fast failure path.
+ */
+export async function settleStartupEvidence(policy, waitForCurrentEvidence, resubmit) {
+    let settled = await waitForCurrentEvidence(policy.initialBudgetMs);
+    let engagedPane = false;
+    for (let attempt = 1; !settled && resubmit && attempt <= policy.resubmitAttempts; attempt++) {
+        const outcome = await resubmit();
+        if (outcome === 'pane_busy') {
+            engagedPane = true;
+            break;
+        }
+        if (outcome !== 'resubmitted')
+            break;
+        settled = await waitForCurrentEvidence(policy.resubmitBudgetMs);
+    }
+    if (!settled) {
+        settled = await waitForCurrentEvidence(engagedPane
+            ? policy.engagedPaneRecheckBudgetMs
+            : policy.finalRecheckBudgetMs);
+    }
+    return settled;
 }
 export function promptModeRecoveryRequiresProgressEvidence(promptMode, continuationCount) {
     return promptMode && continuationCount > 0;
@@ -739,13 +792,7 @@ async function spawnV2Worker(opts) {
     };
     const evidencePolicy = getWorkerStartupEvidencePolicy(opts.agentType);
     const waitForCurrentEvidence = (budgetMs) => waitForWorkerStartupEvidence(opts.teamName, opts.workerName, opts.taskId, opts.cwd, startupBaseline, startupContext.attempt.attempt_id, budgetMs);
-    const waitForBoundedStartupEvidence = async () => {
-        if (await waitForCurrentEvidence(evidencePolicy.initialBudgetMs))
-            return true;
-        return evidencePolicy.finalRecheckBudgetMs > 0
-            ? waitForCurrentEvidence(evidencePolicy.finalRecheckBudgetMs)
-            : false;
-    };
+    const waitForBoundedStartupEvidence = (resubmit) => settleStartupEvidence(evidencePolicy, waitForCurrentEvidence, resubmit);
     const fencedDispatch = await (async () => {
         try {
             return await withWorkerLaunchAttemptFence(startupContext.attempt, async () => {
@@ -777,15 +824,7 @@ async function spawnV2Worker(opts) {
                         if (!attempted.ok) {
                             return { ok: false, transport: 'tmux_send_keys', reason: `worker_notify_failed:${attempted.reason}` };
                         }
-                        let settled = await waitForCurrentEvidence(evidencePolicy.initialBudgetMs);
-                        for (let attempt = 1; !settled && attempt <= evidencePolicy.resubmitAttempts; attempt++) {
-                            if (!await retryStartupInboxSubmit(startupContext, triggerMessage, { attemptAlreadyFenced: true }))
-                                break;
-                            settled = await waitForCurrentEvidence(evidencePolicy.resubmitBudgetMs);
-                        }
-                        if (!settled && evidencePolicy.finalRecheckBudgetMs > 0) {
-                            settled = await waitForCurrentEvidence(evidencePolicy.finalRecheckBudgetMs);
-                        }
+                        const settled = await waitForBoundedStartupEvidence(() => retryStartupInboxSubmit(startupContext, triggerMessage, { attemptAlreadyFenced: true }));
                         return settled
                             ? { ok: true, transport: 'tmux_send_keys', reason: 'worker_startup_confirmed' }
                             : { ok: false, transport: 'tmux_send_keys', reason: 'worker_startup_evidence_missing' };
@@ -2221,18 +2260,7 @@ export async function executeRecoverDeadWorkerV2Owner(input) {
                 const waitForCurrentEvidence = (budgetMs) => primaryTaskId && startupBaseline
                     ? waitForWorkerStartupEvidence(input.teamName, sagaInput.workerName, primaryTaskId, input.cwd, startupBaseline, startupAttemptId, budgetMs)
                     : waitForWorkerStatusTransition(input.teamName, sagaInput.workerName, input.cwd, statusBaseline, startupAttemptId, budgetMs);
-                const waitForBoundedStartupEvidence = async (resubmit) => {
-                    let settled = await waitForCurrentEvidence(evidencePolicy.initialBudgetMs);
-                    for (let attempt = 1; !settled && resubmit && attempt <= evidencePolicy.resubmitAttempts; attempt++) {
-                        if (!await resubmit())
-                            break;
-                        settled = await waitForCurrentEvidence(evidencePolicy.resubmitBudgetMs);
-                    }
-                    if (!settled && evidencePolicy.finalRecheckBudgetMs > 0) {
-                        settled = await waitForCurrentEvidence(evidencePolicy.finalRecheckBudgetMs);
-                    }
-                    return settled;
-                };
+                const waitForBoundedStartupEvidence = (resubmit) => settleStartupEvidence(evidencePolicy, waitForCurrentEvidence, resubmit);
                 const instruction = continuations.length > 0
                     ? continuations.map(continuation => renderRecoveryContinuationInstruction({
                         teamName: input.teamName,

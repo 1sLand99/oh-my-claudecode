@@ -1807,23 +1807,34 @@ export async function deliverStartupInbox(
   }
 }
 
+/**
+ * Outcome of a startup-inbox resubmit probe:
+ * - `resubmitted` — the trigger was still visibly pending and Enter was re-sent.
+ * - `pane_busy` — the owned pane shows an active task: the worker consumed the
+ *   trigger and is working, so resubmitting would duplicate the inbox. Callers
+ *   must keep waiting for startup evidence instead of tearing the launch down.
+ * - `unavailable` — the pane cannot be re-submitted into (inactive attempt,
+ *   copy mode, capture failure, selector, or the trigger text is gone).
+ */
+export type StartupInboxResubmitOutcome = 'resubmitted' | 'pane_busy' | 'unavailable';
+
 export async function retryStartupInboxSubmit(
   context: StartupPaneContext,
   message: string,
   options: { attemptAlreadyFenced?: boolean } = {},
-): Promise<boolean> {
-  if (!await startupContextIsActive(context, options.attemptAlreadyFenced)) return false;
+): Promise<StartupInboxResubmitOutcome> {
+  if (!await startupContextIsActive(context, options.attemptAlreadyFenced)) return 'unavailable';
   const copyMode = await paneCopyModeObservation(context.ownership.paneId);
-  if (copyMode !== false) return false;
+  if (copyMode !== false) return 'unavailable';
   const observation = await capturePaneObservation(context.ownership.paneId, { operation: 'startup-submit-retry' });
-  if (!observation.ok || detectPaneTrustPromptKind(observation.captured)) return false;
-  if (paneHasActiveTask(observation.captured)) return false;
-  if (!paneTailContainsLiteralLine(observation.captured, message)) return false;
+  if (!observation.ok || detectPaneTrustPromptKind(observation.captured)) return 'unavailable';
+  if (paneHasActiveTask(observation.captured, context.provider)) return 'pane_busy';
+  if (!paneTailContainsLiteralLine(observation.captured, message)) return 'unavailable';
   try {
     await sendTeamPaneKey(context.ownership.paneId, 'Enter');
-    return true;
+    return 'resubmitted';
   } catch {
-    return false;
+    return 'unavailable';
   }
 }
 
