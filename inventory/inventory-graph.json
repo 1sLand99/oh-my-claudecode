@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "66d5464d5ce878c4ea26d3ba8b7348ee5bc3c91d",
-    "sourceSha256": "c529faca78412a0c9e8c581add382cd9e662f4e91a85e420268f576d7b5631ff",
+    "head": "3043e8ae8e190ee4766de445c2e0211403a69701",
+    "sourceSha256": "8bdfb61a5e05bf5dad946c59888dd8848dcf290b9a8c4ac0c6952da318f6ba74",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "66d5464d5ce878c4ea26d3ba8b7348ee5bc3c91d",
-  "sourceSha256": "c529faca78412a0c9e8c581add382cd9e662f4e91a85e420268f576d7b5631ff",
+  "head": "3043e8ae8e190ee4766de445c2e0211403a69701",
+  "sourceSha256": "8bdfb61a5e05bf5dad946c59888dd8848dcf290b9a8c4ac0c6952da318f6ba74",
   "counts": {
     "public": {
       "skills": 31,
@@ -25,11 +25,11 @@
     "internal": {
       "hookFiles": 295,
       "featureFiles": 68,
-      "toolFiles": 57,
-      "libFiles": 35,
+      "toolFiles": 59,
+      "libFiles": 36,
       "templateHooks": 21,
-      "srcFiles": 1271,
-      "total": 1292
+      "srcFiles": 1274,
+      "total": 1295
     },
     "generated": {
       "distFiles": 4955,
@@ -509,7 +509,9 @@
       "src/tools/__tests__/memory-tools.test.ts",
       "src/tools/__tests__/schema-conversion.test.ts",
       "src/tools/__tests__/state-tools.test.ts",
+      "src/tools/__tests__/wiki-tools-direct-dist-failclosed.test.ts",
       "src/tools/__tests__/wiki-tools-foreign-root.test.ts",
+      "src/tools/__tests__/wiki-tools-git-probe-failclosed.test.ts",
       "src/tools/__tests__/wiki-tools-working-directory.test.ts",
       "src/tools/ast-tools.ts",
       "src/tools/deepinit-manifest.ts",
@@ -573,6 +575,7 @@
       "src/lib/__tests__/truncate-prompt.test.ts",
       "src/lib/__tests__/worktree-cleanup-safety.test.ts",
       "src/lib/__tests__/worktree-paths-foreign-root.test.ts",
+      "src/lib/__tests__/worktree-paths-git-probe-failclosed.test.ts",
       "src/lib/__tests__/worktree-paths-superproject-cache.test.ts",
       "src/lib/__tests__/worktree-paths.test.ts",
       "src/lib/atomic-write.ts",
@@ -6209,7 +6212,9 @@
       "src/tools/__tests__/memory-tools.test.ts",
       "src/tools/__tests__/schema-conversion.test.ts",
       "src/tools/__tests__/state-tools.test.ts",
+      "src/tools/__tests__/wiki-tools-direct-dist-failclosed.test.ts",
       "src/tools/__tests__/wiki-tools-foreign-root.test.ts",
+      "src/tools/__tests__/wiki-tools-git-probe-failclosed.test.ts",
       "src/tools/__tests__/wiki-tools-working-directory.test.ts",
       "src/tools/ast-tools.ts",
       "src/tools/deepinit-manifest.ts",
@@ -37855,6 +37860,11 @@
         "path": "src/lib/__tests__/worktree-paths-foreign-root.test.ts"
       },
       {
+        "id": "src/lib/__tests__/worktree-paths-git-probe-failclosed.test.ts",
+        "kind": "lib",
+        "path": "src/lib/__tests__/worktree-paths-git-probe-failclosed.test.ts"
+      },
+      {
         "id": "src/lib/__tests__/worktree-paths-superproject-cache.test.ts",
         "kind": "lib",
         "path": "src/lib/__tests__/worktree-paths-superproject-cache.test.ts"
@@ -39490,9 +39500,19 @@
         "path": "src/tools/__tests__/state-tools.test.ts"
       },
       {
+        "id": "src/tools/__tests__/wiki-tools-direct-dist-failclosed.test.ts",
+        "kind": "tool",
+        "path": "src/tools/__tests__/wiki-tools-direct-dist-failclosed.test.ts"
+      },
+      {
         "id": "src/tools/__tests__/wiki-tools-foreign-root.test.ts",
         "kind": "tool",
         "path": "src/tools/__tests__/wiki-tools-foreign-root.test.ts"
+      },
+      {
+        "id": "src/tools/__tests__/wiki-tools-git-probe-failclosed.test.ts",
+        "kind": "tool",
+        "path": "src/tools/__tests__/wiki-tools-git-probe-failclosed.test.ts"
       },
       {
         "id": "src/tools/__tests__/wiki-tools-working-directory.test.ts",
@@ -62792,6 +62812,36 @@
         "kind": "imports"
       },
       {
+        "from": "src/lib/__tests__/worktree-paths-git-probe-failclosed.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-git-probe-failclosed.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-git-probe-failclosed.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-git-probe-failclosed.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-git-probe-failclosed.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-git-probe-failclosed.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/lib/__tests__/worktree-paths-superproject-cache.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -71937,6 +71987,36 @@
         "kind": "imports"
       },
       {
+        "from": "src/tools/__tests__/wiki-tools-direct-dist-failclosed.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/wiki-tools-direct-dist-failclosed.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/wiki-tools-direct-dist-failclosed.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/wiki-tools-direct-dist-failclosed.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/wiki-tools-direct-dist-failclosed.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/wiki-tools-direct-dist-failclosed.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "src/tools/__tests__/wiki-tools-foreign-root.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -71968,6 +72048,41 @@
       },
       {
         "from": "src/tools/__tests__/wiki-tools-foreign-root.test.ts",
+        "to": "src/tools/wiki-tools.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/wiki-tools-git-probe-failclosed.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/wiki-tools-git-probe-failclosed.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/wiki-tools-git-probe-failclosed.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/wiki-tools-git-probe-failclosed.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/wiki-tools-git-probe-failclosed.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/wiki-tools-git-probe-failclosed.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/wiki-tools-git-probe-failclosed.test.ts",
         "to": "src/tools/wiki-tools.ts",
         "kind": "imports"
       },
@@ -74728,12 +74843,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6790,
-      "edgeCount": 6902,
-      "importEdgeCount": 5666,
+      "nodeCount": 6793,
+      "edgeCount": 6921,
+      "importEdgeCount": 5685,
       "registerEdgeCount": 52
     }
   },
-  "inventorySha256": "cb341faca1f2583f56b1e73ca4f9d4223de75d69f790002dab9c02ec8bd31250",
-  "manifestSha256": "37cf86df3c400ec3df35320c45ff8d57e1458e344159f4ef88ada6baf80c6fcd"
+  "inventorySha256": "b11f24e66cc72a4cd4458d678680de6c493d9ff09c741eb51bdce4f257f357e2",
+  "manifestSha256": "b52131801d076663b162fab67cc3d441bb791d6ec1198065fc004019f1f88b31"
 }

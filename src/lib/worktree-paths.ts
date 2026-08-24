@@ -11,7 +11,7 @@
 
 import { createHash } from 'crypto';
 import { execFileSync } from 'child_process';
-import { existsSync, mkdirSync, readFileSync, realpathSync, readdirSync, writeFileSync, unlinkSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, readdirSync, writeFileSync, unlinkSync, statSync } from 'fs';
 import { homedir, tmpdir } from 'os';
 import { resolve, normalize, relative, sep, join, isAbsolute, basename, dirname } from 'path';
 import { pathToFileURL } from 'url';
@@ -56,8 +56,6 @@ export const OmcPaths = {
  */
 const MAX_WORKTREE_CACHE_SIZE = 8;
 const worktreeCacheMap = new Map<string, string>();
-/** LRU cache for literal git-toplevel lookups (getGitTopLevel, no submodule climb). */
-const toplevelCacheMap = new Map<string, string>();
 /** LRU cache for outermost superproject root lookups, including negative results. */
 const superprojectCacheMap = new Map<string, string | null>();
 const canonicalWorkingDirectoryRoots = new WeakMap<object, { providedRoot: string; trustedRoot: string }>();
@@ -241,7 +239,20 @@ function resolveStateAnchorRoot(worktreeRoot?: string): string {
 type GitTopLevelProbe =
   | { status: 'ok'; root: string }
   | { status: 'not_a_repository' }
+  | { status: 'git_missing' }
   | { status: 'probe_failed'; detail: string };
+
+/**
+ * Injectable `git rev-parse --show-toplevel` runner for tests (#3858).
+ * Throw to simulate spawn/exit failures; return stdout to simulate success.
+ */
+export type GitShowToplevelProbe = (cwd: string) => string | Buffer;
+
+let gitShowToplevelProbeForTests: GitShowToplevelProbe | undefined;
+
+export function setGitShowToplevelProbeForTests(probe?: GitShowToplevelProbe): void {
+  gitShowToplevelProbeForTests = probe;
+}
 
 function gitErrorStderr(error: unknown): string {
   if (!error || typeof error !== 'object') {
@@ -257,12 +268,58 @@ function gitErrorStderr(error: unknown): string {
   return typeof err.message === 'string' ? err.message : '';
 }
 
+function isGitCommandPath(path: unknown): boolean {
+  if (typeof path !== 'string' || path.length === 0) {
+    return false;
+  }
+  const base = basename(path);
+  return base === 'git' || base === 'git.exe' || base === 'git.cmd' || base === 'git.bat';
+}
+
+function isConfirmedGitExecutableNotFound(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+  const err = error as {
+    code?: string;
+    path?: string;
+    syscall?: string;
+    status?: number | null;
+    signal?: NodeJS.Signals | string | null;
+    killed?: boolean;
+  };
+  if (err.code !== 'ENOENT') {
+    return false;
+  }
+  if (err.killed === true) {
+    return false;
+  }
+  if (typeof err.status === 'number') {
+    return false;
+  }
+  if (typeof err.signal === 'string' && err.signal.length > 0) {
+    return false;
+  }
+  const syscall = typeof err.syscall === 'string' ? err.syscall.toLowerCase() : '';
+  if (!syscall.includes('spawn')) {
+    return false;
+  }
+  return syscall.includes('git') || isGitCommandPath(err.path);
+}
+
 function isNotAGitRepositoryError(error: unknown): boolean {
   if (!error || typeof error !== 'object') {
     return false;
   }
-  const err = error as { status?: number; code?: string };
+  const err = error as {
+    status?: number;
+    code?: string;
+    signal?: NodeJS.Signals | string | null;
+  };
   if (err.code === 'ENOENT' || err.code === 'ETIMEDOUT' || err.code === 'EACCES') {
+    return false;
+  }
+  if (typeof err.signal === 'string' && err.signal.length > 0) {
     return false;
   }
   const stderr = gitErrorStderr(error);
@@ -273,12 +330,24 @@ function formatGitProbeDetail(error: unknown): string {
   if (!error || typeof error !== 'object') {
     return String(error);
   }
-  const err = error as { code?: string; status?: number; message?: string };
+  const err = error as {
+    code?: string;
+    status?: number;
+    message?: string;
+    signal?: NodeJS.Signals | string | null;
+    killed?: boolean;
+  };
   if (err.code === 'ENOENT') {
     return 'git executable not found';
   }
-  if (err.code === 'ETIMEDOUT') {
+  if (err.code === 'EACCES') {
+    return 'git executable not accessible';
+  }
+  if (err.code === 'ETIMEDOUT' || err.killed === true) {
     return 'git probe timed out';
+  }
+  if (typeof err.signal === 'string' && err.signal.length > 0) {
+    return `git killed by ${err.signal}`;
   }
   const stderr = gitErrorStderr(error).trim();
   if (stderr.length > 0) {
@@ -291,42 +360,6 @@ function formatGitProbeDetail(error: unknown): string {
     return `git exited ${err.status}`;
   }
   return 'unknown git probe failure';
-}
-
-function probeGitTopLevel(cwd: string): GitTopLevelProbe {
-  if (toplevelCacheMap.has(cwd)) {
-    const root = toplevelCacheMap.get(cwd)!;
-    toplevelCacheMap.delete(cwd);
-    toplevelCacheMap.set(cwd, root);
-    return { status: 'ok', root };
-  }
-
-  try {
-    const root = execFileSync('git', ['rev-parse', '--show-toplevel'], {
-      cwd,
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true,
-      timeout: 5000,
-    }).trim();
-
-    if (toplevelCacheMap.size >= MAX_WORKTREE_CACHE_SIZE) {
-      const oldest = toplevelCacheMap.keys().next().value;
-      if (oldest !== undefined) toplevelCacheMap.delete(oldest);
-    }
-    toplevelCacheMap.set(cwd, root);
-    return { status: 'ok', root };
-  } catch (error) {
-    if (isNotAGitRepositoryError(error)) {
-      return { status: 'not_a_repository' };
-    }
-    return { status: 'probe_failed', detail: formatGitProbeDetail(error) };
-  }
-}
-
-export function getGitTopLevel(cwd?: string): string | null {
-  const probe = probeGitTopLevel(cwd || process.cwd());
-  return probe.status === 'ok' ? probe.root : null;
 }
 
 function findGitMetadataDir(start: string): string | null {
@@ -342,6 +375,115 @@ function findGitMetadataDir(start: string): string | null {
     current = parent;
   }
 }
+
+function expandPathForCompare(path: string): string | null {
+  const normalized = resolve(path);
+  try {
+    return realpathSync.native(normalized);
+  } catch {
+    try {
+      return realpathSync(normalized);
+    } catch {
+      return null;
+    }
+  }
+}
+
+function canonicalizeExistingPath(path: string): string | null {
+  try {
+    return realpathSync(resolve(path));
+  } catch {
+    return null;
+  }
+}
+
+function sameCanonicalPath(left: string, right: string): boolean {
+  const a = expandPathForCompare(left);
+  const b = expandPathForCompare(right);
+  if (!a || !b) {
+    return false;
+  }
+  if (a === b) {
+    return true;
+  }
+  if (process.platform !== 'win32') {
+    return false;
+  }
+  const fold = (value: string): string => value.replaceAll('/', '\\').toLowerCase();
+  return fold(a) === fold(b);
+}
+
+function isCredibleGitWorktreeRoot(root: string): boolean {
+  try {
+    if (!statSync(root).isDirectory()) {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+  const rootReal = canonicalizeExistingPath(root);
+  if (!rootReal) {
+    return false;
+  }
+  const metadataDir = findGitMetadataDir(rootReal);
+  return metadataDir !== null && sameCanonicalPath(metadataDir, rootReal);
+}
+
+function classifyGitShowToplevelStdout(stdout: string, cwd: string): GitTopLevelProbe {
+  const root = stdout.trim();
+  if (root.length === 0 || !isAbsolute(root) || !isCredibleGitWorktreeRoot(root)) {
+    return { status: 'probe_failed', detail: 'malformed git toplevel output' };
+  }
+  const cwdReal = canonicalizeExistingPath(cwd);
+  if (!cwdReal) {
+    return { status: 'probe_failed', detail: 'malformed git toplevel output' };
+  }
+  const metadataDir = findGitMetadataDir(cwdReal);
+  if (!metadataDir || !sameCanonicalPath(metadataDir, root)) {
+    return { status: 'probe_failed', detail: 'malformed git toplevel output' };
+  }
+  return { status: 'ok', root: canonicalizeExistingPath(metadataDir) ?? metadataDir };
+}
+
+function classifyGitShowToplevelError(error: unknown): GitTopLevelProbe {
+  if (isNotAGitRepositoryError(error)) {
+    return { status: 'not_a_repository' };
+  }
+  if (isConfirmedGitExecutableNotFound(error)) {
+    return { status: 'git_missing' };
+  }
+  return { status: 'probe_failed', detail: formatGitProbeDetail(error) };
+}
+
+function runGitShowToplevel(cwd: string): string {
+  if (gitShowToplevelProbeForTests) {
+    const result = gitShowToplevelProbeForTests(cwd);
+    return Buffer.isBuffer(result) ? result.toString('utf8') : result;
+  }
+  return execFileSync('git', ['rev-parse', '--show-toplevel'], {
+    cwd,
+    encoding: 'utf-8',
+    stdio: ['pipe', 'pipe', 'pipe'],
+    windowsHide: true,
+    timeout: 5000,
+  });
+}
+
+function probeGitTopLevel(cwd: string): GitTopLevelProbe {
+  // Never cache security decisions: PATH, the git executable, and .git
+  // metadata can change between calls in the same process.
+  try {
+    return classifyGitShowToplevelStdout(runGitShowToplevel(cwd), cwd);
+  } catch (error) {
+    return classifyGitShowToplevelError(error);
+  }
+}
+
+export function getGitTopLevel(cwd?: string): string | null {
+  const probe = probeGitTopLevel(cwd || process.cwd());
+  return probe.status === 'ok' ? probe.root : null;
+}
+
 
 function formatGitProbeFailedMessage(workingDirectory: string): string {
   return (
@@ -812,7 +954,6 @@ export function ensureAllOmcDirs(worktreeRoot?: string): void {
  */
 export function clearWorktreeCache(): void {
   worktreeCacheMap.clear();
-  toplevelCacheMap.clear();
   superprojectCacheMap.clear();
   workspaceCacheMap.clear();
 }
@@ -1534,10 +1675,34 @@ export class ForeignWorkingDirectoryError extends Error {
  * resolve to `ok` with the provided root. A directory inside a *different* git
  * repository resolves to `foreign_repository` — callers must reject it
  * visibly. Non-repo paths outside the trusted root are rejected by throwing,
- * matching validateWorkingDirectory.
+ * matching validateWorkingDirectory. Generic git-probe failures (anything other
+ * than confirmed executable-not-found ENOENT or `rev-parse` 128 not-a-repo)
+ * fail closed — including omitted/empty workingDirectory — and never fall
+ * through to trusted-root/subdir/non-repo gitless behavior.
  */
 export function resolveWorkingDirectoryOrLinkedWorktree(workingDirectory?: string): WorkingDirectoryResolution {
-  const trustedRoot = getGitTopLevel(process.cwd()) || process.cwd();
+  const callerLabel = workingDirectory && workingDirectory.length > 0 ? workingDirectory : 'session cwd';
+  const trustedProbe = probeGitTopLevel(process.cwd());
+  if (trustedProbe.status === 'probe_failed') {
+    throw new Error(formatGitProbeFailedMessage(callerLabel));
+  }
+  let trustedRoot: string;
+  if (trustedProbe.status === 'ok') {
+    trustedRoot = trustedProbe.root;
+  } else if (trustedProbe.status === 'not_a_repository') {
+    let cwdReal = process.cwd();
+    try {
+      cwdReal = realpathSync(cwdReal);
+    } catch {
+      cwdReal = process.cwd();
+    }
+    if (existsSync(join(cwdReal, '.git'))) {
+      throw new Error(formatGitProbeFailedMessage(callerLabel));
+    }
+    trustedRoot = process.cwd();
+  } else {
+    trustedRoot = process.cwd();
+  }
 
   if (!workingDirectory) {
     return { status: 'ok', root: trustedRoot };
@@ -1577,12 +1742,19 @@ export function resolveWorkingDirectoryOrLinkedWorktree(workingDirectory?: strin
     // substituting the trusted root.
     return foreignRepositoryResolution(providedRootReal, trustedRootReal, workingDirectory);
   }
+  if (providedProbe.status === 'probe_failed') {
+    throw new Error(formatGitProbeFailedMessage(workingDirectory));
+  }
 
   let resolvedReal: string;
   try {
     resolvedReal = realpathSync(resolved);
   } catch {
     throw new Error(`workingDirectory '${workingDirectory}' does not exist or is not accessible.`);
+  }
+
+  if (providedProbe.status === 'not_a_repository' && existsSync(join(resolvedReal, '.git'))) {
+    throw new Error(formatGitProbeFailedMessage(workingDirectory));
   }
 
   const gitMetadataDir = findGitMetadataDir(resolvedReal);
