@@ -24,6 +24,7 @@ import {
   resolveToWorktreeRoot,
   validateWorkingDirectory,
   validateWorkingDirectoryOrLinkedWorktree,
+  ForeignWorkingDirectoryError,
   getWorktreeRoot,
   getProjectIdentifier,
   clearDualDirWarnings,
@@ -328,14 +329,16 @@ describe('worktree-paths', () => {
         const parentRoot = canonicalTestPath(parentDir);
         const defaultRoot = canonicalTestPath(validateWorkingDirectory());
         const explicitParentRoot = canonicalTestPath(validateWorkingDirectory(parentDir));
-        const linkedParentRoot = canonicalTestPath(validateWorkingDirectoryOrLinkedWorktree(parentDir));
 
         expect(defaultRoot).toBe(expectedSubmoduleRoot);
         expect(explicitParentRoot).toBe(expectedSubmoduleRoot);
-        expect(linkedParentRoot).toBe(expectedSubmoduleRoot);
         expect(defaultRoot).not.toBe(parentRoot);
         expect(explicitParentRoot).not.toBe(parentRoot);
-        expect(linkedParentRoot).not.toBe(parentRoot);
+
+        // #3858: the superproject is a different git repository than the
+        // submodule. The linked-worktree validator must reject it visibly
+        // instead of silently substituting the trusted submodule root.
+        expect(() => validateWorkingDirectoryOrLinkedWorktree(parentDir)).toThrow(ForeignWorkingDirectoryError);
       } finally {
         process.chdir(originalCwd);
         clearWorktreeCache();

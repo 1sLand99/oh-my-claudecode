@@ -1279,21 +1279,55 @@ function getGitCommonDir(cwd: string): string | null {
 }
 
 /**
- * Validate a workingDirectory while permitting linked git worktrees for the
- * same repository.
+ * Result of resolving a caller-provided workingDirectory against the trusted
+ * startup repository (#3858).
  *
- * This preserves validateWorkingDirectory's default cwd behavior and its
- * same-root/subdirectory normalization, but allows a per-call directory to
- * resolve to a sibling manual `git worktree` when both worktrees share the
- * same git common directory. Other unrelated git repositories still fall back
- * to the trusted startup cwd, and non-repo paths outside the trusted root are
- * rejected.
+ * - `ok`: the directory is usable as the wiki/root; `root` is either the
+ *   trusted root (default, subdirectory, or non-repo directory under it) or an
+ *   accepted same-repo/same-common-dir worktree root.
+ * - `foreign_repository`: the directory belongs to a different git repository.
+ *   Callers MUST NOT use it and MUST NOT silently fall back to the trusted
+ *   root; they are expected to surface the rejection to their caller.
  */
-export function validateWorkingDirectoryOrLinkedWorktree(workingDirectory?: string): string {
+export type WorkingDirectoryResolution =
+  | { status: 'ok'; root: string }
+  | { status: 'foreign_repository'; providedRoot: string; trustedRoot: string };
+
+/**
+ * Typed error thrown when a workingDirectory resolves to a different git
+ * repository than the trusted startup repository. The rejection must reach the
+ * tool caller; it is never silently substituted (#3858).
+ */
+export class ForeignWorkingDirectoryError extends Error {
+  readonly providedRoot: string;
+  readonly trustedRoot: string;
+
+  constructor(providedRoot: string, trustedRoot: string) {
+    super(
+      `workingDirectory '${providedRoot}' belongs to a different repository than '${trustedRoot}' and was not used. ` +
+        `Cross-repository access is not permitted; pass a path inside the current repository or start the session there.`
+    );
+    this.name = 'ForeignWorkingDirectoryError';
+    this.providedRoot = providedRoot;
+    this.trustedRoot = trustedRoot;
+  }
+}
+
+/**
+ * Resolve a workingDirectory while permitting linked git worktrees for the same
+ * repository, returning a typed result (#3858).
+ *
+ * Same-root and linked-worktree (shared git common directory) directories
+ * resolve to `ok` with the provided root. A directory inside a *different* git
+ * repository resolves to `foreign_repository` — callers must reject it
+ * visibly. Non-repo paths outside the trusted root are rejected by throwing,
+ * matching validateWorkingDirectory.
+ */
+export function resolveWorkingDirectoryOrLinkedWorktree(workingDirectory?: string): WorkingDirectoryResolution {
   const trustedRoot = getGitTopLevel(process.cwd()) || process.cwd();
 
   if (!workingDirectory) {
-    return trustedRoot;
+    return { status: 'ok', root: trustedRoot };
   }
 
   const resolved = resolve(workingDirectory);
@@ -1316,21 +1350,18 @@ export function validateWorkingDirectoryOrLinkedWorktree(workingDirectory?: stri
     }
 
     if (providedRootReal === trustedRootReal) {
-      return providedRoot;
+      return { status: 'ok', root: providedRoot };
     }
 
     const trustedCommonDir = getGitCommonDir(trustedRoot);
     const providedCommonDir = getGitCommonDir(providedRoot);
     if (trustedCommonDir && providedCommonDir && providedCommonDir === trustedCommonDir) {
-      return providedRoot;
+      return { status: 'ok', root: providedRoot };
     }
 
-    console.error('[worktree] workingDirectory resolved to different git worktree root, using trusted root', {
-      workingDirectory: resolved,
-      providedRoot: providedRootReal,
-      trustedRoot: trustedRootReal,
-    });
-    return trustedRoot;
+    // Different repository (#3858): reject visibly instead of silently
+    // substituting the trusted root.
+    return { status: 'foreign_repository', providedRoot: providedRootReal, trustedRoot: trustedRootReal };
   }
 
   let resolvedReal: string;
@@ -1345,5 +1376,25 @@ export function validateWorkingDirectoryOrLinkedWorktree(workingDirectory?: stri
     throw new Error(`workingDirectory '${workingDirectory}' is outside the trusted worktree root '${trustedRoot}'.`);
   }
 
-  return trustedRoot;
+  return { status: 'ok', root: trustedRoot };
+}
+
+/**
+ * Validate a workingDirectory while permitting linked git worktrees for the
+ * same repository.
+ *
+ * This preserves validateWorkingDirectory's default cwd behavior and its
+ * same-root/subdirectory normalization, but allows a per-call directory to
+ * resolve to a sibling manual `git worktree` when both worktrees share the
+ * same git common directory. A directory inside a different git repository is
+ * rejected with ForeignWorkingDirectoryError instead of silently falling back
+ * to the trusted startup cwd (#3858); non-repo paths outside the trusted root
+ * are rejected by throwing.
+ */
+export function validateWorkingDirectoryOrLinkedWorktree(workingDirectory?: string): string {
+  const resolution = resolveWorkingDirectoryOrLinkedWorktree(workingDirectory);
+  if (resolution.status === 'foreign_repository') {
+    throw new ForeignWorkingDirectoryError(resolution.providedRoot, resolution.trustedRoot);
+  }
+  return resolution.root;
 }

@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "800c464d532980e95eb89e645e0d92955e76a9a9",
-    "sourceSha256": "4aef8443fce3c32250ebd595fc81461659937147d45545fb8f935e4392e84f8e",
+    "head": "4c380abbee03182d3f5a05fc8394e781ab9a7860",
+    "sourceSha256": "aaef95d505aeff50ca22425ebe443f66dbdd9d221dedbe53c671c28eae15ea5e",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "800c464d532980e95eb89e645e0d92955e76a9a9",
-  "sourceSha256": "4aef8443fce3c32250ebd595fc81461659937147d45545fb8f935e4392e84f8e",
+  "head": "4c380abbee03182d3f5a05fc8394e781ab9a7860",
+  "sourceSha256": "aaef95d505aeff50ca22425ebe443f66dbdd9d221dedbe53c671c28eae15ea5e",
   "counts": {
     "public": {
       "skills": 31,
@@ -25,11 +25,11 @@
     "internal": {
       "hookFiles": 295,
       "featureFiles": 68,
-      "toolFiles": 56,
-      "libFiles": 34,
+      "toolFiles": 57,
+      "libFiles": 35,
       "templateHooks": 21,
-      "srcFiles": 1269,
-      "total": 1290
+      "srcFiles": 1271,
+      "total": 1292
     },
     "generated": {
       "distFiles": 4955,
@@ -509,6 +509,7 @@
       "src/tools/__tests__/memory-tools.test.ts",
       "src/tools/__tests__/schema-conversion.test.ts",
       "src/tools/__tests__/state-tools.test.ts",
+      "src/tools/__tests__/wiki-tools-foreign-root.test.ts",
       "src/tools/__tests__/wiki-tools-working-directory.test.ts",
       "src/tools/ast-tools.ts",
       "src/tools/deepinit-manifest.ts",
@@ -571,6 +572,7 @@
       "src/lib/__tests__/sync-publication-short-write.test.ts",
       "src/lib/__tests__/truncate-prompt.test.ts",
       "src/lib/__tests__/worktree-cleanup-safety.test.ts",
+      "src/lib/__tests__/worktree-paths-foreign-root.test.ts",
       "src/lib/__tests__/worktree-paths-superproject-cache.test.ts",
       "src/lib/__tests__/worktree-paths.test.ts",
       "src/lib/atomic-write.ts",
@@ -6207,6 +6209,7 @@
       "src/tools/__tests__/memory-tools.test.ts",
       "src/tools/__tests__/schema-conversion.test.ts",
       "src/tools/__tests__/state-tools.test.ts",
+      "src/tools/__tests__/wiki-tools-foreign-root.test.ts",
       "src/tools/__tests__/wiki-tools-working-directory.test.ts",
       "src/tools/ast-tools.ts",
       "src/tools/deepinit-manifest.ts",
@@ -37842,6 +37845,11 @@
         "path": "src/lib/__tests__/worktree-cleanup-safety.test.ts"
       },
       {
+        "id": "src/lib/__tests__/worktree-paths-foreign-root.test.ts",
+        "kind": "lib",
+        "path": "src/lib/__tests__/worktree-paths-foreign-root.test.ts"
+      },
+      {
         "id": "src/lib/__tests__/worktree-paths-superproject-cache.test.ts",
         "kind": "lib",
         "path": "src/lib/__tests__/worktree-paths-superproject-cache.test.ts"
@@ -39475,6 +39483,11 @@
         "id": "src/tools/__tests__/state-tools.test.ts",
         "kind": "tool",
         "path": "src/tools/__tests__/state-tools.test.ts"
+      },
+      {
+        "id": "src/tools/__tests__/wiki-tools-foreign-root.test.ts",
+        "kind": "tool",
+        "path": "src/tools/__tests__/wiki-tools-foreign-root.test.ts"
       },
       {
         "id": "src/tools/__tests__/wiki-tools-working-directory.test.ts",
@@ -62729,6 +62742,41 @@
         "kind": "imports"
       },
       {
+        "from": "src/lib/__tests__/worktree-paths-foreign-root.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-foreign-root.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-foreign-root.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-foreign-root.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-foreign-root.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-foreign-root.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-foreign-root.test.ts",
+        "to": "src/tools/wiki-tools.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/lib/__tests__/worktree-paths-superproject-cache.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -71869,6 +71917,41 @@
         "kind": "imports"
       },
       {
+        "from": "src/tools/__tests__/wiki-tools-foreign-root.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/wiki-tools-foreign-root.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/wiki-tools-foreign-root.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/wiki-tools-foreign-root.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/wiki-tools-foreign-root.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/wiki-tools-foreign-root.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/wiki-tools-foreign-root.test.ts",
+        "to": "src/tools/wiki-tools.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/tools/__tests__/wiki-tools-working-directory.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -73110,6 +73193,11 @@
       },
       {
         "from": "src/tools/wiki-tools.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/wiki-tools.ts",
         "to": "external:zod",
         "kind": "imports"
       },
@@ -73142,6 +73230,11 @@
         "from": "src/tools/wiki-tools.ts",
         "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/tools/wiki-tools.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/tools/wiki-tools.ts",
@@ -74615,12 +74708,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6787,
-      "edgeCount": 6883,
-      "importEdgeCount": 5648,
+      "nodeCount": 6789,
+      "edgeCount": 6899,
+      "importEdgeCount": 5663,
       "registerEdgeCount": 52
     }
   },
-  "inventorySha256": "b6c734e8e5d1059ba3422be3bc077737b4fe8b16f985cf1348f0cdc4fb6b2269",
-  "manifestSha256": "190961641284e61b3ab64a728c0c5fc890bae49daca538f1eea6257ae9b61d26"
+  "inventorySha256": "cb341faca1f2583f56b1e73ca4f9d4223de75d69f790002dab9c02ec8bd31250",
+  "manifestSha256": "f19d4addf19c0ce963ef15dd1457f09d74bb22685cdf4bc7bed52d3551f67c55"
 }
