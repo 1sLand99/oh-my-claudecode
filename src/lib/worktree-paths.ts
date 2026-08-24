@@ -1327,13 +1327,15 @@ export type WorkingDirectoryResolution =
  * `.message` is the caller-visible contract: the original workingDirectory
  * label plus a basename-only trusted-root identity. Canonical `providedRoot`
  * and `trustedRoot` stay on the instance for internal validation.
+ * `callerLabel` is required so a two-argument construction cannot echo
+ * canonical `providedRoot` into the message.
  */
 export class ForeignWorkingDirectoryError extends Error {
   readonly providedRoot: string;
   readonly trustedRoot: string;
   readonly callerLabel: string;
 
-  constructor(providedRoot: string, trustedRoot: string, callerLabel: string = providedRoot) {
+  constructor(providedRoot: string, trustedRoot: string, callerLabel: string) {
     super(
       `workingDirectory '${callerLabel}' belongs to a different repository than '${callerVisibleTrustedRootLabel(trustedRoot)}' and was not used. ` +
         `Cross-repository access is not permitted; pass a path inside the current repository or start the session there.`

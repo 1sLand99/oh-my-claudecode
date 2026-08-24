@@ -110,6 +110,21 @@ describe('shared resolver #3858: foreign repo, linked worktree, non-git, same-ro
     }
   });
 
+  it('ForeignWorkingDirectoryError requires callerLabel and never renders canonical provided/trusted roots', () => {
+    const error = new ForeignWorkingDirectoryError(
+      '/canonical/foreign-vault',
+      '/canonical/session-project',
+      '../foreign-vault',
+    );
+    expect(error.callerLabel).toBe('../foreign-vault');
+    expect(error.providedRoot).toBe('/canonical/foreign-vault');
+    expect(error.trustedRoot).toBe('/canonical/session-project');
+    expect(error.message).toContain('../foreign-vault');
+    expect(error.message).toContain('session-project');
+    expect(error.message).not.toContain('/canonical/foreign-vault');
+    expect(error.message).not.toContain('/canonical/session-project');
+  });
+
   it('relative foreign alias keeps the caller-supplied label and hides canonical host paths', () => {
     const relativeAlias = join('..', 'foreign-vault');
     const resolution = resolveWorkingDirectoryOrLinkedWorktree(relativeAlias);
