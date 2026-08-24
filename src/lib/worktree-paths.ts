@@ -241,7 +241,20 @@ function resolveStateAnchorRoot(worktreeRoot?: string): string {
 type GitTopLevelProbe =
   | { status: 'ok'; root: string }
   | { status: 'not_a_repository' }
+  | { status: 'git_missing' }
   | { status: 'probe_failed'; detail: string };
+
+/**
+ * Injectable `git rev-parse --show-toplevel` runner for tests (#3858).
+ * Throw to simulate spawn/exit failures; return stdout to simulate success.
+ */
+export type GitShowToplevelProbe = (cwd: string) => string | Buffer;
+
+let gitShowToplevelProbeForTests: GitShowToplevelProbe | undefined;
+
+export function setGitShowToplevelProbeForTests(probe?: GitShowToplevelProbe): void {
+  gitShowToplevelProbeForTests = probe;
+}
 
 function gitErrorStderr(error: unknown): string {
   if (!error || typeof error !== 'object') {
@@ -257,12 +270,52 @@ function gitErrorStderr(error: unknown): string {
   return typeof err.message === 'string' ? err.message : '';
 }
 
+function isGitCommandPath(path: unknown): boolean {
+  if (typeof path !== 'string' || path.length === 0) {
+    return false;
+  }
+  const base = basename(path);
+  return base === 'git' || base === 'git.exe' || base === 'git.cmd' || base === 'git.bat';
+}
+
+function isConfirmedGitExecutableNotFound(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+  const err = error as {
+    code?: string;
+    path?: string;
+    syscall?: string;
+    status?: number;
+    signal?: NodeJS.Signals | string | null;
+  };
+  if (err.code !== 'ENOENT') {
+    return false;
+  }
+  if (typeof err.status === 'number') {
+    return false;
+  }
+  if (typeof err.signal === 'string' && err.signal.length > 0) {
+    return false;
+  }
+  const syscall = typeof err.syscall === 'string' ? err.syscall.toLowerCase() : '';
+  const spawnedGit = syscall.includes('spawn') && (syscall.includes('git') || isGitCommandPath(err.path));
+  return spawnedGit || isGitCommandPath(err.path);
+}
+
 function isNotAGitRepositoryError(error: unknown): boolean {
   if (!error || typeof error !== 'object') {
     return false;
   }
-  const err = error as { status?: number; code?: string };
+  const err = error as {
+    status?: number;
+    code?: string;
+    signal?: NodeJS.Signals | string | null;
+  };
   if (err.code === 'ENOENT' || err.code === 'ETIMEDOUT' || err.code === 'EACCES') {
+    return false;
+  }
+  if (typeof err.signal === 'string' && err.signal.length > 0) {
     return false;
   }
   const stderr = gitErrorStderr(error);
@@ -273,12 +326,24 @@ function formatGitProbeDetail(error: unknown): string {
   if (!error || typeof error !== 'object') {
     return String(error);
   }
-  const err = error as { code?: string; status?: number; message?: string };
+  const err = error as {
+    code?: string;
+    status?: number;
+    message?: string;
+    signal?: NodeJS.Signals | string | null;
+    killed?: boolean;
+  };
   if (err.code === 'ENOENT') {
     return 'git executable not found';
   }
-  if (err.code === 'ETIMEDOUT') {
+  if (err.code === 'EACCES') {
+    return 'git executable not accessible';
+  }
+  if (err.code === 'ETIMEDOUT' || err.killed === true) {
     return 'git probe timed out';
+  }
+  if (typeof err.signal === 'string' && err.signal.length > 0) {
+    return `git killed by ${err.signal}`;
   }
   const stderr = gitErrorStderr(error).trim();
   if (stderr.length > 0) {
@@ -293,8 +358,40 @@ function formatGitProbeDetail(error: unknown): string {
   return 'unknown git probe failure';
 }
 
+function classifyGitShowToplevelStdout(stdout: string): GitTopLevelProbe {
+  const root = stdout.trim();
+  if (root.length === 0 || !isAbsolute(root)) {
+    return { status: 'probe_failed', detail: 'malformed git toplevel output' };
+  }
+  return { status: 'ok', root };
+}
+
+function classifyGitShowToplevelError(error: unknown): GitTopLevelProbe {
+  if (isNotAGitRepositoryError(error)) {
+    return { status: 'not_a_repository' };
+  }
+  if (isConfirmedGitExecutableNotFound(error)) {
+    return { status: 'git_missing' };
+  }
+  return { status: 'probe_failed', detail: formatGitProbeDetail(error) };
+}
+
+function runGitShowToplevel(cwd: string): string {
+  if (gitShowToplevelProbeForTests) {
+    const result = gitShowToplevelProbeForTests(cwd);
+    return Buffer.isBuffer(result) ? result.toString('utf8') : result;
+  }
+  return execFileSync('git', ['rev-parse', '--show-toplevel'], {
+    cwd,
+    encoding: 'utf-8',
+    stdio: ['pipe', 'pipe', 'pipe'],
+    windowsHide: true,
+    timeout: 5000,
+  });
+}
+
 function probeGitTopLevel(cwd: string): GitTopLevelProbe {
-  if (toplevelCacheMap.has(cwd)) {
+  if (!gitShowToplevelProbeForTests && toplevelCacheMap.has(cwd)) {
     const root = toplevelCacheMap.get(cwd)!;
     toplevelCacheMap.delete(cwd);
     toplevelCacheMap.set(cwd, root);
@@ -302,25 +399,19 @@ function probeGitTopLevel(cwd: string): GitTopLevelProbe {
   }
 
   try {
-    const root = execFileSync('git', ['rev-parse', '--show-toplevel'], {
-      cwd,
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true,
-      timeout: 5000,
-    }).trim();
+    const classified = classifyGitShowToplevelStdout(runGitShowToplevel(cwd));
+    if (classified.status !== 'ok') {
+      return classified;
+    }
 
     if (toplevelCacheMap.size >= MAX_WORKTREE_CACHE_SIZE) {
       const oldest = toplevelCacheMap.keys().next().value;
       if (oldest !== undefined) toplevelCacheMap.delete(oldest);
     }
-    toplevelCacheMap.set(cwd, root);
-    return { status: 'ok', root };
+    toplevelCacheMap.set(cwd, classified.root);
+    return classified;
   } catch (error) {
-    if (isNotAGitRepositoryError(error)) {
-      return { status: 'not_a_repository' };
-    }
-    return { status: 'probe_failed', detail: formatGitProbeDetail(error) };
+    return classifyGitShowToplevelError(error);
   }
 }
 
@@ -1534,7 +1625,9 @@ export class ForeignWorkingDirectoryError extends Error {
  * resolve to `ok` with the provided root. A directory inside a *different* git
  * repository resolves to `foreign_repository` — callers must reject it
  * visibly. Non-repo paths outside the trusted root are rejected by throwing,
- * matching validateWorkingDirectory.
+ * matching validateWorkingDirectory. Generic git-probe failures (anything other
+ * than confirmed executable-not-found ENOENT or `rev-parse` 128 not-a-repo)
+ * fail closed and never fall through to trusted-root/subdir gitless behavior.
  */
 export function resolveWorkingDirectoryOrLinkedWorktree(workingDirectory?: string): WorkingDirectoryResolution {
   const trustedRoot = getGitTopLevel(process.cwd()) || process.cwd();
@@ -1576,6 +1669,9 @@ export function resolveWorkingDirectoryOrLinkedWorktree(workingDirectory?: strin
     // Different repository (#3858): reject visibly instead of silently
     // substituting the trusted root.
     return foreignRepositoryResolution(providedRootReal, trustedRootReal, workingDirectory);
+  }
+  if (providedProbe.status === 'probe_failed') {
+    throw new Error(formatGitProbeFailedMessage(workingDirectory));
   }
 
   let resolvedReal: string;
