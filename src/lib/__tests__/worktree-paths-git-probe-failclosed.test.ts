@@ -166,6 +166,26 @@ describe('git probe fail-closed classification (#3858 remaining P1)', () => {
     expect(() => resolveWorkingDirectoryOrLinkedWorktree(srcDir)).toThrow(/git probe failed and was not used/);
     expect(() => resolveWorkingDirectoryOrLinkedWorktree()).toThrow(/git probe failed and was not used/);
   });
+  it('foreign worktree stdout for the probed cwd fail-closes instead of redirecting', () => {
+    setGitShowToplevelProbeForTests(() => `${foreignRepo}\n`);
+    clearWorktreeCache();
+    expect(() => resolveWorkingDirectoryOrLinkedWorktree(srcDir)).toThrow(/git probe failed and was not used/);
+    expect(() => resolveWorkingDirectoryOrLinkedWorktree()).toThrow(/git probe failed and was not used/);
+    expect(() => resolveWorkingDirectoryOrLinkedWorktree(sessionRepo)).toThrow(/git probe failed and was not used/);
+  });
+
+  it('trusted-root stdout for cwd plus foreign stdout for a subdirectory fail-closes', () => {
+    setGitShowToplevelProbeForTests((cwd) => {
+      const real = realpathSync(cwd);
+      if (real === realpathSync(sessionRepo)) {
+        return `${sessionRepo}\n`;
+      }
+      return `${foreignRepo}\n`;
+    });
+    clearWorktreeCache();
+    expect(() => resolveWorkingDirectoryOrLinkedWorktree(srcDir)).toThrow(/git probe failed and was not used/);
+  });
+
 
 
   it('injectable exit 1 / unexpected nonzero / malformed stdout fail closed', () => {

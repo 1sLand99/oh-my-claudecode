@@ -397,9 +397,34 @@ function isCredibleGitWorktreeRoot(root: string): boolean {
   }
 }
 
-function classifyGitShowToplevelStdout(stdout: string): GitTopLevelProbe {
+function classifyGitShowToplevelStdout(stdout: string, cwd: string): GitTopLevelProbe {
   const root = stdout.trim();
   if (root.length === 0 || !isAbsolute(root) || !isCredibleGitWorktreeRoot(root)) {
+    return { status: 'probe_failed', detail: 'malformed git toplevel output' };
+  }
+  let cwdReal: string;
+  try {
+    cwdReal = realpathSync(resolve(cwd));
+  } catch {
+    return { status: 'probe_failed', detail: 'malformed git toplevel output' };
+  }
+  let claimedReal: string;
+  try {
+    claimedReal = realpathSync(root);
+  } catch {
+    return { status: 'probe_failed', detail: 'malformed git toplevel output' };
+  }
+  const metadataDir = findGitMetadataDir(cwdReal);
+  if (!metadataDir) {
+    return { status: 'probe_failed', detail: 'malformed git toplevel output' };
+  }
+  let metadataReal = metadataDir;
+  try {
+    metadataReal = realpathSync(metadataDir);
+  } catch {
+    metadataReal = metadataDir;
+  }
+  if (metadataReal !== claimedReal) {
     return { status: 'probe_failed', detail: 'malformed git toplevel output' };
   }
   return { status: 'ok', root };
@@ -438,7 +463,7 @@ function probeGitTopLevel(cwd: string): GitTopLevelProbe {
   }
 
   try {
-    const classified = classifyGitShowToplevelStdout(runGitShowToplevel(cwd));
+    const classified = classifyGitShowToplevelStdout(runGitShowToplevel(cwd), cwd);
     if (classified.status !== 'ok') {
       return classified;
     }

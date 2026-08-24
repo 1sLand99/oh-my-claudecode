@@ -8,6 +8,7 @@ import {
   rmSync,
   existsSync,
   chmodSync,
+  realpathSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, delimiter } from 'node:path';
@@ -202,6 +203,29 @@ describe('wiki tools fail closed on generic git probe failure (#3858 remaining P
     await assertAllToolsRejectWithoutIo(srcDir);
     await assertAllToolsRejectWithoutIo(undefined as unknown as string);
   });
+  it('seven wiki tools reject foreign worktree stdout with no wiki IO', async () => {
+    setGitShowToplevelProbeForTests(() => `${foreignRepo}\n`);
+    clearWorktreeCache();
+    await assertAllToolsRejectWithoutIo(srcDir);
+    await assertAllToolsRejectWithoutIo(undefined as unknown as string);
+    await assertAllToolsRejectWithoutIo('');
+  });
+
+  it('seven wiki tools reject trusted-root plus foreign subdirectory stdout with no wiki IO', async () => {
+    setGitShowToplevelProbeForTests((cwd) => {
+      try {
+        if (realpathSync(cwd) === realpathSync(sessionRepo)) {
+          return `${sessionRepo}\n`;
+        }
+      } catch {
+        // fall through
+      }
+      return `${foreignRepo}\n`;
+    });
+    clearWorktreeCache();
+    await assertAllToolsRejectWithoutIo(srcDir);
+  });
+
 
   it('seven wiki tools reject injectable EACCES/ETIMEDOUT/signal/malformed probes with no wiki IO', async () => {
     const probes: Array<() => never | string> = [
