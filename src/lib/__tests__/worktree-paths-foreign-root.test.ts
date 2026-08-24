@@ -428,6 +428,20 @@ process.stdout.write(JSON.stringify({
     expect(() => validateWorkingDirectoryOrLinkedWorktree(nested)).toThrow(/git probe failed and was not used/);
     expect(() => resolveWorkingDirectoryOrLinkedWorktree(nested)).toThrow(/git probe failed and was not used/);
   });
+  it('same-repo subdirectory still resolves when git is missing from PATH', () => {
+    const sub = join(sessionRepo, 'docs');
+    mkdirSync(sub, { recursive: true });
+    const originalPath = process.env.PATH;
+    process.env.PATH = '';
+    clearWorktreeCache();
+    try {
+      expect(validateWorkingDirectoryOrLinkedWorktree(sub)).toBe(sessionRepo);
+    } finally {
+      process.env.PATH = originalPath;
+      clearWorktreeCache();
+    }
+  });
+
 
   it('linked-worktree wiki flows keep working end to end (no regression from #2880)', async () => {
     const readResult = await wikiReadTool.handler({ page: 'missing', workingDirectory: linkedWorktree });

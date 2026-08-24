@@ -1553,9 +1553,6 @@ export function resolveWorkingDirectoryOrLinkedWorktree(workingDirectory?: strin
   }
 
   const providedProbe = probeGitTopLevel(resolved);
-  if (providedProbe.status === 'probe_failed') {
-    throw new Error(formatGitProbeFailedMessage(workingDirectory));
-  }
 
   if (providedProbe.status === 'ok') {
     const providedRoot = providedProbe.root;
