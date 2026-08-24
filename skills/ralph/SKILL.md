@@ -220,7 +220,7 @@ Story-by-story verification:
 1. Story US-001: "Add flag detection helpers"
    - Criterion: "Legacy --no-prd is stripped from the working prompt" → Run test → PASS
    - Criterion: "TypeScript compiles" → Run build → PASS
-   - Mark US-001 passes: true
+   - Mark US-001 complete with `passes: true` and `completionCriteriaRevision` equal to its current `governingCriteriaRevision`
 2. Story US-002: "Wire PRD into bridge.ts"
    - Continue to next story...
 

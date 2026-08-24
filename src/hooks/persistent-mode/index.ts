@@ -1457,7 +1457,7 @@ async function checkRalphLoop(
   const ralphContext = getRalphContext(workingDir, sessionId);
   const activePrdPath = prdStatus.hasPrd ? findPrdPath(workingDir, sessionId) : null;
   const prdInstruction = prdStatus.hasPrd
-    ? `2. Check ${activePrdPath ?? 'prd.json'} - verify the current story's acceptance criteria are met, then mark it passes: true. If implementation proves an acceptance criterion empirically false, record an evidence-backed amendment (replace or supersede it, retaining the original verbatim in the story's criterionAmendments ledger with reason, evidence, authority, and timestamp) instead of silently deleting the criterion or claiming it passes. Are ALL stories complete?`
+    ? `2. Check ${activePrdPath ?? 'prd.json'} - verify the current story's acceptance criteria are met, then create a revision-bound completion claim: set passes to true and set completionCriteriaRevision to the story's current governingCriteriaRevision. If implementation proves an acceptance criterion empirically false, record an evidence-backed amendment (replace or supersede it, retaining the original verbatim in the story's criterionAmendments ledger with reason, evidence, authority, and timestamp) instead of silently deleting the criterion or claiming it passes. Are ALL stories complete?`
     : `2. Check your todo list - are ALL items marked complete?`;
 
   const continuationPrompt = `<ralph-continuation>
