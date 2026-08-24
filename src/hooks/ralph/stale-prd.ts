@@ -62,8 +62,10 @@ import { readModeState } from '../../lib/mode-state-io.js';
 import { ensureSessionStateDir, getOmcRoot, getSessionStateDir } from '../../lib/worktree-paths.js';
 import {
   findPrdPath,
+  getPrdRevision,
+  getStoryGoverningCriteriaRevision,
   readPrd,
-  writePrd,
+  writePrdIfRevision,
 } from './prd.js';
 
 // ============================================================================
@@ -516,6 +518,7 @@ export function reconcileStalePrd(directory: string, sessionId?: string): Reconc
   if (!prd) {
     return null;
   }
+  const initialRevision = getPrdRevision(prd);
 
   const checksByStory = prd.reconciliation?.observableChecks ?? {};
   const autoReconcile = prd.reconciliation?.autoReconcile !== false;
@@ -556,6 +559,8 @@ export function reconcileStalePrd(directory: string, sessionId?: string): Reconc
     if (autoReconcile && allPass) {
       story.passes = true;
       story.architectVerified = false;
+      story.completionCriteriaRevision = getStoryGoverningCriteriaRevision(story);
+      story.architectVerificationCriteriaRevision = undefined;
       story.notes = appendStoryNote(story.notes, `Reconciled from observable evidence on ${new Date().toISOString()}: ${evidence}`);
       reconciled.push(story.id);
       entries.push({
@@ -588,7 +593,7 @@ export function reconcileStalePrd(directory: string, sessionId?: string): Reconc
   }
 
   const prdChanged = reconciled.length > 0;
-  if (prdChanged && !writePrd(directory, prd, sessionId)) {
+  if (prdChanged && !writePrdIfRevision(directory, prd, initialRevision, sessionId)) {
     // Write failure: do not claim success. The audit log records the true
     // outcome (nothing changed) so it cannot be misread as a completed run.
     for (const entry of entries) {

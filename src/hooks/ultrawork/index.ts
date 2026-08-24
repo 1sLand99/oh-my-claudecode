@@ -7,7 +7,7 @@
  */
 
 import { readFileSync, unlinkSync } from "fs";
-import { writeModeState, readModeState } from "../../lib/mode-state-io.js";
+import { writeModeState, writeModeStateIfAbsent, readModeState, clearModeStateFile } from "../../lib/mode-state-io.js";
 import {
   resolveStatePath,
   resolveSessionStatePath,
@@ -117,6 +117,14 @@ export function writeUltraworkState(
   );
 }
 
+export function restoreUltraworkStateIfAbsent(
+  state: UltraworkState,
+  directory?: string,
+  sessionId?: string,
+): boolean {
+  return writeModeStateIfAbsent('ultrawork', state as unknown as Record<string, unknown>, directory, sessionId);
+}
+
 /**
  * Activate ultrawork mode
  */
@@ -151,7 +159,11 @@ export function activateUltrawork(
 export function deactivateUltrawork(
   directory?: string,
   sessionId?: string,
+  expectedState?: UltraworkState,
 ): boolean {
+  if (expectedState) {
+    return clearModeStateFile('ultrawork', directory, sessionId, expectedState as unknown as Record<string, unknown>);
+  }
   let success = true;
 
   // Delete session-scoped state file

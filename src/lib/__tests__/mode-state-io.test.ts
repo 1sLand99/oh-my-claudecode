@@ -5,7 +5,8 @@ import { mkdirSync, rmSync, existsSync, readFileSync, readdirSync, writeFileSync
 import { basename, dirname, join } from 'path';
 import { tmpdir } from 'os';
 
-import { emergencyMutateStateFileIf, recoverEmergencyStateFile, writeModeState, readModeState, clearModeStateFile } from '../mode-state-io.js';
+import { emergencyMutateStateFileIf, recoverEmergencyStateFile, captureModeStateCleanup, writeModeState, readModeState, clearModeStateFile, withStateFileMutationLock } from '../mode-state-io.js';
+import { atomicWriteJsonSync } from '../atomic-write.js';
 import { clearWorktreeCache, getProjectIdentifier } from '../worktree-paths.js';
 
 let tempDir: string;
@@ -22,6 +23,8 @@ describe('mode-state-io', () => {
     delete process.env.OMC_STATE_DIR;
     delete process.env.OMC_TEST_CONDITIONAL_CLEAR_REPLACEMENT_PATH;
     delete process.env.OMC_TEST_CONDITIONAL_CLEAR_REPLACEMENT_BASE64;
+    delete process.env.OMC_TEST_GENERATION_CLEAR_REPLACEMENT_PATH;
+    delete process.env.OMC_TEST_GENERATION_CLEAR_REPLACEMENT_BASE64;
     delete process.env.OMC_TEST_FLOCK_AVAILABLE;
     delete process.env.OMC_TEST_EMERGENCY_CRASH_PHASE;
     delete process.env.OMC_TEST_EMERGENCY_REPLACEMENT_PATH;
@@ -106,6 +109,18 @@ describe('mode-state-io', () => {
       expect(writeModeState('autopilot', { active: true }, tempDir)).toBe(true);
       expect(writeModeState('autopilot', { active: false }, tempDir)).toBe(true);
       expect(existsSync(join(tempDir, '.omc', 'state', 'autopilot-state.json.mutation.lock'))).toBe(false);
+    });
+
+    it('fails closed for exclusive mutations without external flock', () => {
+      process.env.NODE_ENV = 'test';
+      process.env.OMC_TEST_FLOCK_AVAILABLE = '0';
+      const statePath = join(tempDir, '.omc', 'state', 'ralph-prd.json');
+
+      expect(withStateFileMutationLock(statePath, () => true, true)).toEqual({
+        acquired: false,
+        value: undefined,
+      });
+      expect(existsSync(`${statePath}.mutation.lock`)).toBe(false);
     });
 
     it('bypasses abandoned generic lock artifacts without flock', () => {
@@ -351,6 +366,56 @@ describe('mode-state-io', () => {
 
       expect(clearModeStateFile('autopilot', tempDir, sessionId)).toBe(true);
       expect(JSON.parse(readFileSync(legacyPath, 'utf8'))).toEqual(replacement);
+    });
+
+    it('preserves same-session replacement generations published after capture', () => {
+      const sessionId = 'generation-replacement';
+      const state = { active: true, session_id: sessionId, iteration: 4, owner_pid: process.pid };
+      expect(writeModeState('ralph', state, tempDir, sessionId)).toBe(true);
+      const statePath = join(tempDir, '.omc', 'state', 'sessions', sessionId, 'ralph-state.json');
+      const captured = captureModeStateCleanup('ralph', tempDir, sessionId);
+
+      const replacement = { ...state, iteration: 5 };
+      atomicWriteJsonSync(statePath, replacement);
+
+      expect(clearModeStateFile('ralph', tempDir, sessionId, state, captured)).toBe(false);
+      expect(JSON.parse(readFileSync(statePath, 'utf8'))).toMatchObject(replacement);
+    });
+
+    it('rechecks the captured generation at the final unlink boundary', () => {
+      const sessionId = 'generation-final-boundary';
+      const state = { active: true, session_id: sessionId, iteration: 4, owner_pid: process.pid };
+      expect(writeModeState('ralph', state, tempDir, sessionId)).toBe(true);
+      const statePath = join(tempDir, '.omc', 'state', 'sessions', sessionId, 'ralph-state.json');
+      const captured = captureModeStateCleanup('ralph', tempDir, sessionId);
+      const replacement = { ...state, iteration: 6, replacement: true };
+      process.env.OMC_TEST_GENERATION_CLEAR_REPLACEMENT_PATH = statePath;
+      process.env.OMC_TEST_GENERATION_CLEAR_REPLACEMENT_BASE64 = Buffer.from(JSON.stringify(replacement)).toString('base64');
+
+      expect(clearModeStateFile('ralph', tempDir, sessionId, state, captured)).toBe(false);
+      expect(JSON.parse(readFileSync(statePath, 'utf8'))).toMatchObject(replacement);
+    });
+
+    it('leaves uncaptured runtime artifacts and legacy generations intact', () => {
+      const sessionId = 'generation-artifacts';
+      const state = { active: true, session_id: sessionId, iteration: 4, owner_pid: process.pid };
+      expect(writeModeState('ralph', state, tempDir, sessionId)).toBe(true);
+      const stateDir = join(tempDir, '.omc', 'state');
+      const sessionDir = join(stateDir, 'sessions', sessionId);
+      const artifactPath = join(sessionDir, 'ralph-stop-breaker.json');
+      const legacyPath = join(stateDir, 'ralph-state.json');
+      writeFileSync(artifactPath, JSON.stringify({ count: 1 }));
+      writeFileSync(legacyPath, JSON.stringify({ active: true, session_id: sessionId, iteration: 4 }));
+
+      const captured = captureModeStateCleanup('ralph', tempDir, sessionId);
+      const replacementArtifact = { count: 2, replacement: true };
+      const replacementLegacy = { active: true, session_id: sessionId, iteration: 5, replacement: true };
+      atomicWriteJsonSync(artifactPath, replacementArtifact);
+      atomicWriteJsonSync(legacyPath, replacementLegacy);
+
+      expect(clearModeStateFile('ralph', tempDir, sessionId, state, captured)).toBe(false);
+      expect(JSON.parse(readFileSync(artifactPath, 'utf8'))).toEqual(replacementArtifact);
+      expect(JSON.parse(readFileSync(legacyPath, 'utf8'))).toEqual(replacementLegacy);
     });
 
     it('preserves runtime artifacts and ghost legacy state when expected primary clear is locked', () => {

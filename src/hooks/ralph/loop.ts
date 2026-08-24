@@ -14,6 +14,7 @@ import { execFileSync } from "child_process";
 import { basename } from "path";
 import {
   writeModeState,
+  writeModeStateIfAbsent,
   readModeState,
   clearModeStateFile,
 } from "../../lib/mode-state-io.js";
@@ -136,14 +137,23 @@ export function writeRalphState(
   );
 }
 
+export function restoreRalphStateIfAbsent(
+  directory: string,
+  state: RalphLoopState,
+  sessionId?: string,
+): boolean {
+  return writeModeStateIfAbsent('ralph', state as unknown as Record<string, unknown>, directory, sessionId);
+}
+
 /**
  * Clear Ralph Loop state (includes ghost-legacy cleanup)
  */
 export function clearRalphState(
   directory: string,
   sessionId?: string,
+  expectedState?: RalphLoopState,
 ): boolean {
-  return clearModeStateFile("ralph", directory, sessionId);
+  return clearModeStateFile("ralph", directory, sessionId, expectedState as Record<string, unknown> | undefined);
 }
 
 /**
