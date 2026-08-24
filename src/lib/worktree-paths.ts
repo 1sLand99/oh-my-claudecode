@@ -1399,7 +1399,7 @@ export class ForeignWorkingDirectoryError extends Error {
   }
 
   [Symbol.for('nodejs.util.inspect.custom')](): string {
-    return `${this.name}: ${this.message} { callerLabel: ${JSON.stringify(this.callerLabel)} }`;
+    return this.stack ?? `${this.name}: ${this.message}`;
   }
 }
 

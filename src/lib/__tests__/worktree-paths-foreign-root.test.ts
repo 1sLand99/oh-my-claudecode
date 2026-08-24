@@ -204,6 +204,11 @@ describe('shared resolver #3858: foreign repo, linked worktree, non-git, same-ro
       trustedRoot: '/canonical/session-project',
       callerLabel: '../foreign-vault',
     });
+    const inspected = inspect(error, { depth: 8, getters: true, showHidden: false });
+    expect(inspected).toContain('at ');
+    expect(inspected).toContain('../foreign-vault');
+    expect(inspected).not.toContain('/canonical/foreign-vault');
+    expect(inspected).not.toContain('/canonical/session-project');
   });
 
   it('foreign_repository resolution and thrown error keep canonical roots opaque under serialization', () => {
