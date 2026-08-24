@@ -490,6 +490,14 @@ describe('Ralph PRD-Mandatory', () => {
       expect(state?.critic_mode).toBe('codex');
     });
 
+    it('preserves a live verification request when a second handler starts verification', () => {
+      const first = startVerification(testDir, 'First claim', 'task');
+      const second = startVerification(testDir, 'Stale replacement', 'task');
+
+      expect(second.request_id).toBe(first.request_id);
+      expect(second.completion_claim).toBe('First claim');
+    });
+
     it('scaffold PRD creates valid structure that getPrdStatus can read', () => {
       // Auto-generate scaffold
       initPrd(testDir, 'Scaffold', 'main', 'Build a widget');
