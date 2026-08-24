@@ -23,9 +23,9 @@ hasPrd, getPrdCompletionStatus, getRalphContext, setCurrentStory, enablePrdMode,
 // ============================================================================
 export { 
 // File operations
-readPrd, writePrd, writePrdIfRevision, findPrdPath, getPrdPath, getOmcPrdPath, getSessionPrdPath, getLegacyStatePrdPath, 
+readPrd, writePrd, findPrdPath, getPrdPath, getOmcPrdPath, getSessionPrdPath, getLegacyStatePrdPath, 
 // PRD status & operations
-getPrdStatus, markStoryComplete, markStoryIncomplete, markStoryArchitectVerified, consumeStoryArchitectApproval, consumeCompletionArchitectApproval, getPrdGoverningCriteriaRevision, getPrdRevision, getStoryGoverningCriteriaRevision, getStory, getNextStory, amendCriterion, supersedeCriterion, 
+getPrdStatus, markStoryComplete, markStoryIncomplete, markStoryArchitectVerified, getStory, getNextStory, amendCriterion, supersedeCriterion, 
 // PRD creation
 createPrd, createSimplePrd, initPrd, ensurePrdForStartup, 
 // Formatting
@@ -49,7 +49,7 @@ PROGRESS_FILENAME, PATTERNS_HEADER, ENTRY_SEPARATOR } from './progress.js';
 // ============================================================================
 export { 
 // State management
-readVerificationState, writeVerificationState, clearVerificationState, consumeVerificationRequest, 
+readVerificationState, writeVerificationState, clearVerificationState, 
 // Verification workflow
 startVerification, recordArchitectFeedback, 
 // Prompts & detection

@@ -53,12 +53,6 @@ export interface UserStory {
     passes: boolean;
     /** Whether architect verification has approved this story for progression */
     architectVerified?: boolean;
-    /** Canonical digest of this story's active criteria and amendment ledger. */
-    governingCriteriaRevision?: string;
-    /** Revision whose criteria were marked complete. */
-    completionCriteriaRevision?: string;
-    /** Revision whose completed criteria received architect approval. */
-    architectVerificationCriteriaRevision?: string;
     /** Optional notes from implementation */
     notes?: string;
 }
@@ -128,9 +122,6 @@ export interface CriterionAmendmentResult {
     /** The recorded amendment on success. */
     amendment?: CriterionAmendment;
 }
-export declare function getStoryGoverningCriteriaRevision(story: Pick<UserStory, 'acceptanceCriteria' | 'criterionAmendments'>): string;
-export declare function getPrdGoverningCriteriaRevision(prd: PRD): string;
-export declare function getPrdRevision(prd: PRD): string;
 export declare function readPrdFromPath(prdPath: string): {
     prd?: PRD;
     error?: string;
@@ -166,17 +157,6 @@ export declare function readPrd(directory: string, sessionId?: string): PRD | nu
  * Write PRD to disk
  */
 export declare function writePrd(directory: string, prd: PRD, sessionId?: string): boolean;
-/** Publish a derived PRD only if its governing-criteria generation is still current. */
-export declare function writePrdIfRevision(directory: string, prd: PRD, expectedRevision: string, sessionId?: string): boolean;
-/**
- * Consume an architect approval only when the story still has the exact
- * governing-criteria revision that was submitted for review. The PRD lock is
- * shared with amendments so a stale approval cannot overwrite an amendment's
- * reset ledger with a full-file write.
- */
-export declare function consumeStoryArchitectApproval(directory: string, storyId: string, expectedCriteriaRevision: string, sessionId?: string, beforeCommit?: () => void, notes?: string, consume?: () => boolean): boolean;
-/** Atomically rechecks the complete PRD revision before final approval is consumed. */
-export declare function consumeCompletionArchitectApproval(directory: string, expectedCriteriaRevision: string, sessionId?: string, consume?: () => boolean, beforeCommit?: () => void): boolean;
 /**
  * Get the status of a PRD
  */

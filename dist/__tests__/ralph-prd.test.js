@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { readPrd, writePrd, findPrdPath, getPrdStatus, getSessionPrdPath, markStoryComplete, getStoryGoverningCriteriaRevision, markStoryIncomplete, markStoryArchitectVerified, getStory, getNextStory, createPrd, createSimplePrd, initPrd, ensurePrdForStartup, formatPrdStatus, formatStory, PRD_FILENAME } from '../hooks/ralph/index.js';
+import { readPrd, writePrd, findPrdPath, getPrdStatus, getSessionPrdPath, markStoryComplete, markStoryIncomplete, markStoryArchitectVerified, getStory, getNextStory, createPrd, createSimplePrd, initPrd, ensurePrdForStartup, formatPrdStatus, formatStory, PRD_FILENAME } from '../hooks/ralph/index.js';
 describe('Ralph PRD Module', () => {
     let testDir;
     beforeEach(() => {
@@ -71,15 +71,10 @@ describe('Ralph PRD Module', () => {
         it('should return null when reading non-existent prd', () => {
             expect(readPrd(testDir)).toBeNull();
         });
-        it('should write and read revision-bound completion claims', () => {
-            const prd = structuredClone(samplePrd);
-            const completed = prd.userStories[1];
-            const revision = getStoryGoverningCriteriaRevision(completed);
-            completed.completionCriteriaRevision = revision;
-            completed.architectVerificationCriteriaRevision = revision;
-            expect(writePrd(testDir, prd)).toBe(true);
+        it('should write and read prd correctly', () => {
+            expect(writePrd(testDir, samplePrd)).toBe(true);
             const read = readPrd(testDir);
-            expect(read).toMatchObject(prd);
+            expect(read).toEqual(samplePrd);
         });
         it('should create .omc directory when writing', () => {
             writePrd(testDir, samplePrd);
@@ -206,10 +201,6 @@ describe('Ralph PRD Module', () => {
                     { id: 'US-001', title: 'A', description: '', acceptanceCriteria: [], priority: 1, passes: false, architectVerified: false }
                 ]
             };
-            const completed = prd.userStories[0];
-            const revision = getStoryGoverningCriteriaRevision(completed);
-            completed.completionCriteriaRevision = revision;
-            completed.architectVerificationCriteriaRevision = revision;
             writePrd(testDir, prd);
         });
         it('should mark story as complete', () => {
@@ -254,9 +245,6 @@ describe('Ralph PRD Module', () => {
                     { id: 'US-002', title: 'Second', description: '', acceptanceCriteria: [], priority: 2, passes: false, architectVerified: false }
                 ]
             };
-            const revision = getStoryGoverningCriteriaRevision(prd.userStories[0]);
-            prd.userStories[0].completionCriteriaRevision = revision;
-            prd.userStories[0].architectVerificationCriteriaRevision = revision;
             writePrd(testDir, prd);
         });
         it('should get story by ID', () => {

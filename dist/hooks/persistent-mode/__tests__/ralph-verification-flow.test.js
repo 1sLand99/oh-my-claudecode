@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { checkPersistentModes } from '../index.js';
-import { amendCriterion, getStoryGoverningCriteriaRevision, readPrd, writePrd as writeRawPrd } from '../../ralph/prd.js';
+import { amendCriterion, readPrd, writePrd } from '../../ralph/prd.js';
 import { readRalphState } from '../../ralph/loop.js';
 describe('Ralph verification flow', () => {
     let testDir;
@@ -61,20 +61,6 @@ describe('Ralph verification flow', () => {
             },
         ]);
     }
-    function bindCompletedStories(prd) {
-        for (const story of prd.userStories) {
-            if (!story.passes)
-                continue;
-            const revision = getStoryGoverningCriteriaRevision(story);
-            story.completionCriteriaRevision = revision;
-            if (story.architectVerified)
-                story.architectVerificationCriteriaRevision = revision;
-        }
-        return prd;
-    }
-    function writePrd(directory, prd, sessionId) {
-        return writeRawPrd(directory, bindCompletedStories(prd), sessionId);
-    }
     it('enters verification instead of completing immediately when PRD is done', async () => {
         const sessionId = 'ralph-prd-complete';
         const prd = {
@@ -91,7 +77,7 @@ describe('Ralph verification flow', () => {
                     architectVerified: true,
                 }],
         };
-        writePrd(testDir, bindCompletedStories(prd));
+        writePrd(testDir, prd);
         writeRalphState(sessionId, { critic_mode: 'codex' });
         const result = await checkPersistentModes(sessionId, testDir);
         expect(result.shouldBlock).toBe(true);
@@ -182,7 +168,7 @@ describe('Ralph verification flow', () => {
                 },
             ],
         };
-        writePrd(testDir, bindCompletedStories(prd));
+        writePrd(testDir, prd);
         writeRalphState(sessionId, { current_story_id: 'US-001' });
         const result = await checkPersistentModes(sessionId, testDir);
         expect(result.shouldBlock).toBe(true);
@@ -225,7 +211,6 @@ describe('Ralph verification flow', () => {
         };
         writePrd(testDir, prd);
         writeRalphState(sessionId, { current_story_id: 'US-001' });
-        const criteriaRevision = readPrd(testDir)?.userStories[0].governingCriteriaRevision;
         writeFileSync(join(sessionDir, 'ralph-verification-state.json'), JSON.stringify({
             pending: true,
             completion_claim: 'US-001 is ready to progress',
@@ -237,7 +222,6 @@ describe('Ralph verification flow', () => {
             verification_scope: 'story',
             story_id: 'US-001',
             request_id: 'story-request',
-            criteria_revision: criteriaRevision,
         }));
         writeMessagesTranscript(sessionId, [
             {
@@ -374,7 +358,6 @@ describe('Ralph verification flow', () => {
         writePrd(testDir, sessionPrd, sessionId);
         writePrd(testDir, legacyPrd);
         writeRalphState(sessionId, { current_story_id: 'US-001' });
-        const criteriaRevision = readPrd(testDir, sessionId)?.userStories[0].governingCriteriaRevision;
         writeFileSync(join(sessionDir, 'ralph-verification-state.json'), JSON.stringify({
             pending: true,
             completion_claim: 'US-001 is ready to progress',
@@ -386,7 +369,6 @@ describe('Ralph verification flow', () => {
             verification_scope: 'story',
             story_id: 'US-001',
             request_id: 'rejected-story-request',
-            criteria_revision: criteriaRevision,
         }));
         const transcriptDir = join(claudeConfigDir, 'sessions', sessionId);
         mkdirSync(transcriptDir, { recursive: true });
@@ -400,7 +382,7 @@ describe('Ralph verification flow', () => {
         expect(updatedSessionPrd?.userStories[0].architectVerified).toBe(false);
         expect(updatedSessionPrd?.userStories[0].notes).toBe('Needs tests before progression.');
         const legacyPrdPath = join(testDir, '.omc', 'prd.json');
-        expect(JSON.parse(readFileSync(legacyPrdPath, 'utf-8'))).toMatchObject(legacyPrd);
+        expect(JSON.parse(readFileSync(legacyPrdPath, 'utf-8'))).toEqual(legacyPrd);
     });
     it('does not reuse stale earlier story approval from transcript tail', async () => {
         const sessionId = 'ralph-story-stale-approval';
@@ -433,7 +415,6 @@ describe('Ralph verification flow', () => {
         };
         writePrd(testDir, prd);
         writeRalphState(sessionId, { current_story_id: 'US-001' });
-        const criteriaRevision = readPrd(testDir)?.userStories[0].governingCriteriaRevision;
         writeFileSync(join(sessionDir, 'ralph-verification-state.json'), JSON.stringify({
             pending: true,
             completion_claim: 'US-001 is ready to progress',
@@ -445,7 +426,6 @@ describe('Ralph verification flow', () => {
             verification_scope: 'story',
             story_id: 'US-001',
             request_id: 'current-request',
-            criteria_revision: criteriaRevision,
         }));
         writeMessagesTranscript(sessionId, [
             {
@@ -528,7 +508,6 @@ describe('Ralph verification flow', () => {
         };
         writePrd(testDir, prd);
         writeRalphState(sessionId, { current_story_id: 'US-001' });
-        const criteriaRevision = readPrd(testDir)?.userStories[0].governingCriteriaRevision;
         writeFileSync(join(sessionDir, 'ralph-verification-state.json'), JSON.stringify({
             pending: true,
             completion_claim: 'US-001 is ready to progress',
@@ -540,7 +519,6 @@ describe('Ralph verification flow', () => {
             verification_scope: 'story',
             story_id: 'US-001',
             request_id: 'current-request',
-            criteria_revision: criteriaRevision,
         }));
         writeMessagesTranscript(sessionId, [
             {
