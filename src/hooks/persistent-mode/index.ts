@@ -27,7 +27,16 @@ import {
   type UltraworkState
 } from '../ultrawork/index.js';
 import { resolveToWorktreeRoot, resolveSessionStatePath, resolveStatePath, getOmcRoot } from '../../lib/worktree-paths.js';
-import { readModeState, writeModeState, withStateFileMutationLock } from '../../lib/mode-state-io.js';
+import {
+  captureModeStateCleanup,
+  captureStateFileGeneration,
+  clearModeStateFile,
+  clearStateFileLockedIf,
+  readModeState,
+  writeModeState,
+  withStateFileMutationLock,
+  type ModeStateCleanupSnapshot,
+} from '../../lib/mode-state-io.js';
 import {
   readRalphState,
   writeRalphState,
@@ -120,6 +129,34 @@ const TERMINAL_WORKFLOW_PHASES = new Set([
   'done',
   'stopped',
 ]);
+
+/** Deterministic test-only publication between request consumption and cleanup. */
+function forceTerminalCleanupReplacementForTest(): void {
+  if (
+    process.env.NODE_ENV !== 'test' ||
+    !process.env.OMC_TEST_TERMINAL_CLEANUP_REPLACEMENTS_BASE64
+  ) {
+    return;
+  }
+
+  try {
+    const replacements = JSON.parse(
+      Buffer.from(process.env.OMC_TEST_TERMINAL_CLEANUP_REPLACEMENTS_BASE64, 'base64').toString('utf8'),
+    ) as Array<{ path?: unknown; content?: unknown }>;
+    for (const replacement of replacements) {
+      if (typeof replacement?.path !== 'string' || replacement.path.length === 0) continue;
+      atomicWriteJsonSync(replacement.path, replacement.content);
+    }
+  } finally {
+    delete process.env.OMC_TEST_TERMINAL_CLEANUP_REPLACEMENTS_BASE64;
+  }
+}
+
+function resolveVerificationStatePath(workingDir: string, sessionId?: string): string {
+  return sessionId
+    ? resolveSessionStatePath('ralph-verification', sessionId, workingDir)
+    : join(getOmcRoot(workingDir), 'ralph-verification.json');
+}
 
 function hasNamedWorkflowMarkers(state: unknown): boolean {
   return Boolean(
@@ -1266,14 +1303,56 @@ async function checkRalphLoop(
         } else {
           // Architect approved - truly complete
           const criticMode = verificationState.critic_mode;
-          const consume = () => consumeVerificationRequest(workingDir, verificationState!.request_id, sessionId);
+          // Capture every terminal cleanup target before consuming the request.
+          // A same-session replacement may be published immediately after the
+          // request disappears; cleanup must remain bound to these generations.
+          const snapshot = { ...verificationState! };
+          const verificationPath = resolveVerificationStatePath(workingDir, sessionId);
+          const verificationCleanupSnapshot = captureStateFileGeneration(verificationPath);
+          const ralphSnapshot = readRalphState(workingDir, sessionId);
+          const ultraworkSnapshot = readUltraworkState(workingDir, sessionId);
+          const ralphCleanupSnapshot: ModeStateCleanupSnapshot | undefined = ralphSnapshot
+            ? captureModeStateCleanup('ralph', workingDir, sessionId)
+            : undefined;
+          const ultraworkCleanupSnapshot: ModeStateCleanupSnapshot | undefined = ultraworkSnapshot
+            ? captureModeStateCleanup('ultrawork', workingDir, sessionId)
+            : undefined;
+          const consume = () => {
+            const consumed = verificationCleanupSnapshot
+              ? clearStateFileLockedIf(
+                verificationPath,
+                current => current.request_id === verificationState!.request_id,
+                undefined,
+                verificationCleanupSnapshot.generation,
+              ) === 'cleared'
+              : false;
+            if (consumed) forceTerminalCleanupReplacementForTest();
+            return consumed;
+          };
           const cleanup = () => {
-            const snapshot = { ...verificationState! };
-            const ralphSnapshot = readRalphState(workingDir, sessionId);
-            const ultraworkSnapshot = readUltraworkState(workingDir, sessionId);
-            const ralphCleared = !ralphSnapshot || clearRalphState(workingDir, sessionId, ralphSnapshot);
-            const ultraworkCleared = !ultraworkSnapshot || deactivateUltrawork(workingDir, sessionId, ultraworkSnapshot);
-            if (ralphCleared && ultraworkCleared) return true;
+            const locked = withStateFileMutationLock(verificationPath, () => {
+              if (existsSync(verificationPath)) return false;
+              const ralphCleared = !ralphSnapshot || !ralphCleanupSnapshot
+                ? !ralphSnapshot
+                : clearModeStateFile(
+                  'ralph',
+                  workingDir,
+                  sessionId,
+                  ralphSnapshot as unknown as Record<string, unknown>,
+                  ralphCleanupSnapshot,
+                );
+              const ultraworkCleared = !ultraworkSnapshot || !ultraworkCleanupSnapshot
+                ? !ultraworkSnapshot
+                : clearModeStateFile(
+                  'ultrawork',
+                  workingDir,
+                  sessionId,
+                  ultraworkSnapshot as unknown as Record<string, unknown>,
+                  ultraworkCleanupSnapshot,
+                );
+              return ralphCleared && ultraworkCleared;
+            }, true);
+            if (locked.acquired && locked.value === true) return true;
             if (ralphSnapshot) restoreRalphStateIfAbsent(workingDir, ralphSnapshot, sessionId);
             if (ultraworkSnapshot) restoreUltraworkStateIfAbsent(ultraworkSnapshot, workingDir, sessionId);
             restoreVerificationRequestIfAbsent(workingDir, snapshot, sessionId);

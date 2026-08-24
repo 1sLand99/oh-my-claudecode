@@ -24,6 +24,7 @@ describe('Ralph verification flow', () => {
   });
 
   afterEach(() => {
+    delete process.env.OMC_TEST_TERMINAL_CLEANUP_REPLACEMENTS_BASE64;
     if (originalClaudeConfigDir === undefined) {
       delete process.env.CLAUDE_CONFIG_DIR;
     } else {
@@ -178,6 +179,90 @@ describe('Ralph verification flow', () => {
 
     expect(result.shouldBlock).toBe(false);
     expect(result.message).toContain('Critic verified task completion');
+  });
+
+  it('preserves replacement Ralph, Ultrawork, and verification generations after request consumption', async () => {
+    const sessionId = 'ralph-terminal-generation-replacement';
+    const sessionDir = join(testDir, '.omc', 'state', 'sessions', sessionId);
+    mkdirSync(sessionDir, { recursive: true });
+    const now = new Date().toISOString();
+    writeRalphState(sessionId, { iteration: 4, started_at: now });
+    writeFileSync(join(sessionDir, 'ultrawork-state.json'), JSON.stringify({
+      active: true,
+      session_id: sessionId,
+      started_at: now,
+      last_checked_at: now,
+      original_prompt: 'replacement ultrawork',
+      reinforcement_count: 1,
+    }));
+    writeFileSync(join(sessionDir, 'ralph-verification-state.json'), JSON.stringify({
+      pending: true,
+      completion_claim: 'All work is complete',
+      verification_attempts: 0,
+      max_verification_attempts: 3,
+      requested_at: now,
+      original_task: 'Issue #3829',
+      critic_mode: 'critic',
+      request_id: 'completion-request',
+    }));
+    writeApprovalTranscript(sessionId, 'critic', 'completion-request');
+
+    const ralphPath = join(sessionDir, 'ralph-state.json');
+    const ultraworkPath = join(sessionDir, 'ultrawork-state.json');
+    const verificationPath = join(sessionDir, 'ralph-verification-state.json');
+    process.env.OMC_TEST_TERMINAL_CLEANUP_REPLACEMENTS_BASE64 = Buffer.from(JSON.stringify([
+      { path: ralphPath, content: { active: true, session_id: sessionId, iteration: 9, started_at: now, prompt: 'replacement ralph' } },
+      { path: ultraworkPath, content: { active: true, session_id: sessionId, started_at: now, last_checked_at: now, original_prompt: 'replacement ultrawork', reinforcement_count: 9 } },
+      { path: verificationPath, content: { pending: true, request_id: 'replacement-request', requested_at: now, original_task: 'replacement verification' } },
+    ])).toString('base64');
+
+    const result = await checkPersistentModes(sessionId, testDir);
+
+    expect(result).toMatchObject({ shouldBlock: true, mode: 'ralph' });
+    expect(JSON.parse(readFileSync(ralphPath, 'utf8'))).toMatchObject({ iteration: 9, prompt: 'replacement ralph' });
+    expect(JSON.parse(readFileSync(ultraworkPath, 'utf8'))).toMatchObject({ reinforcement_count: 9 });
+    expect(JSON.parse(readFileSync(verificationPath, 'utf8'))).toMatchObject({ request_id: 'replacement-request' });
+  });
+
+  it('restores only captured state after partial terminal cleanup failure', async () => {
+    const sessionId = 'ralph-terminal-partial-cleanup';
+    const sessionDir = join(testDir, '.omc', 'state', 'sessions', sessionId);
+    mkdirSync(sessionDir, { recursive: true });
+    const now = new Date().toISOString();
+    writeRalphState(sessionId, { iteration: 4, started_at: now });
+    writeFileSync(join(sessionDir, 'ultrawork-state.json'), JSON.stringify({
+      active: true,
+      session_id: sessionId,
+      started_at: now,
+      last_checked_at: now,
+      original_prompt: 'original ultrawork',
+      reinforcement_count: 1,
+    }));
+    writeFileSync(join(sessionDir, 'ralph-verification-state.json'), JSON.stringify({
+      pending: true,
+      completion_claim: 'All work is complete',
+      verification_attempts: 0,
+      max_verification_attempts: 3,
+      requested_at: now,
+      original_task: 'Issue #3829',
+      critic_mode: 'critic',
+      request_id: 'partial-request',
+    }));
+    writeApprovalTranscript(sessionId, 'critic', 'partial-request');
+
+    const ultraworkPath = join(sessionDir, 'ultrawork-state.json');
+    const verificationPath = join(sessionDir, 'ralph-verification-state.json');
+    process.env.OMC_TEST_TERMINAL_CLEANUP_REPLACEMENTS_BASE64 = Buffer.from(JSON.stringify([
+      { path: ultraworkPath, content: { active: true, session_id: sessionId, started_at: now, last_checked_at: now, original_prompt: 'replacement ultrawork', reinforcement_count: 8 } },
+      { path: verificationPath, content: { pending: true, request_id: 'replacement-request', requested_at: now, original_task: 'replacement verification' } },
+    ])).toString('base64');
+
+    const result = await checkPersistentModes(sessionId, testDir);
+
+    expect(result).toMatchObject({ shouldBlock: true, mode: 'ralph' });
+    expect(JSON.parse(readFileSync(join(sessionDir, 'ralph-state.json'), 'utf8'))).toMatchObject({ iteration: 4 });
+    expect(JSON.parse(readFileSync(ultraworkPath, 'utf8'))).toMatchObject({ reinforcement_count: 8 });
+    expect(JSON.parse(readFileSync(verificationPath, 'utf8'))).toMatchObject({ request_id: 'replacement-request' });
   });
 
   it('starts story-scoped architect verification before moving to the next story', async () => {
