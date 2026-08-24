@@ -176,6 +176,31 @@ describe('wiki tools fail closed on generic git probe failure (#3858 remaining P
     process.env.PATH = `${bin}${delimiter}${originalPath ?? ''}`;
     clearWorktreeCache();
     await assertAllToolsRejectWithoutIo(srcDir);
+    await assertAllToolsRejectWithoutIo(undefined as unknown as string);
+    await assertAllToolsRejectWithoutIo('');
+  });
+
+  it('seven wiki tools reject omitted workingDirectory when fake git exits 1', async () => {
+    const bin = installFakeGit(tempDir, 'exit 1', 'exit /b 1');
+    process.env.PATH = `${bin}${delimiter}${originalPath ?? ''}`;
+    clearWorktreeCache();
+    const secretBefore = readFileSync(secretPage, 'utf8');
+    const results = await invokeAllWikiTools(undefined as unknown as string);
+    expect(results).toHaveLength(7);
+    for (const { name, result } of results) {
+      expect(result.isError, name).toBe(true);
+      expect(result.content[0].text, name).toMatch(/git probe failed and was not used/);
+    }
+    assertNoWikiIo(secretBefore);
+  });
+
+  it('seven wiki tools reject absolute existing non-worktree stdout with no wiki IO', async () => {
+    const bogus = join(tempDir, 'bogus-root');
+    mkdirSync(bogus, { recursive: true });
+    setGitShowToplevelProbeForTests(() => `${bogus}\n`);
+    clearWorktreeCache();
+    await assertAllToolsRejectWithoutIo(srcDir);
+    await assertAllToolsRejectWithoutIo(undefined as unknown as string);
   });
 
   it('seven wiki tools reject injectable EACCES/ETIMEDOUT/signal/malformed probes with no wiki IO', async () => {
@@ -221,6 +246,9 @@ describe('wiki tools fail closed on generic git probe failure (#3858 remaining P
     const list = await wikiListTool.handler({ workingDirectory: sessionRepo });
     expect(list.isError).toBeUndefined();
     expect(existsSync(secretPage)).toBe(true);
+    const defaultQuery = await wikiQueryTool.handler({ query: 'session-secret' });
+    expect(defaultQuery.isError).toBeUndefined();
+    expect(defaultQuery.content[0].text).toContain('session-secret');
   });
 
   it('PATH without git still allows same-root/subdir wiki IO', async () => {

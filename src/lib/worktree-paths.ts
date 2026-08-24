@@ -11,7 +11,7 @@
 
 import { createHash } from 'crypto';
 import { execFileSync } from 'child_process';
-import { existsSync, mkdirSync, readFileSync, realpathSync, readdirSync, writeFileSync, unlinkSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, readdirSync, writeFileSync, unlinkSync, statSync } from 'fs';
 import { homedir, tmpdir } from 'os';
 import { resolve, normalize, relative, sep, join, isAbsolute, basename, dirname } from 'path';
 import { pathToFileURL } from 'url';
@@ -358,9 +358,48 @@ function formatGitProbeDetail(error: unknown): string {
   return 'unknown git probe failure';
 }
 
+function findGitMetadataDir(start: string): string | null {
+  let current = start;
+  for (;;) {
+    if (existsSync(join(current, '.git'))) {
+      return current;
+    }
+    const parent = dirname(current);
+    if (parent === current) {
+      return null;
+    }
+    current = parent;
+  }
+}
+
+function isCredibleGitWorktreeRoot(root: string): boolean {
+  try {
+    if (!statSync(root).isDirectory()) {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+  let rootReal: string;
+  try {
+    rootReal = realpathSync(root);
+  } catch {
+    return false;
+  }
+  const metadataDir = findGitMetadataDir(rootReal);
+  if (!metadataDir) {
+    return false;
+  }
+  try {
+    return realpathSync(metadataDir) === rootReal;
+  } catch {
+    return metadataDir === rootReal;
+  }
+}
+
 function classifyGitShowToplevelStdout(stdout: string): GitTopLevelProbe {
   const root = stdout.trim();
-  if (root.length === 0 || !isAbsolute(root)) {
+  if (root.length === 0 || !isAbsolute(root) || !isCredibleGitWorktreeRoot(root)) {
     return { status: 'probe_failed', detail: 'malformed git toplevel output' };
   }
   return { status: 'ok', root };
@@ -420,19 +459,6 @@ export function getGitTopLevel(cwd?: string): string | null {
   return probe.status === 'ok' ? probe.root : null;
 }
 
-function findGitMetadataDir(start: string): string | null {
-  let current = start;
-  for (;;) {
-    if (existsSync(join(current, '.git'))) {
-      return current;
-    }
-    const parent = dirname(current);
-    if (parent === current) {
-      return null;
-    }
-    current = parent;
-  }
-}
 
 function formatGitProbeFailedMessage(workingDirectory: string): string {
   return (
@@ -1627,10 +1653,16 @@ export class ForeignWorkingDirectoryError extends Error {
  * visibly. Non-repo paths outside the trusted root are rejected by throwing,
  * matching validateWorkingDirectory. Generic git-probe failures (anything other
  * than confirmed executable-not-found ENOENT or `rev-parse` 128 not-a-repo)
- * fail closed and never fall through to trusted-root/subdir gitless behavior.
+ * fail closed — including omitted/empty workingDirectory — and never fall
+ * through to trusted-root/subdir/non-repo gitless behavior.
  */
 export function resolveWorkingDirectoryOrLinkedWorktree(workingDirectory?: string): WorkingDirectoryResolution {
-  const trustedRoot = getGitTopLevel(process.cwd()) || process.cwd();
+  const callerLabel = workingDirectory && workingDirectory.length > 0 ? workingDirectory : 'session cwd';
+  const trustedProbe = probeGitTopLevel(process.cwd());
+  if (trustedProbe.status === 'probe_failed') {
+    throw new Error(formatGitProbeFailedMessage(callerLabel));
+  }
+  const trustedRoot = trustedProbe.status === 'ok' ? trustedProbe.root : process.cwd();
 
   if (!workingDirectory) {
     return { status: 'ok', root: trustedRoot };

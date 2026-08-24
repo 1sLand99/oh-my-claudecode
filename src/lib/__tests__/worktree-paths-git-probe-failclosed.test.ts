@@ -139,6 +139,34 @@ describe('git probe fail-closed classification (#3858 remaining P1)', () => {
 
     expect(() => resolveWorkingDirectoryOrLinkedWorktree(sessionRepo)).toThrow(/git probe failed and was not used/);
   });
+  it('omitted and empty workingDirectory fail closed when fake git exits 1', () => {
+    const bin = installFakeGit(tempDir, 'exit 1', 'exit /b 1');
+    process.env.PATH = `${bin}${delimiter}${originalPath ?? ''}`;
+    clearWorktreeCache();
+
+    expect(() => resolveWorkingDirectoryOrLinkedWorktree()).toThrow(/git probe failed and was not used/);
+    expect(() => resolveWorkingDirectoryOrLinkedWorktree('')).toThrow(/git probe failed and was not used/);
+    expect(() => validateWorkingDirectoryOrLinkedWorktree()).toThrow(/git probe failed and was not used/);
+  });
+
+  it('omitted workingDirectory still allows gitless cwd when git is missing', () => {
+    setGitShowToplevelProbeForTests(() => { throw spawnEnoent(); });
+    clearWorktreeCache();
+    expect(resolveWorkingDirectoryOrLinkedWorktree()).toEqual({
+      status: 'ok',
+      root: sessionRepo,
+    });
+  });
+
+  it('absolute existing non-worktree stdout is malformed and fail-closed', () => {
+    const bogus = join(tempDir, 'bogus-root');
+    mkdirSync(bogus, { recursive: true });
+    setGitShowToplevelProbeForTests(() => `${bogus}\n`);
+    clearWorktreeCache();
+    expect(() => resolveWorkingDirectoryOrLinkedWorktree(srcDir)).toThrow(/git probe failed and was not used/);
+    expect(() => resolveWorkingDirectoryOrLinkedWorktree()).toThrow(/git probe failed and was not used/);
+  });
+
 
   it('injectable exit 1 / unexpected nonzero / malformed stdout fail closed', () => {
     const cases: Array<() => never | string> = [
