@@ -94,7 +94,7 @@ jobs:
       # this gate. Keep this list in sync with the path-handling test files.
       - name: Run Windows path-handling tests
         run: >-
-          npx vitest run
+          npx vitest run --fileParallelism=false
           src/utils/__tests__/encode-project-path.test.ts
           src/__tests__/resolve-transcript-path.test.ts
           src/__tests__/session-history-search.test.ts
