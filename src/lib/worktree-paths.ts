@@ -1399,6 +1399,12 @@ export class ForeignWorkingDirectoryError extends Error {
     this.name = 'ForeignWorkingDirectoryError';
     this.callerLabel = callerLabel;
     defineOpaqueCanonicalRoots(this, providedRoot, trustedRoot);
+    Object.defineProperty(this, 'stack', {
+      value: redactCanonicalRoots(this.stack ?? `${this.name}: ${this.message}`, providedRoot, trustedRoot),
+      enumerable: false,
+      configurable: true,
+      writable: true,
+    });
   }
 
   toJSON(): { name: string; message: string; callerLabel: string } {
@@ -1410,8 +1416,7 @@ export class ForeignWorkingDirectoryError extends Error {
   }
 
   [Symbol.for('nodejs.util.inspect.custom')](): string {
-    const raw = this.stack ?? `${this.name}: ${this.message}`;
-    return redactCanonicalRoots(raw, this.providedRoot, this.trustedRoot);
+    return this.stack ?? `${this.name}: ${this.message}`;
   }
 }
 

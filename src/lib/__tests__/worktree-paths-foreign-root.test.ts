@@ -218,11 +218,18 @@ describe('shared resolver #3858: foreign repo, linked worktree, non-git, same-ro
       '../foreign-vault',
     );
     const overlappingInspect = inspect(overlapping, { depth: 8, getters: true, showHidden: false });
+    const rawInspect = inspect(overlapping, { depth: 8, customInspect: false, showHidden: false });
     expect(overlappingInspect).toContain('at ');
     expect(overlappingInspect).toContain('../foreign-vault');
     expect(overlappingInspect).not.toContain(sourceFile);
     expect(overlappingInspect).not.toContain(sourceRoot);
     expect(overlappingInspect).toContain('<redacted>');
+    expect(overlapping.stack).toContain('at ');
+    expect(overlapping.stack).not.toContain(sourceFile);
+    expect(overlapping.stack).not.toContain(sourceRoot);
+    expect(rawInspect).not.toContain(sourceFile);
+    expect(rawInspect).not.toContain(sourceRoot);
+    expect(JSON.stringify({ message: overlapping.message, stack: overlapping.stack })).not.toContain(sourceRoot);
   });
 
   it('foreign_repository resolution and thrown error keep canonical roots opaque under serialization', () => {
