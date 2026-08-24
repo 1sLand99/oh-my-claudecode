@@ -14,10 +14,8 @@ const {
   assertEvidence,
   assertNpmAbsent,
   assertSlsaProvenance,
-  assertSigstoreFallback,
   assertTrigger,
   buildEvidenceFromBytes,
-  classifySigstoreRekorFailure,
   cliMain,
   decodeDssePayload,
   prepareStage,
@@ -193,7 +191,7 @@ function dssePayload(sha512: string, overrides: Record<string, unknown> = {}): R
         externalParameters: {
           workflow: {
             repository: 'https://github.com/Yeachan-Heo/oh-my-claudecode',
-            path: '.github/workflows/release.yml',
+            path: '.github/workflows/ci.yml',
             ref: `refs/tags/${TAG}`,
           },
         },
@@ -501,9 +499,37 @@ describe('release-boundary.mjs', () => {
       sha: SHA,
       sha512: archiveEvidence.sha512.hex,
     })).toThrow('workflow repository, path, or ref');
+    const wrongPathPayload = dssePayload(archiveEvidence.sha512.hex);
+    const wrongPathPredicate = wrongPathPayload.predicate as {
+      buildDefinition: {
+        externalParameters: { workflow: Record<string, unknown> };
+      };
+    };
+    wrongPathPredicate.buildDefinition.externalParameters.workflow.path = '.github/workflows/release.yml';
+    expect(() => assertSlsaProvenance(wrongPathPayload, {
+      packageName: PACKAGE_NAME,
+      version: VERSION,
+      tag: TAG,
+      sha: SHA,
+      sha512: archiveEvidence.sha512.hex,
+    })).toThrow('workflow repository, path, or ref');
+    const wrongRepoPayload = dssePayload(archiveEvidence.sha512.hex);
+    const wrongRepoPredicate = wrongRepoPayload.predicate as {
+      buildDefinition: {
+        externalParameters: { workflow: Record<string, unknown> };
+      };
+    };
+    wrongRepoPredicate.buildDefinition.externalParameters.workflow.repository = 'https://github.com/example/wrong';
+    expect(() => assertSlsaProvenance(wrongRepoPayload, {
+      packageName: PACKAGE_NAME,
+      version: VERSION,
+      tag: TAG,
+      sha: SHA,
+      sha512: archiveEvidence.sha512.hex,
+    })).toThrow('workflow repository, path, or ref');
   });
 
-  it('verifies registry bytes against evidence and records only the narrow fallback classifier', async () => {
+  it('verifies registry bytes against evidence and rejects fallback provenance', async () => {
     const root = makeTempRoot('release-boundary-registry-');
     const tarball = releaseTarball();
     const localTarballPath = writeTarball(root, `${PACKAGE_NAME}-${VERSION}.tgz`, tarball);
@@ -513,7 +539,6 @@ describe('release-boundary.mjs', () => {
     let servedTarball = tarball;
     let registryAttestation = slsaAttestation(dssePayload(evidence.sha512.hex));
 
-    let attestationMode: 'required' | 'absent' = 'required';
     const server = await startServer((request, response) => {
       if (request.url === `/${PACKAGE_NAME}/${VERSION}`) {
         sendJson(response, 200, {
@@ -539,13 +564,7 @@ describe('release-boundary.mjs', () => {
         return;
       }
       if (request.url === `/-/npm/v1/attestations/${PACKAGE_NAME}@${VERSION}`) {
-        if (attestationMode === 'absent') {
-          response.writeHead(404);
-          response.end();
-          return;
-        }
         sendJson(response, 200, { attestations: [registryAttestation] });
-
         return;
       }
       response.writeHead(404);
@@ -661,75 +680,45 @@ describe('release-boundary.mjs', () => {
         publishLogPath,
         '--audit',
         auditPath,
-      ])).rejects.toThrow('--audit is only valid');
-      attestationMode = 'absent';
-      await withEnvironment({
-        RELEASE_BOUNDARY_REGISTRY_URL: base,
-        GITHUB_RUN_ID: '12345',
-      }, async () => {
-        await expect(verifyRegistry({
-          packageName: PACKAGE_NAME,
-          version: VERSION,
-          tag: TAG,
-          sha: SHA,
-          evidencePath,
-          tarballPath: localTarballPath,
-          provenance: 'sigstore-fallback',
-          publishLog: publishLogPath,
-        })).resolves.toMatchObject({ provenance: 'sigstore-fallback', classifier: 'TLOG_CREATE_ENTRY_ERROR' });
-      });
-      expect(JSON.parse(readFileSync(evidencePath, 'utf8'))).toMatchObject({
-        provenanceMode: 'sigstore-fallback',
-        provenance: {
-          mode: 'sigstore-fallback',
-          assurance: 'reduced',
-          workflowRunId: '12345',
-        },
-      });
-      attestationMode = 'required';
-      await withEnvironment({
-        RELEASE_BOUNDARY_REGISTRY_URL: base,
-        GITHUB_RUN_ID: '12345',
-      }, async () => {
-        await expect(verifyRegistry({
-          packageName: PACKAGE_NAME,
-          version: VERSION,
-          tag: TAG,
-          sha: SHA,
-          evidencePath,
-          tarballPath: localTarballPath,
-          provenance: 'sigstore-fallback',
-          publishLog: publishLogPath,
-        })).rejects.toThrow('cannot ignore a present SLSA provenance');
-      });
+      ])).rejects.toThrow('provenance must be required');
+      await expect(cliMain([
+        'assert-sigstore-fallback',
+        '--publish-log',
+        publishLogPath,
+      ])).rejects.toThrow('unknown command');
+      await expect(verifyRegistry({
+        packageName: PACKAGE_NAME,
+        version: VERSION,
+        tag: TAG,
+        sha: SHA,
+        evidencePath,
+        tarballPath: localTarballPath,
+        provenance: 'sigstore-fallback',
+        publishLog: publishLogPath,
+      })).rejects.toThrow('provenance must be required');
+      await expect(cliMain([
+        'verify-registry',
+        '--package',
+        PACKAGE_NAME,
+        '--version',
+        VERSION,
+        '--tag',
+        TAG,
+        '--sha',
+        SHA,
+        '--evidence',
+        evidencePath,
+        '--tarball',
+        localTarballPath,
+        '--provenance',
+        'required',
+        '--audit',
+        auditPath,
+        '--publish-log',
+        publishLogPath,
+      ])).rejects.toThrow('--publish-log is not valid');
     } finally {
       await server.close();
-    }
-  });
-
-  it('accepts only reviewed Sigstore/Rekor transparency-log failure messages', async () => {
-    expect(classifySigstoreRekorFailure('npm ERR! code TLOG_CREATE_ENTRY_ERROR: Rekor entry creation failed')).toBe('TLOG_CREATE_ENTRY_ERROR');
-    expect(classifySigstoreRekorFailure('Sigstore could not create a transparency log entry: Rekor unavailable')).toBe('SIGSTORE_REKOR_TRANSPARENCY_LOG');
-    expect(classifySigstoreRekorFailure('rekor client installed successfully')).toBeNull();
-    expect(classifySigstoreRekorFailure('provenance disabled because of an unrelated network timeout')).toBeNull();
-    expect(classifySigstoreRekorFailure('npm ERR! code TLOG_CREATE_ENTRY_ERROR\nSigstore could not create a transparency log entry: Rekor unavailable')).toBeNull();
-    expect(classifySigstoreRekorFailure('npm ERR! code TLOG_CREATE_ENTRY_ERROR\nnpm ERR! an unrelated failure')).toBeNull();
-    const root = makeTempRoot('release-boundary-sigstore-');
-    const publishLogPath = join(root, 'npm-publish.log');
-    writeFileSync(publishLogPath, 'npm ERR! code TLOG_CREATE_ENTRY_ERROR\nnpm ERR! Rekor entry creation failed\n');
-    expect(assertSigstoreFallback(publishLogPath)).toEqual({ classifier: 'TLOG_CREATE_ENTRY_ERROR' });
-    await expect(cliMain([
-      'assert-sigstore-fallback',
-      '--publish-log',
-      publishLogPath,
-    ])).resolves.toBeUndefined();
-    writeFileSync(publishLogPath, 'npm ERR! an unrelated network timeout\n');
-    expect(() => assertSigstoreFallback(publishLogPath)).toThrow('recognized Sigstore/Rekor');
-    for (const competingCode of ['E401', 'E403', 'EPUBLISHCONFLICT', 'ENETWORK']) {
-      const competingLog = `npm ERR! code TLOG_CREATE_ENTRY_ERROR\nnpm ERR! code ${competingCode}\n`;
-      expect(classifySigstoreRekorFailure(competingLog)).toBeNull();
-      writeFileSync(publishLogPath, competingLog);
-      expect(() => assertSigstoreFallback(publishLogPath)).toThrow('exactly one recognized');
     }
   });
 });
