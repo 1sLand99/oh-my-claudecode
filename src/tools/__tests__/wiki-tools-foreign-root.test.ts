@@ -41,8 +41,10 @@ function assertVisibleRejectionWithoutCanonicalLeak(
   expect(text).toContain(opts.trustedBasename);
   expect(text).not.toContain('No wiki pages match');
   expect(text).not.toContain('Wiki page not found');
+  const serialized = JSON.stringify(result);
   for (const path of opts.forbidden) {
     expect(text).not.toContain(path);
+    expect(serialized).not.toContain(path);
   }
 }
 

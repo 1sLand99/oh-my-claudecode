@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { inspect } from 'node:util';
 import { execSync } from 'node:child_process';
 import {
   mkdtempSync,
@@ -26,6 +27,80 @@ function git(cwd: string, command: string): void {
 function canonical(path: string): string {
   return realpathSync(path);
 }
+function loggerLikeWrap(value: unknown): unknown {
+  if (value instanceof Error) {
+    const wrapped: Record<string, unknown> = { ...value };
+    wrapped.name = value.name;
+    wrapped.message = value.message;
+    wrapped.cause = value.cause !== undefined ? loggerLikeWrap(value.cause) : undefined;
+    return wrapped;
+  }
+  if (value !== null && typeof value === 'object') {
+    return { ...value };
+  }
+  return value;
+}
+
+function assertOpaqueCanonicalSerialization(
+  value: { providedRoot: string; trustedRoot: string; callerLabel: string },
+  opts: { providedRoot: string; trustedRoot: string; callerLabel: string },
+): void {
+  expect(value.providedRoot).toBe(opts.providedRoot);
+  expect(value.trustedRoot).toBe(opts.trustedRoot);
+  expect(value.callerLabel).toBe(opts.callerLabel);
+
+  const provided = Object.getOwnPropertyDescriptor(value, 'providedRoot');
+  const trusted = Object.getOwnPropertyDescriptor(value, 'trustedRoot');
+  const caller = Object.getOwnPropertyDescriptor(value, 'callerLabel');
+  expect(provided).toMatchObject({
+    enumerable: false,
+    writable: false,
+    configurable: false,
+    value: opts.providedRoot,
+  });
+  expect(trusted).toMatchObject({
+    enumerable: false,
+    writable: false,
+    configurable: false,
+    value: opts.trustedRoot,
+  });
+  expect(caller?.enumerable).toBe(true);
+  expect(caller?.value).toBe(opts.callerLabel);
+  expect(Object.keys(value)).not.toContain('providedRoot');
+  expect(Object.keys(value)).not.toContain('trustedRoot');
+  expect(Object.keys(value)).toContain('callerLabel');
+
+  const spread = { ...value };
+  expect(spread).not.toHaveProperty('providedRoot');
+  expect(spread).not.toHaveProperty('trustedRoot');
+  expect(spread.callerLabel).toBe(opts.callerLabel);
+
+  const cloned = structuredClone(value);
+  const wrappedError = new Error('logger wrap', { cause: value as unknown as Error });
+  const clonedWrapper = structuredClone(wrappedError);
+  const payloads = [
+    JSON.stringify(value),
+    JSON.stringify(spread),
+    JSON.stringify(cloned),
+    JSON.stringify(loggerLikeWrap(value)),
+    JSON.stringify(loggerLikeWrap(wrappedError)),
+    JSON.stringify({ err: value, cause: value }),
+    JSON.stringify({ ...clonedWrapper, cause: clonedWrapper.cause }),
+    inspect(value, { depth: 8, getters: true, showHidden: false }),
+  ];
+
+  for (const path of [opts.providedRoot, opts.trustedRoot]) {
+    for (const payload of payloads) {
+      expect(payload).not.toContain(path);
+    }
+  }
+
+  const parsed = JSON.parse(JSON.stringify(value)) as { callerLabel?: string };
+  expect(parsed.callerLabel).toBe(opts.callerLabel);
+  expect(parsed).not.toHaveProperty('providedRoot');
+  expect(parsed).not.toHaveProperty('trustedRoot');
+}
+
 
 describe('shared resolver #3858: foreign repo, linked worktree, non-git, same-root', () => {
   let tempDir: string;
@@ -80,15 +155,16 @@ describe('shared resolver #3858: foreign repo, linked worktree, non-git, same-ro
 
   it('resolveWorkingDirectoryOrLinkedWorktree returns foreign_repository for a different repo, never a root', () => {
     const resolution = resolveWorkingDirectoryOrLinkedWorktree(foreignRepo);
+    expect(resolution.status).toBe('foreign_repository');
+    if (resolution.status !== 'foreign_repository') return;
+    expect(resolution.providedRoot).toBe(canonicalForeign);
+    expect(resolution.trustedRoot).toBe(canonicalSession);
+    expect(resolution.callerLabel).toBe(foreignRepo);
+    expect('root' in resolution).toBe(false);
     expect(resolution).toEqual({
       status: 'foreign_repository',
-      providedRoot: canonicalForeign,
-      trustedRoot: canonicalSession,
       callerLabel: foreignRepo,
     });
-    if (resolution.status === 'foreign_repository') {
-      expect('root' in resolution).toBe(false);
-    }
   });
 
   it('validateWorkingDirectoryOrLinkedWorktree throws ForeignWorkingDirectoryError instead of substituting', () => {
@@ -123,6 +199,40 @@ describe('shared resolver #3858: foreign repo, linked worktree, non-git, same-ro
     expect(error.message).toContain('session-project');
     expect(error.message).not.toContain('/canonical/foreign-vault');
     expect(error.message).not.toContain('/canonical/session-project');
+    assertOpaqueCanonicalSerialization(error, {
+      providedRoot: '/canonical/foreign-vault',
+      trustedRoot: '/canonical/session-project',
+      callerLabel: '../foreign-vault',
+    });
+  });
+
+  it('foreign_repository resolution and thrown error keep canonical roots opaque under serialization', () => {
+    const relativeAlias = join('..', 'foreign-vault');
+    const resolution = resolveWorkingDirectoryOrLinkedWorktree(relativeAlias);
+    expect(resolution.status).toBe('foreign_repository');
+    if (resolution.status !== 'foreign_repository') return;
+
+    assertOpaqueCanonicalSerialization(resolution, {
+      providedRoot: canonicalForeign,
+      trustedRoot: canonicalSession,
+      callerLabel: relativeAlias,
+    });
+
+    try {
+      validateWorkingDirectoryOrLinkedWorktree(relativeAlias);
+      expect.unreachable('must throw');
+    } catch (error) {
+      const foreign = error as ForeignWorkingDirectoryError;
+      expect(foreign.message).toContain(relativeAlias);
+      expect(foreign.message).not.toContain(canonicalForeign);
+      expect(foreign.message).not.toContain(canonicalSession);
+      expect(foreign.message).toContain(basename(sessionRepo));
+      assertOpaqueCanonicalSerialization(foreign, {
+        providedRoot: canonicalForeign,
+        trustedRoot: canonicalSession,
+        callerLabel: relativeAlias,
+      });
+    }
   });
 
   it('relative foreign alias keeps the caller-supplied label and hides canonical host paths', () => {

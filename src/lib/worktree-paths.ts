@@ -1205,6 +1205,46 @@ function formatOutsideTrustedRootMessage(workingDirectory: string, trustedRoot: 
     `is outside the trusted worktree root '${callerVisibleTrustedRootLabel(trustedRoot)}'.`
   );
 }
+function defineOpaqueCanonicalRoots(
+  target: object,
+  providedRoot: string,
+  trustedRoot: string,
+): void {
+  const descriptor = {
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  } as const;
+  Object.defineProperties(target, {
+    providedRoot: { ...descriptor, value: providedRoot },
+    trustedRoot: { ...descriptor, value: trustedRoot },
+  });
+}
+
+function foreignRepositoryResolution(
+  providedRoot: string,
+  trustedRoot: string,
+  callerLabel: string,
+): Extract<WorkingDirectoryResolution, { status: 'foreign_repository' }> {
+  const resolution = {
+    status: 'foreign_repository' as const,
+    providedRoot,
+    trustedRoot,
+    callerLabel,
+  };
+  defineOpaqueCanonicalRoots(resolution, providedRoot, trustedRoot);
+  Object.defineProperty(resolution, 'toJSON', {
+    enumerable: false,
+    writable: false,
+    configurable: false,
+    value: (): { status: 'foreign_repository'; callerLabel: string } => ({
+      status: 'foreign_repository',
+      callerLabel,
+    }),
+  });
+  return resolution;
+}
+
 
 /**
  * Validate that a workingDirectory is within the trusted git top-level.
@@ -1305,10 +1345,14 @@ function getGitCommonDir(cwd: string): string | null {
  *   Callers MUST NOT use it and MUST NOT silently fall back to the trusted
  *   root; they are expected to surface the rejection to their caller.
  *
- * `providedRoot` and `trustedRoot` are canonical paths for internal
- * validation only. Caller-visible text must use `callerLabel` (the original
+ * Canonical `providedRoot` / `trustedRoot` remain readable for internal
+ * resolver consumers but are attached as non-enumerable, non-writable data
+ * properties so JSON.stringify, object spread, structuredClone, and
+ * logger-like wrapping cannot serialize host paths the caller did not
+ * supply. Caller-visible text must use `callerLabel` (the original
  * workingDirectory string) and a basename-only trusted-root label — never
  * `providedRoot` / `trustedRoot` verbatim.
+ * `callerLabel` stays enumerable so the caller-supplied label is explicit.
  */
 export type WorkingDirectoryResolution =
   | { status: 'ok'; root: string }
@@ -1326,13 +1370,14 @@ export type WorkingDirectoryResolution =
  *
  * `.message` is the caller-visible contract: the original workingDirectory
  * label plus a basename-only trusted-root identity. Canonical `providedRoot`
- * and `trustedRoot` stay on the instance for internal validation.
- * `callerLabel` is required so a two-argument construction cannot echo
- * canonical `providedRoot` into the message.
+ * and `trustedRoot` stay on the instance for internal validation as
+ * non-enumerable opaque fields so serialization and object spread cannot
+ * disclose them. `callerLabel` is required and enumerable so a two-argument
+ * construction cannot echo canonical `providedRoot` into the message.
  */
 export class ForeignWorkingDirectoryError extends Error {
-  readonly providedRoot: string;
-  readonly trustedRoot: string;
+  declare readonly providedRoot: string;
+  declare readonly trustedRoot: string;
   readonly callerLabel: string;
 
   constructor(providedRoot: string, trustedRoot: string, callerLabel: string) {
@@ -1341,9 +1386,20 @@ export class ForeignWorkingDirectoryError extends Error {
         `Cross-repository access is not permitted; pass a path inside the current repository or start the session there.`
     );
     this.name = 'ForeignWorkingDirectoryError';
-    this.providedRoot = providedRoot;
-    this.trustedRoot = trustedRoot;
     this.callerLabel = callerLabel;
+    defineOpaqueCanonicalRoots(this, providedRoot, trustedRoot);
+  }
+
+  toJSON(): { name: string; message: string; callerLabel: string } {
+    return {
+      name: this.name,
+      message: this.message,
+      callerLabel: this.callerLabel,
+    };
+  }
+
+  [Symbol.for('nodejs.util.inspect.custom')](): string {
+    return `${this.name}: ${this.message} { callerLabel: ${JSON.stringify(this.callerLabel)} }`;
   }
 }
 
@@ -1395,12 +1451,7 @@ export function resolveWorkingDirectoryOrLinkedWorktree(workingDirectory?: strin
 
     // Different repository (#3858): reject visibly instead of silently
     // substituting the trusted root.
-    return {
-      status: 'foreign_repository',
-      providedRoot: providedRootReal,
-      trustedRoot: trustedRootReal,
-      callerLabel: workingDirectory,
-    };
+    return foreignRepositoryResolution(providedRootReal, trustedRootReal, workingDirectory);
   }
 
   let resolvedReal: string;
