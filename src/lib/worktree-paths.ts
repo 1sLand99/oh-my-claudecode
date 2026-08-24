@@ -378,7 +378,7 @@ function findGitMetadataDir(start: string): string | null {
   }
 }
 
-function canonicalizeExistingPath(path: string): string | null {
+function expandPathForCompare(path: string): string | null {
   const normalized = resolve(path);
   try {
     return realpathSync.native(normalized);
@@ -391,9 +391,17 @@ function canonicalizeExistingPath(path: string): string | null {
   }
 }
 
+function canonicalizeExistingPath(path: string): string | null {
+  try {
+    return realpathSync(resolve(path));
+  } catch {
+    return null;
+  }
+}
+
 function sameCanonicalPath(left: string, right: string): boolean {
-  const a = canonicalizeExistingPath(left);
-  const b = canonicalizeExistingPath(right);
+  const a = expandPathForCompare(left);
+  const b = expandPathForCompare(right);
   if (!a || !b) {
     return false;
   }
@@ -429,15 +437,14 @@ function classifyGitShowToplevelStdout(stdout: string, cwd: string): GitTopLevel
     return { status: 'probe_failed', detail: 'malformed git toplevel output' };
   }
   const cwdReal = canonicalizeExistingPath(cwd);
-  const claimedReal = canonicalizeExistingPath(root);
-  if (!cwdReal || !claimedReal) {
+  if (!cwdReal) {
     return { status: 'probe_failed', detail: 'malformed git toplevel output' };
   }
   const metadataDir = findGitMetadataDir(cwdReal);
-  if (!metadataDir || !sameCanonicalPath(metadataDir, claimedReal)) {
+  if (!metadataDir || !sameCanonicalPath(metadataDir, root)) {
     return { status: 'probe_failed', detail: 'malformed git toplevel output' };
   }
-  return { status: 'ok', root: claimedReal };
+  return { status: 'ok', root: canonicalizeExistingPath(metadataDir) ?? metadataDir };
 }
 
 function classifyGitShowToplevelError(error: unknown): GitTopLevelProbe {

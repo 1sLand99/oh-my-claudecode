@@ -7,6 +7,7 @@ import {
   rmSync,
   chmodSync,
   realpathSync,
+  copyFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, delimiter } from 'node:path';
@@ -59,6 +60,7 @@ function installFakeGit(dir: string, unixBody: string, winBody: string): string 
   mkdirSync(bin, { recursive: true });
   if (process.platform === 'win32') {
     writeFileSync(join(bin, 'git.cmd'), `@echo off\r\n${winBody}\r\n`);
+    copyFileSync(process.env.ComSpec || 'C:\\Windows\\System32\\cmd.exe', join(bin, 'git.exe'));
   } else {
     const gitPath = join(bin, 'git');
     writeFileSync(gitPath, `#!/bin/sh\n${unixBody}\n`);
