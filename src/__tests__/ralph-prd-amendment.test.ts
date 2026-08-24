@@ -20,6 +20,7 @@ import {
   formatNextStoryPrompt,
   formatCriterionAmendments,
   createPrd,
+  ensurePrdForStartup,
   MIN_CRITERION_EVIDENCE_LENGTH,
   type PRD,
   type UserStory,
@@ -41,6 +42,7 @@ const amendmentBase = {
   authority: 'ses_test-amendment',
   timestamp: '2026-08-10T03:15:00.000Z',
 };
+const originalNodeEnv = process.env.NODE_ENV;
 
 function resultAmendment(): CriterionAmendment {
   return {
@@ -63,6 +65,12 @@ describe('Ralph PRD Criterion Amendment', () => {
   });
 
   afterEach(() => {
+    if (originalNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = originalNodeEnv;
+    }
+    delete process.env.OMC_TEST_FLOCK_AVAILABLE;
     if (existsSync(testDir)) {
       rmSync(testDir, { recursive: true, force: true });
     }
@@ -90,6 +98,75 @@ describe('Ralph PRD Criterion Amendment', () => {
   }
 
   describe('amendCriterion', () => {
+    it('preserves concurrent updates to another story during architect approval', () => {
+      writeSamplePrd({
+        ...samplePrd,
+        userStories: [
+          { ...samplePrd.userStories[0], passes: true, architectVerified: false },
+          {
+            id: 'US-002',
+            title: 'Concurrent story',
+            description: 'Must not be erased by approval of US-001',
+            acceptanceCriteria: ['Concurrent criterion'],
+            priority: 2,
+            passes: false,
+            architectVerified: false,
+          },
+        ],
+      });
+      expect(markStoryComplete(testDir, 'US-001')).toBe(true);
+      const expectedRevision = readPrd(testDir)?.userStories[0].governingCriteriaRevision;
+      if (!expectedRevision) throw new Error('Expected governing criteria revision');
+      const prdPath = findPrdPath(testDir)!;
+
+      expect(consumeStoryArchitectApproval(
+        testDir,
+        'US-001',
+        expectedRevision,
+        undefined,
+        undefined,
+        undefined,
+        () => {
+          const concurrent = JSON.parse(readFileSync(prdPath, 'utf8')) as PRD;
+          concurrent.userStories[1].notes = 'Concurrent update survives approval';
+          writeFileSync(prdPath, JSON.stringify(concurrent, null, 2));
+          return true;
+        },
+      )).toBe(true);
+
+      expect(readPrd(testDir)?.userStories).toMatchObject([
+        { id: 'US-001', passes: true, architectVerified: true },
+        { id: 'US-002', notes: 'Concurrent update survives approval' },
+      ]);
+    });
+
+    it('fails Ralph startup before state progression when exclusive PRD locking is unavailable', () => {
+      writeSamplePrd();
+      const prdPath = findPrdPath(testDir)!;
+      writeFileSync(`${prdPath}.mutation.lock`, JSON.stringify({ locked: true }));
+      process.env.NODE_ENV = 'test';
+      process.env.OMC_TEST_FLOCK_AVAILABLE = '0';
+
+      const result = ensurePrdForStartup(testDir, 'TestProject', 'ralph/test-feature', 'Continue work');
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain('exclusive lock');
+    });
+
+    it('reopens a direct passes claim that omits its criteria revision', () => {
+      writeSamplePrd();
+      const prdPath = findPrdPath(testDir)!;
+      const directEdit = JSON.parse(readFileSync(prdPath, 'utf8')) as PRD;
+      directEdit.userStories[0].passes = true;
+      delete directEdit.userStories[0].completionCriteriaRevision;
+      writeFileSync(prdPath, JSON.stringify(directEdit, null, 2));
+
+      expect(readPrd(testDir)?.userStories[0]).toMatchObject({
+        passes: false,
+        architectVerified: false,
+      });
+    });
+
     it('rejects final approval when a forced interleaving amendment changes the PRD revision', () => {
       writeSamplePrd({
         ...samplePrd,
@@ -684,6 +761,9 @@ describe('Ralph PRD Criterion Amendment', () => {
       expect(rendered).toContain(`~~${FDFT_ORIGINAL}~~`);
       expect(rendered).toContain('amend or supersede it with evidence');
       expect(rendered).toContain('Active PRD file');
+      expect(rendered).toContain('revision-bound completion claim');
+      expect(rendered).toContain('completionCriteriaRevision');
+      expect(rendered).toContain('governingCriteriaRevision');
     });
 
     it('the architect verification prompt surfaces the amendment ledger', () => {

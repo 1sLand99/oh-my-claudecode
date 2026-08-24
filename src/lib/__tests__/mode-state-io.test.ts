@@ -5,7 +5,7 @@ import { mkdirSync, rmSync, existsSync, readFileSync, readdirSync, writeFileSync
 import { basename, dirname, join } from 'path';
 import { tmpdir } from 'os';
 
-import { emergencyMutateStateFileIf, recoverEmergencyStateFile, writeModeState, readModeState, clearModeStateFile } from '../mode-state-io.js';
+import { emergencyMutateStateFileIf, recoverEmergencyStateFile, writeModeState, readModeState, clearModeStateFile, withStateFileMutationLock } from '../mode-state-io.js';
 import { clearWorktreeCache, getProjectIdentifier } from '../worktree-paths.js';
 
 let tempDir: string;
@@ -106,6 +106,18 @@ describe('mode-state-io', () => {
       expect(writeModeState('autopilot', { active: true }, tempDir)).toBe(true);
       expect(writeModeState('autopilot', { active: false }, tempDir)).toBe(true);
       expect(existsSync(join(tempDir, '.omc', 'state', 'autopilot-state.json.mutation.lock'))).toBe(false);
+    });
+
+    it('fails closed for exclusive mutations without external flock', () => {
+      process.env.NODE_ENV = 'test';
+      process.env.OMC_TEST_FLOCK_AVAILABLE = '0';
+      const statePath = join(tempDir, '.omc', 'state', 'ralph-prd.json');
+
+      expect(withStateFileMutationLock(statePath, () => true, true)).toEqual({
+        acquired: false,
+        value: undefined,
+      });
+      expect(existsSync(`${statePath}.mutation.lock`)).toBe(false);
     });
 
     it('bypasses abandoned generic lock artifacts without flock', () => {

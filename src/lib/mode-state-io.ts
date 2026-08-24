@@ -99,8 +99,16 @@ function guardedLockRemoval(path: string, operation: 'reclaim' | 'release', owne
 }
 
 function acquireLockAt(path: string, requireExclusive = false): MutationLock | null {
+  const flock = flockPath();
+  if (!flock) {
+    // Non-exclusive mode state retains its historical best-effort behavior,
+    // but safety-critical callers (notably PRD mutations) must fail closed
+    // rather than silently running without an inter-process lock.
+    if (requireExclusive) return null;
+    mkdirSync(dirname(path), { recursive: true });
+    return { unlocked: true };
+  }
   mkdirSync(dirname(path), { recursive: true });
-  if (!flockPath()) return requireExclusive ? null : { unlocked: true };
   const processStart = processStartIdentity(process.pid);
   if (!processStart || processStart === 'absent') {
     console.error(`[omc-lock] state_mutation_lock_owner_unverifiable: ${path}`);

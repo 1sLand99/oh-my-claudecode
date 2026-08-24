@@ -13,9 +13,9 @@
  */
 
 import { createHash } from 'crypto';
-import { existsSync, readFileSync, mkdirSync } from 'fs';
-import { dirname, join } from 'path';
-import { ensureSessionStateDir, getOmcRoot, getSessionStateDir } from '../../lib/worktree-paths.js';
+import { existsSync, readFileSync } from 'fs';
+import { join } from 'path';
+import { getOmcRoot, getSessionStateDir } from '../../lib/worktree-paths.js';
 import { withStateFileMutationLock } from '../../lib/mode-state-io.js';
 import { atomicWriteJsonSync } from '../../lib/atomic-write.js';
 import type { ObservableCheck, PrdReconciliationConfig } from './stale-prd.js';
@@ -545,11 +545,13 @@ export function writePrd(directory: string, prd: PRD, sessionId?: string, expect
 
   if (sessionId) {
     try {
-      ensureSessionStateDir(sessionId, directory);
+      // Resolve and validate the target without creating the session
+      // scaffold. The exclusive lock below owns directory creation so a
+      // no-flock failure cannot leave Ralph state directories behind.
+      prdPath = getSessionPrdPath(directory, sessionId);
     } catch {
       return false;
     }
-    prdPath = getSessionPrdPath(directory, sessionId);
   } else {
     // Backward compatibility for direct callers without a session ID:
     // prefer writing to an existing legacy location, or .omc by default.
@@ -557,7 +559,6 @@ export function writePrd(directory: string, prd: PRD, sessionId?: string, expect
   }
 
   try {
-    mkdirSync(dirname(prdPath), { recursive: true });
     const result = withStateFileMutationLock(prdPath, () => {
       const currentResult = readPrdFromPath(prdPath);
       const current = currentResult.prd;
@@ -631,24 +632,27 @@ export function consumeStoryArchitectApproval(
 
   const result = withStateFileMutationLock(prdPath, () => {
     beforeCommit?.();
-    const parsed = readPrdFromPath(prdPath).prd;
-    const story = parsed?.userStories.find(candidate => candidate.id === storyId);
-    if (!parsed || !story || !story.passes || story.governingCriteriaRevision !== expectedCriteriaRevision
+    const initial = readPrdFromPath(prdPath).prd;
+    const story = initial?.userStories.find(candidate => candidate.id === storyId);
+    if (!initial || !story || !story.passes || story.governingCriteriaRevision !== expectedCriteriaRevision
       || (story.completionCriteriaRevision !== expectedCriteriaRevision
         && !(story.completionCriteriaRevision === undefined && story.criterionAmendments === undefined))) {
       return false;
     }
-    story.completionCriteriaRevision = expectedCriteriaRevision;
-    story.architectVerified = true;
-    story.architectVerificationCriteriaRevision = expectedCriteriaRevision;
-    if (notes) story.notes = notes;
     try {
       if (!(consume?.() ?? true)) return false;
+      // Re-read after consuming the verification request and mutate the
+      // current PRD generation.  Writing `initial` here would publish a stale
+      // full snapshot and erase a concurrent update to another story.
       const current = readPrdFromPath(prdPath).prd;
       const currentStory = current?.userStories.find(candidate => candidate.id === storyId);
       if (!current || !currentStory || currentStory.governingCriteriaRevision !== expectedCriteriaRevision
         || currentStory.completionCriteriaRevision !== expectedCriteriaRevision) return false;
-      atomicWriteJsonSync(prdPath, bindCompletionClaims(parsed));
+      currentStory.completionCriteriaRevision = expectedCriteriaRevision;
+      currentStory.architectVerified = true;
+      currentStory.architectVerificationCriteriaRevision = expectedCriteriaRevision;
+      if (notes) currentStory.notes = notes;
+      atomicWriteJsonSync(prdPath, bindCompletionClaims(current));
       return true;
     } catch {
       return false;
@@ -1038,6 +1042,21 @@ export function ensurePrdForStartup(
     };
   }
 
+  // Existing PRDs must prove that the safety-critical mutation path is
+  // available before Ralph publishes any loop state.  Non-exclusive mode
+  // state writes intentionally remain portable, but PRD mutations fail closed
+  // when the runtime cannot provide an exclusive lock (for example on a
+  // platform without `flock`).
+  const lockProbe = withStateFileMutationLock(existingPath, () => true, true);
+  if (!lockProbe.acquired) {
+    return {
+      ok: false,
+      created: false,
+      path: existingPath,
+      error: `Ralph requires an exclusive lock for ${PRD_FILENAME}, but the current runtime cannot provide one.`
+    };
+  }
+
   if (sessionId) {
     const sessionPath = getSessionPrdPath(directory, sessionId);
     if (existingPath !== sessionPath) {
@@ -1184,6 +1203,8 @@ export function formatPrd(prd: PRD): string {
 export function formatNextStoryPrompt(story: UserStory, prdPath?: string): string {
   const amendments = formatCriterionAmendments(story);
   const amendmentSection = amendments ? `\n${amendments}\n` : '';
+  const governingCriteriaRevision = story.governingCriteriaRevision
+    ?? getGoverningCriteriaRevision(story.acceptanceCriteria, story.criterionAmendments);
 
   return `<current-story>
 
@@ -1198,7 +1219,7 @@ ${prdPath ? `**Active PRD file:** ${prdPath}\n\n` : ''}**Instructions:**
 1. Implement this story completely
 2. Verify ALL acceptance criteria are met
 3. Run quality checks (tests, typecheck, lint)
-4. When complete, mark story as passes: true in the active PRD file
+4. When complete, create a revision-bound completion claim in the active PRD file: set \`passes\` to true and set \`completionCriteriaRevision\` to \`${governingCriteriaRevision}\` (the current \`governingCriteriaRevision\`). Do not mark \`architectVerified\`; reviewer approval does that only after verification.
 5. If implementation proves an acceptance criterion false, amend or supersede it with evidence instead of silently deleting it or claiming it passes (see the amendment ledger above and the ralph skill)
 6. If ALL stories are done, run \`/oh-my-claudecode:cancel\` to cleanly exit ralph mode and clean up all state files
 
