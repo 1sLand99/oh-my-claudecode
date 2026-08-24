@@ -15,7 +15,11 @@ detectKeywordsWithType, extractPromptText, removeCodeBlocks } from './keyword-de
 export { 
 // Ralph Hook (consolidated: loop, PRD, progress, verifier)
 // Loop
+<<<<<<< HEAD
 createRalphLoopHook, readRalphState, writeRalphState, clearRalphState, clearLinkedUltraworkState, incrementRalphIteration, 
+=======
+createRalphLoopHook, readRalphState, writeRalphState, clearRalphState, incrementRalphIteration, isUltraQAActive,
+>>>>>>> 179226f2 (style(build): normalize retired workflow exports)
 // PRD Integration
 hasPrd, getPrdCompletionStatus, getRalphContext, setCurrentStory, enablePrdMode, recordStoryProgress, recordPattern, shouldCompleteByPrd, 
 // PRD Stale-State Detection & Reconciliation (#3669)

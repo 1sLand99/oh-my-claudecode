@@ -9,7 +9,11 @@
 // ============================================================================
 export { 
 // State management
+<<<<<<< HEAD
 readRalphState, writeRalphState, clearRalphState, clearLinkedUltraworkState, incrementRalphIteration, 
+=======
+readRalphState, writeRalphState, clearRalphState, incrementRalphIteration,
+>>>>>>> 179226f2 (style(build): normalize retired workflow exports)
 // Loop control
 createRalphLoopHook, 
 // PRD flag helpers
