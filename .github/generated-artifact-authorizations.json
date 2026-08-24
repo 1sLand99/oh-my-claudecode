@@ -12620,6 +12620,68 @@
           "previousFilename": null
         }
       ]
+    },
+    {
+      "pullNumber": 3864,
+      "targetRef": "dev",
+      "mergeBaseSha": "b2bd427307d8d4759bff190237703a81e36f91af",
+      "headSha": "c910c7300487b5642e8d1d7a8767372fcc4f87e4",
+      "owner": "Yeachan-Heo",
+      "expiresAt": "2026-09-07T00:00:00.000Z",
+      "generatedDelta": {
+        "count": 8,
+        "sha256": "ff2b5c476990d62d0eeb9f43b34d40578e6284cef623a978d31c549189f05127"
+      },
+      "generatedFiles": [
+        {
+          "status": "modified",
+          "filename": "bridge/mcp-server.cjs",
+          "sha": "49e4b199d312e3d5b450bca542be4364dde9c4fe",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/worktree-paths.d.ts",
+          "sha": "694e9735a732a21ff7ada8a17f529da877152617",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/worktree-paths.d.ts.map",
+          "sha": "bb1ac1359ecca998c9827d2f6c9817c613be2bd6",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/worktree-paths.js",
+          "sha": "1c71cce70fb699dbf6eb8f8df2c42806c3762fa0",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/worktree-paths.js.map",
+          "sha": "2fc91eeb13b34b2aa805604f411b255e8d98f984",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/wiki-tools.d.ts.map",
+          "sha": "a17a167b3490c3e157f2950a3fe1a367a54fc82e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/wiki-tools.js",
+          "sha": "f0fcca466bf5310f1612d5576bee765644b7bcc1",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/wiki-tools.js.map",
+          "sha": "3e089d2a21e1cfe1070bb76a7becd82cd98db318",
+          "previousFilename": null
+        }
+      ]
     }
   ]
 }
