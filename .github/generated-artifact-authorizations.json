@@ -12625,12 +12625,12 @@
       "pullNumber": 3864,
       "targetRef": "dev",
       "mergeBaseSha": "b2bd427307d8d4759bff190237703a81e36f91af",
-      "headSha": "c910c7300487b5642e8d1d7a8767372fcc4f87e4",
+      "headSha": "3043e8ae8e190ee4766de445c2e0211403a69701",
       "owner": "Yeachan-Heo",
       "expiresAt": "2026-09-07T00:00:00.000Z",
       "generatedDelta": {
         "count": 8,
-        "sha256": "ff2b5c476990d62d0eeb9f43b34d40578e6284cef623a978d31c549189f05127"
+        "sha256": "d80ba6164f350e9f807dd274fdd5efb4e77998c057d1ab922a95b2e697ca3760"
       },
       "generatedFiles": [
         {
@@ -12648,19 +12648,19 @@
         {
           "status": "modified",
           "filename": "dist/lib/worktree-paths.d.ts.map",
-          "sha": "bb1ac1359ecca998c9827d2f6c9817c613be2bd6",
+          "sha": "5cc6441b16dc9978673d773d353392c18f8add35",
           "previousFilename": null
         },
         {
           "status": "modified",
           "filename": "dist/lib/worktree-paths.js",
-          "sha": "1c71cce70fb699dbf6eb8f8df2c42806c3762fa0",
+          "sha": "9492fb65e1ad6e4fcab7d07bc02e2e315017ff4b",
           "previousFilename": null
         },
         {
           "status": "modified",
           "filename": "dist/lib/worktree-paths.js.map",
-          "sha": "2fc91eeb13b34b2aa805604f411b255e8d98f984",
+          "sha": "0b3c744e2d3a6a468e2a361ce2aae4bcbf0f5295",
           "previousFilename": null
         },
         {
