@@ -279,6 +279,30 @@ describe('wiki tools foreign-repository workingDirectory (#3858)', () => {
     expect(existsSync(join(parentDir, '.omc', 'wiki'))).toBe(false);
   });
 
+  it('all seven wiki tools reject a nested git probe failure before IO', async () => {
+    const nested = join(sessionRepo, 'vendor', 'nested-foreign');
+    mkdirSync(nested, { recursive: true });
+    git(nested, 'init');
+    git(nested, 'config user.email "test@example.com"');
+    git(nested, 'config user.name "Test User"');
+    writeFileSync(join(nested, 'README.md'), 'nested\n');
+    git(nested, 'add README.md');
+    git(nested, 'commit -m nested');
+    rmSync(join(nested, '.git'), { recursive: true, force: true });
+    writeFileSync(join(nested, '.git'), 'gitdir: /nonexistent-omc-3858-gitdir\n');
+    clearWorktreeCache();
+
+    const results = await invokeAllWikiTools(nested);
+    for (const { result } of results) {
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('git probe failed and was not used');
+      expect(result.content[0].text).not.toContain('No wiki pages match');
+      expect(result.content[0].text).not.toContain('Wiki page not found');
+    }
+    assertNoFallbackWrites(sessionRepo, foreignRepo);
+    expect(existsSync(join(nested, '.omc', 'wiki'))).toBe(false);
+  });
+
   it('same-root subdirectory is accepted without fallback writes to a foreign repo', async () => {
     const sub = join(sessionRepo, 'docs');
     mkdirSync(sub, { recursive: true });

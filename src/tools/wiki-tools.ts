@@ -9,6 +9,7 @@ import { z } from 'zod';
 import {
   resolveWorkingDirectoryOrLinkedWorktree,
   ForeignWorkingDirectoryError,
+  getCanonicalWorkingDirectoryRoots,
   type WorkingDirectoryResolution,
 } from '../lib/worktree-paths.js';
 import {
@@ -43,11 +44,12 @@ function resolveWikiRoot(
 ): { ok: true; root: string } | { ok: false; error: ForeignWorkingDirectoryError } {
   const resolution: WorkingDirectoryResolution = resolveWorkingDirectoryOrLinkedWorktree(workingDirectory);
   if (resolution.status === 'foreign_repository') {
+    const roots = getCanonicalWorkingDirectoryRoots(resolution);
     return {
       ok: false,
       error: new ForeignWorkingDirectoryError(
-        resolution.providedRoot,
-        resolution.trustedRoot,
+        roots.providedRoot,
+        roots.trustedRoot,
         resolution.callerLabel,
       ),
     };
