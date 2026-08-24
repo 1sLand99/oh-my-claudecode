@@ -12538,6 +12538,74 @@
           "previousFilename": null
         }
       ]
+    },
+    {
+      "pullNumber": 3851,
+      "targetRef": "dev",
+      "mergeBaseSha": "fa440fcfb5bcf342195292ac11dd609adbf638cf",
+      "headSha": "025950c9406f7e295795507b09850d9a084c5970",
+      "owner": "Yeachan-Heo",
+      "expiresAt": "2026-09-07T00:00:00.000Z",
+      "generatedDelta": {
+        "count": 9,
+        "sha256": "074f53ee74f6cd8cdaea20a5ffec0ea6de500c4650f69282c5280dd8503768be"
+      },
+      "generatedFiles": [
+        {
+          "status": "modified",
+          "filename": "bridge/claude-md-coordinator.cjs",
+          "sha": "ff53fdd837a6387bd4a8d2d5c29a05b0c2b1b1ad",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/generated-artifact-authorization.test.js",
+          "sha": "be988631b59ce4731fcd18007c374333b7f85d17",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/generated-artifact-authorization.test.js.map",
+          "sha": "b9012e1befcd35d975eaeb881a8d39c2e8fb347c",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/release-boundary.test.js",
+          "sha": "77085b498179db617666ffea0a2adb6f96a2d055",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/release-boundary.test.js.map",
+          "sha": "8dc7b325a1bcdf7b296e68f6e1fdf997aa766c57",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/release-generation.test.js",
+          "sha": "30b1d1264ceab92e64952113ba181a855bd44a44",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/release-generation.test.js.map",
+          "sha": "170f8a007d543130c4d18c55a8fe6ea9aa3f9743",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/release-guidance.test.js",
+          "sha": "44d0fbb26c6f265296abc2b49b4cb6d622f669ba",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/release-guidance.test.js.map",
+          "sha": "27cebcd6ab98ccf134e304df960846c8dc1795e5",
+          "previousFilename": null
+        }
+      ]
     }
   ]
 }
