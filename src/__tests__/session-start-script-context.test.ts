@@ -591,6 +591,7 @@ ${'- oversized startup guidance\n'.repeat(700)}
         HOME: fakeHome,
         USERPROFILE: fakeHome,
         CLAUDE_PLUGIN_ROOT: pluginRoot,
+        CLAUDE_CONFIG_DIR: join(fakeHome, '.claude'),
         OMC_NOTIFY: '0',
       },
       timeout: 15000,
@@ -630,6 +631,14 @@ ${'- oversized startup guidance\n'.repeat(700)}
         source: 'npm',
       }),
     );
+    // CLAUDE_CONFIG_DIR beats HOME. A leaked host/empty config dir would hide
+    // the fixture marketplace clone and leave the npm 5.0.0 cache in place.
+    const leakedHostConfigDir = join(tempDir, 'host-empty-claude-config');
+    mkdirSync(leakedHostConfigDir, { recursive: true });
+    const leakedHostEnv = {
+      ...process.env,
+      CLAUDE_CONFIG_DIR: leakedHostConfigDir,
+    };
 
     const result = spawnSync(NODE, [SCRIPT_PATH], {
       input: JSON.stringify({
@@ -639,10 +648,11 @@ ${'- oversized startup guidance\n'.repeat(700)}
       }),
       encoding: 'utf-8',
       env: {
-        ...process.env,
+        ...leakedHostEnv,
         HOME: fakeHome,
         USERPROFILE: fakeHome,
         CLAUDE_PLUGIN_ROOT: pluginRoot,
+        CLAUDE_CONFIG_DIR: join(fakeHome, '.claude'),
         OMC_NOTIFY: '0',
       },
       timeout: 15000,
