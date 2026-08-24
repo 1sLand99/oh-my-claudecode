@@ -29,8 +29,6 @@ export interface RalphLoopState {
     prd_mode?: boolean;
     /** Current story being worked on */
     current_story_id?: string;
-    /** Whether ultrawork is linked/auto-activated with ralph */
-    linked_ultrawork?: boolean;
     /** Reviewer mode for Ralph completion verification */
     critic_mode?: RalphCriticMode;
 }
@@ -39,8 +37,6 @@ export type RalphCriticMode = typeof RALPH_CRITIC_MODES[number];
 export interface RalphLoopOptions {
     /** Maximum iterations (default: 10) */
     maxIterations?: number;
-    /** Disable auto-activation of ultrawork (default: false - ultrawork is enabled) */
-    disableUltrawork?: boolean;
     /** Reviewer mode for Ralph completion verification */
     criticMode?: RalphCriticMode;
 }
@@ -61,10 +57,6 @@ export declare function writeRalphState(directory: string, state: RalphLoopState
  * Clear Ralph Loop state (includes ghost-legacy cleanup)
  */
 export declare function clearRalphState(directory: string, sessionId?: string): boolean;
-/**
- * Clear ultrawork state (only if linked to ralph)
- */
-export declare function clearLinkedUltraworkState(directory: string, sessionId?: string): boolean;
 /**
  * Increment Ralph Loop iteration
  */

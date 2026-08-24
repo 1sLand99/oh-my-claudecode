@@ -1,7 +1,7 @@
 /**
  * Pipeline Orchestrator
  *
- * The core of the configurable pipeline that unifies autopilot/ultrawork/ultrapilot
+ * The core of the configurable pipeline that unifies autopilot and ultrapilot
  * into a single sequenced workflow: RALPLAN -> EXECUTION -> RALPH -> QA.
  *
  * Each stage is implemented by a PipelineStageAdapter and can be skipped
@@ -16,7 +16,7 @@ import type { AutopilotState, AutopilotConfig } from "./types.js";
 /**
  * Resolve a PipelineConfig from user-provided partial config, merging with defaults.
  *
- * Also handles deprecated mode aliases: if the user invoked 'ultrawork' or 'ultrapilot',
+ * Also handles the deprecated `ultrapilot` mode alias;
  * the corresponding config overrides are applied.
  */
 export declare function resolvePipelineConfig(userConfig?: Partial<PipelineConfig>, deprecatedMode?: string): PipelineConfig;
@@ -57,14 +57,14 @@ export declare function writePipelineTracking(directory: string, tracking: Pipel
  * Initialize a new pipeline-based autopilot session.
  *
  * This is the unified entry point that replaces separate initAutopilot calls
- * for autopilot, ultrawork, and ultrapilot.
+ * for autopilot and ultrapilot.
  *
  * @param directory - Working directory
  * @param idea - The user's original idea/task
  * @param sessionId - Session ID for state isolation
  * @param autopilotConfig - Standard autopilot config overrides
  * @param pipelineConfig - Pipeline-specific configuration
- * @param deprecatedMode - If invoked via deprecated mode name (ultrawork/ultrapilot)
+ * @param deprecatedMode - If invoked via the deprecated ultrapilot mode name
  * @returns The initialized autopilot state, or null if startup was blocked
  */
 export declare function initPipeline(directory: string, idea: string, sessionId?: string, autopilotConfig?: Partial<AutopilotConfig>, pipelineConfig?: Partial<PipelineConfig>, deprecatedMode?: string): AutopilotState | null;

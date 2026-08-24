@@ -615,7 +615,6 @@ Examples:
         console.log(`  ${chalk.green(name)}`);
     }
     console.log(chalk.blue('\nMagic Keywords:'));
-    console.log(`  Ultrawork: ${chalk.cyan(session.config.magicKeywords?.ultrawork?.join(', ') ?? 'ultrawork, ulw, uw')}`);
     console.log(`  Search:    ${chalk.cyan(session.config.magicKeywords?.search?.join(', ') ?? 'search, find, locate')}`);
     console.log(`  Analyze:   ${chalk.cyan(session.config.magicKeywords?.analyze?.join(', ') ?? 'analyze, investigate, examine')}`);
     console.log(chalk.gray('\n━'.repeat(50)));
@@ -629,7 +628,7 @@ program
     .description('Test how a prompt would be enhanced')
     .addHelpText('after', `
 Examples:
-  $ omc test-prompt "ultrawork fix bugs"    See how magic keywords are detected
+  $ omc test-prompt "analyze this code"     See how magic keywords are detected
   $ omc test-prompt "analyze this code"     Test prompt enhancement`)
     .action(async (prompt) => {
     const session = createOmcSession();
@@ -838,7 +837,7 @@ Examples:
             console.log('  /omc <task>              # Activate OMC orchestration mode');
             console.log('  /omc-default             # Configure for current project');
             console.log('  /omc-default-global      # Configure globally');
-            console.log('  /ultrawork <task>             # Maximum performance mode');
+            console.log('  /team <task>                  # Coordinated parallel execution');
             console.log('  /deepsearch <query>           # Thorough codebase search');
             console.log('  /analyze <target>             # Deep analysis mode');
             console.log('  /plan <description>           # Start planning with Planner');

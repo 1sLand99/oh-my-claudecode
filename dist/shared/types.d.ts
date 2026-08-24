@@ -150,7 +150,6 @@ export interface PluginConfig {
         maxBackgroundTasks?: number;
     };
     magicKeywords?: {
-        ultrawork?: string[];
         search?: string[];
         analyze?: string[];
         ultrathink?: string[];

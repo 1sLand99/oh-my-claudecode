@@ -209,9 +209,6 @@ export async function saveModeSummary(
             }
           : null,
     },
-    {
-          : null,
-    },
   ];
 
   const reads = stateFiles.map(async (config) => {
@@ -423,11 +420,7 @@ export function formatCompactSummary(checkpoint: CompactCheckpoint): string {
   ];
 
   // Active modes
-  const modeCount = [
-    checkpoint.active_modes.autopilot,
-    checkpoint.active_modes.ralph,
-    checkpoint.active_modes.ultraqa,
-  ].filter(Boolean).length;
+  const modeCount = Object.keys(checkpoint.active_modes).length;
   if (modeCount > 0) {
     lines.push("## Active Modes");
     lines.push("");
@@ -444,7 +437,6 @@ export function formatCompactSummary(checkpoint: CompactCheckpoint): string {
       lines.push(`  Prompt: ${ralph.prompt}`);
     }
 
-    }
 
     lines.push("");
   }

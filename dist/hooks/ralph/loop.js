@@ -15,7 +15,6 @@ import { writeModeState, readModeState, clearModeStateFile, } from "../../lib/mo
 import { ensurePrdForStartup, findPrdPath, readPrd, getPrdStatus, formatNextStoryPrompt, formatPrdStatus, } from "./prd.js";
 import { detectStalePrd, formatStalePrdWarning, reconcileStalePrdForStartup, } from "./stale-prd.js";
 import { findProgressPath, getProgressContext, appendProgress, initProgress, addPattern, } from "./progress.js";
-import { readUltraworkState as readUltraworkStateFromModule, writeUltraworkState as writeUltraworkStateFromModule, } from "../ultrawork/index.js";
 import { readTeamPipelineState } from "../team-pipeline/state.js";
 export const RALPH_CRITIC_MODES = ['architect', 'critic', 'codex'];
 const DEFAULT_MAX_ITERATIONS = 10;
@@ -45,17 +44,6 @@ export function writeRalphState(directory, state, sessionId) {
  */
 export function clearRalphState(directory, sessionId) {
     return clearModeStateFile("ralph", directory, sessionId);
-}
-/**
- * Clear ultrawork state (only if linked to ralph)
- */
-export function clearLinkedUltraworkState(directory, sessionId) {
-    const state = readUltraworkStateFromModule(directory, sessionId);
-    // Only clear if it was linked to ralph (auto-activated)
-    if (!state || !state.linked_to_ralph) {
-        return true;
-    }
-    return clearModeStateFile("ultrawork", directory, sessionId);
 }
 /**
  * Increment Ralph Loop iteration
@@ -122,7 +110,6 @@ export function stripCriticModeFlag(prompt) {
  */
 export function createRalphLoopHook(directory) {
     const startLoop = (sessionId, prompt, options) => {
-        const enableUltrawork = !options?.disableUltrawork;
         const now = new Date().toISOString();
         const normalizedPrompt = stripCriticModeFlag(stripNoPrdFlag(prompt));
         let branchName = "ralph/task";
@@ -161,7 +148,6 @@ export function createRalphLoopHook(directory) {
             prompt: normalizedPrompt,
             session_id: sessionId,
             project_path: directory,
-            linked_ultrawork: enableUltrawork,
             critic_mode: options?.criticMode ?? detectCriticModeFlag(prompt) ?? DEFAULT_RALPH_CRITIC_MODE,
             prd_mode: true,
         };
@@ -169,32 +155,12 @@ export function createRalphLoopHook(directory) {
         if (prdCompletion.nextStory) {
             state.current_story_id = prdCompletion.nextStory.id;
         }
-        const ralphSuccess = writeRalphState(directory, state, sessionId);
-        // Auto-activate ultrawork (linked to ralph) by default
-        // Include session_id and project_path for proper isolation
-        if (ralphSuccess && enableUltrawork) {
-            const ultraworkState = {
-                active: true,
-                reinforcement_count: 0,
-                original_prompt: normalizedPrompt,
-                started_at: now,
-                last_checked_at: now,
-                linked_to_ralph: true,
-                session_id: sessionId,
-                project_path: directory,
-            };
-            writeUltraworkStateFromModule(ultraworkState, directory, sessionId);
-        }
-        return ralphSuccess;
+        return writeRalphState(directory, state, sessionId);
     };
     const cancelLoop = (sessionId) => {
         const state = readRalphState(directory, sessionId);
         if (!state || state.session_id !== sessionId) {
             return false;
-        }
-        // Also clear linked ultrawork state if it was auto-activated
-        if (state.linked_ultrawork) {
-            clearLinkedUltraworkState(directory, sessionId);
         }
         return clearRalphState(directory, sessionId);
     };

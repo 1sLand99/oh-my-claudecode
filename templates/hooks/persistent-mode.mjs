@@ -939,8 +939,6 @@ async function main() {
       "ultrapilot-state.json",
       sessionId,
     );
-      sessionId,
-    );
     const pipeline = readStateFileWithSession(
       stateDir,
       globalStateDir,

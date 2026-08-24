@@ -588,7 +588,7 @@ export function formatCheckpointRestoreContext(checkpoint, path) {
         'Source: PreCompact checkpoint written before the last compaction.',
     ];
     const modes = checkpoint.active_modes ?? {};
-    const entries = Object.entries(modes).filter(([, value]) => value != null);
+    const entries = Object.entries(modes).filter(([name, value]) => value != null && name !== 'ultrawork' && name !== 'ccg');
     if (entries.length > 0) {
         lines.push('', 'Active modes at compaction time:');
         for (const [name, mode] of entries) {

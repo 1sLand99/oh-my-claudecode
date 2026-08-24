@@ -1162,8 +1162,6 @@ async function main() {
       sessionId,
     );
 
-      sessionId,
-    );
     const pipeline = readStateFileWithSession(
       stateDir,
       globalStateDir,

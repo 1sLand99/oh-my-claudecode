@@ -53,7 +53,7 @@ export declare function isSafeCommand(command: string): boolean;
  */
 export declare function isHeredocWithSafeBase(command: string): boolean;
 /**
- * Check if an active mode (autopilot/ultrawork/ralph/team) is running
+ * Check if an active supported mode is running
  */
 export declare function isActiveModeRunning(directory: string): boolean;
 /**

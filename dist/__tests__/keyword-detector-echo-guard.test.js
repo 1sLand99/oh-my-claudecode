@@ -204,15 +204,12 @@ describe('keyword-detector.mjs — state.prompt sanitization', () => {
         expect(typeof state.awaiting_confirmation_set_at).toBe('string');
         expect(Number.isFinite(new Date(state.awaiting_confirmation_set_at).getTime())).toBe(true);
     });
-    it('records awaiting_confirmation_set_at on ultrawork state', () => {
+    it('does not create ultrawork state for retired ulw alias', () => {
         const cwd = makeCwd('kd-setat-ultrawork-');
         const sid = 'sess-setat-uw';
         runKeywordDetector('ulw로 시작해주세요', cwd, sid);
         const path = stateFile(cwd, sid, 'ultrawork');
-        expect(existsSync(path)).toBe(true);
-        const state = JSON.parse(readFileSync(path, 'utf-8'));
-        expect(state.awaiting_confirmation).toBe(true);
-        expect(typeof state.awaiting_confirmation_set_at).toBe('string');
+        expect(existsSync(path)).toBe(false);
     });
 });
 //# sourceMappingURL=keyword-detector-echo-guard.test.js.map

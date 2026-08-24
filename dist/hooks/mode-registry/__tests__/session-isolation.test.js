@@ -55,12 +55,12 @@ describe('Session-Scoped State Isolation', () => {
     });
     describe('resolveSessionStatePath', () => {
         it('should return session-scoped path', () => {
-            const path = resolveSessionStatePath('ultrawork', 'session-123', tempDir);
-            expect(path).toContain('.omc/state/sessions/session-123/ultrawork-state.json');
+            const path = resolveSessionStatePath('ralph', 'session-123', tempDir);
+            expect(path).toContain('.omc/state/sessions/session-123/ralph-state.json');
         });
         it('should normalize state name', () => {
-            const path1 = resolveSessionStatePath('ultrawork', 'sid', tempDir);
-            const path2 = resolveSessionStatePath('ultrawork-state', 'sid', tempDir);
+            const path1 = resolveSessionStatePath('ralph', 'sid', tempDir);
+            const path2 = resolveSessionStatePath('ralph-state', 'sid', tempDir);
             expect(path1).toBe(path2);
         });
         it('should resolve swarm as regular JSON path after #1131 removal', () => {
@@ -74,7 +74,7 @@ describe('Session-Scoped State Isolation', () => {
             expect(listSessionIds(tempDir)).toEqual([]);
         });
         it('should list session directories', () => {
-            createSessionState('session-A', 'ultrawork', { active: true });
+            createSessionState('session-A', 'ralph', { active: true });
             createSessionState('session-B', 'ralph', { active: true });
             const ids = listSessionIds(tempDir);
             expect(ids).toContain('session-A');
@@ -89,22 +89,22 @@ describe('Session-Scoped State Isolation', () => {
             expect(path).toContain('autoresearch-state.json');
         });
         it('should return session-scoped path when sessionId provided', () => {
-            const path = getStateFilePath(tempDir, 'ultrawork', 'session-123');
+            const path = getStateFilePath(tempDir, 'ralph', 'session-123');
             expect(path).toContain('sessions/session-123');
         });
         it('should return legacy path when no sessionId', () => {
-            const path = getStateFilePath(tempDir, 'ultrawork');
+            const path = getStateFilePath(tempDir, 'ralph');
             expect(path).not.toContain('sessions');
-            expect(path).toContain('ultrawork-state.json');
+            expect(path).toContain('ralph-state.json');
         });
     });
     describe('Two sessions writing independent state', () => {
         it('should isolate state between sessions', () => {
-            createSessionState('session-A', 'ultrawork', { active: true, prompt: 'Task A' });
-            createSessionState('session-B', 'ultrawork', { active: true, prompt: 'Task B' });
+            createSessionState('session-A', 'ralph', { active: true, prompt: 'Task A' });
+            createSessionState('session-B', 'ralph', { active: true, prompt: 'Task B' });
             // Each session's state should be independent
-            const pathA = join(tempDir, '.omc', 'state', 'sessions', 'session-A', 'ultrawork-state.json');
-            const pathB = join(tempDir, '.omc', 'state', 'sessions', 'session-B', 'ultrawork-state.json');
+            const pathA = join(tempDir, '.omc', 'state', 'sessions', 'session-A', 'ralph-state.json');
+            const pathB = join(tempDir, '.omc', 'state', 'sessions', 'session-B', 'ralph-state.json');
             const stateA = JSON.parse(readFileSync(pathA, 'utf-8'));
             const stateB = JSON.parse(readFileSync(pathB, 'utf-8'));
             expect(stateA.prompt).toBe('Task A');
@@ -117,15 +117,15 @@ describe('Session-Scoped State Isolation', () => {
             expect(isModeActiveInAnySession('autoresearch', tempDir)).toBe(true);
         });
         it('should find mode active in any session', () => {
-            createSessionState('session-A', 'ultrawork', { active: true });
-            expect(isModeActiveInAnySession('ultrawork', tempDir)).toBe(true);
+            createSessionState('session-A', 'ralph', { active: true });
+            expect(isModeActiveInAnySession('ralph', tempDir)).toBe(true);
         });
         it('should return false when mode not active in any session', () => {
-            expect(isModeActiveInAnySession('ultrawork', tempDir)).toBe(false);
+            expect(isModeActiveInAnySession('ralph', tempDir)).toBe(false);
         });
         it('should find mode even if only in legacy path', () => {
-            createLegacyState('ultrawork', { active: true });
-            expect(isModeActiveInAnySession('ultrawork', tempDir)).toBe(true);
+            createLegacyState('ralph', { active: true });
+            expect(isModeActiveInAnySession('ralph', tempDir)).toBe(true);
         });
     });
     describe('getActiveSessionsForMode', () => {
@@ -137,10 +137,10 @@ describe('Session-Scoped State Isolation', () => {
             expect(sessions).toContain('session-B');
         });
         it('should return sessions running a specific mode', () => {
-            createSessionState('session-A', 'ultrawork', { active: true });
-            createSessionState('session-B', 'ultrawork', { active: true });
-            createSessionState('session-C', 'ralph', { active: true });
-            const sessions = getActiveSessionsForMode('ultrawork', tempDir);
+            createSessionState('session-A', 'ralph', { active: true });
+            createSessionState('session-B', 'ralph', { active: true });
+            createSessionState('session-C', 'autopilot', { active: true });
+            const sessions = getActiveSessionsForMode('ralph', tempDir);
             expect(sessions).toContain('session-A');
             expect(sessions).toContain('session-B');
             expect(sessions).not.toContain('session-C');
@@ -148,14 +148,14 @@ describe('Session-Scoped State Isolation', () => {
     });
     describe('clearModeState with sessionId', () => {
         it('should clear session-specific state', () => {
-            createSessionState('session-A', 'ultrawork', { active: true });
-            createSessionState('session-B', 'ultrawork', { active: true });
-            clearModeState('ultrawork', tempDir, 'session-A');
+            createSessionState('session-A', 'ralph', { active: true });
+            createSessionState('session-B', 'ralph', { active: true });
+            clearModeState('ralph', tempDir, 'session-A');
             // Session A state should be gone
-            const pathA = join(tempDir, '.omc', 'state', 'sessions', 'session-A', 'ultrawork-state.json');
+            const pathA = join(tempDir, '.omc', 'state', 'sessions', 'session-A', 'ralph-state.json');
             expect(existsSync(pathA)).toBe(false);
             // Session B state should remain
-            const pathB = join(tempDir, '.omc', 'state', 'sessions', 'session-B', 'ultrawork-state.json');
+            const pathB = join(tempDir, '.omc', 'state', 'sessions', 'session-B', 'ralph-state.json');
             expect(existsSync(pathB)).toBe(true);
         });
         it('should clear session-scoped marker artifacts (ralph verification) for the target session only', () => {
@@ -255,43 +255,43 @@ describe('Session-Scoped State Isolation', () => {
     });
     describe('Backward compat with legacy state files', () => {
         it('should detect mode in legacy path', () => {
-            createLegacyState('ultrawork', { active: true });
-            expect(isModeActive('ultrawork', tempDir)).toBe(true);
+            createLegacyState('ralph', { active: true });
+            expect(isModeActive('ralph', tempDir)).toBe(true);
         });
         it('should prefer session-scoped state when sessionId provided', () => {
-            createLegacyState('ultrawork', { active: true, prompt: 'legacy' });
-            createSessionState('session-A', 'ultrawork', { active: false, prompt: 'session' });
+            createLegacyState('ralph', { active: true, prompt: 'legacy' });
+            createSessionState('session-A', 'ralph', { active: false, prompt: 'session' });
             // With sessionId, should see session state (active: false)
-            expect(isModeActive('ultrawork', tempDir, 'session-A')).toBe(false);
+            expect(isModeActive('ralph', tempDir, 'session-A')).toBe(false);
             // Without sessionId, should see legacy state (active: true)
-            expect(isModeActive('ultrawork', tempDir)).toBe(true);
+            expect(isModeActive('ralph', tempDir)).toBe(true);
         });
     });
     describe('Session isolation: no legacy fallback with sessionId (Issue #311)', () => {
         it('isJsonModeActive with sessionId should ignore legacy file entirely', () => {
             // Only legacy file exists, no session-scoped file
-            createLegacyState('ultrawork', { active: true, session_id: 'session-A' });
+            createLegacyState('ralph', { active: true, session_id: 'session-A' });
             // Session B should NOT see session A's legacy state
-            expect(isModeActive('ultrawork', tempDir, 'session-B')).toBe(false);
+            expect(isModeActive('ralph', tempDir, 'session-B')).toBe(false);
             // Session A should also NOT see its own legacy state (must use session-scoped file)
-            expect(isModeActive('ultrawork', tempDir, 'session-A')).toBe(false);
+            expect(isModeActive('ralph', tempDir, 'session-A')).toBe(false);
             // Without sessionId, legacy state is still visible (backward compat)
-            expect(isModeActive('ultrawork', tempDir)).toBe(true);
+            expect(isModeActive('ralph', tempDir)).toBe(true);
         });
         it('should reject state with mismatched session_id even in session-scoped file', () => {
             // Create session-scoped file with wrong session_id (shouldn't happen, but defensive)
-            createSessionState('session-A', 'ultrawork', { active: true, session_id: 'session-OTHER' });
-            expect(isModeActive('ultrawork', tempDir, 'session-A')).toBe(false);
+            createSessionState('session-A', 'ralph', { active: true, session_id: 'session-OTHER' });
+            expect(isModeActive('ralph', tempDir, 'session-A')).toBe(false);
         });
         it('hasModeState with sessionId should check session path only', () => {
-            createLegacyState('ultrawork', { active: true });
+            createLegacyState('ralph', { active: true });
             // Without sessionId, legacy file is found
-            expect(hasModeState(tempDir, 'ultrawork')).toBe(true);
+            expect(hasModeState(tempDir, 'ralph')).toBe(true);
             // With sessionId, only session-scoped path is checked (doesn't exist)
-            expect(hasModeState(tempDir, 'ultrawork', 'session-X')).toBe(false);
+            expect(hasModeState(tempDir, 'ralph', 'session-X')).toBe(false);
             // Create session-scoped file, now it should be found
-            createSessionState('session-X', 'ultrawork', { active: true });
-            expect(hasModeState(tempDir, 'ultrawork', 'session-X')).toBe(true);
+            createSessionState('session-X', 'ralph', { active: true });
+            expect(hasModeState(tempDir, 'ralph', 'session-X')).toBe(true);
         });
         it('cross-session: Session A active, Session B check returns false', () => {
             createSessionState('session-A', 'ralph', { active: true, session_id: 'session-A' });

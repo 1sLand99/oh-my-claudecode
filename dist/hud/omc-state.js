@@ -1,7 +1,7 @@
 /**
  * OMC HUD - State Readers
  *
- * Read ralph, ultrawork, and PRD state from existing OMC files.
+ * Read ralph and PRD state from existing OMC files.
  * These are read-only functions that don't modify the state files.
  */
 import { existsSync, readFileSync, statSync, readdirSync } from 'fs';
@@ -133,31 +133,6 @@ export function readRalphStateForHud(directory, sessionId) {
     }
 }
 /**
- * Read Ultrawork state for HUD display.
- * Checks only local .omc/state location.
- */
-export function readUltraworkStateForHud(directory, sessionId) {
-    // Check local state only (with new path fallback)
-    const localFile = resolveStatePath(directory, 'ultrawork-state.json', sessionId);
-    if (!localFile || isStateFileStale(localFile)) {
-        return null;
-    }
-    try {
-        const content = readFileSync(localFile, 'utf-8');
-        const state = JSON.parse(content);
-        if (!state.active) {
-            return null;
-        }
-        return {
-            active: state.active,
-            reinforcementCount: state.reinforcement_count,
-        };
-    }
-    catch {
-        return null;
-    }
-}
-/**
  * Read PRD state for HUD display.
  * Checks both root prd.json and .omc/prd.json.
  */
@@ -268,9 +243,8 @@ export function readAutopilotStateForHud(directory, sessionId) {
  */
 export function isAnyModeActive(directory, sessionId) {
     const ralph = readRalphStateForHud(directory, sessionId);
-    const ultrawork = readUltraworkStateForHud(directory, sessionId);
     const autopilot = readAutopilotStateForHud(directory, sessionId);
-    return (ralph?.active ?? false) || (ultrawork?.active ?? false) || (autopilot?.active ?? false);
+    return (ralph?.active ?? false) || (autopilot?.active ?? false);
 }
 /**
  * Get active skill names for display
@@ -284,10 +258,6 @@ export function getActiveSkills(directory, sessionId) {
     const ralph = readRalphStateForHud(directory, sessionId);
     if (ralph?.active) {
         skills.push('ralph');
-    }
-    const ultrawork = readUltraworkStateForHud(directory, sessionId);
-    if (ultrawork?.active) {
-        skills.push('ultrawork');
     }
     return skills;
 }
