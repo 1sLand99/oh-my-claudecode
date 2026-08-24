@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "3043e8ae8e190ee4766de445c2e0211403a69701",
-    "sourceSha256": "8bdfb61a5e05bf5dad946c59888dd8848dcf290b9a8c4ac0c6952da318f6ba74",
+    "head": "8324d5e62463b7721031d4056e488fc5649513ee",
+    "sourceSha256": "55537698e28449dc22f28cec792cad67d65f73955644f85e921c8c0710183505",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "3043e8ae8e190ee4766de445c2e0211403a69701",
-  "sourceSha256": "8bdfb61a5e05bf5dad946c59888dd8848dcf290b9a8c4ac0c6952da318f6ba74",
+  "head": "8324d5e62463b7721031d4056e488fc5649513ee",
+  "sourceSha256": "55537698e28449dc22f28cec792cad67d65f73955644f85e921c8c0710183505",
   "counts": {
     "public": {
       "skills": 31,
@@ -32623,6 +32623,11 @@
         "id": "receipts/epic-3698/remaining-risk.json",
         "kind": "other",
         "path": "receipts/epic-3698/remaining-risk.json"
+      },
+      {
+        "id": "receipts/issue-3858/merged.receipt.json",
+        "kind": "other",
+        "path": "receipts/issue-3858/merged.receipt.json"
       },
       {
         "id": "research/hephaestus-vs-deep-executor-comparison.md",
@@ -74843,12 +74848,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6793,
+      "nodeCount": 6794,
       "edgeCount": 6921,
       "importEdgeCount": 5685,
       "registerEdgeCount": 52
     }
   },
-  "inventorySha256": "b11f24e66cc72a4cd4458d678680de6c493d9ff09c741eb51bdce4f257f357e2",
-  "manifestSha256": "b52131801d076663b162fab67cc3d441bb791d6ec1198065fc004019f1f88b31"
+  "inventorySha256": "0d46a0037a3546f5d443daa840253235b6826e95064d84f56a0383e06050a6bf",
+  "manifestSha256": "0ddbfd8135e55484d1ed485e6db446df4558cccf8ab76bf8dbe757aba9202d6a"
 }
