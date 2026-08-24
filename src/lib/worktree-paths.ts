@@ -14,6 +14,7 @@ import { execFileSync } from 'child_process';
 import { existsSync, mkdirSync, readFileSync, realpathSync, readdirSync, writeFileSync, unlinkSync } from 'fs';
 import { homedir, tmpdir } from 'os';
 import { resolve, normalize, relative, sep, join, isAbsolute, basename, dirname } from 'path';
+import { pathToFileURL } from 'url';
 import { getClaudeConfigDir } from '../utils/config-dir.js';
 import { encodeProjectPath } from '../utils/encode-project-path.js';
 
@@ -1220,10 +1221,32 @@ function defineOpaqueCanonicalRoots(
     trustedRoot: { ...descriptor, value: trustedRoot },
   });
 }
+function canonicalRootAliases(root: string): string[] {
+  if (root.length === 0) {
+    return [];
+  }
+  const aliases = new Set<string>([root]);
+  try {
+    aliases.add(pathToFileURL(root).href);
+  } catch {
+    // Ignore roots that cannot be represented as file URLs.
+  }
+  try {
+    const real = realpathSync(root);
+    aliases.add(real);
+    aliases.add(pathToFileURL(real).href);
+  } catch {
+    // Root may not exist on disk (synthetic test paths).
+  }
+  if (sep === '\\') {
+    aliases.add(root.replaceAll('\\', '/'));
+  }
+  return [...aliases].sort((a, b) => b.length - a.length);
+}
+
 function redactCanonicalRoots(text: string, providedRoot: string, trustedRoot: string): string {
   let redacted = text;
-  const roots = [providedRoot, trustedRoot]
-    .filter((root) => root.length > 0)
+  const roots = [...canonicalRootAliases(providedRoot), ...canonicalRootAliases(trustedRoot)]
     .sort((a, b) => b.length - a.length);
   for (const root of roots) {
     redacted = redacted.split(root).join('<redacted>');

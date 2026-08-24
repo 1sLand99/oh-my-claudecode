@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { inspect } from 'node:util';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execSync } from 'node:child_process';
 import {
   mkdtempSync,
@@ -239,6 +239,36 @@ describe('shared resolver #3858: foreign repo, linked worktree, non-git, same-ro
     expect(absoluteFrames).not.toContain(sourceRoot);
     expect(absoluteFrames).not.toContain(sourceFile);
   });
+  it('redacts percent-encoded file-URL stack frames for roots with spaces', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'session project-'));
+    const probe = join(dir, 'probe.mjs');
+    const moduleHref = pathToFileURL(resolve(originalCwd, 'src/lib/worktree-paths.ts')).href;
+    const rootHref = pathToFileURL(dir).href;
+    writeFileSync(
+      probe,
+      `import { ForeignWorkingDirectoryError } from ${JSON.stringify(moduleHref)};
+import { inspect } from 'node:util';
+const root = ${JSON.stringify(dir)};
+const err = new ForeignWorkingDirectoryError(root, root, '../alias');
+const frames = (err.stack ?? '').split('\\n').slice(1).join('\\n');
+process.stdout.write(JSON.stringify({
+  frames,
+  inspect: inspect(err),
+  fileUrl: ${JSON.stringify(rootHref)},
+}));
+`,
+    );
+    const output = execSync(`npx tsx ${JSON.stringify(probe)}`, {
+      encoding: 'utf8',
+      cwd: originalCwd,
+    });
+    const parsed = JSON.parse(output) as { frames: string; inspect: string; fileUrl: string };
+    expect(parsed.frames).not.toContain(dir);
+    expect(parsed.frames).not.toContain(parsed.fileUrl);
+    expect(parsed.inspect).toContain('../alias');
+    expect(parsed.inspect).not.toContain(parsed.fileUrl);
+  });
+
 
   it('foreign_repository resolution and thrown error keep canonical roots opaque under serialization', () => {
     const relativeAlias = join('..', 'foreign-vault');
