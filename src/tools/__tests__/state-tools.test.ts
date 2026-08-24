@@ -246,6 +246,42 @@ describe('state-tools', () => {
       expect(existsSync(legacyPath)).toBe(true);
     });
 
+    it('rejects active Ultrawork creation while preserving legacy read/list/status/clear cleanup', async () => {
+      const sessionId = 'retired-ultrawork-session';
+      const rejected = await stateWriteTool.handler({
+        mode: 'ultrawork' as never,
+        active: true,
+        session_id: sessionId,
+        workingDirectory: TEST_DIR,
+      });
+
+      expect(rejected.isError).toBe(true);
+      expect(rejected.content[0].text).toContain('ultrawork is retired');
+      expect(existsSync(join(TEST_DIR, '.omc', 'state', 'sessions', sessionId, 'ultrawork-state.json'))).toBe(false);
+
+      const legacyPath = join(TEST_DIR, '.omc', 'state', 'ultrawork-state.json');
+      const sessionPath = join(TEST_DIR, '.omc', 'state', 'sessions', sessionId, 'ultrawork-state.json');
+      mkdirSync(dirname(sessionPath), { recursive: true });
+      writeFileSync(legacyPath, JSON.stringify({ active: true, source: 'legacy' }));
+      writeFileSync(sessionPath, JSON.stringify({ active: true, session_id: sessionId, source: 'session' }));
+
+      const listResult = await stateListActiveTool.handler({ all: true, workingDirectory: TEST_DIR });
+      expect(listResult.content[0].text).not.toContain('ultrawork');
+
+      const statusResult = await stateGetStatusTool.handler({ mode: 'ultrawork', workingDirectory: TEST_DIR });
+      expect(statusResult.content[0].text).toContain('**Active:** No');
+      const allStatusResult = await stateGetStatusTool.handler({ workingDirectory: TEST_DIR });
+      expect(allStatusResult.content[0].text).not.toContain('[ACTIVE] **ultrawork**');
+
+      const readResult = await stateReadTool.handler({ mode: 'ultrawork', session_id: sessionId, workingDirectory: TEST_DIR });
+      expect(readResult.content[0].text).toContain('"active": true');
+
+      const clearResult = await stateClearTool.handler({ mode: 'ultrawork', workingDirectory: TEST_DIR });
+      expect(clearResult.content[0].text).toContain('WARNING: No session_id provided');
+      expect(existsSync(legacyPath)).toBe(false);
+      expect(existsSync(sessionPath)).toBe(false);
+    });
+
     it('should add _meta field to written state', async () => {
       const result = await stateWriteTool.handler({
         mode: 'ralph',
@@ -1046,7 +1082,7 @@ describe('state-tools', () => {
     });
 
     it('should clear only the requested session for every execution mode', async () => {
-      const modes = ['autopilot', 'autoresearch', 'ralph', 'ultrawork', 'ultraqa', 'team'] as const;
+      const modes = ['autopilot', 'autoresearch', 'ralph', 'ultraqa', 'team'] as const;
       const sessionA = 'session-a';
       const sessionB = 'session-b';
 
@@ -1082,25 +1118,16 @@ describe('state-tools', () => {
 
     it('should clear legacy and all sessions when session_id is omitted and show warning', async () => {
       const sessionId = 'aggregate-clear';
-      await stateWriteTool.handler({
-        mode: 'ultrawork',
-        state: { active: true, source: 'legacy' },
-        workingDirectory: TEST_DIR,
-      });
-      await stateWriteTool.handler({
-        mode: 'ultrawork',
-        state: { active: true, source: 'session' },
-        session_id: sessionId,
-        workingDirectory: TEST_DIR,
-      });
+      const legacyPath = join(TEST_DIR, '.omc', 'state', 'ultrawork-state.json');
+      const sessionPath = join(TEST_DIR, '.omc', 'state', 'sessions', sessionId, 'ultrawork-state.json');
+      mkdirSync(dirname(sessionPath), { recursive: true });
+      writeFileSync(legacyPath, JSON.stringify({ active: true, source: 'legacy' }));
+      writeFileSync(sessionPath, JSON.stringify({ active: true, session_id: sessionId, source: 'session' }));
 
       const result = await stateClearTool.handler({
         mode: 'ultrawork',
         workingDirectory: TEST_DIR,
       });
-
-      const legacyPath = join(TEST_DIR, '.omc', 'state', 'ultrawork-state.json');
-      const sessionPath = join(TEST_DIR, '.omc', 'state', 'sessions', sessionId, 'ultrawork-state.json');
 
       expect(result.content[0].text).toContain('WARNING: No session_id provided');
       expect(existsSync(legacyPath)).toBe(false);
@@ -1181,12 +1208,8 @@ describe('state-tools', () => {
       // Note: no state file created - simulating a session with no ralph state
 
       // Create state for a different mode in the same session
-      await stateWriteTool.handler({
-        mode: 'ultrawork',
-        state: { active: true },
-        session_id: sessionId,
-        workingDirectory: TEST_DIR,
-      });
+      const unrelatedStatePath = join(sessionDir, 'ultrawork-state.json');
+      writeFileSync(unrelatedStatePath, JSON.stringify({ active: true, session_id: sessionId }));
 
       // Now clear ralph mode (which has no state in this session)
       const result = await stateClearTool.handler({
@@ -1463,19 +1486,16 @@ describe('state-tools', () => {
 
     it('should list active modes across sessions when session_id omitted', async () => {
       const sessionId = 'aggregate-session';
-      await stateWriteTool.handler({
-        mode: 'ultrawork',
-        active: true,
-        session_id: sessionId,
-        workingDirectory: TEST_DIR,
-      });
+      const statePath = join(TEST_DIR, '.omc', 'state', 'sessions', sessionId, 'ultrawork-state.json');
+      mkdirSync(dirname(statePath), { recursive: true });
+      writeFileSync(statePath, JSON.stringify({ active: true, session_id: sessionId }));
 
       const result = await stateListActiveTool.handler({
         workingDirectory: TEST_DIR,
       });
 
-      expect(result.content[0].text).toContain('ultrawork');
-      expect(result.content[0].text).toContain(sessionId);
+      expect(result.content[0].text).not.toContain('ultrawork');
+      expect(result.content[0].text).not.toContain(sessionId);
     });
 
     it('should include team mode when team state is active', async () => {
@@ -1780,18 +1800,18 @@ describe('state-tools', () => {
   });
 
   describe('session_id parameter', () => {
-    it('should write state with explicit session_id to session-scoped path', async () => {
+    it('should reject retired Ultrawork state writes with explicit session_id', async () => {
       const sessionId = 'test-session-123';
       const result = await stateWriteTool.handler({
-        mode: 'ultrawork',
+        mode: 'ultrawork' as never,
         state: { active: true },
         session_id: sessionId,
         workingDirectory: TEST_DIR,
       });
 
-      expect(result.content[0].text).toContain('Successfully wrote');
+      expect(result.isError).toBe(true);
       const sessionPath = join(TEST_DIR, '.omc', 'state', 'sessions', sessionId, 'ultrawork-state.json');
-      expect(existsSync(sessionPath)).toBe(true);
+      expect(existsSync(sessionPath)).toBe(false);
     });
 
     it('should read state with explicit session_id from session-scoped path', async () => {
@@ -2091,20 +2111,14 @@ describe('state-tools', () => {
       const processBSessionId = 'pid-22222-2000000';
 
       // Process A writes
-      await stateWriteTool.handler({
-        mode: 'ultrawork',
-        state: { active: true, task: 'Process A task' },
-        session_id: processASessionId,
-        workingDirectory: TEST_DIR,
-      });
+      const processAPath = join(TEST_DIR, '.omc', 'state', 'sessions', processASessionId, 'ultrawork-state.json');
+      mkdirSync(dirname(processAPath), { recursive: true });
+      writeFileSync(processAPath, JSON.stringify({ active: true, session_id: processASessionId, task: 'Process A task' }));
 
       // Process B writes
-      await stateWriteTool.handler({
-        mode: 'ultrawork',
-        state: { active: true, task: 'Process B task' },
-        session_id: processBSessionId,
-        workingDirectory: TEST_DIR,
-      });
+      const processBPath = join(TEST_DIR, '.omc', 'state', 'sessions', processBSessionId, 'ultrawork-state.json');
+      mkdirSync(dirname(processBPath), { recursive: true });
+      writeFileSync(processBPath, JSON.stringify({ active: true, session_id: processBSessionId, task: 'Process B task' }));
 
       // Process A reads its own state
       const resultA = await stateReadTool.handler({
@@ -2125,15 +2139,16 @@ describe('state-tools', () => {
       expect(resultB.content[0].text).not.toContain('Process A task');
     });
 
-    it('should write state to legacy path when session_id omitted', async () => {
-      await stateWriteTool.handler({
-        mode: 'ultrawork',
+    it('should reject retired Ultrawork state writes when session_id omitted', async () => {
+      const result = await stateWriteTool.handler({
+        mode: 'ultrawork' as never,
         state: { active: true },
         workingDirectory: TEST_DIR,
       });
 
       const legacyPath = join(TEST_DIR, '.omc', 'state', 'ultrawork-state.json');
-      expect(existsSync(legacyPath)).toBe(true);
+      expect(result.isError).toBe(true);
+      expect(existsSync(legacyPath)).toBe(false);
     });
   });
 

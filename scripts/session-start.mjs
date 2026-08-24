@@ -538,7 +538,6 @@ function buildSessionStartAdditionalContext(messages) {
   const priorityOrder = [
     /\[MODEL ROUTING OVERRIDE/,
     /\[AUTOPILOT MODE RESTORED\]/,
-    /\[ULTRAWORK MODE RESTORED\]/,
     /\[RALPH LOOP RESTORED\]/,
     /\[PROJECT MEMORY\]/,
     /\[NOTEPAD - Priority Context\]/,
@@ -998,37 +997,6 @@ async function main() {
 
     if (shouldEmitModelRoutingOverride(directory)) {
       messages.push(MODEL_ROUTING_OVERRIDE_MESSAGE);
-    }
-
-    // Check for ultrawork state - only restore if session matches (issue #311)
-    // Session-scoped ONLY when session_id exists — no legacy fallback
-    let ultraworkState = null;
-    if (sessionId && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) {
-      // Session-scoped ONLY — no legacy fallback
-      ultraworkState = readJsonFile(join(omcRoot, 'state', 'sessions', sessionId, 'ultrawork-state.json'));
-      // Validate session identity
-      if (ultraworkState && ultraworkState.session_id && ultraworkState.session_id !== sessionId) {
-        ultraworkState = null;
-      }
-    } else {
-      // No session_id — legacy behavior for backward compat
-      ultraworkState = readJsonFile(join(omcRoot, 'state', 'ultrawork-state.json'));
-    }
-
-    if (shouldRestoreModeState(omcRoot, 'ultrawork', ultraworkState, sessionId)) {
-      messages.push(`<session-restore>
-
-[ULTRAWORK MODE RESTORED]
-
-You have an active ultrawork session from ${ultraworkState.started_at}.
-Original task: ${ultraworkState.original_prompt}
-
-Treat this as prior-session context only. Prioritize the user's newest request, and resume ultrawork only if the user explicitly asks to continue it.
-
-</session-restore>
-
----
-`);
     }
 
     // Check for ralph loop state

@@ -979,6 +979,30 @@ describe('Skill active state cleanup on PostToolUse (issue #2103)', () => {
     });
   });
 
+  it('activates only ralph state for the template post-tool hook path', () => {
+    withTempDir((tempDir) => {
+      const sessionId = 'ralph-template-no-ultrawork';
+      // Redirect HOME so the template hook's shared-home global fallback write
+      // (~/.omc/state/ralph-state.json) lands in the sandbox instead of the
+      // real home. Leaving it in the real home leaks active ralph state into
+      // other suites (e.g. cancel-integration's broad-clear location count).
+      const homeDir = join(tempDir, 'home');
+      mkdirSync(homeDir, { recursive: true });
+      const out = runHookScript(TEMPLATE_HOOK_PATH, {
+        tool_name: 'Skill',
+        tool_input: { skill: 'oh-my-claudecode:ralph' },
+        tool_response: { ok: true },
+        session_id: sessionId,
+        cwd: tempDir,
+      }, { HOME: homeDir });
+
+      expect(out).toEqual({ continue: true, suppressOutput: true });
+      const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+      expect(existsSync(join(stateDir, 'ralph-state.json'))).toBe(true);
+      expect(existsSync(join(stateDir, 'ultrawork-state.json'))).toBe(false);
+    });
+  });
+
   it('deactivates ralplan state when the ralplan skill completes in post-tool-verifier', () => {
     withTempDir((tempDir) => {
       const sessionId = 'ralplan-complete-script';

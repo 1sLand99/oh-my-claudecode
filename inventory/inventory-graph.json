@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "ba2c25b0e2c803d369c86e7fd7d34e5cc568ef3d",
-    "sourceSha256": "96abb7479dfc795a716ac25c0ba87f91a04e5c88e802e98a3f6b49f1c4ab5222",
+    "head": "800c464d532980e95eb89e645e0d92955e76a9a9",
+    "sourceSha256": "4aef8443fce3c32250ebd595fc81461659937147d45545fb8f935e4392e84f8e",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "ba2c25b0e2c803d369c86e7fd7d34e5cc568ef3d",
-  "sourceSha256": "96abb7479dfc795a716ac25c0ba87f91a04e5c88e802e98a3f6b49f1c4ab5222",
+  "head": "800c464d532980e95eb89e645e0d92955e76a9a9",
+  "sourceSha256": "4aef8443fce3c32250ebd595fc81461659937147d45545fb8f935e4392e84f8e",
   "counts": {
     "public": {
       "skills": 31,
@@ -23,28 +23,28 @@
       "total": 78
     },
     "internal": {
-      "hookFiles": 306,
+      "hookFiles": 295,
       "featureFiles": 68,
       "toolFiles": 56,
       "libFiles": 34,
       "templateHooks": 21,
-      "srcFiles": 1280,
-      "total": 1301
+      "srcFiles": 1269,
+      "total": 1290
     },
     "generated": {
-      "distFiles": 4999,
+      "distFiles": 4955,
       "bridgeFiles": 9,
-      "total": 5008
+      "total": 4964
     },
     "prompt": {
-      "promptLikeFiles": 63
+      "promptLikeFiles": 62
     },
     "skills": 31,
     "commands": 21,
-    "hookFiles": 306,
+    "hookFiles": 295,
     "workflows": 8,
     "agentDefinitions": 18,
-    "promptLikeFiles": 63
+    "promptLikeFiles": 62
   },
   "public": {
     "skills": [
@@ -229,14 +229,6 @@
       "src/hooks/index.ts",
       "src/hooks/keyword-detector/__tests__/index.test.ts",
       "src/hooks/keyword-detector/index.ts",
-      "src/hooks/keyword-detector/ultrawork/__tests__/index.test.ts",
-      "src/hooks/keyword-detector/ultrawork/antigravity.ts",
-      "src/hooks/keyword-detector/ultrawork/default.ts",
-      "src/hooks/keyword-detector/ultrawork/gemini.ts",
-      "src/hooks/keyword-detector/ultrawork/gpt.ts",
-      "src/hooks/keyword-detector/ultrawork/index.ts",
-      "src/hooks/keyword-detector/ultrawork/planner.ts",
-      "src/hooks/keyword-detector/ultrawork/source-detector.ts",
       "src/hooks/learner/auto-invoke.ts",
       "src/hooks/learner/auto-learner.ts",
       "src/hooks/learner/bridge.ts",
@@ -422,9 +414,6 @@
       "src/hooks/todo-continuation/__tests__/isRateLimitStop.test.ts",
       "src/hooks/todo-continuation/__tests__/isUserAbort.test.ts",
       "src/hooks/todo-continuation/index.ts",
-      "src/hooks/ultrawork/__tests__/prompt-truncation.test.ts",
-      "src/hooks/ultrawork/index.ts",
-      "src/hooks/ultrawork/session-isolation.test.ts",
       "src/hooks/wiki/__tests__/cjk-tokenize.test.ts",
       "src/hooks/wiki/__tests__/crlf-parse.test.ts",
       "src/hooks/wiki/__tests__/escape-newline.test.ts",
@@ -678,7 +667,6 @@
       "src/hooks/autopilot/prompts.ts",
       "src/hooks/persistent-mode/__tests__/prompt-truncation.test.ts",
       "src/hooks/prompt-prerequisites/index.ts",
-      "src/hooks/ultrawork/__tests__/prompt-truncation.test.ts",
       "src/hud/elements/prompt-time.ts",
       "src/lib/__tests__/truncate-prompt.test.ts",
       "src/lib/truncate-prompt.ts",
@@ -2955,38 +2943,6 @@
       "dist/hooks/keyword-detector/index.d.ts.map",
       "dist/hooks/keyword-detector/index.js",
       "dist/hooks/keyword-detector/index.js.map",
-      "dist/hooks/keyword-detector/ultrawork/__tests__/index.test.d.ts",
-      "dist/hooks/keyword-detector/ultrawork/__tests__/index.test.d.ts.map",
-      "dist/hooks/keyword-detector/ultrawork/__tests__/index.test.js",
-      "dist/hooks/keyword-detector/ultrawork/__tests__/index.test.js.map",
-      "dist/hooks/keyword-detector/ultrawork/antigravity.d.ts",
-      "dist/hooks/keyword-detector/ultrawork/antigravity.d.ts.map",
-      "dist/hooks/keyword-detector/ultrawork/antigravity.js",
-      "dist/hooks/keyword-detector/ultrawork/antigravity.js.map",
-      "dist/hooks/keyword-detector/ultrawork/default.d.ts",
-      "dist/hooks/keyword-detector/ultrawork/default.d.ts.map",
-      "dist/hooks/keyword-detector/ultrawork/default.js",
-      "dist/hooks/keyword-detector/ultrawork/default.js.map",
-      "dist/hooks/keyword-detector/ultrawork/gemini.d.ts",
-      "dist/hooks/keyword-detector/ultrawork/gemini.d.ts.map",
-      "dist/hooks/keyword-detector/ultrawork/gemini.js",
-      "dist/hooks/keyword-detector/ultrawork/gemini.js.map",
-      "dist/hooks/keyword-detector/ultrawork/gpt.d.ts",
-      "dist/hooks/keyword-detector/ultrawork/gpt.d.ts.map",
-      "dist/hooks/keyword-detector/ultrawork/gpt.js",
-      "dist/hooks/keyword-detector/ultrawork/gpt.js.map",
-      "dist/hooks/keyword-detector/ultrawork/index.d.ts",
-      "dist/hooks/keyword-detector/ultrawork/index.d.ts.map",
-      "dist/hooks/keyword-detector/ultrawork/index.js",
-      "dist/hooks/keyword-detector/ultrawork/index.js.map",
-      "dist/hooks/keyword-detector/ultrawork/planner.d.ts",
-      "dist/hooks/keyword-detector/ultrawork/planner.d.ts.map",
-      "dist/hooks/keyword-detector/ultrawork/planner.js",
-      "dist/hooks/keyword-detector/ultrawork/planner.js.map",
-      "dist/hooks/keyword-detector/ultrawork/source-detector.d.ts",
-      "dist/hooks/keyword-detector/ultrawork/source-detector.d.ts.map",
-      "dist/hooks/keyword-detector/ultrawork/source-detector.js",
-      "dist/hooks/keyword-detector/ultrawork/source-detector.js.map",
       "dist/hooks/learner/auto-invoke.d.ts",
       "dist/hooks/learner/auto-invoke.d.ts.map",
       "dist/hooks/learner/auto-invoke.js",
@@ -3724,18 +3680,6 @@
       "dist/hooks/todo-continuation/index.d.ts.map",
       "dist/hooks/todo-continuation/index.js",
       "dist/hooks/todo-continuation/index.js.map",
-      "dist/hooks/ultrawork/__tests__/prompt-truncation.test.d.ts",
-      "dist/hooks/ultrawork/__tests__/prompt-truncation.test.d.ts.map",
-      "dist/hooks/ultrawork/__tests__/prompt-truncation.test.js",
-      "dist/hooks/ultrawork/__tests__/prompt-truncation.test.js.map",
-      "dist/hooks/ultrawork/index.d.ts",
-      "dist/hooks/ultrawork/index.d.ts.map",
-      "dist/hooks/ultrawork/index.js",
-      "dist/hooks/ultrawork/index.js.map",
-      "dist/hooks/ultrawork/session-isolation.test.d.ts",
-      "dist/hooks/ultrawork/session-isolation.test.d.ts.map",
-      "dist/hooks/ultrawork/session-isolation.test.js",
-      "dist/hooks/ultrawork/session-isolation.test.js.map",
       "dist/hooks/wiki/__tests__/cjk-tokenize.test.d.ts",
       "dist/hooks/wiki/__tests__/cjk-tokenize.test.d.ts.map",
       "dist/hooks/wiki/__tests__/cjk-tokenize.test.js",
@@ -5909,14 +5853,6 @@
       "src/hooks/index.ts",
       "src/hooks/keyword-detector/__tests__/index.test.ts",
       "src/hooks/keyword-detector/index.ts",
-      "src/hooks/keyword-detector/ultrawork/__tests__/index.test.ts",
-      "src/hooks/keyword-detector/ultrawork/antigravity.ts",
-      "src/hooks/keyword-detector/ultrawork/default.ts",
-      "src/hooks/keyword-detector/ultrawork/gemini.ts",
-      "src/hooks/keyword-detector/ultrawork/gpt.ts",
-      "src/hooks/keyword-detector/ultrawork/index.ts",
-      "src/hooks/keyword-detector/ultrawork/planner.ts",
-      "src/hooks/keyword-detector/ultrawork/source-detector.ts",
       "src/hooks/learner/auto-invoke.ts",
       "src/hooks/learner/auto-learner.ts",
       "src/hooks/learner/bridge.ts",
@@ -6102,9 +6038,6 @@
       "src/hooks/todo-continuation/__tests__/isRateLimitStop.test.ts",
       "src/hooks/todo-continuation/__tests__/isUserAbort.test.ts",
       "src/hooks/todo-continuation/index.ts",
-      "src/hooks/ultrawork/__tests__/prompt-truncation.test.ts",
-      "src/hooks/ultrawork/index.ts",
-      "src/hooks/ultrawork/session-isolation.test.ts",
       "src/hooks/wiki/__tests__/cjk-tokenize.test.ts",
       "src/hooks/wiki/__tests__/crlf-parse.test.ts",
       "src/hooks/wiki/__tests__/escape-newline.test.ts",
@@ -6181,7 +6114,6 @@
       "src/hooks/autopilot/prompts.ts",
       "src/hooks/persistent-mode/__tests__/prompt-truncation.test.ts",
       "src/hooks/prompt-prerequisites/index.ts",
-      "src/hooks/ultrawork/__tests__/prompt-truncation.test.ts",
       "src/hud/elements/prompt-time.ts",
       "src/lib/__tests__/truncate-prompt.test.ts",
       "src/lib/truncate-prompt.ts",
@@ -17975,166 +17907,6 @@
         "path": "dist/hooks/keyword-detector/index.js.map"
       },
       {
-        "id": "dist/hooks/keyword-detector/ultrawork/__tests__/index.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/__tests__/index.test.d.ts"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/__tests__/index.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/__tests__/index.test.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/__tests__/index.test.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/__tests__/index.test.js"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/__tests__/index.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/__tests__/index.test.js.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/antigravity.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/antigravity.d.ts"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/antigravity.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/antigravity.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/antigravity.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/antigravity.js"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/antigravity.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/antigravity.js.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/default.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/default.d.ts"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/default.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/default.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/default.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/default.js"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/default.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/default.js.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/gemini.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/gemini.d.ts"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/gemini.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/gemini.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/gemini.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/gemini.js"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/gemini.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/gemini.js.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/gpt.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/gpt.d.ts"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/gpt.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/gpt.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/gpt.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/gpt.js"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/gpt.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/gpt.js.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/index.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/index.d.ts"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/index.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/index.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/index.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/index.js"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/index.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/index.js.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/planner.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/planner.d.ts"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/planner.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/planner.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/planner.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/planner.js"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/planner.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/planner.js.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/source-detector.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/source-detector.d.ts"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/source-detector.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/source-detector.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/source-detector.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/source-detector.js"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/source-detector.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/source-detector.js.map"
-      },
-      {
         "id": "dist/hooks/learner/auto-invoke.d.ts",
         "kind": "generated-dist",
         "path": "dist/hooks/learner/auto-invoke.d.ts"
@@ -21818,66 +21590,6 @@
         "id": "dist/hooks/todo-continuation/index.js.map",
         "kind": "generated-dist",
         "path": "dist/hooks/todo-continuation/index.js.map"
-      },
-      {
-        "id": "dist/hooks/ultrawork/__tests__/prompt-truncation.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/ultrawork/__tests__/prompt-truncation.test.d.ts"
-      },
-      {
-        "id": "dist/hooks/ultrawork/__tests__/prompt-truncation.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/ultrawork/__tests__/prompt-truncation.test.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/ultrawork/__tests__/prompt-truncation.test.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/ultrawork/__tests__/prompt-truncation.test.js"
-      },
-      {
-        "id": "dist/hooks/ultrawork/__tests__/prompt-truncation.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/ultrawork/__tests__/prompt-truncation.test.js.map"
-      },
-      {
-        "id": "dist/hooks/ultrawork/index.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/ultrawork/index.d.ts"
-      },
-      {
-        "id": "dist/hooks/ultrawork/index.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/ultrawork/index.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/ultrawork/index.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/ultrawork/index.js"
-      },
-      {
-        "id": "dist/hooks/ultrawork/index.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/ultrawork/index.js.map"
-      },
-      {
-        "id": "dist/hooks/ultrawork/session-isolation.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/ultrawork/session-isolation.test.d.ts"
-      },
-      {
-        "id": "dist/hooks/ultrawork/session-isolation.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/ultrawork/session-isolation.test.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/ultrawork/session-isolation.test.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/ultrawork/session-isolation.test.js"
-      },
-      {
-        "id": "dist/hooks/ultrawork/session-isolation.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/ultrawork/session-isolation.test.js.map"
       },
       {
         "id": "dist/hooks/wiki/__tests__/cjk-tokenize.test.d.ts",
@@ -36620,46 +36332,6 @@
         "path": "src/hooks/keyword-detector/index.ts"
       },
       {
-        "id": "src/hooks/keyword-detector/ultrawork/__tests__/index.test.ts",
-        "kind": "hook",
-        "path": "src/hooks/keyword-detector/ultrawork/__tests__/index.test.ts"
-      },
-      {
-        "id": "src/hooks/keyword-detector/ultrawork/antigravity.ts",
-        "kind": "hook",
-        "path": "src/hooks/keyword-detector/ultrawork/antigravity.ts"
-      },
-      {
-        "id": "src/hooks/keyword-detector/ultrawork/default.ts",
-        "kind": "hook",
-        "path": "src/hooks/keyword-detector/ultrawork/default.ts"
-      },
-      {
-        "id": "src/hooks/keyword-detector/ultrawork/gemini.ts",
-        "kind": "hook",
-        "path": "src/hooks/keyword-detector/ultrawork/gemini.ts"
-      },
-      {
-        "id": "src/hooks/keyword-detector/ultrawork/gpt.ts",
-        "kind": "hook",
-        "path": "src/hooks/keyword-detector/ultrawork/gpt.ts"
-      },
-      {
-        "id": "src/hooks/keyword-detector/ultrawork/index.ts",
-        "kind": "hook",
-        "path": "src/hooks/keyword-detector/ultrawork/index.ts"
-      },
-      {
-        "id": "src/hooks/keyword-detector/ultrawork/planner.ts",
-        "kind": "hook",
-        "path": "src/hooks/keyword-detector/ultrawork/planner.ts"
-      },
-      {
-        "id": "src/hooks/keyword-detector/ultrawork/source-detector.ts",
-        "kind": "hook",
-        "path": "src/hooks/keyword-detector/ultrawork/source-detector.ts"
-      },
-      {
         "id": "src/hooks/learner/auto-invoke.ts",
         "kind": "hook",
         "path": "src/hooks/learner/auto-invoke.ts"
@@ -37583,21 +37255,6 @@
         "id": "src/hooks/todo-continuation/index.ts",
         "kind": "hook",
         "path": "src/hooks/todo-continuation/index.ts"
-      },
-      {
-        "id": "src/hooks/ultrawork/__tests__/prompt-truncation.test.ts",
-        "kind": "hook",
-        "path": "src/hooks/ultrawork/__tests__/prompt-truncation.test.ts"
-      },
-      {
-        "id": "src/hooks/ultrawork/index.ts",
-        "kind": "hook",
-        "path": "src/hooks/ultrawork/index.ts"
-      },
-      {
-        "id": "src/hooks/ultrawork/session-isolation.test.ts",
-        "kind": "hook",
-        "path": "src/hooks/ultrawork/session-isolation.test.ts"
       },
       {
         "id": "src/hooks/wiki/__tests__/cjk-tokenize.test.ts",
@@ -45452,16 +45109,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/__tests__/issue-2652-runtime-wiring-and-output-contract.test.ts",
-        "to": "src/hooks/keyword-detector/ultrawork/index.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/issue-2652-runtime-wiring-and-output-contract.test.ts",
-        "to": "src/installer/hooks.ts",
-        "kind": "imports"
-      },
-      {
         "from": "src/__tests__/job-management-sqlite.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -52258,11 +51905,6 @@
       },
       {
         "from": "src/features/magic-keywords.ts",
-        "to": "src/hooks/keyword-detector/ultrawork/index.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/features/magic-keywords.ts",
         "to": "src/shared/types.ts",
         "kind": "type-imports"
       },
@@ -54673,11 +54315,6 @@
       },
       {
         "from": "src/hooks/bridge.ts",
-        "to": "src/hooks/keyword-detector/ultrawork/index.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/bridge.ts",
         "to": "src/hooks/omc-orchestrator/index.ts",
         "kind": "imports"
       },
@@ -54795,11 +54432,6 @@
         "from": "src/hooks/bridge.ts",
         "to": "src/hooks/todo-continuation/index.ts",
         "kind": "type-imports"
-      },
-      {
-        "from": "src/hooks/bridge.ts",
-        "to": "src/hooks/ultrawork/index.ts",
-        "kind": "imports"
       },
       {
         "from": "src/hooks/bridge.ts",
@@ -55577,16 +55209,6 @@
         "kind": "type-exports"
       },
       {
-        "from": "src/hooks/index.ts",
-        "to": "src/hooks/ultrawork/index.ts",
-        "kind": "exports"
-      },
-      {
-        "from": "src/hooks/index.ts",
-        "to": "src/hooks/ultrawork/index.ts",
-        "kind": "type-exports"
-      },
-      {
         "from": "src/hooks/keyword-detector/__tests__/index.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -55610,81 +55232,6 @@
         "from": "src/hooks/keyword-detector/index.ts",
         "to": "src/hooks/task-size-detector/index.ts",
         "kind": "type-imports"
-      },
-      {
-        "from": "src/hooks/keyword-detector/ultrawork/__tests__/index.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/keyword-detector/ultrawork/__tests__/index.test.ts",
-        "to": "src/hooks/keyword-detector/ultrawork/index.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/keyword-detector/ultrawork/index.ts",
-        "to": "src/hooks/keyword-detector/ultrawork/antigravity.ts",
-        "kind": "exports"
-      },
-      {
-        "from": "src/hooks/keyword-detector/ultrawork/index.ts",
-        "to": "src/hooks/keyword-detector/ultrawork/antigravity.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/keyword-detector/ultrawork/index.ts",
-        "to": "src/hooks/keyword-detector/ultrawork/default.ts",
-        "kind": "exports"
-      },
-      {
-        "from": "src/hooks/keyword-detector/ultrawork/index.ts",
-        "to": "src/hooks/keyword-detector/ultrawork/default.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/keyword-detector/ultrawork/index.ts",
-        "to": "src/hooks/keyword-detector/ultrawork/gemini.ts",
-        "kind": "exports"
-      },
-      {
-        "from": "src/hooks/keyword-detector/ultrawork/index.ts",
-        "to": "src/hooks/keyword-detector/ultrawork/gemini.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/keyword-detector/ultrawork/index.ts",
-        "to": "src/hooks/keyword-detector/ultrawork/gpt.ts",
-        "kind": "exports"
-      },
-      {
-        "from": "src/hooks/keyword-detector/ultrawork/index.ts",
-        "to": "src/hooks/keyword-detector/ultrawork/gpt.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/keyword-detector/ultrawork/index.ts",
-        "to": "src/hooks/keyword-detector/ultrawork/planner.ts",
-        "kind": "exports"
-      },
-      {
-        "from": "src/hooks/keyword-detector/ultrawork/index.ts",
-        "to": "src/hooks/keyword-detector/ultrawork/planner.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/keyword-detector/ultrawork/index.ts",
-        "to": "src/hooks/keyword-detector/ultrawork/source-detector.ts",
-        "kind": "exports"
-      },
-      {
-        "from": "src/hooks/keyword-detector/ultrawork/index.ts",
-        "to": "src/hooks/keyword-detector/ultrawork/source-detector.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/keyword-detector/ultrawork/index.ts",
-        "to": "src/hooks/keyword-detector/ultrawork/source-detector.ts",
-        "kind": "type-exports"
       },
       {
         "from": "src/hooks/learner/auto-invoke.ts",
@@ -57143,16 +56690,6 @@
       },
       {
         "from": "src/hooks/persistent-mode/index.ts",
-        "to": "src/hooks/ultrawork/index.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/persistent-mode/index.ts",
-        "to": "src/hooks/ultrawork/index.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/hooks/persistent-mode/index.ts",
         "to": "src/installer/hooks.ts",
         "kind": "imports"
       },
@@ -57238,7 +56775,7 @@
       },
       {
         "from": "src/hooks/persistent-mode/session-isolation.test.ts",
-        "to": "src/hooks/ultrawork/index.ts",
+        "to": "src/lib/mode-state-io.ts",
         "kind": "imports"
       },
       {
@@ -57280,11 +56817,6 @@
         "from": "src/hooks/persistent-mode/stop-hook-blocking.test.ts",
         "to": "src/hooks/persistent-mode/index.ts",
         "kind": "type-imports"
-      },
-      {
-        "from": "src/hooks/persistent-mode/stop-hook-blocking.test.ts",
-        "to": "src/hooks/ultrawork/index.ts",
-        "kind": "imports"
       },
       {
         "from": "src/hooks/persistent-mode/stop-hook-blocking.test.ts",
@@ -58028,12 +57560,12 @@
       },
       {
         "from": "src/hooks/ralph/loop.ts",
-        "to": "src/hooks/ultrawork/index.ts",
+        "to": "src/lib/mode-state-io.ts",
         "kind": "imports"
       },
       {
         "from": "src/hooks/ralph/loop.ts",
-        "to": "src/lib/mode-state-io.ts",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -60289,61 +59821,6 @@
       {
         "from": "src/hooks/todo-continuation/index.ts",
         "to": "src/utils/config-dir.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/ultrawork/__tests__/prompt-truncation.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/ultrawork/__tests__/prompt-truncation.test.ts",
-        "to": "src/hooks/ultrawork/index.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/ultrawork/__tests__/prompt-truncation.test.ts",
-        "to": "src/hooks/ultrawork/index.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/hooks/ultrawork/index.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/ultrawork/index.ts",
-        "to": "src/lib/mode-state-io.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/ultrawork/index.ts",
-        "to": "src/lib/worktree-paths.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/ultrawork/session-isolation.test.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/ultrawork/session-isolation.test.ts",
-        "to": "external:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/ultrawork/session-isolation.test.ts",
-        "to": "external:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/ultrawork/session-isolation.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/ultrawork/session-isolation.test.ts",
-        "to": "src/hooks/ultrawork/index.ts",
         "kind": "imports"
       },
       {
@@ -62699,11 +62176,6 @@
       {
         "from": "src/installer/hooks.ts",
         "to": "external:url",
-        "kind": "imports"
-      },
-      {
-        "from": "src/installer/hooks.ts",
-        "to": "src/hooks/keyword-detector/ultrawork/index.ts",
         "kind": "imports"
       },
       {
@@ -72258,6 +71730,11 @@
       },
       {
         "from": "src/tools/__tests__/cancel-integration.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/cancel-integration.test.ts",
         "to": "external:path",
         "kind": "imports"
       },
@@ -75138,12 +74615,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6842,
-      "edgeCount": 6919,
-      "importEdgeCount": 5673,
+      "nodeCount": 6787,
+      "edgeCount": 6883,
+      "importEdgeCount": 5648,
       "registerEdgeCount": 52
     }
   },
-  "inventorySha256": "dd4a8b7a76c74e9d9cea06fcce6c0c1584ed66b7d666d39421ce18bab6604d68",
-  "manifestSha256": "646c962d1baa7cdfdaef91ed738dfe65c1feac6356a74ef0557635e4fe4912d0"
+  "inventorySha256": "b6c734e8e5d1059ba3422be3bc077737b4fe8b16f985cf1348f0cdc4fb6b2269",
+  "manifestSha256": "190961641284e61b3ab64a728c0c5fc890bae49daca538f1eea6257ae9b61d26"
 }

@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   readRalphStateForHud,
-  readUltraworkStateForHud,
   readAutopilotStateForHud,
   isAnyModeActive,
   getActiveSkills,
@@ -155,20 +154,23 @@ describe('hud omc state session scoping', () => {
       iteration: 3,
       max_iterations: 8,
       current_story_id: 'story-b',
-    });
-    writeJson(join(omcRoot, 'state', 'sessions', 'session-b', 'ultrawork-state.json'), {
-      active: true,
-      reinforcement_count: 7,
-    });
+    }, Date.now() + 1000);
 
     expect(isAnyModeActive(worktree)).toBe(true);
     expect(isAnyModeActive(worktree, 'session-a')).toBe(false);
     expect(isAnyModeActive(worktree, 'session-b')).toBe(true);
     expect(getActiveSkills(worktree, 'session-a')).toEqual([]);
-    expect(getActiveSkills(worktree, 'session-b')).toEqual(['ralph', 'ultrawork']);
-    expect(readUltraworkStateForHud(worktree, 'session-b')).toMatchObject({
+    expect(getActiveSkills(worktree, 'session-b')).toEqual(['ralph']);
+  });
+
+  it('ignores an active legacy Ultrawork file for HUD mode state', () => {
+    const worktree = createWorktree();
+    writeJson(join(worktree, '.omc', 'state', 'ultrawork-state.json'), {
       active: true,
-      reinforcementCount: 7,
+      reinforcement_count: 7,
     });
+
+    expect(isAnyModeActive(worktree)).toBe(false);
+    expect(getActiveSkills(worktree)).toEqual([]);
   });
 });

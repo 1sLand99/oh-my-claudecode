@@ -7,19 +7,20 @@
  * Ported from oh-my-opencode's keyword-detector hook.
  */
 import { type TaskSizeResult } from '../task-size-detector/index.js';
-export type KeywordType = 'cancel' | 'ralph' | 'autopilot' | 'team' | 'ultrawork' | 'ralplan' | 'tdd' | 'code-review' | 'security-review' | 'ultrathink' | 'deepsearch' | 'deep-interview' | 'analyze' | 'codex' | 'gemini' | 'cursor' | 'antigravity' | 'ccg';
+export type KeywordType = 'cancel' | 'ralph' | 'autopilot' | 'team' | 'ralplan' | 'tdd' | 'code-review' | 'security-review' | 'ultrathink' | 'deepsearch' | 'deep-interview' | 'analyze' | 'codex' | 'gemini' | 'cursor' | 'antigravity';
 export interface DetectedKeyword {
     type: KeywordType;
     keyword: string;
     position: number;
 }
+export declare function isRetiredWorkflowSlashInvocation(text: string): boolean;
 /**
  * Canonical workflow skills detected via explicit slash invocation.
- * Mirrors `CANONICAL_WORKFLOW_SKILLS` in `skill-state/index.ts`. Listed here
- * (rather than imported) to keep the keyword-detector free of cross-module
- * dependencies on skill-state.
+ * This is intentionally narrower than the state compatibility registry:
+ * removed-not-aliased workflows may retain legacy state readers, but must not
+ * be parsed as active slash routes.
  */
-declare const CANONICAL_WORKFLOW_SLASH_SKILLS: readonly ["autopilot", "ralph", "team", "ultrawork", "deep-interview", "ralplan", "self-improve"];
+declare const CANONICAL_WORKFLOW_SLASH_SKILLS: readonly ["autopilot", "ralph", "team", "ultraqa", "deep-interview", "ralplan", "self-improve"];
 export type CanonicalWorkflowSlashSkill = (typeof CANONICAL_WORKFLOW_SLASH_SKILLS)[number];
 export interface ExplicitWorkflowSlashInvocation {
     /** Canonical workflow skill name (lowercase, no `oh-my-claudecode:` prefix). */
@@ -100,7 +101,7 @@ export interface TaskSizeAwareKeywordsResult {
 }
 /**
  * Get all keywords with task-size-based filtering applied.
- * For small tasks, heavy orchestration modes (ralph/autopilot/team/ultrawork etc.)
+ * For small tasks, heavy orchestration modes (ralph/autopilot/team etc.)
  * are suppressed to avoid over-orchestration.
  *
  * This is the recommended function to use in the bridge hook for keyword detection.

@@ -27,6 +27,16 @@ function runKeywordHook(scriptPath: string, prompt: string) {
   ) as Record<string, unknown>;
 }
 
+function runPersistentModeHook(scriptPath: string, payload: Record<string, unknown>) {
+  const output = execFileSync('node', [scriptPath], {
+    cwd: packageRoot,
+    input: JSON.stringify(payload),
+    encoding: 'utf-8',
+  }).trim();
+  const lines = output ? output.split('\n') : [];
+  return JSON.parse(lines.at(-1) ?? '{}') as Record<string, unknown>;
+}
+
 function runPreToolHook(scriptPath: string, command: string) {
   return runPreToolPayload(scriptPath, {
     tool_name: 'Bash',
@@ -103,10 +113,10 @@ describe('keyword-detector packaged artifacts', () => {
 
   it('keeps multi-skill keyword payloads under a compact budget', () => {
     const pluginPath = join(packageRoot, 'scripts', 'keyword-detector.mjs');
-    const result = runKeywordHook(pluginPath, 'ralph this with ultrawork and plan this migration');
+    const result = runKeywordHook(pluginPath, 'ralph this with deep interview and plan this migration');
     const context = JSON.stringify(result);
 
-    expect(context).toContain('[MAGIC KEYWORDS DETECTED: RALPH, ULTRAWORK]');
+    expect(context).toContain('[MAGIC KEYWORDS DETECTED: RALPH, DEEP-INTERVIEW]');
     expect(context).toContain('Do not inline full SKILL.md files');
     expect(context).not.toContain('[RALPH + ULTRAWORK');
     expect(context.length).toBeLessThan(4000);
@@ -595,7 +605,7 @@ OMC Ultrawork = "특수부대 작전 반"
         expect(contextOf(runIn(scriptPath, `ralph-canonical-wins-${basename(scriptPath)}`))).not.toContain('ralph-loop');
       }
 
-      // P. Multi-skill routing (`ralph ultrawork`) carries the same notice as the
+      // P. Multi-skill routing (`ralph deep interview`) carries the same notice as the
       //    single-skill path; otherwise combining keywords bypasses disambiguation.
       writeSettings({ enabledPlugins: { 'ralph-loop@claude-plugins-official': true } });
       writeRegistry({
@@ -603,15 +613,15 @@ OMC Ultrawork = "특수부대 작전 반"
         'oh-my-claudecode@omc': [{ installPath: omcRoot, version: '4.15.4', enabled: true }],
       });
       for (const scriptPath of [templatePath, pluginPath]) {
-        const context = contextOf(runIn(scriptPath, `ralph-multi-${basename(scriptPath)}`, '/ralph ultrawork fix the parser'));
-        expect(context).toContain('[MAGIC KEYWORDS DETECTED: RALPH, ULTRAWORK]');
+        const context = contextOf(runIn(scriptPath, `ralph-multi-${basename(scriptPath)}`, '/ralph deep interview fix the parser'));
+        expect(context).toContain('[MAGIC KEYWORDS DETECTED: RALPH, DEEP-INTERVIEW]');
         expect(context).toContain('official Anthropic `ralph-loop` plugin is also installed');
         expect(context).toContain('use `/ralph-loop` for the official plugin');
       }
 
       // P2. Multi-skill routing without ralph never carries the notice.
       for (const scriptPath of [templatePath, pluginPath]) {
-        const context = contextOf(runIn(scriptPath, `nonralph-multi-${basename(scriptPath)}`, 'autopilot and ultrawork this repo'));
+        const context = contextOf(runIn(scriptPath, `nonralph-multi-${basename(scriptPath)}`, 'autopilot and deep interview this repo'));
         expect(context).toContain('[MAGIC KEYWORDS DETECTED:');
         expect(context).not.toContain('ralph-loop');
       }
@@ -619,7 +629,7 @@ OMC Ultrawork = "특수부대 작전 반"
       // P3. Multi-skill routing stays silent when the official plugin is disabled.
       writeSettings({ enabledPlugins: { 'ralph-loop@claude-plugins-official': false } });
       for (const scriptPath of [templatePath, pluginPath]) {
-        expect(contextOf(runIn(scriptPath, `ralph-multi-disabled-${basename(scriptPath)}`, '/ralph ultrawork fix the parser'))).not.toContain('ralph-loop');
+        expect(contextOf(runIn(scriptPath, `ralph-multi-disabled-${basename(scriptPath)}`, '/ralph deep interview fix the parser'))).not.toContain('ralph-loop');
       }
 
       // Q. Plugin enablement is resolved across Claude Code settings scopes, not
@@ -638,7 +648,7 @@ OMC Ultrawork = "특수부대 작전 반"
       writeProjectSettings(projectSettingsPath, { enabledPlugins: { 'ralph-loop@claude-plugins-official': false } });
       for (const scriptPath of [templatePath, pluginPath]) {
         expect(contextOf(runIn(scriptPath, `ralph-proj-off-${basename(scriptPath)}`))).not.toContain('ralph-loop');
-        expect(contextOf(runIn(scriptPath, `ralph-proj-off-multi-${basename(scriptPath)}`, '/ralph ultrawork fix the parser'))).not.toContain('ralph-loop');
+        expect(contextOf(runIn(scriptPath, `ralph-proj-off-multi-${basename(scriptPath)}`, '/ralph deep interview fix the parser'))).not.toContain('ralph-loop');
       }
 
       // Q2. `.claude/settings.local.json` outranks `.claude/settings.json`.
@@ -1026,6 +1036,43 @@ describe('atomic write packaged helpers', () => {
 });
 
 describe('workflow profile runtime packaged artifacts (#3487)', () => {
+  it('ignores legacy Ultrawork state in packaged persistent hooks', () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'persistent-mode-retired-ultrawork-'));
+    const sessionId = 'retired-ultrawork-template-test';
+    const sessionDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+    const statePath = join(sessionDir, 'ultrawork-state.json');
+    const legacyState = {
+      active: true,
+      session_id: sessionId,
+      started_at: new Date().toISOString(),
+      last_checked_at: new Date().toISOString(),
+      reinforcement_count: 0,
+      original_prompt: 'legacy Ultrawork work must not block the stop hook',
+    };
+
+    try {
+      mkdirSync(sessionDir, { recursive: true });
+      writeFileSync(statePath, JSON.stringify(legacyState));
+      execFileSync('git', ['init', '-q'], { cwd: tempDir });
+
+      for (const script of [
+        join(packageRoot, 'scripts', 'persistent-mode.mjs'),
+        join(packageRoot, 'templates', 'hooks', 'persistent-mode.mjs'),
+      ]) {
+        const output = runPersistentModeHook(script, {
+          cwd: tempDir,
+          directory: tempDir,
+          session_id: sessionId,
+        });
+        expect(output.continue).toBe(true);
+        expect(output.decision).not.toBe('block');
+        expect(JSON.parse(readFileSync(statePath, 'utf-8'))).toEqual(legacyState);
+      }
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it('ships the same descriptor and stop-transition helper with plugin and standalone hook payloads', () => {
     const templateHelper = readFileSync(join(packageRoot, 'templates', 'hooks', 'lib', 'workflow-profile-runtime.mjs'), 'utf-8');
     const pluginHelper = readFileSync(join(packageRoot, 'scripts', 'lib', 'workflow-profile-runtime.mjs'), 'utf-8');

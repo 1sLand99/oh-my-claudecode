@@ -6,7 +6,6 @@
  */
 
 import type { MagicKeyword, PluginConfig } from '../shared/types.js';
-import { getUltraworkMessage } from '../hooks/keyword-detector/ultrawork/index.js';
 
 /**
  * Code block pattern for stripping from detection
@@ -60,20 +59,6 @@ function hasActionableTrigger(text: string, trigger: string): boolean {
 
   return false;
 }
-
-/**
- * Ultrawork mode enhancement
- * Activates maximum performance with parallel agent orchestration
- */
-const ultraworkEnhancement: MagicKeyword = {
-  triggers: ['ultrawork', 'ulw', 'uw'],
-  description: 'Activates maximum performance mode with parallel agent orchestration',
-  action: (prompt: string, agentName?: string, modelId?: string) => {
-    // Remove the trigger word and add enhancement instructions
-    const cleanPrompt = removeTriggerWords(prompt, ['ultrawork', 'ulw', 'uw']);
-    return getUltraworkMessage(agentName, modelId) + cleanPrompt;
-  }
-};
 
 /**
  * Search mode enhancement - multilingual support
@@ -163,7 +148,6 @@ function removeTriggerWords(prompt: string, triggers: string[]): string {
  * All built-in magic keyword definitions
  */
 export const builtInMagicKeywords: MagicKeyword[] = [
-  ultraworkEnhancement,
   searchEnhancement,
   analyzeEnhancement,
   ultrathinkEnhancement
@@ -177,12 +161,6 @@ export function createMagicKeywordProcessor(config?: PluginConfig['magicKeywords
 
   // Override triggers from config
   if (config) {
-    if (config.ultrawork) {
-      const ultrawork = keywords.find(k => k.triggers.includes('ultrawork'));
-      if (ultrawork) {
-        ultrawork.triggers = config.ultrawork;
-      }
-    }
     if (config.search) {
       const search = keywords.find(k => k.triggers.includes('search'));
       if (search) {
@@ -230,10 +208,6 @@ export function detectMagicKeywords(prompt: string, config?: PluginConfig['magic
 
   // Apply config overrides
   if (config) {
-    if (config.ultrawork) {
-      const ultrawork = keywords.find(k => k.triggers.includes('ultrawork'));
-      if (ultrawork) ultrawork.triggers = config.ultrawork;
-    }
     if (config.search) {
       const search = keywords.find(k => k.triggers.includes('search'));
       if (search) search.triggers = config.search;

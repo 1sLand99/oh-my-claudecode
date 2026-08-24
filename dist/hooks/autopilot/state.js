@@ -13,7 +13,7 @@ import { resolveStatePath, resolveSessionStatePath, getOmcRoot, } from "../../li
 import { DEFAULT_CONFIG } from "./types.js";
 import { loadConfig } from "../../config/loader.js";
 import { resolvePlanOutputAbsolutePath } from "../../config/plan-output.js";
-import { readRalphState, writeRalphState, clearRalphState, clearLinkedUltraworkState, } from "../ralph/index.js";
+import { readRalphState, writeRalphState, clearRalphState, } from "../ralph/index.js";
 import { canStartMode } from "../mode-registry/index.js";
 import { namedWorkflowRuntimeSupported, validateNamedWorkflowState, validateNamedWorkflowStateStructure, } from "./named-workflow-resume-validator.js";
 const SPEC_DIR = "autopilot";
@@ -221,7 +221,6 @@ export function initAutopilot(directory, idea, sessionId, config) {
         },
         execution: {
             ralph_iterations: 0,
-            ultrawork_active: false,
             tasks_completed: 0,
             tasks_total: 0,
             files_created: [],
@@ -354,7 +353,7 @@ export function getPlanPath(directory) {
  *
  * This:
  * 1. Saves Ralph's progress to autopilot state
- * 2. Cleanly terminates Ralph mode (and linked Ultrawork)
+ * 2. Cleanly terminates Ralph mode
  * 3. Transitions to the QA phase
  * 4. Preserves context for potential rollback
  */
@@ -371,7 +370,6 @@ export function transitionRalphToUltraQA(directory, sessionId) {
     const executionUpdated = updateExecution(directory, {
         ralph_iterations: ralphState?.iteration ?? autopilotState.execution.ralph_iterations,
         ralph_completed_at: new Date().toISOString(),
-        ultrawork_active: false,
     }, sessionId);
     if (!executionUpdated) {
         return {
@@ -382,9 +380,6 @@ export function transitionRalphToUltraQA(directory, sessionId) {
     // Step 2: Deactivate Ralph, keeping the state file on disk for rollback.
     if (ralphState) {
         writeRalphState(directory, { ...ralphState, active: false }, sessionId);
-    }
-    if (ralphState?.linked_ultrawork) {
-        clearLinkedUltraworkState(directory, sessionId);
     }
     // Step 3: Transition to QA phase
     const newState = transitionPhase(directory, "qa", sessionId);
@@ -478,7 +473,7 @@ The execution phase is complete. Transitioning to QA phase.
 
 The transition handler has:
 1. Preserved Ralph iteration count and progress
-2. Cleared Ralph state (and linked Ultrawork)
+2. Cleared Ralph state
 3. Transitioned the autopilot phase to QA
 
 You are now in QA phase. Run the QA cycle:
@@ -532,7 +527,7 @@ Signal when Critic approves the plan: PLANNING_COMPLETE
     if (fromPhase === "planning" && toPhase === "execution") {
         return `## PHASE TRANSITION: Planning → Execution
 
-The plan has been approved. Starting execution phase with Ralph + Ultrawork.
+The plan has been approved. Starting execution with executor agents and Ralph persistence.
 
 Execute tasks from the plan in parallel where possible.
 

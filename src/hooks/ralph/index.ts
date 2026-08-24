@@ -15,7 +15,6 @@ export {
   writeRalphState,
   restoreRalphStateIfAbsent,
   clearRalphState,
-  clearLinkedUltraworkState,
   incrementRalphIteration,
 
   // Loop control

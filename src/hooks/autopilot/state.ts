@@ -35,7 +35,6 @@ import {
   readRalphState,
   writeRalphState,
   clearRalphState,
-  clearLinkedUltraworkState,
 } from "../ralph/index.js";
 import { canStartMode } from "../mode-registry/index.js";
 import {
@@ -337,7 +336,6 @@ export function initAutopilot(
 
     execution: {
       ralph_iterations: 0,
-      ultrawork_active: false,
       tasks_completed: 0,
       tasks_total: 0,
       files_created: [],
@@ -533,7 +531,7 @@ export interface TransitionResult {
  *
  * This:
  * 1. Saves Ralph's progress to autopilot state
- * 2. Cleanly terminates Ralph mode (and linked Ultrawork)
+ * 2. Cleanly terminates Ralph mode
  * 3. Transitions to the QA phase
  * 4. Preserves context for potential rollback
  */
@@ -559,7 +557,6 @@ export function transitionRalphToUltraQA(
       ralph_iterations:
         ralphState?.iteration ?? autopilotState.execution.ralph_iterations,
       ralph_completed_at: new Date().toISOString(),
-      ultrawork_active: false,
     },
     sessionId,
   );
@@ -575,10 +572,6 @@ export function transitionRalphToUltraQA(
   if (ralphState) {
     writeRalphState(directory, { ...ralphState, active: false }, sessionId);
   }
-  if (ralphState?.linked_ultrawork) {
-    clearLinkedUltraworkState(directory, sessionId);
-  }
-
   // Step 3: Transition to QA phase
   const newState = transitionPhase(directory, "qa", sessionId);
   if (!newState) {
@@ -703,7 +696,7 @@ The execution phase is complete. Transitioning to QA phase.
 
 The transition handler has:
 1. Preserved Ralph iteration count and progress
-2. Cleared Ralph state (and linked Ultrawork)
+2. Cleared Ralph state
 3. Transitioned the autopilot phase to QA
 
 You are now in QA phase. Run the QA cycle:
@@ -760,7 +753,7 @@ Signal when Critic approves the plan: PLANNING_COMPLETE
   if (fromPhase === "planning" && toPhase === "execution") {
     return `## PHASE TRANSITION: Planning → Execution
 
-The plan has been approved. Starting execution phase with Ralph + Ultrawork.
+The plan has been approved. Starting execution with executor agents and Ralph persistence.
 
 Execute tasks from the plan in parallel where possible.
 

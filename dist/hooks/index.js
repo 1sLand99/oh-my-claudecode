@@ -15,7 +15,7 @@ detectKeywordsWithType, extractPromptText, removeCodeBlocks } from './keyword-de
 export { 
 // Ralph Hook (consolidated: loop, PRD, progress, verifier)
 // Loop
-createRalphLoopHook, readRalphState, writeRalphState, clearRalphState, clearLinkedUltraworkState, incrementRalphIteration, 
+createRalphLoopHook, readRalphState, writeRalphState, clearRalphState, incrementRalphIteration, 
 // PRD Integration
 hasPrd, getPrdCompletionStatus, getRalphContext, setCurrentStory, enablePrdMode, recordStoryProgress, recordPattern, shouldCompleteByPrd, 
 // PRD Stale-State Detection & Reconciliation (#3669)
@@ -81,9 +81,6 @@ nonInteractiveEnvHook, isNonInteractive, HOOK_NAME as NON_INTERACTIVE_ENV_HOOK_N
 export { 
 // Agent Usage Reminder
 createAgentUsageReminderHook, loadAgentUsageState, saveAgentUsageState, clearAgentUsageState, TARGET_TOOLS, AGENT_TOOLS, REMINDER_MESSAGE } from './agent-usage-reminder/index.js';
-export { 
-// Ultrawork State (Persistent Mode)
-activateUltrawork, deactivateUltrawork, readUltraworkState, writeUltraworkState, incrementReinforcement, shouldReinforceUltrawork, getUltraworkPersistenceMessage, createUltraworkStateHook } from './ultrawork/index.js';
 export { 
 // Persistent Mode (Unified Stop Handler)
 checkPersistentModes, createHookOutput } from './persistent-mode/index.js';

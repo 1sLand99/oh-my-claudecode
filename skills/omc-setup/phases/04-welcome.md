@@ -5,7 +5,7 @@
 Check if user has existing 2.x configuration:
 
 ```bash
-ls "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/commands/ralph-loop.md 2>/dev/null || ls "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/commands/ultrawork.md 2>/dev/null
+ls "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/commands/ralph-loop.md 2>/dev/null
 ```
 
 If found, this is an upgrade from 2.x. Set `IS_UPGRADE=true`.
@@ -32,11 +32,8 @@ Just include these words naturally in your request:
 |---------|--------|---------|
 | ralph | Persistence mode | "ralph: fix the auth bug" |
 | ralplan | Iterative planning | "ralplan this feature" |
-| ulw | Max parallelism | "ulw refactor the API" |
 | plan | Planning interview | "plan the new endpoints" |
 | team | Coordinated agents | "/team 3:executor fix errors" |
-
-**ralph includes ultrawork:** When you activate ralph mode, it automatically includes ultrawork's parallel execution. No need to combine keywords.
 
 TEAMS:
 Spawn coordinated agents with shared task lists and real-time messaging:
@@ -65,12 +62,11 @@ That's it! Just use Claude Code normally.
 OMC Setup Complete! (Upgraded from 2.x)
 
 GOOD NEWS: Your existing commands still work!
-- /ralph, /ultrawork, /omc-plan, etc. all still function
+- /ralph, /omc-plan, etc. still function
 
 WHAT'S NEW in 3.0:
 You no longer NEED those commands. Everything is automatic now:
 - Just say "don't stop until done" instead of /ralph
-- Just say "fast" or "parallel" instead of /ultrawork
 - Just say "plan this" instead of /omc-plan
 - Just say "stop" instead of /cancel
 
@@ -79,7 +75,6 @@ MAGIC KEYWORDS (power-user shortcuts):
 |---------|----------------|---------|
 | ralph | /ralph | "ralph: fix the bug" |
 | ralplan | /ralplan | "ralplan this feature" |
-| ulw | /ultrawork | "ulw refactor API" |
 | omc-plan | /omc-plan | "plan the endpoints" |
 | team | (new!) | "/team 3:executor fix errors" |
 

@@ -12,7 +12,7 @@ import {
   updateAutopilotStateIfCurrent,
   updateAutopilotStateIfExact,
 } from './state.js';
-import { clearRalphState, clearLinkedUltraworkState, readRalphState } from '../ralph/index.js';
+import { clearRalphState, readRalphState } from '../ralph/index.js';
 import type { AutopilotState } from './types.js';
 import { namedWorkflowRuntimeSupported, validateNamedWorkflowState, validateNamedWorkflowStateStructure } from './named-workflow-resume-validator.js';
 import { clearModeStateFile, readModeState } from '../../lib/mode-state-io.js';
@@ -117,19 +117,9 @@ export function cancelAutopilot(directory: string, sessionId?: string): CancelRe
 
   const ralphState = sessionId ? readRalphState(directory, sessionId) : readRalphState(directory);
   if (ralphState?.active) {
-    let mayClearRalph = true;
-    if (ralphState.linked_ultrawork) {
-      const cleared = sessionId ? clearLinkedUltraworkState(directory, sessionId) : clearLinkedUltraworkState(directory);
-      if (cleared) cleanedUp.push('ultrawork');
-      else { failedCleanup.push('ultrawork'); mayClearRalph = false; }
-    }
-    if (mayClearRalph) {
-      const cleared = sessionId ? clearRalphState(directory, sessionId) : clearRalphState(directory);
-      if (cleared) cleanedUp.push('ralph');
-      else failedCleanup.push('ralph');
-    } else {
-      failedCleanup.push('ralph');
-    }
+    const cleared = sessionId ? clearRalphState(directory, sessionId) : clearRalphState(directory);
+    if (cleared) cleanedUp.push('ralph');
+    else failedCleanup.push('ralph');
   }
 
   // Bounded cleanup of pre-existing retired ultraqa state (5.0.0 removal).
@@ -186,17 +176,8 @@ export function clearAutopilot(directory: string, sessionId?: string): CancelRes
   }
   const ralphState = sessionId ? readRalphState(directory, sessionId) : readRalphState(directory);
   if (ralphState) {
-    let mayClearRalph = true;
-    if (ralphState.linked_ultrawork) {
-      const cleared = sessionId ? clearLinkedUltraworkState(directory, sessionId) : clearLinkedUltraworkState(directory);
-      if (!cleared) { failedCleanup.push('ultrawork'); mayClearRalph = false; }
-    }
-    if (mayClearRalph) {
-      const cleared = sessionId ? clearRalphState(directory, sessionId) : clearRalphState(directory);
-      if (!cleared) failedCleanup.push('ralph');
-    } else {
-      failedCleanup.push('ralph');
-    }
+    const cleared = sessionId ? clearRalphState(directory, sessionId) : clearRalphState(directory);
+    if (!cleared) failedCleanup.push('ralph');
   }
 
   // Bounded cleanup of pre-existing retired ultraqa state (5.0.0 removal).

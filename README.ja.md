@@ -87,10 +87,11 @@ Team はステージ型パイプラインで実行されます:
 /omc-teams 1:claude  "implement the payment flow"
 ```
 
-Codex + Gemini を一つのコマンドで使うには **`/ccg`** スキルを使います:
+Codex と Gemini の助言を一緒に確認するには、`/ask codex` と `/ask gemini` を使い、Claude に結果を統合させます:
 
 ```bash
-/ccg Review this PR — architecture (Codex) and UI components (Gemini)
+/ask codex "Review this PR — architecture"
+/ask gemini "Review this PR — UI components"
 ```
 
 | スキル | ワーカー | 最適用途 |
@@ -98,7 +99,6 @@ Codex + Gemini を一つのコマンドで使うには **`/ccg`** スキルを�
 | `/omc-teams N:codex` | N 個の Codex CLI ペイン | コードレビュー、セキュリティ解析、アーキテクチャ |
 | `/omc-teams N:gemini` | N 個の Gemini CLI ペイン | UI/UX デザイン、ドキュメント、大規模コンテキスト |
 | `/omc-teams N:claude` | N 個の Claude CLI ペイン | tmux で Claude CLI を使う汎用タスク |
-| `/ccg` | Codex 1 個 + Gemini 1 個 | 並列トライモデルオーケストレーション |
 
 ワーカーはオンデマンドで起動し、タスク完了後に終了します — アイドルリソースの無駄なし。`codex` / `gemini` CLI のインストールとアクティブな tmux セッションが必要です。
 
@@ -152,9 +152,7 @@ Codex + Gemini を一つのコマンドで使うには **`/ccg`** スキルを�
 |------|---------|------|
 | **Team（推奨）** | ステージ型パイプライン | 共有タスクリストで協力する Claude エージェント |
 | **omc-teams** | tmux CLI ワーカー | Codex/Gemini CLI タスク; オンデマンド起動、完了後終了 |
-| **ccg** | トライモデル並列 | Codex（分析）+ Gemini（デザイン）、Claude が統合 |
 | **Autopilot** | 自律実行 | 最小限のセレモニーで end-to-end 機能開発 |
-| **Ultrawork** | 最大並列 | Team 不要な並列修正/リファクタリング |
 | **Ralph** | 粘り強いモード | 完全に完了させるべきタスク |
 | **Pipeline** | 逐次処理 | 厳密な順序が必要な多段階変換 |
 | **Swarm / Ultrapilot（レガシー）** | Team へルーティング | 既存ワークフローと古いドキュメント |
@@ -167,7 +165,7 @@ Codex + Gemini を一つのコマンドで使うには **`/ccg`** スキルを�
 
 ### 開発者体験
 
-- **マジックキーワード** - `ralph`、`ulw`、`plan` で明示的制御
+- **マジックキーワード** - `ralph`、`ralplan` で明示的制御。並列タスクには `/team` を使います
 - **HUD ステータスライン** - ステータスバーでリアルタイムのオーケストレーション指標を表示
   - `claude --plugin-dir <path>` で Claude Code を直接起動する場合 (`omc` shim をバイパス)、シェルで `OMC_PLUGIN_ROOT=<path>` をエクスポートして、HUD バンドルがプラグイン ローダーと同じ checkout に解決されるようにします。詳細については、[REFERENCE.md の Plugin directory flags セクション](./docs/REFERENCE.md#plugin-directory-flags) を参照してください。
 
@@ -218,10 +216,8 @@ server.py:42 のハンドラーを try/except ClientDisconnectedError で囲ん�
 |---------|-----|-----|
 | `team` | 標準 Team オーケストレーション | `/team 3:executor "fix all TypeScript errors"` |
 | `omc-teams` | tmux CLI ワーカー (codex/gemini/claude) | `/omc-teams 2:codex "security review"` |
-| `ccg` | トライモデル Codex+Gemini オーケストレーション | `/ccg review this PR` |
 | `autopilot` | 完全自律実行 | `autopilot: build a todo app` |
 | `ralph` | 粘り強いモード | `ralph: refactor auth` |
-| `ulw` | 最大並列化 | `ulw fix all errors` |
 | `plan` | 計画インタビュー | `plan the API` |
 | `ralplan` | 反復的計画合意形成 | `ralplan this feature` |
 | `deep-interview` | ソクラテス式の要件明確化 | `deep-interview "vague idea"` |
@@ -229,7 +225,7 @@ server.py:42 のハンドラーを try/except ClientDisconnectedError で囲ん�
 | `ultrapilot` | **非推奨** — 代わりに `team` を使用 | `ultrapilot: build a fullstack app` |
 
 **注意:**
-- **ralph は ultrawork を含む:** ralph モードを有効にすると、ultrawork の並列実行が自動的に含まれます。キーワードを組み合わせる必要はありません。
+- **並列タスクには Team または executor 委譲を使います:** 複数タスクの調整には `/team`、単一の実装タスクには executor を使い、検証完了まで継続する場合は Ralph を使います。
 - `swarm N agents` 構文はエージェント数抽出のために引き続き認識されますが、v4.1.7+ ではランタイムは Team ベースです。
 
 ---

@@ -58,17 +58,17 @@ import type { AutopilotState } from '../hooks/autopilot/types.js';
 // are first-class modes with dedicated MODE_CONFIGS entries; ralplan remains an
 // extra state-only mode handled via the registry-fallback path).
 const EXECUTION_MODES: [string, ...string[]] = [
-  'autopilot', 'autoresearch', 'team', 'ralph', 'ultrawork', 'deep-interview', 'self-improve'
+  'autopilot', 'autoresearch', 'team', 'ralph', 'deep-interview', 'self-improve'
 ];
 
-// ultraqa was retired in 5.0.0; its state stays read/clear-eligible for
+// ultrawork and ultraqa were retired; their state stays read/clear-eligible for
 // bounded cleanup of pre-existing retired state, but is not write-eligible.
-const RETIRED_READ_CLEAR_MODES = ['ultraqa'] as const;
+const RETIRED_STATE_MODES: [string, ...string[]] = ['ultrawork', 'ultraqa'];
 
 // merge-readiness is read/clear-eligible (state_read/status/clear + /cancel work) but NOT write-eligible.
 const STATE_TOOL_MODES: [string, ...string[]] = [
   ...EXECUTION_MODES,
-  ...RETIRED_READ_CLEAR_MODES,
+  ...RETIRED_STATE_MODES,
   'ralplan',
   'omc-teams',
   'skill-active',
@@ -88,6 +88,11 @@ type StateToolMode = typeof STATE_TOOL_MODES[number];
 const CANCEL_SIGNAL_TTL_MS = 30_000;
 const OWNER_SESSION_FALLBACK_MODES = new Set<StateToolMode>(['ralph']);
 const CONVERGED_STATE_PATH_MODES = new Set<StateToolMode>(['ralph', 'ultrawork']);
+const RETIRED_WORKFLOW_MODES = new Set<StateToolMode>(['ultrawork']);
+
+function isRetiredWorkflowMode(mode: string): boolean {
+  return RETIRED_WORKFLOW_MODES.has(mode as StateToolMode);
+}
 
 function getStateFileName(mode: StateToolMode): string {
   const normalizedName = mode.endsWith('-state') ? mode : `${mode}-state`;
@@ -1067,6 +1072,10 @@ export const stateWriteTool: ToolDefinition<{
         }
       }
 
+      if (isRetiredWorkflowMode(mode) && builtState.active === true) {
+        throw new Error('ultrawork is retired and cannot be activated via state_write; use state_clear to remove legacy state');
+      }
+
       const requestedRunId = typeof builtState.workflowRunId === 'string' ? builtState.workflowRunId : undefined;
       const requestedStateDigest = typeof builtState.target_state_sha256 === 'string' ? builtState.target_state_sha256 : undefined;
       const isExactNamedPause = isExactNamedPauseRequest(builtState);
@@ -1822,7 +1831,8 @@ export const stateListActiveTool: ToolDefinition<{
         validateSessionId(sessionId);
 
         // Get active modes from registry for this session
-        const activeModes: string[] = [...getActiveModes(root, sessionId)];
+        const activeModes: string[] = [...getActiveModes(root, sessionId)]
+          .filter((activeMode) => !isRetiredWorkflowMode(activeMode));
 
         for (const mode of EXTRA_STATE_ONLY_MODES) {
           try {
@@ -1840,6 +1850,7 @@ export const stateListActiveTool: ToolDefinition<{
         }
 
         for (const mode of CONVERGED_STATE_PATH_MODES) {
+          if (isRetiredWorkflowMode(mode)) continue;
           if (!activeModes.includes(mode) && hasActiveConvergedState(mode, root, sessionId)) {
             activeModes.push(mode);
           }
@@ -1868,7 +1879,8 @@ export const stateListActiveTool: ToolDefinition<{
       const modeSessionMap = new Map<string, string[]>();
 
       // Check legacy paths
-      const legacyActiveModes: string[] = [...getActiveModes(root)];
+      const legacyActiveModes: string[] = [...getActiveModes(root)]
+        .filter((activeMode) => !isRetiredWorkflowMode(activeMode));
       for (const mode of EXTRA_STATE_ONLY_MODES) {
         const statePath = getStatePath(mode, root);
         if (existsSync(statePath)) {
@@ -1885,6 +1897,7 @@ export const stateListActiveTool: ToolDefinition<{
       }
 
       for (const mode of CONVERGED_STATE_PATH_MODES) {
+        if (isRetiredWorkflowMode(mode)) continue;
         if (!legacyActiveModes.includes(mode) && hasActiveConvergedState(mode, root)) {
           legacyActiveModes.push(mode);
         }
@@ -1900,7 +1913,8 @@ export const stateListActiveTool: ToolDefinition<{
       // Check all sessions
       const sessionIds = listSessionIds(root);
       for (const sid of sessionIds) {
-        const sessionActiveModes: string[] = [...getActiveModes(root, sid)];
+        const sessionActiveModes: string[] = [...getActiveModes(root, sid)]
+          .filter((activeMode) => !isRetiredWorkflowMode(activeMode));
 
         for (const mode of EXTRA_STATE_ONLY_MODES) {
           try {
@@ -1992,7 +2006,7 @@ export const stateGetStatusTool: ToolDefinition<{
             ? getStateFilePath(root, mode as ExecutionMode, sessionId)
             : resolveSessionStatePath(mode, sessionId, root);
 
-          const active = MODE_CONFIGS[mode as ExecutionMode]
+          const active = !isRetiredWorkflowMode(mode) && (MODE_CONFIGS[mode as ExecutionMode]
             ? isModeActive(mode as ExecutionMode, root, sessionId)
             : existsSync(statePath) && (() => {
                 try {
@@ -2000,7 +2014,7 @@ export const stateGetStatusTool: ToolDefinition<{
                   const state = JSON.parse(content);
                   return state.active === true;
                 } catch { return false; }
-              })();
+              })());
 
           let statePreview = 'No state file';
           if (existsSync(statePath)) {
@@ -2030,7 +2044,7 @@ export const stateGetStatusTool: ToolDefinition<{
 
         // No session_id: show all sessions + legacy
         const legacyPath = getStatePath(mode, root);
-        const legacyActive = MODE_CONFIGS[mode as ExecutionMode]
+        const legacyActive = !isRetiredWorkflowMode(mode) && (MODE_CONFIGS[mode as ExecutionMode]
           ? isModeActive(mode as ExecutionMode, root)
           : existsSync(legacyPath) && (() => {
               try {
@@ -2038,7 +2052,7 @@ export const stateGetStatusTool: ToolDefinition<{
                 const state = JSON.parse(content);
                 return state.active === true;
               } catch { return false; }
-            })();
+            })());
 
         lines.push(`### Legacy Path`);
         lines.push(`- **Active:** ${legacyActive ? 'Yes' : 'No'}`);
@@ -2046,7 +2060,7 @@ export const stateGetStatusTool: ToolDefinition<{
         lines.push(`- **Exists:** ${existsSync(legacyPath) ? 'Yes' : 'No'}\n`);
 
         // Show active sessions for this mode
-        const activeSessions = MODE_CONFIGS[mode as ExecutionMode]
+        const activeSessions = isRetiredWorkflowMode(mode) ? [] : MODE_CONFIGS[mode as ExecutionMode]
           ? getActiveSessionsForMode(mode as ExecutionMode, root)
           : listSessionIds(root).filter(sid => {
               try {
@@ -2080,7 +2094,9 @@ export const stateGetStatusTool: ToolDefinition<{
       }
 
       // All modes status
-      const statuses = getAllModeStatuses(root, sessionId);
+      const statuses = getAllModeStatuses(root, sessionId).map((status) =>
+        isRetiredWorkflowMode(status.mode) ? { ...status, active: false } : status,
+      );
       const lines = sessionId
         ? [`## All Mode Statuses (session: ${sessionId})\n`]
         : ['## All Mode Statuses\n'];
@@ -2091,7 +2107,7 @@ export const stateGetStatusTool: ToolDefinition<{
         lines.push(`   Path: \`${status.stateFilePath}\``);
 
         // Show active sessions if no specific session_id
-        if (!sessionId && MODE_CONFIGS[status.mode]) {
+        if (!sessionId && !isRetiredWorkflowMode(status.mode) && MODE_CONFIGS[status.mode]) {
           const activeSessions = getActiveSessionsForMode(status.mode, root);
           if (activeSessions.length > 0) {
             lines.push(`   Active sessions: ${activeSessions.join(', ')}`);

@@ -90,7 +90,6 @@ export function buildDefaultConfig(): PluginConfig {
       maxBackgroundTasks: 5,
     },
     magicKeywords: {
-      ultrawork: ["ultrawork", "ulw", "uw"],
       search: ["search", "find", "locate"],
       analyze: ["analyze", "investigate", "examine"],
       ultrathink: ["ultrathink", "think", "reason", "ponder"],
@@ -200,7 +199,7 @@ export function buildDefaultConfig(): PluginConfig {
         context: ["CONTEXT"],
       },
       blockingTools: ["Edit", "MultiEdit", "Write", "Agent", "Task"],
-      executionKeywords: ["ralph", "ultrawork", "autopilot"],
+      executionKeywords: ["ralph", "autopilot"],
     },
   };
 }
@@ -1143,7 +1142,6 @@ export function generateConfigSchema(): object {
         type: "object",
         description: "Magic keyword triggers",
         properties: {
-          ultrawork: { type: "array", items: { type: "string" } },
           search: { type: "array", items: { type: "string" } },
           analyze: { type: "array", items: { type: "string" } },
           ultrathink: { type: "array", items: { type: "string" } },

@@ -42,7 +42,6 @@ const PROTECTION_CONFIGS = {
 
 const SKILL_PROTECTION = {
   // Already have mode state → no protection needed
-  autopilot: 'none', ralph: 'none', ultrawork: 'none', team: 'none',
   'omc-teams': 'none', cancel: 'none',
   // Instant / read-only → no protection needed
   trace: 'none', hud: 'none', 'omc-doctor': 'none', 'omc-help': 'none',
@@ -55,13 +54,16 @@ const SKILL_PROTECTION = {
   ralplan: 'medium', review: 'medium', 'external-context': 'medium',
   sciomc: 'medium', skillify: 'medium', learner: 'medium', 'omc-setup': 'medium',
   'mcp-setup': 'medium', 'project-session-manager': 'medium',
-  'writer-memory': 'medium', 'ralph-init': 'medium', ccg: 'medium',
+  'writer-memory': 'medium', 'ralph-init': 'medium',
   // Heavy protection (10 reinforcements)
   deepinit: 'heavy',
 };
 
+const RETIRED_SKILL_NAMES = new Set(['ultrawork', 'ccg']);
+
 function getSkillProtection(skillName) {
   const normalized = (skillName || '').toLowerCase().replace(/^oh-my-claudecode:/, '');
+  if (RETIRED_SKILL_NAMES.has(normalized)) return 'none';
   return SKILL_PROTECTION[normalized] || 'light';
 }
 
@@ -144,10 +146,6 @@ async function confirmSkillModeStates(directory, skillName, sessionId) {
   switch (skillName) {
     case 'ralph':
       await clearAwaitingConfirmationFlag(directory, 'ralph', sessionId);
-      await clearAwaitingConfirmationFlag(directory, 'ultrawork', sessionId);
-      break;
-    case 'ultrawork':
-      await clearAwaitingConfirmationFlag(directory, 'ultrawork', sessionId);
       break;
     case 'autopilot':
       await clearAwaitingConfirmationFlag(directory, 'autopilot', sessionId);
@@ -411,7 +409,7 @@ const FILE_MODIFY_PATTERNS = [
 const SOURCE_EXT_PATTERN = /\.(ts|tsx|js|jsx|mjs|cjs|py|pyw|go|rs|java|kt|scala|c|cpp|cc|h|hpp|rb|php|svelte|vue|graphql|gql|sh|bash|zsh)(?!\w)/i;
 const WORKER_BLOCKED_TMUX_PATTERN = /\btmux\s+(split-window|new-session|new-window|join-pane)\b/i;
 const WORKER_BLOCKED_TEAM_CLI_PATTERN = /\bom[cx]\s+team\b(?!\s+api\b)/i;
-const WORKER_BLOCKED_SKILL_PATTERN = /\$(team|ultrawork|autopilot|ralph)\b/i;
+const WORKER_BLOCKED_SKILL_PATTERN = /\$(team|autopilot|ralph)\b/i;
 
 function teamWorkerIdentity() {
   return (process.env.OMC_TEAM_WORKER || process.env.OMX_TEAM_WORKER || '').trim();
@@ -426,7 +424,7 @@ function workerCommandViolation(command) {
     return 'Team worker cannot run team orchestration commands (except `omc team api ...`).';
   }
   if (WORKER_BLOCKED_SKILL_PATTERN.test(command)) {
-    return 'Team worker cannot invoke orchestration skills (`$team`, `$ultrawork`, `$autopilot`, `$ralph`).';
+    return 'Team worker cannot invoke orchestration skills (`$team`, `$autopilot`, `$ralph`).';
   }
   return null;
 }

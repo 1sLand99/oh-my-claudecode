@@ -205,6 +205,8 @@ describe('Ralph PRD-Mandatory', () => {
       const state = readRalphState(testDir);
       expect(state).not.toBeNull();
       expect(state!.prd_mode).toBe(true);
+      expect(Object.prototype.hasOwnProperty.call(state!, 'linked_ultrawork')).toBe(false);
+      expect(existsSync(join(testDir, '.omc', 'state', 'ultrawork-state.json'))).toBe(false);
     });
 
     it('should set current_story_id to next incomplete story', () => {

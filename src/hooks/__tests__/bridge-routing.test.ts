@@ -115,7 +115,7 @@ describe('processHook - Routing Matrix', () => {
       });
     }
 
-    it('should handle keyword-detector with a keyword prompt', async () => {
+    it('should pass through a retired ultrawork prompt without routing', async () => {
       const input: HookInput = {
         sessionId: 'test-session',
         prompt: 'ultrawork this task',
@@ -124,36 +124,65 @@ describe('processHook - Routing Matrix', () => {
 
       const result = await processHook('keyword-detector', input);
       expect(result.continue).toBe(true);
-      // Should detect the keyword and return a message
-      expect(result.message).toBeDefined();
-      expect(typeof result.message).toBe('string');
+      expect(result.message).toBeUndefined();
+      expect((result as unknown as { hookSpecificOutput?: unknown }).hookSpecificOutput).toBeUndefined();
     });
 
-    it('routes ultrawork planner context ahead of model routing', async () => {
+    it.each([
+      '/ultrawork build me an app',
+      '/ulw ask codex to review',
+      '/uw build me an app',
+      '/ccg build me an app',
+      '/claude-codex-gemini ask codex to review',
+      '/울트라워크 build me an app',
+      '/ウルトラワーク ask codex to review',
+      '/씨씨지 build me an app',
+      '/シーシージー ask codex to review',
+      '/omc:ultrawork build me an app',
+      '/oh-my-claudecode:ulw ask codex to review',
+      '/omc:ccg build me an app',
+      '/oh-my-claudecode:claude-codex-gemini ask codex to review',
+      '/omc:울트라워크 build me an app',
+      '/oh-my-claudecode:ウルトラワーク ask codex to review',
+      '/omc:씨씨지 build me an app',
+      '/oh-my-claudecode:シーシージー ask codex to review',
+    ])('passes retired slash command %s without guidance', async (prompt) => {
       const result = await processHook('keyword-detector', {
         sessionId: 'test-session',
-        prompt: '/ultrawork fix the complex multi-step regression in src/hooks/bridge.ts function processKeywordDetector by preserving keyword routing, state activation behavior, verification messaging, prompt enhancement flow, bridge wiring, runtime output guarantees, prompt-context propagation, and related test coverage, installer constants, generated bridge artifacts, keyword false-positive behavior, session isolation assumptions, and developer-facing documentation without changing unrelated orchestration behavior elsewhere in this worktree',
+        prompt,
+        directory: '/tmp/test-routing',
+      });
+
+      expect(result.continue).toBe(true);
+      expect(result.message).toBeUndefined();
+      expect((result as unknown as { hookSpecificOutput?: unknown }).hookSpecificOutput).toBeUndefined();
+    });
+
+    it('passes through retired ultrawork planner context without routing', async () => {
+      const result = await processHook('keyword-detector', {
+        sessionId: 'test-session',
+        prompt: '/omc:ulw build me an app while preserving keyword routing, state activation behavior, verification messaging, prompt enhancement flow, bridge wiring, runtime output guarantees, prompt-context propagation, and related test coverage, installer constants, generated bridge artifacts, keyword false-positive behavior, session isolation assumptions, and developer-facing documentation without changing unrelated orchestration behavior elsewhere in this worktree',
         directory: '/tmp/test-routing',
         agent_name: 'planner',
         model: 'gpt-5.4',
       } as HookInput & { agent_name: string; model: string });
 
       expect(result.continue).toBe(true);
-      expect(result.message).toContain('CRITICAL: YOU ARE A PLANNER, NOT AN IMPLEMENTER');
-      expect(result.message).toContain('Parallel Execution Waves');
+      expect(result.message).toBeUndefined();
+      expect((result as unknown as { hookSpecificOutput?: unknown }).hookSpecificOutput).toBeUndefined();
     });
 
-    it('routes ultrawork gpt models to the GPT-oriented protocol', async () => {
+    it('passes through retired CCG gpt model context without routing', async () => {
       const result = await processHook('keyword-detector', {
         sessionId: 'test-session',
-        prompt: '/ultrawork fix the complex multi-step regression in src/hooks/bridge.ts function processKeywordDetector by preserving keyword routing, state activation behavior, verification messaging, prompt enhancement flow, bridge wiring, runtime output guarantees, prompt-context propagation, and related test coverage, installer constants, generated bridge artifacts, keyword false-positive behavior, session isolation assumptions, and developer-facing documentation without changing unrelated orchestration behavior elsewhere in this worktree',
+        prompt: '/oh-my-claudecode:ccg ask codex to review while preserving keyword routing, state activation behavior, verification messaging, prompt enhancement flow, bridge wiring, runtime output guarantees, prompt-context propagation, and related test coverage, installer constants, generated bridge artifacts, keyword false-positive behavior, session isolation assumptions, and developer-facing documentation without changing unrelated orchestration behavior elsewhere in this worktree',
         directory: '/tmp/test-routing',
         model: 'gpt-5.4',
       } as HookInput & { model: string });
 
       expect(result.continue).toBe(true);
-      expect(result.message).toContain('<output_verbosity_spec>');
-      expect(result.message).toContain('DECISION FRAMEWORK: Self vs Delegate');
+      expect(result.message).toBeUndefined();
+      expect((result as unknown as { hookSpecificOutput?: unknown }).hookSpecificOutput).toBeUndefined();
     });
 
     it('should route code review keyword to the review mode message', async () => {
@@ -238,7 +267,7 @@ Read src/hooks/bridge.ts before editing.`,
 
         await processHook('keyword-detector', {
           sessionId,
-          prompt: `ultrawork fix it
+          prompt: `ralph fix it
 
 # MÉMOIRE
 Use notepad_read first.
@@ -428,12 +457,12 @@ Read src/hooks/bridge.ts first.`,
         const keywordResult = await processHook('keyword-detector', {
           sessionId,
           prompt:
-            'ralph fix the regression in src/hooks/bridge.ts after issue #1795 by tracing keyword-detector into persistent-mode, preserving session-scoped state behavior, verifying the confirmation gate, keeping linked ultrawork activation intact, adding a focused regression test for false-positive prose prompts, checking stop-hook enforcement only after real Skill invocation, and confirming the smallest safe fix without widening the mode activation surface or changing unrelated orchestration behavior in this worktree',
+            'ralph fix the regression in src/hooks/bridge.ts after issue #1795 by tracing keyword-detector into persistent-mode, preserving session-scoped state behavior, verifying the confirmation gate, adding a focused regression test for false-positive prose prompts, checking stop-hook enforcement only after real Skill invocation, and confirming the smallest safe fix without widening the mode activation surface or changing unrelated orchestration behavior in this worktree',
           directory: tempDir,
         });
 
         expect(keywordResult.continue).toBe(true);
-        expect(keywordResult.message).toContain('[RALPH + ULTRAWORK MODE ACTIVATED]');
+        expect(keywordResult.message).toContain('[RALPH MODE ACTIVATED]');
 
         const sessionDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
         const ralphState = JSON.parse(readFileSync(join(sessionDir, 'ralph-state.json'), 'utf-8')) as {
@@ -441,18 +470,10 @@ Read src/hooks/bridge.ts first.`,
           awaiting_confirmation_set_at?: string;
           active?: boolean;
         };
-        const ultraworkState = JSON.parse(readFileSync(join(sessionDir, 'ultrawork-state.json'), 'utf-8')) as {
-          awaiting_confirmation?: boolean;
-          awaiting_confirmation_set_at?: string;
-          active?: boolean;
-        };
-
         expect(ralphState.active).toBe(true);
         expect(ralphState.awaiting_confirmation).toBe(true);
         expect(typeof ralphState.awaiting_confirmation_set_at).toBe('string');
-        expect(ultraworkState.active).toBe(true);
-        expect(ultraworkState.awaiting_confirmation).toBe(true);
-        expect(typeof ultraworkState.awaiting_confirmation_set_at).toBe('string');
+        expect(existsSync(join(sessionDir, 'ultrawork-state.json'))).toBe(false);
 
         const stopResult = await processHook('persistent-mode', {
           sessionId,
@@ -696,7 +717,7 @@ $ ultrawork search the codebase`,
       }
     });
 
-    it('should activate ralph and linked ultrawork when Skill tool invokes ralph', async () => {
+    it('should activate only ralph when Skill tool invokes ralph', async () => {
       const tempDir = mkdtempSync(join(tmpdir(), 'bridge-routing-ralph-'));
       try {
         execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
@@ -715,15 +736,12 @@ $ ultrawork search the codebase`,
         const ultraworkPath = join(tempDir, '.omc', 'state', 'sessions', sessionId, 'ultrawork-state.json');
 
         expect(existsSync(ralphPath)).toBe(true);
-        expect(existsSync(ultraworkPath)).toBe(true);
+        expect(existsSync(ultraworkPath)).toBe(false);
 
         const ralphState = JSON.parse(readFileSync(ralphPath, 'utf-8')) as { active?: boolean; linked_ultrawork?: boolean };
-        const ultraworkState = JSON.parse(readFileSync(ultraworkPath, 'utf-8')) as { active?: boolean; linked_to_ralph?: boolean };
 
         expect(ralphState.active).toBe(true);
-        expect(ralphState.linked_ultrawork).toBe(true);
-        expect(ultraworkState.active).toBe(true);
-        expect(ultraworkState.linked_to_ralph).toBe(true);
+        expect(ralphState.linked_ultrawork).toBeUndefined();
       } finally {
         rmSync(tempDir, { recursive: true, force: true });
       }
@@ -761,7 +779,7 @@ $ ultrawork search the codebase`,
       }
     });
 
-    it('clears awaiting confirmation when Skill tool actually invokes ralph', async () => {
+    it('clears only Ralph confirmation when Skill invokes Ralph', async () => {
       const tempDir = mkdtempSync(join(tmpdir(), 'bridge-routing-confirm-ralph-'));
       try {
         execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
@@ -814,7 +832,7 @@ $ ultrawork search the codebase`,
 
         expect(ralphState.awaiting_confirmation).toBeUndefined();
         expect(ralphState.awaiting_confirmation_set_at).toBeUndefined();
-        expect(ultraworkState.awaiting_confirmation).toBeUndefined();
+        expect(ultraworkState.awaiting_confirmation).toBe(true);
         expect(ultraworkState.awaiting_confirmation_set_at).toBeUndefined();
       } finally {
         rmSync(tempDir, { recursive: true, force: true });
@@ -1705,7 +1723,7 @@ $ ultrawork search the codebase`,
 
       const input: HookInput = {
         sessionId: 'test-session',
-        prompt: 'ultrawork this',
+        prompt: 'ralph this',
         directory: '/tmp/test-routing',
       };
 
@@ -1751,7 +1769,7 @@ $ ultrawork search the codebase`,
 
       const input: HookInput = {
         sessionId: 'test-session',
-        prompt: 'ultrawork',
+        prompt: 'ralph',
         directory: '/tmp/test-routing',
       };
 
@@ -1783,7 +1801,7 @@ $ ultrawork search the codebase`,
 
       const input: HookInput = {
         sessionId: 'test-session',
-        prompt: 'ultrawork this',
+        prompt: 'ralph this',
         directory: '/tmp/test-routing',
       };
 
@@ -1824,7 +1842,7 @@ $ ultrawork search the codebase`,
 
       const input: HookInput = {
         sessionId: 'test-session',
-        prompt: 'ultrawork',
+        prompt: 'ralph',
         directory: '/tmp/test-routing',
       };
 

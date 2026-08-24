@@ -104,6 +104,7 @@ describe('PreCompact writer - plan anchors (issue #3730)', () => {
         // Arrange: session-scoped PRD (ralph PRD mode)
         // PRD lives at .omc/state/sessions/{sessionId}/prd.json
         const prdDir = join(getOmcRootForTest(tempDir), 'state', 'sessions', 'test-session');
+        const completionCriteriaRevision = `sha256:${createHash('sha256').update(JSON.stringify({ acceptanceCriteria: ['bug reproduces'], criterionAmendments: [] })).digest('hex')}`;
         mkdirSync(prdDir, { recursive: true });
         writeFileSync(join(prdDir, 'prd.json'), JSON.stringify({
             project: 'Fix the login bug',
@@ -117,6 +118,7 @@ describe('PreCompact writer - plan anchors (issue #3730)', () => {
                     acceptanceCriteria: ['bug reproduces'],
                     priority: 1,
                     passes: true,
+                    completionCriteriaRevision,
                 },
                 {
                     id: 'US-2',

@@ -419,7 +419,13 @@ export function cleanupModeStates(directory, sessionId) {
     if (!fs.existsSync(stateDir)) {
         return { filesRemoved, modesCleaned };
     }
-    for (const { file, mode } of SESSION_END_MODE_STATE_FILES) {
+    // Retired workflows are absent from active mode registries, but their state
+    // files remain eligible for bounded upgrade cleanup at session end.
+    const cleanupStateFiles = [
+        ...SESSION_END_MODE_STATE_FILES,
+        { file: 'ultrawork-state.json', mode: 'ultrawork' },
+    ];
+    for (const { file, mode } of cleanupStateFiles) {
         const localPath = path.join(stateDir, file);
         const sessionPath = sessionId ? resolveSessionStatePath(mode, sessionId, directory) : undefined;
         try {

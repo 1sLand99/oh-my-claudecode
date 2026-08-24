@@ -25,7 +25,7 @@ describe('session-start.mjs regression #1386', () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it('marks restored ultrawork state as prior-session context instead of imperative continuation', () => {
+  it('does not restore retired ultrawork state', () => {
     writeFileSync(
       join(fakeProject, '.omc', 'state', 'sessions', 'session-1386', 'ultrawork-state.json'),
       JSON.stringify({
@@ -56,9 +56,8 @@ describe('session-start.mjs regression #1386', () => {
     };
     const context = output.hookSpecificOutput?.additionalContext || '';
 
-    expect(context).toContain('[ULTRAWORK MODE RESTORED]');
-    expect(context).toContain("Prioritize the user's newest request");
-    expect(context).not.toContain('Continue working in ultrawork mode until all tasks are complete.');
+    expect(context).not.toContain('[ULTRAWORK MODE RESTORED]');
+    expect(context).not.toContain('Old task that should not override a new request');
   });
 
   it('injects persisted project memory into session-start additionalContext', () => {

@@ -41,7 +41,7 @@ The `swarm` compatibility alias was removed in #1131.
 /team 2:gemini "redesign the UI components"
 # With Antigravity CLI workers (requires: install per https://antigravity.google)
 /team 2:antigravity "redesign the UI components"
-# Mixed: Codex for backend analysis, Gemini/Antigravity for frontend (use /ccg instead for this)
+# Mixed: Codex for backend analysis, Gemini/Antigravity for frontend (delegate per-task with /oh-my-claudecode:ask)
 ```
 
 ## Architecture
@@ -469,7 +469,7 @@ Do NOT mark the task as completed. Leave it in_progress so the lead can reassign
 == RULES ==
 - NEVER spawn sub-agents or use the Task tool
 - NEVER run tmux pane/session orchestration commands (for example `tmux split-window`, `tmux new-session`)
-- NEVER run team spawning/orchestration skills or commands (for example `$team`, `$ultrawork`, `$autopilot`, `$ralph`, `omc team ...`, `omx team ...`)
+- NEVER run team spawning/orchestration skills or commands (for example `$team`, `$autopilot`, `$ralph`, `omc team ...`, `omx team ...`)
 - ALWAYS use absolute file paths
 - ALWAYS report progress to "team-lead" through the active team/conversation surface
 - Use direct team/conversation messages with type "message" only -- never "broadcast"

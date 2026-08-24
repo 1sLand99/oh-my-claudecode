@@ -72,12 +72,6 @@ const MODE_CONFIGS: Record<ExecutionMode, ModeConfig> = {
     activeProperty: "active",
     hasGlobalState: false,
   },
-  [MODE_NAMES.ULTRAWORK]: {
-    name: "Ultrawork",
-    stateFile: MODE_STATE_FILE_MAP[MODE_NAMES.ULTRAWORK],
-    activeProperty: "active",
-    hasGlobalState: false,
-  },
   [MODE_NAMES.DEEP_INTERVIEW]: {
     name: "Deep Interview",
     stateFile: MODE_STATE_FILE_MAP[MODE_NAMES.DEEP_INTERVIEW],

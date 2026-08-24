@@ -299,7 +299,7 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
     expect(context).toContain('Centralized-state task');
   });
 
-  it('session-start reads ultrawork state from centralized path when OMC_STATE_DIR is set', () => {
+  it('session-start does not restore retired ultrawork state from centralized paths', () => {
     const sessionId = 'test-session-uw-central';
     const centralizedOmcRoot = getCentralizedOmcRoot(fakeProject, fakeStateDir);
     const stateDir = join(centralizedOmcRoot, 'state', 'sessions', sessionId);
@@ -322,8 +322,8 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
 
     const context = (output as { hookSpecificOutput?: { additionalContext?: string } })
       .hookSpecificOutput?.additionalContext ?? '';
-    expect(context).toContain('[ULTRAWORK MODE RESTORED]');
-    expect(context).toContain('Centralized ultrawork task');
+    expect(context).not.toContain('[ULTRAWORK MODE RESTORED]');
+    expect(context).not.toContain('Centralized ultrawork task');
   });
 
   it('session-start does NOT restore state when OMC_STATE_DIR is set but state is only in default .omc', () => {

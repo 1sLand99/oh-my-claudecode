@@ -40,6 +40,8 @@ import {
   applyRalplanGate,
   sanitizeForKeywordDetection,
   NON_LATIN_SCRIPT_PATTERN,
+  parseExplicitWorkflowSlashInvocation,
+  isRetiredWorkflowSlashInvocation,
 } from "./keyword-detector/index.js";
 import {
   processOrchestratorPreTool,
@@ -84,7 +86,6 @@ import {
   writeSkillActiveStateCopies,
   type ActiveSkillSlot,
 } from "./skill-state/index.js";
-import { parseExplicitWorkflowSlashInvocation } from "./keyword-detector/index.js";
 import { resolveWorkflowInputWithWarning } from "../workflow/alias-resolver.js";
 import {
   ULTRATHINK_MESSAGE,
@@ -96,7 +97,6 @@ import {
   RALPH_MESSAGE,
   PROMPT_TRANSLATION_MESSAGE,
 } from "../installer/hooks.js";
-import { getUltraworkMessage } from "./keyword-detector/ultrawork/index.js";
 // Agent dashboard is used in pre/post-tool-use hot path
 import { getAgentDashboard } from "./subagent-tracker/index.js";
 // Session replay recordFileTouch is used in pre-tool-use hot path
@@ -132,7 +132,7 @@ const PKILL_F_FLAG_PATTERN = /\bpkill\b.*\s-f\b/;
 const PKILL_FULL_FLAG_PATTERN = /\bpkill\b.*--full\b/;
 const WORKER_BLOCKED_TMUX_PATTERN = /\btmux\s+/i;
 const WORKER_BLOCKED_TEAM_CLI_PATTERN = /\bom[cx]\s+team\b(?!\s+api\b)/i;
-const WORKER_BLOCKED_SKILL_PATTERN = /\$(team|ultrawork|autopilot|ralph)\b/i;
+const WORKER_BLOCKED_SKILL_PATTERN = /\$(team|autopilot|ralph)\b/i;
 
 const TEAM_TERMINAL_VALUES = new Set([
   "completed",
@@ -171,8 +171,7 @@ const TASK_OUTPUT_ID_PATTERN = /<task_id>([^<]+)<\/task_id>/i;
 const TASK_OUTPUT_STATUS_PATTERN = /<status>([^<]+)<\/status>/i;
 const SAFE_SESSION_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
 const MODE_CONFIRMATION_SKILL_MAP: Record<string, string[]> = {
-  ralph: ["ralph", "ultrawork"],
-  ultrawork: ["ultrawork"],
+  ralph: ["ralph"],
   autopilot: ["autopilot"],
   ralplan: ["ralplan"],
 };
@@ -204,7 +203,6 @@ function buildSessionStartAdditionalContext(messages: string[]): string {
   const priorityOrder = [
     /\[MODEL ROUTING OVERRIDE/,
     /\[AUTOPILOT MODE RESTORED\]/,
-    /\[ULTRAWORK MODE RESTORED\]/,
     /\[RALPLAN MODE RESTORED\]/,
     /\[TEAM MODE RESTORED\]/,
     /\[ROOT AGENTS\.md LOADED\]/,
@@ -784,7 +782,6 @@ async function seedAutopilotStartupState(
     },
     execution: {
       ralph_iterations: 0,
-      ultrawork_active: false,
       tasks_completed: 0,
       tasks_total: 0,
       files_created: [],
@@ -1064,7 +1061,7 @@ function workerBashBlockReason(command: string): string | null {
     return `Team worker cannot run team orchestration commands. Use only \`${formatOmcCliInvocation("team api ... --json")}\`.`;
   }
   if (WORKER_BLOCKED_SKILL_PATTERN.test(command)) {
-    return "Team worker cannot invoke orchestration skills (`$team`, `$ultrawork`, `$autopilot`, `$ralph`).";
+    return "Team worker cannot invoke orchestration skills (`$team`, `$autopilot`, `$ralph`).";
   }
   return null;
 }
@@ -1437,7 +1434,7 @@ async function seedModeStateForExplicitWorkflowSlash(
       await seedAutopilotStartupState(directory, promptText, sessionId);
       return;
     default:
-      // ralph / ultrawork / team / deep-interview / self-improve
+      // ralph / team / deep-interview / self-improve
       // own their state activation inside their own Skill PostToolUse handlers.
       // Pre-Skill seeding for these would clobber existing in-flight state
       // (e.g. nested `autopilot → ralph`); the workflow slot alone is enough
@@ -1449,7 +1446,7 @@ async function seedModeStateForExplicitWorkflowSlash(
 /**
  * Process keyword detection hook
  * Detects magic keywords and returns injection message
- * Also activates persistent state for modes that require it (ralph, ultrawork)
+ * Also activates persistent state for modes that require it.
  */
 async function processKeywordDetector(input: HookInput): Promise<HookOutput> {
   // Team worker guard: prevent keyword detection inside team workers to avoid
@@ -1460,6 +1457,10 @@ async function processKeywordDetector(input: HookInput): Promise<HookOutput> {
 
   const promptText = getPromptText(input);
   if (!promptText) {
+    return { continue: true };
+  }
+
+  if (isRetiredWorkflowSlashInvocation(promptText)) {
     return { continue: true };
   }
 
@@ -1477,9 +1478,8 @@ async function processKeywordDetector(input: HookInput): Promise<HookOutput> {
   const directory = resolveToWorktreeRoot(input.directory);
   const messages: string[] = [];
 
-  // Unified explicit slash invocation handler — covers the canonical
-  // workflow skills (autopilot, ralph, team, ultrawork,
-  // deep-interview, ralplan, self-improve). Seeds the workflow slot via the
+  // Unified explicit slash invocation handler for active workflow skills.
+  // Seeds the workflow slot via the
   // sanctioned dual-copy helper BEFORE the Skill tool fires, and seeds the
   // mode-specific state file when the mode requires pre-Skill state. The
   // ralplan path additionally returns the legacy [RALPLAN INIT] context
@@ -1684,7 +1684,7 @@ async function processKeywordDetector(input: HookInput): Promise<HookOutput> {
         const criticMode = detectCriticModeFlag(promptText) ?? undefined;
         const cleanPrompt = stripCriticModeFlag(promptText);
 
-        // Activate ralph state which also auto-activates ultrawork
+        // Activate Ralph state.
         const hook = createRalphLoopHook(directory);
         const started = hook.startLoop(
           sessionId,
@@ -1694,27 +1694,10 @@ async function processKeywordDetector(input: HookInput): Promise<HookOutput> {
           },
         );
         if (started) {
-          markModeAwaitingConfirmation(directory, sessionId, 'ralph', 'ultrawork');
+          markModeAwaitingConfirmation(directory, sessionId, 'ralph');
         }
 
         messages.push(RALPH_MESSAGE);
-        break;
-      }
-
-      case "ultrawork": {
-        // Lazy-load ultrawork module
-        const { activateUltrawork } = await import("./ultrawork/index.js");
-        // Activate persistent ultrawork state
-        const activated = activateUltrawork(promptText, sessionId, directory);
-        if (activated) {
-          markModeAwaitingConfirmation(directory, sessionId, 'ultrawork');
-        }
-        messages.push(
-          getUltraworkMessage(
-            getHookContextString(input, "agentName", "agent_name"),
-            getHookContextString(input, "model", "modelId", "model_id"),
-          ),
-        );
         break;
       }
 
@@ -1800,13 +1783,13 @@ async function processStopContinuation(_input: HookInput): Promise<HookOutput> {
 
 /**
  * Process persistent mode hook (enhanced stop continuation)
- * Unified handler for ultrawork, ralph, and todo-continuation.
+ * Unified handler for ralph and todo-continuation.
  *
  * NOTE: The legacy `processRalph` function was removed in issue #1058.
  * Ralph is now handled exclusively by `checkRalphLoop` inside
  * `persistent-mode/index.ts`, which has richer logic (PRD checks,
  * team pipeline coordination, tool-error injection, cancel caching,
- * ultrawork self-heal, and architect rejection handling).
+ * architect rejection handling).
  */
 async function processPersistentMode(input: HookInput): Promise<HookOutput> {
   const rawSessionId = (input as Record<string, unknown>).session_id as
@@ -1984,7 +1967,6 @@ async function processSessionStart(input: HookInput): Promise<HookOutput> {
   // Lazy-load session-start dependencies
   const { initSilentAutoUpdate } = await import("../features/auto-update.js");
   const { readAutopilotState } = await import("./autopilot/index.js");
-  const { readUltraworkState } = await import("./ultrawork/index.js");
   const { checkIncompleteTodos } = await import("./todo-continuation/index.js");
   const { buildAgentsOverlay } = await import("./agents-overlay.js");
 
@@ -2054,25 +2036,6 @@ Original idea: ${autopilotState.originalIdea}
 Current phase: ${autopilotState.phase}
 
 Treat this as prior-session context only. Prioritize the user's newest request, and resume autopilot only if the user explicitly asks to continue it.
-
-</session-restore>
-
----
-
-`);
-  }
-
-  // Check for active ultrawork state - only restore if it belongs to this session
-  const ultraworkState = readUltraworkState(directory, sessionId);
-  if (ultraworkState?.active && ultraworkState.session_id === sessionId) {
-    messages.push(`<session-restore>
-
-[ULTRAWORK MODE RESTORED]
-
-You have an active ultrawork session from ${ultraworkState.started_at}.
-Original task: ${ultraworkState.original_prompt}
-
-Treat this as prior-session context only. Prioritize the user's newest request, and resume ultrawork only if the user explicitly asks to continue it.
 
 </session-restore>
 
