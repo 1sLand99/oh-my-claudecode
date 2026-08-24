@@ -1271,8 +1271,9 @@ async function checkRalphLoop(
             const snapshot = { ...verificationState! };
             const ralphSnapshot = readRalphState(workingDir, sessionId);
             const ultraworkSnapshot = readUltraworkState(workingDir, sessionId);
-            if (clearRalphState(workingDir, sessionId, ralphSnapshot ?? undefined)
-              && deactivateUltrawork(workingDir, sessionId, ultraworkSnapshot ?? undefined)) return true;
+            const ralphCleared = !ralphSnapshot || clearRalphState(workingDir, sessionId, ralphSnapshot);
+            const ultraworkCleared = !ultraworkSnapshot || deactivateUltrawork(workingDir, sessionId, ultraworkSnapshot);
+            if (ralphCleared && ultraworkCleared) return true;
             if (ralphSnapshot) restoreRalphStateIfAbsent(workingDir, ralphSnapshot, sessionId);
             if (ultraworkSnapshot) restoreUltraworkStateIfAbsent(ultraworkSnapshot, workingDir, sessionId);
             restoreVerificationRequestIfAbsent(workingDir, snapshot, sessionId);
