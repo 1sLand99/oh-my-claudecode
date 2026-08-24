@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "677f0185333f03d3fee4e26a7550eb4df5263833",
-    "sourceSha256": "0b839bede2f3c1222466dd492aec33025d834fcab2c2b0fb4c7b683b84539fc0",
+    "head": "025950c9406f7e295795507b09850d9a084c5970",
+    "sourceSha256": "bea339208f79377d468c9ce82c9f5200a6e7931921cffc688179eb7075c37d7f",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "677f0185333f03d3fee4e26a7550eb4df5263833",
-  "sourceSha256": "0b839bede2f3c1222466dd492aec33025d834fcab2c2b0fb4c7b683b84539fc0",
+  "head": "025950c9406f7e295795507b09850d9a084c5970",
+  "sourceSha256": "bea339208f79377d468c9ce82c9f5200a6e7931921cffc688179eb7075c37d7f",
   "counts": {
     "public": {
       "skills": 31,
@@ -28,8 +28,8 @@
       "toolFiles": 56,
       "libFiles": 34,
       "templateHooks": 21,
-      "srcFiles": 1279,
-      "total": 1300
+      "srcFiles": 1280,
+      "total": 1301
     },
     "generated": {
       "distFiles": 4999,
@@ -35125,6 +35125,11 @@
         "path": "src/__tests__/tools/trace-tools.test.ts"
       },
       {
+        "id": "src/__tests__/trusted-publishing-contract.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/trusted-publishing-contract.test.ts"
+      },
+      {
         "id": "src/__tests__/types.test.ts",
         "kind": "src",
         "path": "src/__tests__/types.test.ts"
@@ -48694,6 +48699,21 @@
       {
         "from": "src/__tests__/tools/trace-tools.test.ts",
         "to": "src/tools/trace-tools.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/trusted-publishing-contract.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/trusted-publishing-contract.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/trusted-publishing-contract.test.ts",
+        "to": "external:vitest",
         "kind": "imports"
       },
       {
@@ -75088,12 +75108,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6841,
-      "edgeCount": 6910,
-      "importEdgeCount": 5665,
+      "nodeCount": 6842,
+      "edgeCount": 6913,
+      "importEdgeCount": 5668,
       "registerEdgeCount": 52
     }
   },
-  "inventorySha256": "f87ce5b82ba93aa0f25b13865de71d4acab9d7e6211b33178720a927f2780d32",
-  "manifestSha256": "1d38ffa28778568078d7cb14d9bd368b4630027ed707bb98b77cc2a608ae8135"
+  "inventorySha256": "dd4a8b7a76c74e9d9cea06fcce6c0c1584ed66b7d666d39421ce18bab6604d68",
+  "manifestSha256": "3760706977abe96bab590cdc665c4f87a873ac4c745acc18ceae8f4a18f53f9c"
 }
