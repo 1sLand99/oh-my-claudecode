@@ -131,7 +131,7 @@ Rules:
    d. If any active criterion is NOT met and NOT amended, continue working -- do NOT mark the story as complete
 
 5. **Mark story complete**:
-   a. When ALL active acceptance criteria are verified, set `passes: true` for this story in the active PRD file
+   a. When ALL active acceptance criteria are verified, create a revision-bound completion claim: set `passes: true` and set `completionCriteriaRevision` to the story's current `governingCriteriaRevision`. Do not set `architectVerified`; reviewer approval binds that separately.
    b. Record progress in `progress.txt`: what was implemented, files changed, learnings for future iterations
    c. Add any discovered codebase patterns to `progress.txt`
 
