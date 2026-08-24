@@ -1189,6 +1189,22 @@ export function resolveTranscriptPath(transcriptPath: string | undefined, cwd?: 
   // Callers should handle non-existent paths gracefully.
   return transcriptPath;
 }
+/**
+ * Caller-visible workingDirectory labels for rejection errors (#3858).
+ * Retain the original caller-supplied string; never substitute realpath.
+ * Trusted root is basename-only so the full host path is not disclosed.
+ */
+function callerVisibleTrustedRootLabel(trustedRoot: string): string {
+  const label = basename(trustedRoot);
+  return label.length > 0 ? label : 'current repository';
+}
+
+function formatOutsideTrustedRootMessage(workingDirectory: string, trustedRoot: string): string {
+  return (
+    `workingDirectory '${workingDirectory}' ` +
+    `is outside the trusted worktree root '${callerVisibleTrustedRootLabel(trustedRoot)}'.`
+  );
+}
 
 /**
  * Validate that a workingDirectory is within the trusted git top-level.
@@ -1255,7 +1271,7 @@ export function validateWorkingDirectory(workingDirectory?: string): string {
 
   const rel = relative(trustedRootReal, resolvedReal);
   if (rel.startsWith('..') || isAbsolute(rel)) {
-    throw new Error(`workingDirectory '${workingDirectory}' is outside the trusted worktree root '${trustedRoot}'.`);
+    throw new Error(formatOutsideTrustedRootMessage(workingDirectory, trustedRoot));
   }
 
   // Directory is under trusted root but git failed — return trusted root,
@@ -1288,28 +1304,44 @@ function getGitCommonDir(cwd: string): string | null {
  * - `foreign_repository`: the directory belongs to a different git repository.
  *   Callers MUST NOT use it and MUST NOT silently fall back to the trusted
  *   root; they are expected to surface the rejection to their caller.
+ *
+ * `providedRoot` and `trustedRoot` are canonical paths for internal
+ * validation only. Caller-visible text must use `callerLabel` (the original
+ * workingDirectory string) and a basename-only trusted-root label — never
+ * `providedRoot` / `trustedRoot` verbatim.
  */
 export type WorkingDirectoryResolution =
   | { status: 'ok'; root: string }
-  | { status: 'foreign_repository'; providedRoot: string; trustedRoot: string };
+  | {
+      status: 'foreign_repository';
+      providedRoot: string;
+      trustedRoot: string;
+      callerLabel: string;
+    };
 
 /**
  * Typed error thrown when a workingDirectory resolves to a different git
  * repository than the trusted startup repository. The rejection must reach the
  * tool caller; it is never silently substituted (#3858).
+ *
+ * `.message` is the caller-visible contract: the original workingDirectory
+ * label plus a basename-only trusted-root identity. Canonical `providedRoot`
+ * and `trustedRoot` stay on the instance for internal validation.
  */
 export class ForeignWorkingDirectoryError extends Error {
   readonly providedRoot: string;
   readonly trustedRoot: string;
+  readonly callerLabel: string;
 
-  constructor(providedRoot: string, trustedRoot: string) {
+  constructor(providedRoot: string, trustedRoot: string, callerLabel: string = providedRoot) {
     super(
-      `workingDirectory '${providedRoot}' belongs to a different repository than '${trustedRoot}' and was not used. ` +
+      `workingDirectory '${callerLabel}' belongs to a different repository than '${callerVisibleTrustedRootLabel(trustedRoot)}' and was not used. ` +
         `Cross-repository access is not permitted; pass a path inside the current repository or start the session there.`
     );
     this.name = 'ForeignWorkingDirectoryError';
     this.providedRoot = providedRoot;
     this.trustedRoot = trustedRoot;
+    this.callerLabel = callerLabel;
   }
 }
 
@@ -1361,7 +1393,12 @@ export function resolveWorkingDirectoryOrLinkedWorktree(workingDirectory?: strin
 
     // Different repository (#3858): reject visibly instead of silently
     // substituting the trusted root.
-    return { status: 'foreign_repository', providedRoot: providedRootReal, trustedRoot: trustedRootReal };
+    return {
+      status: 'foreign_repository',
+      providedRoot: providedRootReal,
+      trustedRoot: trustedRootReal,
+      callerLabel: workingDirectory,
+    };
   }
 
   let resolvedReal: string;
@@ -1373,7 +1410,7 @@ export function resolveWorkingDirectoryOrLinkedWorktree(workingDirectory?: strin
 
   const rel = relative(trustedRootReal, resolvedReal);
   if (rel.startsWith('..') || isAbsolute(rel)) {
-    throw new Error(`workingDirectory '${workingDirectory}' is outside the trusted worktree root '${trustedRoot}'.`);
+    throw new Error(formatOutsideTrustedRootMessage(workingDirectory, trustedRoot));
   }
 
   return { status: 'ok', root: trustedRoot };
@@ -1394,7 +1431,11 @@ export function resolveWorkingDirectoryOrLinkedWorktree(workingDirectory?: strin
 export function validateWorkingDirectoryOrLinkedWorktree(workingDirectory?: string): string {
   const resolution = resolveWorkingDirectoryOrLinkedWorktree(workingDirectory);
   if (resolution.status === 'foreign_repository') {
-    throw new ForeignWorkingDirectoryError(resolution.providedRoot, resolution.trustedRoot);
+    throw new ForeignWorkingDirectoryError(
+      resolution.providedRoot,
+      resolution.trustedRoot,
+      resolution.callerLabel,
+    );
   }
   return resolution.root;
 }
