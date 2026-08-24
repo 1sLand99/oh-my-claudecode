@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { existsSync, mkdirSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { readPrd, writePrd, findPrdPath, getPrdStatus, getSessionPrdPath, markStoryComplete, amendCriterion, supersedeCriterion, formatStory, formatPrd, formatNextStoryPrompt, formatCriterionAmendments, createPrd, MIN_CRITERION_EVIDENCE_LENGTH, } from '../hooks/ralph/index.js';
+import { readPrd, writePrd, findPrdPath, getPrdStatus, getSessionPrdPath, markStoryComplete, consumeStoryArchitectApproval, consumeCompletionArchitectApproval, getPrdGoverningCriteriaRevision, amendCriterion, supersedeCriterion, formatStory, formatPrd, formatNextStoryPrompt, formatCriterionAmendments, createPrd, MIN_CRITERION_EVIDENCE_LENGTH, } from '../hooks/ralph/index.js';
 import { getArchitectVerificationPrompt, } from '../hooks/ralph/verifier.js';
 const FDFT_ORIGINAL = 'All 16 files that set FDFT_WHALE_STREAM=1 are classified affected/not-affected WITH EVIDENCE';
 const FDFT_REPLACEMENT = 'All 12 files that set FDFT_WHALE_STREAM=1 are classified affected/not-affected WITH EVIDENCE';
@@ -54,6 +54,84 @@ describe('Ralph PRD Criterion Amendment', () => {
         expect(writePrd(testDir, prd)).toBe(true);
     }
     describe('amendCriterion', () => {
+        it('rejects final approval when a forced interleaving amendment changes the PRD revision', () => {
+            writeSamplePrd({
+                ...samplePrd,
+                userStories: [{ ...samplePrd.userStories[0], passes: true, architectVerified: true }],
+            });
+            const expectedRevision = getPrdGoverningCriteriaRevision(readPrd(testDir));
+            const prdPath = findPrdPath(testDir);
+            expect(consumeCompletionArchitectApproval(testDir, expectedRevision, undefined, undefined, () => {
+                const handEdited = JSON.parse(readFileSync(prdPath, 'utf8'));
+                handEdited.userStories[0].acceptanceCriteria = [FDFT_REPLACEMENT];
+                handEdited.userStories[0].criterionAmendments = [resultAmendment()];
+                writeFileSync(prdPath, JSON.stringify(handEdited, null, 2));
+            })).toBe(false);
+            expect(readPrd(testDir)?.userStories[0]).toMatchObject({ passes: false, architectVerified: false });
+        });
+        it('rejects approval when a forced interleaving amendment changes the revision before consumption', () => {
+            writeSamplePrd({
+                ...samplePrd,
+                userStories: [{ ...samplePrd.userStories[0], passes: true, architectVerified: false }],
+            });
+            expect(markStoryComplete(testDir, 'US-001')).toBe(true);
+            const prdPath = findPrdPath(testDir);
+            const expectedRevision = readPrd(testDir)?.userStories[0].governingCriteriaRevision;
+            if (!expectedRevision) {
+                throw new Error('Expected the initial PRD to have a governing criteria revision');
+            }
+            expect(consumeStoryArchitectApproval(testDir, 'US-001', expectedRevision, undefined, () => {
+                const handEdited = JSON.parse(readFileSync(prdPath, 'utf8'));
+                const story = handEdited.userStories[0];
+                story.acceptanceCriteria = [FDFT_REPLACEMENT];
+                story.criterionAmendments = [resultAmendment()];
+                writeFileSync(prdPath, JSON.stringify(handEdited, null, 2));
+            })).toBe(false);
+            expect(readPrd(testDir)?.userStories[0]).toMatchObject({
+                acceptanceCriteria: [FDFT_REPLACEMENT],
+                passes: false,
+                architectVerified: false,
+            });
+        });
+        it('does not overwrite a direct amendment injected after story request consumption', () => {
+            writeSamplePrd({
+                ...samplePrd,
+                userStories: [{ ...samplePrd.userStories[0], passes: true, architectVerified: false }],
+            });
+            expect(markStoryComplete(testDir, 'US-001')).toBe(true);
+            const prdPath = findPrdPath(testDir);
+            const expectedRevision = readPrd(testDir)?.userStories[0].governingCriteriaRevision;
+            if (!expectedRevision)
+                throw new Error('Expected governing criteria revision');
+            expect(consumeStoryArchitectApproval(testDir, 'US-001', expectedRevision, undefined, undefined, undefined, () => {
+                const handEdited = JSON.parse(readFileSync(prdPath, 'utf8'));
+                handEdited.userStories[0].acceptanceCriteria = [FDFT_REPLACEMENT];
+                handEdited.userStories[0].criterionAmendments = [resultAmendment()];
+                writeFileSync(prdPath, JSON.stringify(handEdited, null, 2));
+                return true;
+            })).toBe(false);
+            expect(readPrd(testDir)?.userStories[0]).toMatchObject({
+                acceptanceCriteria: [FDFT_REPLACEMENT], passes: false, architectVerified: false,
+            });
+        });
+        it('fails closed when a valid hand-edited amendment retains stale completion evidence', () => {
+            writeSamplePrd({
+                ...samplePrd,
+                userStories: [{ ...samplePrd.userStories[0], passes: true, architectVerified: true }],
+            });
+            const prdPath = findPrdPath(testDir);
+            const handEdited = JSON.parse(readFileSync(prdPath, 'utf8'));
+            const story = handEdited.userStories[0];
+            story.acceptanceCriteria = [FDFT_REPLACEMENT];
+            story.criterionAmendments = [resultAmendment()];
+            writeFileSync(prdPath, JSON.stringify(handEdited, null, 2));
+            expect(readPrd(testDir)?.userStories[0]).toMatchObject({
+                acceptanceCriteria: [FDFT_REPLACEMENT],
+                passes: false,
+                architectVerified: false,
+            });
+            expect(getPrdStatus(readPrd(testDir)).allComplete).toBe(false);
+        });
         it('replaces an active criterion and retains the original verbatim in the ledger', () => {
             writeSamplePrd();
             const result = amendCriterion(testDir, 'US-001', {
@@ -373,7 +451,7 @@ describe('Ralph PRD Criterion Amendment', () => {
             const story = readPrd(testDir)?.userStories[0];
             expect(story?.acceptanceCriteria).toEqual([FDFT_ORIGINAL]);
             expect(story?.criterionAmendments).toBeUndefined();
-            expect(readPrd(testDir)).toEqual(samplePrd);
+            expect(readPrd(testDir)).toMatchObject(samplePrd);
         });
         it('keeps formatting identical for stories without amendments', () => {
             const story = samplePrd.userStories[0];

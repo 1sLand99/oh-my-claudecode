@@ -15,8 +15,9 @@ import { randomUUID } from 'crypto';
 import { existsSync, readFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { resolveSessionStatePath, ensureSessionStateDir, getOmcRoot } from '../../lib/worktree-paths.js';
-import { clearStateFileLocked, writeStateFileLocked } from '../../lib/mode-state-io.js';
+import { clearStateFileLocked, clearStateFileLockedIf, writeStateFileLocked } from '../../lib/mode-state-io.js';
 import { formatOmcCliInvocation } from '../../utils/omc-cli-rendering.js';
+import { getPrdGoverningCriteriaRevision, readPrd } from './prd.js';
 const DEFAULT_MAX_VERIFICATION_ATTEMPTS = 3;
 const DEFAULT_RALPH_CRITIC_MODE = 'architect';
 function createVerificationRequestId() {
@@ -115,6 +116,12 @@ export function clearVerificationState(directory, sessionId) {
     const statePath = getVerificationStatePath(directory, sessionId);
     return clearStateFileLocked(statePath);
 }
+/** Clear only the verification request whose approval was consumed. */
+export function consumeVerificationRequest(directory, requestId, sessionId) {
+    if (!requestId)
+        return false;
+    return clearStateFileLockedIf(getVerificationStatePath(directory, sessionId), current => current.request_id === requestId) === 'cleared';
+}
 /**
  * Start verification process
  */
@@ -129,7 +136,12 @@ export function startVerification(directory, completionClaim, originalTask, crit
         verification_scope: currentStory ? 'story' : 'completion',
         story_id: currentStory?.id,
         critic_mode: getCriticMode(criticMode),
-        request_id: createVerificationRequestId()
+        request_id: createVerificationRequestId(),
+        criteria_revision: currentStory?.governingCriteriaRevision
+            ?? (() => {
+                const prd = readPrd(directory, sessionId);
+                return prd ? getPrdGoverningCriteriaRevision(prd) : undefined;
+            })(),
     };
     writeVerificationState(directory, state, sessionId);
     return state;
