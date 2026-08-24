@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { execSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, symlinkSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, basename } from 'node:path';
+import { join, basename, relative } from 'node:path';
 import { clearWorktreeCache } from '../../lib/worktree-paths.js';
 import {
   wikiIngestTool,
@@ -17,6 +17,41 @@ import {
 function git(cwd: string, command: string): void {
   execSync(`git ${command}`, { cwd, stdio: 'pipe' });
 }
+type WikiResult = { isError?: boolean; content: Array<{ text: string }> };
+
+async function invokeAllWikiTools(workingDirectory: string): Promise<Array<{ name: string; result: WikiResult }>> {
+  return [
+    { name: 'wiki_ingest', result: await wikiIngestTool.handler({ title: 'Foreign Page', content: 'should never be written', tags: ['x'], category: 'reference', workingDirectory }) },
+    { name: 'wiki_add', result: await wikiAddTool.handler({ title: 'Foreign Page', content: 'should never be written', workingDirectory }) },
+    { name: 'wiki_query', result: await wikiQueryTool.handler({ query: 'aaPanel', workingDirectory }) },
+    { name: 'wiki_read', result: await wikiReadTool.handler({ page: 'aapanel-setup', workingDirectory }) },
+    { name: 'wiki_list', result: await wikiListTool.handler({ workingDirectory }) },
+    { name: 'wiki_lint', result: await wikiLintTool.handler({ workingDirectory }) },
+    { name: 'wiki_delete', result: await wikiDeleteTool.handler({ page: 'aapanel-setup', workingDirectory }) },
+  ];
+}
+
+function assertVisibleRejectionWithoutCanonicalLeak(
+  result: WikiResult,
+  opts: { expectedLabel: string; forbidden: string[]; trustedBasename: string },
+): void {
+  expect(result.isError).toBe(true);
+  const text = result.content[0].text;
+  expect(text).toContain(opts.expectedLabel);
+  expect(text).toContain(opts.trustedBasename);
+  expect(text).not.toContain('No wiki pages match');
+  expect(text).not.toContain('Wiki page not found');
+  for (const path of opts.forbidden) {
+    expect(text).not.toContain(path);
+  }
+}
+
+function assertNoFallbackWrites(sessionRepo: string, foreignRepo: string): void {
+  expect(existsSync(join(sessionRepo, '.omc', 'wiki', 'foreign-page.md'))).toBe(false);
+  expect(existsSync(join(foreignRepo, '.omc', 'wiki', 'foreign-page.md'))).toBe(false);
+  expect(existsSync(join(sessionRepo, '.omc', 'wiki'))).toBe(false);
+}
+
 
 describe('wiki tools foreign-repository workingDirectory (#3858)', () => {
   let tempDir: string;
@@ -147,6 +182,112 @@ describe('wiki tools foreign-repository workingDirectory (#3858)', () => {
     const listResult = await wikiListTool.handler({ workingDirectory: foreignRepo });
     expect(listResult.isError).toBe(true);
     expect(listResult.content[0].text).toContain('belongs to a different repository');
+  });
+
+  it('all seven wiki tools reject a relative foreign alias without leaking canonical paths or writing', async () => {
+    const relativeAlias = join('..', 'foreign-vault');
+    const canonicalForeign = realpathSync(foreignRepo);
+    const canonicalSession = realpathSync(sessionRepo);
+    const results = await invokeAllWikiTools(relativeAlias);
+
+    expect(results.map((entry) => entry.name)).toEqual([
+      'wiki_ingest',
+      'wiki_add',
+      'wiki_query',
+      'wiki_read',
+      'wiki_list',
+      'wiki_lint',
+      'wiki_delete',
+    ]);
+
+    for (const { result } of results) {
+      assertVisibleRejectionWithoutCanonicalLeak(result, {
+        expectedLabel: relativeAlias,
+        forbidden: [canonicalForeign, canonicalSession],
+        trustedBasename: basename(sessionRepo),
+      });
+    }
+    assertNoFallbackWrites(sessionRepo, foreignRepo);
+    expect(existsSync(join(foreignRepo, '.omc', 'wiki', 'aapanel-setup.md'))).toBe(true);
+  });
+
+  it('all seven wiki tools reject a symlink foreign alias without leaking the canonical target', async () => {
+    const symlinkAlias = join(tempDir, 'foreign-alias');
+    symlinkSync(foreignRepo, symlinkAlias);
+    const canonicalForeign = realpathSync(foreignRepo);
+    const canonicalSession = realpathSync(sessionRepo);
+    const results = await invokeAllWikiTools(symlinkAlias);
+
+    for (const { result } of results) {
+      assertVisibleRejectionWithoutCanonicalLeak(result, {
+        expectedLabel: symlinkAlias,
+        forbidden: [canonicalForeign, canonicalSession],
+        trustedBasename: basename(sessionRepo),
+      });
+    }
+    assertNoFallbackWrites(sessionRepo, foreignRepo);
+    expect(existsSync(join(foreignRepo, '.omc', 'wiki', 'aapanel-setup.md'))).toBe(true);
+  });
+
+  it('all seven wiki tools reject a non-git outside path without leaking the full trusted root', async () => {
+    const plainDir = join(tempDir, 'plain-notes');
+    mkdirSync(plainDir, { recursive: true });
+    const canonicalSession = realpathSync(sessionRepo);
+    const results = await invokeAllWikiTools(plainDir);
+
+    for (const { result } of results) {
+      expect(result.isError).toBe(true);
+      const text = result.content[0].text;
+      expect(text).toContain('is outside the trusted worktree root');
+      expect(text).toContain(plainDir);
+      expect(text).toContain(basename(sessionRepo));
+      expect(text).not.toContain(canonicalSession);
+    }
+    assertNoFallbackWrites(sessionRepo, foreignRepo);
+  });
+
+  it('all seven wiki tools reject a superproject path from a submodule cwd', async () => {
+    const parentDir = join(tempDir, 'superproject');
+    mkdirSync(parentDir, { recursive: true });
+    git(parentDir, 'init');
+    git(parentDir, 'config user.email "test@example.com"');
+    git(parentDir, 'config user.name "Test User"');
+    git(parentDir, 'commit --allow-empty -m parent-init');
+    execSync(`git -c protocol.file.allow=always submodule add "${sessionRepo}" mysub`, {
+      cwd: parentDir,
+      stdio: 'pipe',
+    });
+    const submodulePath = join(parentDir, 'mysub');
+    process.chdir(submodulePath);
+    clearWorktreeCache();
+
+    const relativeParent = relative(submodulePath, parentDir);
+    const canonicalParent = realpathSync(parentDir);
+    const canonicalSubmodule = realpathSync(submodulePath);
+    const results = await invokeAllWikiTools(relativeParent);
+
+    for (const { result } of results) {
+      assertVisibleRejectionWithoutCanonicalLeak(result, {
+        expectedLabel: relativeParent,
+        forbidden: [canonicalParent, canonicalSubmodule],
+        trustedBasename: basename(submodulePath),
+      });
+    }
+    expect(existsSync(join(submodulePath, '.omc', 'wiki'))).toBe(false);
+    expect(existsSync(join(parentDir, '.omc', 'wiki'))).toBe(false);
+  });
+
+  it('same-root subdirectory is accepted without fallback writes to a foreign repo', async () => {
+    const sub = join(sessionRepo, 'docs');
+    mkdirSync(sub, { recursive: true });
+    const result = await wikiQueryTool.handler({ query: 'aaPanel', workingDirectory: sub });
+    expect(result.isError).toBeUndefined();
+    expect(result.content[0].text).toContain('No wiki pages match "aaPanel"');
+    expect(result.content[0].text).toContain(basename(sessionRepo));
+    expect(result.content[0].text).not.toContain(sessionRepo);
+    expect(existsSync(join(foreignRepo, '.omc', 'wiki', 'aapanel-setup.md'))).toBe(true);
+    expect(existsSync(join(foreignRepo, '.omc', 'wiki', 'foreign-page.md'))).toBe(false);
+    expect(existsSync(join(sub, '.omc', 'wiki'))).toBe(false);
   });
 
   it('the trusted repository is identified by basename only, not absolute path', async () => {

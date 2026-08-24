@@ -34,8 +34,9 @@ const WIKI_CATEGORIES: [string, ...string[]] = [
 /**
  * Resolve the wiki root for a tool call, rejecting foreign-repository
  * workingDirectory values visibly (#3858). The rejection reaches the MCP
- * caller as isError; the trusted repository is identified by basename only so
- * sensitive absolute paths are not echoed beyond what the caller supplied.
+ * caller as isError. Canonical provided/trusted roots stay internal; the
+ * error message uses the caller-supplied label and a basename-only trusted
+ * root so host paths the caller did not supply are not disclosed.
  */
 function resolveWikiRoot(
   workingDirectory: string | undefined,
@@ -46,7 +47,8 @@ function resolveWikiRoot(
       ok: false,
       error: new ForeignWorkingDirectoryError(
         resolution.providedRoot,
-        basename(resolution.trustedRoot),
+        resolution.trustedRoot,
+        resolution.callerLabel,
       ),
     };
   }
