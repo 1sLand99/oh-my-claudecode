@@ -1263,20 +1263,26 @@ async function checkRalphLoop(
         } else {
           // Architect approved - truly complete
           const criticMode = verificationState.critic_mode;
-          const finish = () => {
+          const consume = () => consumeVerificationRequest(workingDir, verificationState!.request_id, sessionId);
+          const cleanup = () => {
             const snapshot = { ...verificationState! };
-            if (!consumeVerificationRequest(workingDir, snapshot.request_id, sessionId)) return false;
+            const ralphSnapshot = readRalphState(workingDir, sessionId);
+            const ultraworkSnapshot = readUltraworkState(workingDir, sessionId);
             if (clearRalphState(workingDir, sessionId) && deactivateUltrawork(workingDir, sessionId)) return true;
+            if (ralphSnapshot) writeRalphState(workingDir, ralphSnapshot, sessionId);
+            if (ultraworkSnapshot) writeUltraworkState(ultraworkSnapshot, workingDir, sessionId);
             writeVerificationState(workingDir, snapshot, sessionId);
             return false;
           };
           const consumed = !prdStatus.hasPrd
-            ? finish()
+            ? consume() && cleanup()
             : consumeCompletionArchitectApproval(
               workingDir,
               verificationState.criteria_revision ?? '',
               sessionId,
-              finish,
+              consume,
+              undefined,
+              cleanup,
             );
           if (!consumed) {
             verificationState = null;

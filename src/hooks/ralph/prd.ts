@@ -540,7 +540,7 @@ export function readPrd(directory: string, sessionId?: string): PRD | null {
 /**
  * Write PRD to disk
  */
-export function writePrd(directory: string, prd: PRD, sessionId?: string): boolean {
+export function writePrd(directory: string, prd: PRD, sessionId?: string, expectedRevision?: string): boolean {
   let prdPath: string;
 
   if (sessionId) {
@@ -559,6 +559,12 @@ export function writePrd(directory: string, prd: PRD, sessionId?: string): boole
   try {
     mkdirSync(dirname(prdPath), { recursive: true });
     const result = withStateFileMutationLock(prdPath, () => {
+      const currentResult = readPrdFromPath(prdPath);
+      const current = currentResult.prd;
+      if ((existsSync(prdPath) && !current)
+        || (current && (expectedRevision === undefined || getPrdRevision(current) !== expectedRevision))) {
+        return false;
+      }
       atomicWriteJsonSync(prdPath, bindCompletionClaims(prd));
       return true;
     }, true);
@@ -658,6 +664,7 @@ export function consumeCompletionArchitectApproval(
   sessionId?: string,
   consume?: () => boolean,
   beforeCommit?: () => void,
+  afterConsume?: () => boolean,
 ): boolean {
   const prdPath = findPrdPath(directory, sessionId);
   if (!prdPath) return false;
@@ -669,9 +676,10 @@ export function consumeCompletionArchitectApproval(
       && getPrdStatus(prd).allComplete;
     if (!current || !(consume?.() ?? true)) return false;
     const revalidated = readPrdFromPath(prdPath).prd;
-    return revalidated !== undefined
+    const valid = revalidated !== undefined
       && getPrdGoverningCriteriaRevision(revalidated) === expectedCriteriaRevision
       && getPrdStatus(revalidated).allComplete;
+    return valid && (afterConsume?.() ?? true);
   }, true);
   return result.acquired && result.value === true;
 }

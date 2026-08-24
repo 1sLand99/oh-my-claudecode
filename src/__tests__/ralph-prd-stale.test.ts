@@ -22,6 +22,7 @@ import {
   createRalphLoopHook,
   getSessionPrdPath,
   getStoryGoverningCriteriaRevision,
+  getPrdRevision,
   type PRD,
   type ObservableCheck,
 } from '../hooks/ralph/index.js';
@@ -132,7 +133,7 @@ describe('Ralph PRD Stale-State Detection & Reconciliation (#3669)', () => {
         },
       },
     });
-    expect(writePrd(testDir, prdWithChecks)).toBe(true);
+    expect(writePrd(testDir, prdWithChecks, undefined, getPrdRevision(readPrd(testDir)!))).toBe(true);
     backdatePrd(testDir);
 
     const detection = detectStalePrd(testDir);
@@ -302,7 +303,7 @@ describe('Ralph PRD Stale-State Detection & Reconciliation (#3669)', () => {
     expect(formatStalePrdWarning(dead!)).toContain('no longer exists');
 
     const mergedBranchPrd = makePrd({ branchName: 'feature/landed' });
-    expect(writePrd(testDir, mergedBranchPrd)).toBe(true);
+    expect(writePrd(testDir, mergedBranchPrd, undefined, getPrdRevision(readPrd(testDir)!))).toBe(true);
     const merged = detectStalePrd(testDir);
     expect(merged?.stale).toBe(true);
     expect(merged?.stalePointers.join(' ')).toContain('already merged');

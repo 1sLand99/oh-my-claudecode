@@ -12,6 +12,7 @@ import {
   consumeStoryArchitectApproval,
   consumeCompletionArchitectApproval,
   getPrdGoverningCriteriaRevision,
+  getPrdRevision,
   amendCriterion,
   supersedeCriterion,
   formatStory,
@@ -150,6 +151,18 @@ describe('Ralph PRD Criterion Amendment', () => {
         writeFileSync(prdPath, JSON.stringify(handEdited, null, 2));
         return true;
       })).toBe(false);
+      expect(readPrd(testDir)?.userStories[0]).toMatchObject({
+        acceptanceCriteria: [FDFT_REPLACEMENT], passes: false, architectVerified: false,
+      });
+    });
+
+    it('rejects a stale full-PRD replacement after an amendment commits', () => {
+      writeSamplePrd();
+      const snapshot = readPrd(testDir)!;
+      const revision = getPrdRevision(snapshot);
+
+      expect(amendCriterion(testDir, 'US-001', resultAmendment()).ok).toBe(true);
+      expect(writePrd(testDir, snapshot, undefined, revision)).toBe(false);
       expect(readPrd(testDir)?.userStories[0]).toMatchObject({
         acceptanceCriteria: [FDFT_REPLACEMENT], passes: false, architectVerified: false,
       });
