@@ -282,6 +282,26 @@ describe('wiki tools fail closed on generic git probe failure (#3858 remaining P
     expect(read.isError).toBeUndefined();
     expect(read.content[0].text).toContain('session-secret-body');
   });
+  it('seven wiki tools reject omitted workingDirectory when trusted root has malformed .git and git returns 128', async () => {
+    const broken = join(tempDir, 'broken-trusted');
+    mkdirSync(broken, { recursive: true });
+    writeFileSync(join(broken, '.git'), 'gitdir: /nonexistent-omc-3858-gitdir\n');
+    process.chdir(broken);
+    setGitShowToplevelProbeForTests(() => {
+      throw gitExit(128, 'fatal: not a git repository (or any of the parent directories): .git\n');
+    });
+    clearWorktreeCache();
+    const secretBefore = readFileSync(secretPage, 'utf8');
+    const results = await invokeAllWikiTools(undefined as unknown as string);
+    expect(results).toHaveLength(7);
+    for (const { name, result } of results) {
+      expect(result.isError, name).toBe(true);
+      expect(result.content[0].text, name).toMatch(/git probe failed and was not used/);
+    }
+    process.chdir(sessionRepo);
+    assertNoWikiIo(secretBefore);
+  });
+
 
   it('non-git directory outside the trusted root still rejects without wiki IO', async () => {
     const plainDir = join(tempDir, 'plain-notes');

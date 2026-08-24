@@ -185,6 +185,59 @@ describe('git probe fail-closed classification (#3858 remaining P1)', () => {
     clearWorktreeCache();
     expect(() => resolveWorkingDirectoryOrLinkedWorktree(srcDir)).toThrow(/git probe failed and was not used/);
   });
+  it('ENOENT without a spawn syscall is not git-missing and fail-closes', () => {
+    setGitShowToplevelProbeForTests(() => {
+      const err = new Error('ENOENT') as NodeJS.ErrnoException;
+      err.code = 'ENOENT';
+      err.path = 'git';
+      throw err;
+    });
+    clearWorktreeCache();
+    expect(() => resolveWorkingDirectoryOrLinkedWorktree(srcDir)).toThrow(/git probe failed and was not used/);
+    expect(() => resolveWorkingDirectoryOrLinkedWorktree()).toThrow(/git probe failed and was not used/);
+  });
+
+  it('ENOENT with killed or conflicting status is not git-missing', () => {
+    setGitShowToplevelProbeForTests(() => {
+      const err = spawnEnoent() as NodeJS.ErrnoException & { killed: boolean };
+      err.killed = true;
+      throw err;
+    });
+    clearWorktreeCache();
+    expect(() => resolveWorkingDirectoryOrLinkedWorktree(srcDir)).toThrow(/git probe failed and was not used/);
+
+    setGitShowToplevelProbeForTests(() => {
+      const err = spawnEnoent() as NodeJS.ErrnoException & { status: number };
+      err.status = 1;
+      throw err;
+    });
+    clearWorktreeCache();
+    expect(() => resolveWorkingDirectoryOrLinkedWorktree()).toThrow(/git probe failed and was not used/);
+  });
+
+  it('rev-parse 128 plus malformed .git at the trusted root fail-closes omitted workingDirectory', () => {
+    const broken = join(tempDir, 'broken-trusted');
+    mkdirSync(broken, { recursive: true });
+    writeFileSync(join(broken, '.git'), 'gitdir: /nonexistent-omc-3858-gitdir\n');
+    process.chdir(broken);
+    setGitShowToplevelProbeForTests(() => {
+      throw gitExit(128, 'fatal: not a git repository (or any of the parent directories): .git\n');
+    });
+    clearWorktreeCache();
+    expect(() => resolveWorkingDirectoryOrLinkedWorktree()).toThrow(/git probe failed and was not used/);
+    expect(() => resolveWorkingDirectoryOrLinkedWorktree(broken)).toThrow(/git probe failed and was not used/);
+  });
+
+  it('does not reuse a successful probe after PATH is replaced with fake git', () => {
+    expect(resolveWorkingDirectoryOrLinkedWorktree(srcDir)).toEqual({
+      status: 'ok',
+      root: sessionRepo,
+    });
+    const bin = installFakeGit(tempDir, 'exit 1', 'exit /b 1');
+    process.env.PATH = `${bin}${delimiter}${originalPath ?? ''}`;
+    expect(() => resolveWorkingDirectoryOrLinkedWorktree(srcDir)).toThrow(/git probe failed and was not used/);
+  });
+
 
 
 
@@ -273,7 +326,7 @@ describe('git probe fail-closed classification (#3858 remaining P1)', () => {
     clearWorktreeCache();
 
     expect(() => validateWorkingDirectoryOrLinkedWorktree(plainDir)).toThrow(
-      /is outside the trusted worktree root/,
+      /git probe failed and was not used/,
     );
   });
 

@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "52403dd1085f859f41e47cd52e02d1208cc0e713",
-    "sourceSha256": "0540fafd15fa30a00a0984bc711bddf1cd86e684a26c1bee4e3ee4e2dd15b61f",
+    "head": "5c3dbcb24de50249265306d3fa2d6def3f43dde4",
+    "sourceSha256": "09612b8954f0d896e3ecb1848cb87b1be148177932b1b0c271f7e43df43bc6de",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "52403dd1085f859f41e47cd52e02d1208cc0e713",
-  "sourceSha256": "0540fafd15fa30a00a0984bc711bddf1cd86e684a26c1bee4e3ee4e2dd15b61f",
+  "head": "5c3dbcb24de50249265306d3fa2d6def3f43dde4",
+  "sourceSha256": "09612b8954f0d896e3ecb1848cb87b1be148177932b1b0c271f7e43df43bc6de",
   "counts": {
     "public": {
       "skills": 31,
@@ -25,11 +25,11 @@
     "internal": {
       "hookFiles": 295,
       "featureFiles": 68,
-      "toolFiles": 58,
+      "toolFiles": 59,
       "libFiles": 36,
       "templateHooks": 21,
-      "srcFiles": 1273,
-      "total": 1294
+      "srcFiles": 1274,
+      "total": 1295
     },
     "generated": {
       "distFiles": 4955,
@@ -509,6 +509,7 @@
       "src/tools/__tests__/memory-tools.test.ts",
       "src/tools/__tests__/schema-conversion.test.ts",
       "src/tools/__tests__/state-tools.test.ts",
+      "src/tools/__tests__/wiki-tools-direct-dist-failclosed.test.ts",
       "src/tools/__tests__/wiki-tools-foreign-root.test.ts",
       "src/tools/__tests__/wiki-tools-git-probe-failclosed.test.ts",
       "src/tools/__tests__/wiki-tools-working-directory.test.ts",
@@ -6211,6 +6212,7 @@
       "src/tools/__tests__/memory-tools.test.ts",
       "src/tools/__tests__/schema-conversion.test.ts",
       "src/tools/__tests__/state-tools.test.ts",
+      "src/tools/__tests__/wiki-tools-direct-dist-failclosed.test.ts",
       "src/tools/__tests__/wiki-tools-foreign-root.test.ts",
       "src/tools/__tests__/wiki-tools-git-probe-failclosed.test.ts",
       "src/tools/__tests__/wiki-tools-working-directory.test.ts",
@@ -39498,6 +39500,11 @@
         "path": "src/tools/__tests__/state-tools.test.ts"
       },
       {
+        "id": "src/tools/__tests__/wiki-tools-direct-dist-failclosed.test.ts",
+        "kind": "tool",
+        "path": "src/tools/__tests__/wiki-tools-direct-dist-failclosed.test.ts"
+      },
+      {
         "id": "src/tools/__tests__/wiki-tools-foreign-root.test.ts",
         "kind": "tool",
         "path": "src/tools/__tests__/wiki-tools-foreign-root.test.ts"
@@ -71980,6 +71987,36 @@
         "kind": "imports"
       },
       {
+        "from": "src/tools/__tests__/wiki-tools-direct-dist-failclosed.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/wiki-tools-direct-dist-failclosed.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/wiki-tools-direct-dist-failclosed.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/wiki-tools-direct-dist-failclosed.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/wiki-tools-direct-dist-failclosed.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/wiki-tools-direct-dist-failclosed.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "src/tools/__tests__/wiki-tools-foreign-root.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -74806,12 +74843,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6792,
-      "edgeCount": 6915,
-      "importEdgeCount": 5679,
+      "nodeCount": 6793,
+      "edgeCount": 6921,
+      "importEdgeCount": 5685,
       "registerEdgeCount": 52
     }
   },
-  "inventorySha256": "5f2643018ec279c40a3a1fa636f6adab088c78bfd967ba3a4789573b8a8133f0",
-  "manifestSha256": "4c0bf2725a59572490421f9b73573dd6ef8dc7277b0754274de74c4f3fd6860c"
+  "inventorySha256": "b11f24e66cc72a4cd4458d678680de6c493d9ff09c741eb51bdce4f257f357e2",
+  "manifestSha256": "096fcaa9cdaa67d550b2b3ed4077830d81b14ff5a8224eead7f16d0b23890c56"
 }

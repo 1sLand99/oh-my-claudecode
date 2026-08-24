@@ -21148,6 +21148,7 @@ var import_child_process8 = require("child_process");
 var import_fs12 = require("fs");
 var import_os3 = require("os");
 var import_path12 = require("path");
+var import_url4 = require("url");
 
 // src/utils/encode-project-path.ts
 function encodeProjectPath(projectPath) {
@@ -21175,8 +21176,8 @@ var OmcPaths = {
 };
 var MAX_WORKTREE_CACHE_SIZE = 8;
 var worktreeCacheMap = /* @__PURE__ */ new Map();
-var toplevelCacheMap = /* @__PURE__ */ new Map();
 var superprojectCacheMap = /* @__PURE__ */ new Map();
+var canonicalWorkingDirectoryRoots = /* @__PURE__ */ new WeakMap();
 var workspaceCacheMap = /* @__PURE__ */ new Map();
 function findWorkspaceRoot(startDir) {
   if (process.env.OMC_DISABLE_MULTIREPO === "1") return null;
@@ -21284,31 +21285,199 @@ function resolveStateAnchorRoot(worktreeRoot) {
   if (worktreeRoot) return resolveSuperprojectRoot(worktreeRoot) || worktreeRoot;
   return getWorktreeRoot() || process.cwd();
 }
-function getGitTopLevel(cwd) {
-  const effectiveCwd = cwd || process.cwd();
-  if (toplevelCacheMap.has(effectiveCwd)) {
-    const root = toplevelCacheMap.get(effectiveCwd);
-    toplevelCacheMap.delete(effectiveCwd);
-    toplevelCacheMap.set(effectiveCwd, root);
-    return root || null;
+var gitShowToplevelProbeForTests;
+function gitErrorStderr(error2) {
+  if (!error2 || typeof error2 !== "object") {
+    return "";
   }
-  try {
-    const root = (0, import_child_process8.execFileSync)("git", ["rev-parse", "--show-toplevel"], {
-      cwd: effectiveCwd,
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true,
-      timeout: 5e3
-    }).trim();
-    if (toplevelCacheMap.size >= MAX_WORKTREE_CACHE_SIZE) {
-      const oldest = toplevelCacheMap.keys().next().value;
-      if (oldest !== void 0) toplevelCacheMap.delete(oldest);
+  const err = error2;
+  if (Buffer.isBuffer(err.stderr)) {
+    return err.stderr.toString("utf8");
+  }
+  if (typeof err.stderr === "string") {
+    return err.stderr;
+  }
+  return typeof err.message === "string" ? err.message : "";
+}
+function isGitCommandPath(path13) {
+  if (typeof path13 !== "string" || path13.length === 0) {
+    return false;
+  }
+  const base = (0, import_path12.basename)(path13);
+  return base === "git" || base === "git.exe" || base === "git.cmd" || base === "git.bat";
+}
+function isConfirmedGitExecutableNotFound(error2) {
+  if (!error2 || typeof error2 !== "object") {
+    return false;
+  }
+  const err = error2;
+  if (err.code !== "ENOENT") {
+    return false;
+  }
+  if (err.killed === true) {
+    return false;
+  }
+  if (typeof err.status === "number") {
+    return false;
+  }
+  if (typeof err.signal === "string" && err.signal.length > 0) {
+    return false;
+  }
+  const syscall = typeof err.syscall === "string" ? err.syscall.toLowerCase() : "";
+  if (!syscall.includes("spawn")) {
+    return false;
+  }
+  return syscall.includes("git") || isGitCommandPath(err.path);
+}
+function isNotAGitRepositoryError(error2) {
+  if (!error2 || typeof error2 !== "object") {
+    return false;
+  }
+  const err = error2;
+  if (err.code === "ENOENT" || err.code === "ETIMEDOUT" || err.code === "EACCES") {
+    return false;
+  }
+  if (typeof err.signal === "string" && err.signal.length > 0) {
+    return false;
+  }
+  const stderr = gitErrorStderr(error2);
+  return err.status === 128 && /not a git repository/i.test(stderr);
+}
+function formatGitProbeDetail(error2) {
+  if (!error2 || typeof error2 !== "object") {
+    return String(error2);
+  }
+  const err = error2;
+  if (err.code === "ENOENT") {
+    return "git executable not found";
+  }
+  if (err.code === "EACCES") {
+    return "git executable not accessible";
+  }
+  if (err.code === "ETIMEDOUT" || err.killed === true) {
+    return "git probe timed out";
+  }
+  if (typeof err.signal === "string" && err.signal.length > 0) {
+    return `git killed by ${err.signal}`;
+  }
+  const stderr = gitErrorStderr(error2).trim();
+  if (stderr.length > 0) {
+    return stderr.split("\n")[0] ?? stderr;
+  }
+  if (typeof err.message === "string" && err.message.length > 0) {
+    return err.message;
+  }
+  if (typeof err.status === "number") {
+    return `git exited ${err.status}`;
+  }
+  return "unknown git probe failure";
+}
+function findGitMetadataDir(start) {
+  let current = start;
+  for (; ; ) {
+    if ((0, import_fs12.existsSync)((0, import_path12.join)(current, ".git"))) {
+      return current;
     }
-    toplevelCacheMap.set(effectiveCwd, root);
-    return root;
-  } catch {
-    return null;
+    const parent = (0, import_path12.dirname)(current);
+    if (parent === current) {
+      return null;
+    }
+    current = parent;
   }
+}
+function canonicalizeExistingPath(path13) {
+  const normalized = (0, import_path12.resolve)(path13);
+  try {
+    return import_fs12.realpathSync.native(normalized);
+  } catch {
+    try {
+      return (0, import_fs12.realpathSync)(normalized);
+    } catch {
+      return null;
+    }
+  }
+}
+function sameCanonicalPath(left, right) {
+  const a = canonicalizeExistingPath(left);
+  const b = canonicalizeExistingPath(right);
+  if (!a || !b) {
+    return false;
+  }
+  if (a === b) {
+    return true;
+  }
+  if (process.platform !== "win32") {
+    return false;
+  }
+  const fold = (value) => value.replaceAll("/", "\\").toLowerCase();
+  return fold(a) === fold(b);
+}
+function isCredibleGitWorktreeRoot(root) {
+  try {
+    if (!(0, import_fs12.statSync)(root).isDirectory()) {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+  const rootReal = canonicalizeExistingPath(root);
+  if (!rootReal) {
+    return false;
+  }
+  const metadataDir = findGitMetadataDir(rootReal);
+  return metadataDir !== null && sameCanonicalPath(metadataDir, rootReal);
+}
+function classifyGitShowToplevelStdout(stdout, cwd) {
+  const root = stdout.trim();
+  if (root.length === 0 || !(0, import_path12.isAbsolute)(root) || !isCredibleGitWorktreeRoot(root)) {
+    return { status: "probe_failed", detail: "malformed git toplevel output" };
+  }
+  const cwdReal = canonicalizeExistingPath(cwd);
+  const claimedReal = canonicalizeExistingPath(root);
+  if (!cwdReal || !claimedReal) {
+    return { status: "probe_failed", detail: "malformed git toplevel output" };
+  }
+  const metadataDir = findGitMetadataDir(cwdReal);
+  if (!metadataDir || !sameCanonicalPath(metadataDir, claimedReal)) {
+    return { status: "probe_failed", detail: "malformed git toplevel output" };
+  }
+  return { status: "ok", root: claimedReal };
+}
+function classifyGitShowToplevelError(error2) {
+  if (isNotAGitRepositoryError(error2)) {
+    return { status: "not_a_repository" };
+  }
+  if (isConfirmedGitExecutableNotFound(error2)) {
+    return { status: "git_missing" };
+  }
+  return { status: "probe_failed", detail: formatGitProbeDetail(error2) };
+}
+function runGitShowToplevel(cwd) {
+  if (gitShowToplevelProbeForTests) {
+    const result = gitShowToplevelProbeForTests(cwd);
+    return Buffer.isBuffer(result) ? result.toString("utf8") : result;
+  }
+  return (0, import_child_process8.execFileSync)("git", ["rev-parse", "--show-toplevel"], {
+    cwd,
+    encoding: "utf-8",
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
+    timeout: 5e3
+  });
+}
+function probeGitTopLevel(cwd) {
+  try {
+    return classifyGitShowToplevelStdout(runGitShowToplevel(cwd), cwd);
+  } catch (error2) {
+    return classifyGitShowToplevelError(error2);
+  }
+}
+function getGitTopLevel(cwd) {
+  const probe = probeGitTopLevel(cwd || process.cwd());
+  return probe.status === "ok" ? probe.root : null;
+}
+function formatGitProbeFailedMessage(workingDirectory) {
+  return `workingDirectory '${workingDirectory}' git probe failed and was not used. Cross-repository access is not permitted; pass a path inside the current repository or start the session there.`;
 }
 function getWorktreeRoot(cwd) {
   const effectiveCwd = cwd || process.cwd();
@@ -21499,6 +21668,77 @@ function resolveToWorktreeRoot(directory) {
   }
   return resolveRoot(process.cwd()) || process.cwd();
 }
+function callerVisibleTrustedRootLabel(trustedRoot) {
+  const label = (0, import_path12.basename)(trustedRoot);
+  return label.length > 0 ? label : "current repository";
+}
+function formatOutsideTrustedRootMessage(workingDirectory, trustedRoot) {
+  return `workingDirectory '${workingDirectory}' is outside the trusted worktree root '${callerVisibleTrustedRootLabel(trustedRoot)}'.`;
+}
+function attachCanonicalWorkingDirectoryRoots(target, providedRoot, trustedRoot) {
+  canonicalWorkingDirectoryRoots.set(target, { providedRoot, trustedRoot });
+}
+function getCanonicalWorkingDirectoryRoots(target) {
+  const roots = canonicalWorkingDirectoryRoots.get(target);
+  if (!roots) {
+    throw new Error("canonical working directory roots are not attached");
+  }
+  return roots;
+}
+function canonicalRootAliases(root) {
+  if (root.length === 0) {
+    return [];
+  }
+  const aliases = /* @__PURE__ */ new Set([root]);
+  try {
+    aliases.add((0, import_url4.pathToFileURL)(root).href);
+  } catch {
+  }
+  try {
+    const real = (0, import_fs12.realpathSync)(root);
+    aliases.add(real);
+    aliases.add((0, import_url4.pathToFileURL)(real).href);
+  } catch {
+  }
+  if (import_path12.sep === "\\") {
+    aliases.add(root.replaceAll("\\", "/"));
+  }
+  return [...aliases].sort((a, b) => b.length - a.length);
+}
+function redactCanonicalRoots(text, providedRoot, trustedRoot) {
+  let redacted = text;
+  const roots = [...canonicalRootAliases(providedRoot), ...canonicalRootAliases(trustedRoot)].sort((a, b) => b.length - a.length);
+  for (const root of roots) {
+    redacted = redacted.split(root).join("<redacted>");
+  }
+  return redacted;
+}
+function redactErrorStack(stack, providedRoot, trustedRoot) {
+  const newline = stack.includes("\r\n") ? "\r\n" : "\n";
+  const lines = stack.split(/\r?\n/);
+  if (lines.length <= 1) {
+    return stack;
+  }
+  const [header, ...frames] = lines;
+  return [header, ...frames.map((frame) => redactCanonicalRoots(frame, providedRoot, trustedRoot))].join(newline);
+}
+function foreignRepositoryResolution(providedRoot, trustedRoot, callerLabel) {
+  const resolution = {
+    status: "foreign_repository",
+    callerLabel
+  };
+  attachCanonicalWorkingDirectoryRoots(resolution, providedRoot, trustedRoot);
+  Object.defineProperty(resolution, "toJSON", {
+    enumerable: false,
+    writable: false,
+    configurable: false,
+    value: () => ({
+      status: "foreign_repository",
+      callerLabel
+    })
+  });
+  return resolution;
+}
 function validateWorkingDirectory(workingDirectory) {
   const trustedRoot = getGitTopLevel(process.cwd()) || process.cwd();
   if (!workingDirectory) {
@@ -21537,7 +21777,7 @@ function validateWorkingDirectory(workingDirectory) {
   }
   const rel = (0, import_path12.relative)(trustedRootReal, resolvedReal);
   if (rel.startsWith("..") || (0, import_path12.isAbsolute)(rel)) {
-    throw new Error(`workingDirectory '${workingDirectory}' is outside the trusted worktree root '${trustedRoot}'.`);
+    throw new Error(formatOutsideTrustedRootMessage(workingDirectory, trustedRoot));
   }
   return trustedRoot;
 }
@@ -21555,10 +21795,58 @@ function getGitCommonDir(cwd) {
     return null;
   }
 }
-function validateWorkingDirectoryOrLinkedWorktree(workingDirectory) {
-  const trustedRoot = getGitTopLevel(process.cwd()) || process.cwd();
+var ForeignWorkingDirectoryError = class extends Error {
+  callerLabel;
+  constructor(providedRoot, trustedRoot, callerLabel) {
+    super(
+      `workingDirectory '${callerLabel}' belongs to a different repository than '${callerVisibleTrustedRootLabel(trustedRoot)}' and was not used. Cross-repository access is not permitted; pass a path inside the current repository or start the session there.`
+    );
+    this.name = "ForeignWorkingDirectoryError";
+    this.callerLabel = callerLabel;
+    attachCanonicalWorkingDirectoryRoots(this, providedRoot, trustedRoot);
+    Object.defineProperty(this, "stack", {
+      value: redactErrorStack(this.stack ?? `${this.name}: ${this.message}`, providedRoot, trustedRoot),
+      enumerable: false,
+      configurable: true,
+      writable: true
+    });
+  }
+  toJSON() {
+    return {
+      name: this.name,
+      message: this.message,
+      callerLabel: this.callerLabel
+    };
+  }
+  [/* @__PURE__ */ Symbol.for("nodejs.util.inspect.custom")]() {
+    return this.stack ?? `${this.name}: ${this.message}`;
+  }
+};
+function resolveWorkingDirectoryOrLinkedWorktree(workingDirectory) {
+  const callerLabel = workingDirectory && workingDirectory.length > 0 ? workingDirectory : "session cwd";
+  const trustedProbe = probeGitTopLevel(process.cwd());
+  if (trustedProbe.status === "probe_failed") {
+    throw new Error(formatGitProbeFailedMessage(callerLabel));
+  }
+  let trustedRoot;
+  if (trustedProbe.status === "ok") {
+    trustedRoot = trustedProbe.root;
+  } else if (trustedProbe.status === "not_a_repository") {
+    let cwdReal = process.cwd();
+    try {
+      cwdReal = (0, import_fs12.realpathSync)(cwdReal);
+    } catch {
+      cwdReal = process.cwd();
+    }
+    if ((0, import_fs12.existsSync)((0, import_path12.join)(cwdReal, ".git"))) {
+      throw new Error(formatGitProbeFailedMessage(callerLabel));
+    }
+    trustedRoot = process.cwd();
+  } else {
+    trustedRoot = process.cwd();
+  }
   if (!workingDirectory) {
-    return trustedRoot;
+    return { status: "ok", root: trustedRoot };
   }
   const resolved = (0, import_path12.resolve)(workingDirectory);
   let trustedRootReal;
@@ -21567,8 +21855,9 @@ function validateWorkingDirectoryOrLinkedWorktree(workingDirectory) {
   } catch {
     trustedRootReal = trustedRoot;
   }
-  const providedRoot = getGitTopLevel(resolved);
-  if (providedRoot) {
+  const providedProbe = probeGitTopLevel(resolved);
+  if (providedProbe.status === "ok") {
+    const providedRoot = providedProbe.root;
     let providedRootReal;
     try {
       providedRootReal = (0, import_fs12.realpathSync)(providedRoot);
@@ -21576,19 +21865,17 @@ function validateWorkingDirectoryOrLinkedWorktree(workingDirectory) {
       throw new Error(`workingDirectory '${workingDirectory}' does not exist or is not accessible.`);
     }
     if (providedRootReal === trustedRootReal) {
-      return providedRoot;
+      return { status: "ok", root: providedRoot };
     }
     const trustedCommonDir = getGitCommonDir(trustedRoot);
     const providedCommonDir = getGitCommonDir(providedRoot);
     if (trustedCommonDir && providedCommonDir && providedCommonDir === trustedCommonDir) {
-      return providedRoot;
+      return { status: "ok", root: providedRoot };
     }
-    console.error("[worktree] workingDirectory resolved to different git worktree root, using trusted root", {
-      workingDirectory: resolved,
-      providedRoot: providedRootReal,
-      trustedRoot: trustedRootReal
-    });
-    return trustedRoot;
+    return foreignRepositoryResolution(providedRootReal, trustedRootReal, workingDirectory);
+  }
+  if (providedProbe.status === "probe_failed") {
+    throw new Error(formatGitProbeFailedMessage(workingDirectory));
   }
   let resolvedReal;
   try {
@@ -21596,11 +21883,26 @@ function validateWorkingDirectoryOrLinkedWorktree(workingDirectory) {
   } catch {
     throw new Error(`workingDirectory '${workingDirectory}' does not exist or is not accessible.`);
   }
+  if (providedProbe.status === "not_a_repository" && (0, import_fs12.existsSync)((0, import_path12.join)(resolvedReal, ".git"))) {
+    throw new Error(formatGitProbeFailedMessage(workingDirectory));
+  }
+  const gitMetadataDir = findGitMetadataDir(resolvedReal);
+  if (gitMetadataDir) {
+    let gitMetadataReal = gitMetadataDir;
+    try {
+      gitMetadataReal = (0, import_fs12.realpathSync)(gitMetadataDir);
+    } catch {
+      gitMetadataReal = gitMetadataDir;
+    }
+    if (gitMetadataReal !== trustedRootReal) {
+      throw new Error(formatGitProbeFailedMessage(workingDirectory));
+    }
+  }
   const rel = (0, import_path12.relative)(trustedRootReal, resolvedReal);
   if (rel.startsWith("..") || (0, import_path12.isAbsolute)(rel)) {
-    throw new Error(`workingDirectory '${workingDirectory}' is outside the trusted worktree root '${trustedRoot}'.`);
+    throw new Error(formatOutsideTrustedRootMessage(workingDirectory, trustedRoot));
   }
-  return trustedRoot;
+  return { status: "ok", root: trustedRoot };
 }
 
 // src/tools/ast-tools.ts
@@ -30986,6 +31288,7 @@ function detectStructuralContradictions(pages, issues) {
 }
 
 // src/tools/wiki-tools.ts
+var import_node_path2 = require("node:path");
 var WIKI_CATEGORIES = [
   "architecture",
   "decision",
@@ -30996,6 +31299,24 @@ var WIKI_CATEGORIES = [
   "reference",
   "convention"
 ];
+function resolveWikiRoot(workingDirectory) {
+  const resolution = resolveWorkingDirectoryOrLinkedWorktree(workingDirectory);
+  if (resolution.status === "foreign_repository") {
+    const roots = getCanonicalWorkingDirectoryRoots(resolution);
+    return {
+      ok: false,
+      error: new ForeignWorkingDirectoryError(
+        roots.providedRoot,
+        roots.trustedRoot,
+        resolution.callerLabel
+      )
+    };
+  }
+  return { ok: true, root: resolution.root };
+}
+function searchedSuffix(root, pages) {
+  return ` (searched ${pages} page${pages === 1 ? "" : "s"} in ${(0, import_node_path2.basename)(root)}/.omc/wiki)`;
+}
 var wikiIngestTool = {
   name: "wiki_ingest",
   description: "Process knowledge into wiki pages. Creates new pages or merges into existing ones (append strategy \u2014 never replaces). A single ingest can update multiple pages via cross-references.",
@@ -31010,7 +31331,17 @@ var wikiIngestTool = {
   },
   handler: async (args) => {
     try {
-      const root = validateWorkingDirectoryOrLinkedWorktree(args.workingDirectory);
+      const resolved = resolveWikiRoot(args.workingDirectory);
+      if (!resolved.ok) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error ingesting into wiki: ${resolved.error.message}`
+          }],
+          isError: true
+        };
+      }
+      const root = resolved.root;
       const result = ingestKnowledge(root, {
         title: args.title,
         content: args.content,
@@ -31051,7 +31382,17 @@ var wikiQueryTool = {
   },
   handler: async (args) => {
     try {
-      const root = validateWorkingDirectoryOrLinkedWorktree(args.workingDirectory);
+      const resolved = resolveWikiRoot(args.workingDirectory);
+      if (!resolved.ok) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error querying wiki: ${resolved.error.message}`
+          }],
+          isError: true
+        };
+      }
+      const root = resolved.root;
       const matches = queryWiki(root, args.query, {
         tags: args.tags,
         category: args.category,
@@ -31061,7 +31402,7 @@ var wikiQueryTool = {
         return {
           content: [{
             type: "text",
-            text: `No wiki pages match "${args.query}".`
+            text: `No wiki pages match "${args.query}".${searchedSuffix(root, listPages(root).length)}`
           }]
         };
       }
@@ -31100,7 +31441,17 @@ var wikiLintTool = {
   },
   handler: async (args) => {
     try {
-      const root = validateWorkingDirectoryOrLinkedWorktree(args.workingDirectory);
+      const resolved = resolveWikiRoot(args.workingDirectory);
+      if (!resolved.ok) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error linting wiki: ${resolved.error.message}`
+          }],
+          isError: true
+        };
+      }
+      const root = resolved.root;
       const report = lintWiki(root);
       if (report.issues.length === 0) {
         return {
@@ -31148,7 +31499,17 @@ var wikiAddTool = {
   },
   handler: async (args) => {
     try {
-      const root = validateWorkingDirectoryOrLinkedWorktree(args.workingDirectory);
+      const resolved = resolveWikiRoot(args.workingDirectory);
+      if (!resolved.ok) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error adding wiki page: ${resolved.error.message}`
+          }],
+          isError: true
+        };
+      }
+      const root = resolved.root;
       const slug = titleToSlug(args.title);
       if (readPage(root, slug)) {
         return {
@@ -31191,7 +31552,17 @@ var wikiListTool = {
   },
   handler: async (args) => {
     try {
-      const root = validateWorkingDirectoryOrLinkedWorktree(args.workingDirectory);
+      const resolved = resolveWikiRoot(args.workingDirectory);
+      if (!resolved.ok) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error listing wiki: ${resolved.error.message}`
+          }],
+          isError: true
+        };
+      }
+      const root = resolved.root;
       const index = readIndex(root);
       if (!index) {
         const pages = listPages(root);
@@ -31199,7 +31570,7 @@ var wikiListTool = {
           return {
             content: [{
               type: "text",
-              text: "Wiki is empty. Use wiki_add or wiki_ingest to create pages."
+              text: `Wiki is empty.${searchedSuffix(root, 0)} Use wiki_add or wiki_ingest to create pages.`
             }]
           };
         }
@@ -31237,7 +31608,17 @@ var wikiReadTool = {
   },
   handler: async (args) => {
     try {
-      const root = validateWorkingDirectoryOrLinkedWorktree(args.workingDirectory);
+      const resolved = resolveWikiRoot(args.workingDirectory);
+      if (!resolved.ok) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error reading wiki page: ${resolved.error.message}`
+          }],
+          isError: true
+        };
+      }
+      const root = resolved.root;
       const filename = args.page.endsWith(".md") ? args.page : `${args.page}.md`;
       const page = readPage(root, filename);
       if (!page) {
@@ -31285,7 +31666,17 @@ var wikiDeleteTool = {
   },
   handler: async (args) => {
     try {
-      const root = validateWorkingDirectoryOrLinkedWorktree(args.workingDirectory);
+      const resolved = resolveWikiRoot(args.workingDirectory);
+      if (!resolved.ok) {
+        return {
+          content: [{
+            type: "text",
+            text: `Error deleting wiki page: ${resolved.error.message}`
+          }],
+          isError: true
+        };
+      }
+      const root = resolved.root;
       const filename = args.page.endsWith(".md") ? args.page : `${args.page}.md`;
       const deleted = deletePage(root, filename);
       if (!deleted) {

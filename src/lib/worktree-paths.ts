@@ -286,10 +286,14 @@ function isConfirmedGitExecutableNotFound(error: unknown): boolean {
     code?: string;
     path?: string;
     syscall?: string;
-    status?: number;
+    status?: number | null;
     signal?: NodeJS.Signals | string | null;
+    killed?: boolean;
   };
   if (err.code !== 'ENOENT') {
+    return false;
+  }
+  if (err.killed === true) {
     return false;
   }
   if (typeof err.status === 'number') {
@@ -299,8 +303,10 @@ function isConfirmedGitExecutableNotFound(error: unknown): boolean {
     return false;
   }
   const syscall = typeof err.syscall === 'string' ? err.syscall.toLowerCase() : '';
-  const spawnedGit = syscall.includes('spawn') && (syscall.includes('git') || isGitCommandPath(err.path));
-  return spawnedGit || isGitCommandPath(err.path);
+  if (!syscall.includes('spawn')) {
+    return false;
+  }
+  return syscall.includes('git') || isGitCommandPath(err.path);
 }
 
 function isNotAGitRepositoryError(error: unknown): boolean {
@@ -372,6 +378,35 @@ function findGitMetadataDir(start: string): string | null {
   }
 }
 
+function canonicalizeExistingPath(path: string): string | null {
+  const normalized = resolve(path);
+  try {
+    return realpathSync.native(normalized);
+  } catch {
+    try {
+      return realpathSync(normalized);
+    } catch {
+      return null;
+    }
+  }
+}
+
+function sameCanonicalPath(left: string, right: string): boolean {
+  const a = canonicalizeExistingPath(left);
+  const b = canonicalizeExistingPath(right);
+  if (!a || !b) {
+    return false;
+  }
+  if (a === b) {
+    return true;
+  }
+  if (process.platform !== 'win32') {
+    return false;
+  }
+  const fold = (value: string): string => value.replaceAll('/', '\\').toLowerCase();
+  return fold(a) === fold(b);
+}
+
 function isCredibleGitWorktreeRoot(root: string): boolean {
   try {
     if (!statSync(root).isDirectory()) {
@@ -380,21 +415,12 @@ function isCredibleGitWorktreeRoot(root: string): boolean {
   } catch {
     return false;
   }
-  let rootReal: string;
-  try {
-    rootReal = realpathSync(root);
-  } catch {
+  const rootReal = canonicalizeExistingPath(root);
+  if (!rootReal) {
     return false;
   }
   const metadataDir = findGitMetadataDir(rootReal);
-  if (!metadataDir) {
-    return false;
-  }
-  try {
-    return realpathSync(metadataDir) === rootReal;
-  } catch {
-    return metadataDir === rootReal;
-  }
+  return metadataDir !== null && sameCanonicalPath(metadataDir, rootReal);
 }
 
 function classifyGitShowToplevelStdout(stdout: string, cwd: string): GitTopLevelProbe {
@@ -402,32 +428,16 @@ function classifyGitShowToplevelStdout(stdout: string, cwd: string): GitTopLevel
   if (root.length === 0 || !isAbsolute(root) || !isCredibleGitWorktreeRoot(root)) {
     return { status: 'probe_failed', detail: 'malformed git toplevel output' };
   }
-  let cwdReal: string;
-  try {
-    cwdReal = realpathSync(resolve(cwd));
-  } catch {
-    return { status: 'probe_failed', detail: 'malformed git toplevel output' };
-  }
-  let claimedReal: string;
-  try {
-    claimedReal = realpathSync(root);
-  } catch {
+  const cwdReal = canonicalizeExistingPath(cwd);
+  const claimedReal = canonicalizeExistingPath(root);
+  if (!cwdReal || !claimedReal) {
     return { status: 'probe_failed', detail: 'malformed git toplevel output' };
   }
   const metadataDir = findGitMetadataDir(cwdReal);
-  if (!metadataDir) {
+  if (!metadataDir || !sameCanonicalPath(metadataDir, claimedReal)) {
     return { status: 'probe_failed', detail: 'malformed git toplevel output' };
   }
-  let metadataReal = metadataDir;
-  try {
-    metadataReal = realpathSync(metadataDir);
-  } catch {
-    metadataReal = metadataDir;
-  }
-  if (metadataReal !== claimedReal) {
-    return { status: 'probe_failed', detail: 'malformed git toplevel output' };
-  }
-  return { status: 'ok', root };
+  return { status: 'ok', root: claimedReal };
 }
 
 function classifyGitShowToplevelError(error: unknown): GitTopLevelProbe {
@@ -455,25 +465,10 @@ function runGitShowToplevel(cwd: string): string {
 }
 
 function probeGitTopLevel(cwd: string): GitTopLevelProbe {
-  if (!gitShowToplevelProbeForTests && toplevelCacheMap.has(cwd)) {
-    const root = toplevelCacheMap.get(cwd)!;
-    toplevelCacheMap.delete(cwd);
-    toplevelCacheMap.set(cwd, root);
-    return { status: 'ok', root };
-  }
-
+  // Never cache security decisions: PATH, the git executable, and .git
+  // metadata can change between calls in the same process.
   try {
-    const classified = classifyGitShowToplevelStdout(runGitShowToplevel(cwd), cwd);
-    if (classified.status !== 'ok') {
-      return classified;
-    }
-
-    if (toplevelCacheMap.size >= MAX_WORKTREE_CACHE_SIZE) {
-      const oldest = toplevelCacheMap.keys().next().value;
-      if (oldest !== undefined) toplevelCacheMap.delete(oldest);
-    }
-    toplevelCacheMap.set(cwd, classified.root);
-    return classified;
+    return classifyGitShowToplevelStdout(runGitShowToplevel(cwd), cwd);
   } catch (error) {
     return classifyGitShowToplevelError(error);
   }
@@ -1687,7 +1682,23 @@ export function resolveWorkingDirectoryOrLinkedWorktree(workingDirectory?: strin
   if (trustedProbe.status === 'probe_failed') {
     throw new Error(formatGitProbeFailedMessage(callerLabel));
   }
-  const trustedRoot = trustedProbe.status === 'ok' ? trustedProbe.root : process.cwd();
+  let trustedRoot: string;
+  if (trustedProbe.status === 'ok') {
+    trustedRoot = trustedProbe.root;
+  } else if (trustedProbe.status === 'not_a_repository') {
+    let cwdReal = process.cwd();
+    try {
+      cwdReal = realpathSync(cwdReal);
+    } catch {
+      cwdReal = process.cwd();
+    }
+    if (existsSync(join(cwdReal, '.git'))) {
+      throw new Error(formatGitProbeFailedMessage(callerLabel));
+    }
+    trustedRoot = process.cwd();
+  } else {
+    trustedRoot = process.cwd();
+  }
 
   if (!workingDirectory) {
     return { status: 'ok', root: trustedRoot };
@@ -1736,6 +1747,10 @@ export function resolveWorkingDirectoryOrLinkedWorktree(workingDirectory?: strin
     resolvedReal = realpathSync(resolved);
   } catch {
     throw new Error(`workingDirectory '${workingDirectory}' does not exist or is not accessible.`);
+  }
+
+  if (providedProbe.status === 'not_a_repository' && existsSync(join(resolvedReal, '.git'))) {
+    throw new Error(formatGitProbeFailedMessage(workingDirectory));
   }
 
   const gitMetadataDir = findGitMetadataDir(resolvedReal);
