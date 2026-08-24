@@ -240,9 +240,19 @@ export declare function deliverStartupInbox(context: StartupPaneContext, message
     ok: false;
     reason: string;
 }>;
+/**
+ * Outcome of a startup-inbox resubmit probe:
+ * - `resubmitted` — the trigger was still visibly pending and Enter was re-sent.
+ * - `pane_busy` — the owned pane shows an active task: the worker consumed the
+ *   trigger and is working, so resubmitting would duplicate the inbox. Callers
+ *   must keep waiting for startup evidence instead of tearing the launch down.
+ * - `unavailable` — the pane cannot be re-submitted into (inactive attempt,
+ *   copy mode, capture failure, selector, or the trigger text is gone).
+ */
+export type StartupInboxResubmitOutcome = 'resubmitted' | 'pane_busy' | 'unavailable';
 export declare function retryStartupInboxSubmit(context: StartupPaneContext, message: string, options?: {
     attemptAlreadyFenced?: boolean;
-}): Promise<boolean>;
+}): Promise<StartupInboxResubmitOutcome>;
 export declare function shouldAttemptAdaptiveRetry(args: {
     paneBusy: boolean;
     latestCapture: string | null;

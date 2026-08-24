@@ -447,15 +447,24 @@ describe('worker pane startup safety', () => {
     const message = 'Read inbox.md, execute now.';
     tmuxState.captures = [`❯ ${message}\n`];
 
-    await expect(retryStartupInboxSubmit(context, message)).resolves.toBe(true);
+    await expect(retryStartupInboxSubmit(context, message)).resolves.toBe('resubmitted');
     expect(tmuxState.args.some(args => args[0] === 'send-keys' && args.at(-1) === 'Enter')).toBe(true);
+  });
+
+  it('reports an engaged pane instead of resubmitting when the worker is actively working', async () => {
+    const context = await acceptedContext('claude');
+    const message = 'Read inbox.md, execute now.';
+    tmuxState.captures = [`> ${message}\n\n  ✻ Thinking…\n  (esc to interrupt at any time to stop)\n`];
+
+    await expect(retryStartupInboxSubmit(context, message)).resolves.toBe('pane_busy');
+    expect(tmuxState.args.some(args => args[0] === 'send-keys' && args.at(-1) === 'Enter')).toBe(false);
   });
 
   it('does not retry Enter for unrelated pane text', async () => {
     const context = await acceptedContext('claude');
     tmuxState.captures = ['❯ unrelated text\n'];
 
-    await expect(retryStartupInboxSubmit(context, 'Read inbox.md, execute now.')).resolves.toBe(false);
+    await expect(retryStartupInboxSubmit(context, 'Read inbox.md, execute now.')).resolves.toBe('unavailable');
     expect(tmuxState.args.some(args => args[0] === 'send-keys' && args.at(-1) === 'Enter')).toBe(false);
   });
 

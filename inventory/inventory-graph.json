@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "b31062fce3a3434544801d6e18375df232728726",
-    "sourceSha256": "7bfaf9e0229d847d0cf96f9afbed6b87da3dab6bfc2e32fde53090d98fb30225",
+    "head": "781a99cb69683efede9002f9f71e04a219271975",
+    "sourceSha256": "b71cb3965bde6051530e8c4801c7f974f04237bb50fc8c50a9be1c650cd98a71",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "b31062fce3a3434544801d6e18375df232728726",
-  "sourceSha256": "7bfaf9e0229d847d0cf96f9afbed6b87da3dab6bfc2e32fde53090d98fb30225",
+  "head": "781a99cb69683efede9002f9f71e04a219271975",
+  "sourceSha256": "b71cb3965bde6051530e8c4801c7f974f04237bb50fc8c50a9be1c650cd98a71",
   "counts": {
     "public": {
       "skills": 31,
@@ -57168,11 +57168,6 @@
       },
       {
         "from": "src/hooks/persistent-mode/index.ts",
-        "to": "src/lib/mode-state-io.ts",
-        "kind": "type-imports"
-      },
-      {
-        "from": "src/hooks/persistent-mode/index.ts",
         "to": "src/lib/security-config.ts",
         "kind": "imports"
       },
@@ -58038,11 +58033,6 @@
       },
       {
         "from": "src/hooks/ralph/prd.ts",
-        "to": "external:crypto",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/ralph/prd.ts",
         "to": "external:fs",
         "kind": "imports"
       },
@@ -58055,16 +58045,6 @@
         "from": "src/hooks/ralph/prd.ts",
         "to": "src/hooks/ralph/stale-prd.ts",
         "kind": "type-imports"
-      },
-      {
-        "from": "src/hooks/ralph/prd.ts",
-        "to": "src/lib/atomic-write.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/ralph/prd.ts",
-        "to": "src/lib/mode-state-io.ts",
-        "kind": "imports"
       },
       {
         "from": "src/hooks/ralph/prd.ts",
@@ -58135,11 +58115,6 @@
         "from": "src/hooks/ralph/verifier.ts",
         "to": "src/hooks/ralph/loop.ts",
         "kind": "type-imports"
-      },
-      {
-        "from": "src/hooks/ralph/verifier.ts",
-        "to": "src/hooks/ralph/prd.ts",
-        "kind": "imports"
       },
       {
         "from": "src/hooks/ralph/verifier.ts",
@@ -63109,11 +63084,6 @@
       {
         "from": "src/lib/__tests__/mode-state-io.test.ts",
         "to": "scripts/lib/atomic-write.mjs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/lib/__tests__/mode-state-io.test.ts",
-        "to": "src/lib/atomic-write.ts",
         "kind": "imports"
       },
       {
@@ -75139,11 +75109,11 @@
     ],
     "stats": {
       "nodeCount": 6842,
-      "edgeCount": 6919,
-      "importEdgeCount": 5673,
+      "edgeCount": 6913,
+      "importEdgeCount": 5668,
       "registerEdgeCount": 52
     }
   },
   "inventorySha256": "dd4a8b7a76c74e9d9cea06fcce6c0c1584ed66b7d666d39421ce18bab6604d68",
-  "manifestSha256": "7eac039eb4dbf621ef96f23651d8d3203adff1aa5125a5e3ec1afc25ec837d00"
+  "manifestSha256": "e88a0939252273ff8c28ee216a8053d34e3a03d3139299583e466343058d193e"
 }
