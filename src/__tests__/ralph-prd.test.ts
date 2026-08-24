@@ -10,6 +10,7 @@ import {
   getSessionPrdPath,
   markStoryComplete,
   getStoryGoverningCriteriaRevision,
+  getPrdRevision,
   markStoryIncomplete,
   markStoryArchitectVerified,
   getStory,
@@ -113,6 +114,30 @@ describe('Ralph PRD Module', () => {
       expect(writePrd(testDir, prd)).toBe(true);
       const read = readPrd(testDir);
       expect(read).toMatchObject(prd);
+    });
+
+    it('rewrites an existing PRD without expectedRevision', () => {
+      expect(writePrd(testDir, samplePrd)).toBe(true);
+      const updated = { ...samplePrd, project: 'Rewritten Project' };
+      expect(writePrd(testDir, updated)).toBe(true);
+      expect(readPrd(testDir)?.project).toBe('Rewritten Project');
+    });
+
+    it('rewrites an existing PRD when expectedRevision still matches', () => {
+      expect(writePrd(testDir, samplePrd)).toBe(true);
+      const current = readPrd(testDir)!;
+      const revision = getPrdRevision(current);
+      expect(writePrd(testDir, { ...current, project: 'CAS Rewrite' }, undefined, revision)).toBe(true);
+      expect(readPrd(testDir)?.project).toBe('CAS Rewrite');
+    });
+
+    it('rejects an existing-file write when expectedRevision is stale', () => {
+      expect(writePrd(testDir, samplePrd)).toBe(true);
+      const snapshot = readPrd(testDir)!;
+      const staleRevision = getPrdRevision(snapshot);
+      expect(writePrd(testDir, { ...snapshot, project: 'First' })).toBe(true);
+      expect(writePrd(testDir, { ...snapshot, project: 'Stale' }, undefined, staleRevision)).toBe(false);
+      expect(readPrd(testDir)?.project).toBe('First');
     });
 
     it('should create .omc directory when writing', () => {

@@ -538,7 +538,11 @@ export function readPrd(directory: string, sessionId?: string): PRD | null {
 }
 
 /**
- * Write PRD to disk
+ * Write PRD to disk.
+ *
+ * Omitting `expectedRevision` is the public non-CAS rewrite path and may
+ * replace an existing file. Passing `expectedRevision` keeps generation-safe
+ * CAS and refuses the write when the on-disk document has moved.
  */
 export function writePrd(directory: string, prd: PRD, sessionId?: string, expectedRevision?: string): boolean {
   let prdPath: string;
@@ -588,14 +592,16 @@ export function writePrdIfRevision(
 }
 
 /**
- * Publish a PRD only when the complete normalized document still matches the
- * captured generation. Callers that already hold the mutation lock use this
- * helper to keep the final compare immediately adjacent to the atomic write.
+ * Publish a PRD. Callers that already hold the mutation lock use this helper
+ * so the final compare sits immediately next to the atomic write.
+ *
+ * When `expectedRevision` is omitted, an existing readable PRD may be
+ * rewritten. When it is provided, the on-disk generation must still match.
  */
 function writePrdAtRevision(prdPath: string, prd: PRD, expectedRevision?: string): boolean {
   const current = readPrdFromPath(prdPath).prd;
   if ((existsSync(prdPath) && !current)
-    || (current && (expectedRevision === undefined || getPrdRevision(current) !== expectedRevision))) {
+    || (current && expectedRevision !== undefined && getPrdRevision(current) !== expectedRevision)) {
     return false;
   }
   atomicWriteJsonSync(prdPath, bindCompletionClaims(prd));
