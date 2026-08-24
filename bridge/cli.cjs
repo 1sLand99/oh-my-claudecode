@@ -10411,6 +10411,11 @@ function normalizeStory(candidate) {
   if (criterionAmendments === null) {
     return null;
   }
+  const governingCriteriaRevision = getGoverningCriteriaRevision(acceptanceCriteria, criterionAmendments);
+  const completionCriteriaRevision = typeof story.completionCriteriaRevision === "string" ? story.completionCriteriaRevision : void 0;
+  const passes = story.passes === true && completionCriteriaRevision === governingCriteriaRevision;
+  const architectVerificationCriteriaRevision = typeof story.architectVerificationCriteriaRevision === "string" ? story.architectVerificationCriteriaRevision : void 0;
+  const architectVerified = passes && story.architectVerified === true && architectVerificationCriteriaRevision === governingCriteriaRevision;
   return {
     id: story.id,
     title: story.title,
@@ -10418,9 +10423,45 @@ function normalizeStory(candidate) {
     acceptanceCriteria,
     criterionAmendments,
     priority: story.priority,
-    passes: story.passes,
-    architectVerified: story.architectVerified === true,
+    governingCriteriaRevision,
+    completionCriteriaRevision: passes ? completionCriteriaRevision : void 0,
+    architectVerificationCriteriaRevision: architectVerified ? architectVerificationCriteriaRevision : void 0,
+    passes,
+    architectVerified,
     notes: typeof story.notes === "string" ? story.notes : void 0
+  };
+}
+function getGoverningCriteriaRevision(acceptanceCriteria, criterionAmendments) {
+  return `sha256:${(0, import_crypto9.createHash)("sha256").update(JSON.stringify({ acceptanceCriteria, criterionAmendments: criterionAmendments ?? [] })).digest("hex")}`;
+}
+function getStoryGoverningCriteriaRevision(story) {
+  return getGoverningCriteriaRevision(story.acceptanceCriteria, story.criterionAmendments);
+}
+function getPrdGoverningCriteriaRevision(prd) {
+  return `sha256:${(0, import_crypto9.createHash)("sha256").update(JSON.stringify(prd.userStories.map((story) => ({
+    id: story.id,
+    governingCriteriaRevision: getGoverningCriteriaRevision(story.acceptanceCriteria, story.criterionAmendments)
+  })))).digest("hex")}`;
+}
+function getPrdRevision(prd) {
+  return `sha256:${(0, import_crypto9.createHash)("sha256").update(JSON.stringify(prd)).digest("hex")}`;
+}
+function bindCompletionClaims(prd) {
+  return {
+    ...prd,
+    userStories: prd.userStories.map((story) => {
+      const governingCriteriaRevision = getGoverningCriteriaRevision(story.acceptanceCriteria, story.criterionAmendments);
+      const passes = story.passes === true && story.completionCriteriaRevision === governingCriteriaRevision;
+      const architectVerified = passes && story.architectVerified === true && story.architectVerificationCriteriaRevision === governingCriteriaRevision;
+      return {
+        ...story,
+        governingCriteriaRevision,
+        completionCriteriaRevision: passes ? governingCriteriaRevision : void 0,
+        architectVerificationCriteriaRevision: architectVerified ? governingCriteriaRevision : void 0,
+        passes,
+        architectVerified
+      };
+    })
   };
 }
 function normalizePrd(candidate) {
@@ -10569,11 +10610,83 @@ function writePrd(directory, prd, sessionId) {
   }
   try {
     (0, import_fs22.mkdirSync)((0, import_path28.dirname)(prdPath), { recursive: true });
-    (0, import_fs22.writeFileSync)(prdPath, JSON.stringify(prd, null, 2));
-    return true;
+    const result = withStateFileMutationLock(prdPath, () => {
+      atomicWriteJsonSync(prdPath, bindCompletionClaims(prd));
+      return true;
+    }, true);
+    return result.acquired && result.value === true;
   } catch {
     return false;
   }
+}
+function writePrdIfRevision(directory, prd, expectedRevision, sessionId) {
+  const prdPath = findPrdPath(directory, sessionId);
+  if (!prdPath) return false;
+  const result = withStateFileMutationLock(prdPath, () => {
+    try {
+      const current = readPrdFromPath(prdPath).prd;
+      if (!current || getPrdRevision(current) !== expectedRevision) return false;
+      atomicWriteJsonSync(prdPath, bindCompletionClaims(prd));
+      return true;
+    } catch {
+      return false;
+    }
+  }, true);
+  return result.acquired && result.value === true;
+}
+function mutatePrd(directory, sessionId, mutate) {
+  const prdPath = sessionId ? getSessionPrdPath(directory, sessionId) : findPrdPath(directory);
+  if (!prdPath) return void 0;
+  const result = withStateFileMutationLock(prdPath, () => {
+    const sourcePath = (0, import_fs22.existsSync)(prdPath) ? prdPath : findPrdPath(directory);
+    const prd = sourcePath ? readPrdFromPath(sourcePath).prd : void 0;
+    if (!prd) return void 0;
+    const value = mutate(prd);
+    if (value === void 0) return void 0;
+    atomicWriteJsonSync(prdPath, bindCompletionClaims(prd));
+    return value;
+  }, true);
+  return result.acquired ? result.value : void 0;
+}
+function consumeStoryArchitectApproval(directory, storyId, expectedCriteriaRevision, sessionId, beforeCommit, notes, consume) {
+  const prdPath = findPrdPath(directory, sessionId);
+  if (!prdPath) return false;
+  const result = withStateFileMutationLock(prdPath, () => {
+    beforeCommit?.();
+    const parsed = readPrdFromPath(prdPath).prd;
+    const story = parsed?.userStories.find((candidate) => candidate.id === storyId);
+    if (!parsed || !story || !story.passes || story.governingCriteriaRevision !== expectedCriteriaRevision || story.completionCriteriaRevision !== expectedCriteriaRevision && !(story.completionCriteriaRevision === void 0 && story.criterionAmendments === void 0)) {
+      return false;
+    }
+    story.completionCriteriaRevision = expectedCriteriaRevision;
+    story.architectVerified = true;
+    story.architectVerificationCriteriaRevision = expectedCriteriaRevision;
+    if (notes) story.notes = notes;
+    try {
+      if (!(consume?.() ?? true)) return false;
+      const current = readPrdFromPath(prdPath).prd;
+      const currentStory = current?.userStories.find((candidate) => candidate.id === storyId);
+      if (!current || !currentStory || currentStory.governingCriteriaRevision !== expectedCriteriaRevision || currentStory.completionCriteriaRevision !== expectedCriteriaRevision) return false;
+      atomicWriteJsonSync(prdPath, bindCompletionClaims(parsed));
+      return true;
+    } catch {
+      return false;
+    }
+  }, true);
+  return result.acquired && result.value === true;
+}
+function consumeCompletionArchitectApproval(directory, expectedCriteriaRevision, sessionId, consume, beforeCommit) {
+  const prdPath = findPrdPath(directory, sessionId);
+  if (!prdPath) return false;
+  const result = withStateFileMutationLock(prdPath, () => {
+    beforeCommit?.();
+    const prd = readPrdFromPath(prdPath).prd;
+    const current = prd !== void 0 && getPrdGoverningCriteriaRevision(prd) === expectedCriteriaRevision && getPrdStatus(prd).allComplete;
+    if (!current || !(consume?.() ?? true)) return false;
+    const revalidated = readPrdFromPath(prdPath).prd;
+    return revalidated !== void 0 && getPrdGoverningCriteriaRevision(revalidated) === expectedCriteriaRevision && getPrdStatus(revalidated).allComplete;
+  }, true);
+  return result.acquired && result.value === true;
 }
 function getPrdStatus(prd) {
   const stories = prd.userStories;
@@ -10590,36 +10703,28 @@ function getPrdStatus(prd) {
   };
 }
 function markStoryComplete(directory, storyId, notes, sessionId) {
-  const prd = readPrd(directory, sessionId);
-  if (!prd) {
-    return false;
-  }
-  const story = prd.userStories.find((s) => s.id === storyId);
-  if (!story) {
-    return false;
-  }
-  story.passes = true;
-  story.architectVerified = false;
-  if (notes) {
-    story.notes = notes;
-  }
-  return writePrd(directory, prd, sessionId);
+  return mutatePrd(directory, sessionId, (prd) => {
+    const story = prd.userStories.find((s) => s.id === storyId);
+    if (!story) return void 0;
+    story.passes = true;
+    story.architectVerified = false;
+    story.completionCriteriaRevision = getGoverningCriteriaRevision(story.acceptanceCriteria, story.criterionAmendments);
+    story.architectVerificationCriteriaRevision = void 0;
+    if (notes) story.notes = notes;
+    return true;
+  }) === true;
 }
 function markStoryIncomplete(directory, storyId, notes, sessionId) {
-  const prd = readPrd(directory, sessionId);
-  if (!prd) {
-    return false;
-  }
-  const story = prd.userStories.find((s) => s.id === storyId);
-  if (!story) {
-    return false;
-  }
-  story.passes = false;
-  story.architectVerified = false;
-  if (notes) {
-    story.notes = notes;
-  }
-  return writePrd(directory, prd, sessionId);
+  return mutatePrd(directory, sessionId, (prd) => {
+    const story = prd.userStories.find((s) => s.id === storyId);
+    if (!story) return void 0;
+    story.passes = false;
+    story.architectVerified = false;
+    story.completionCriteriaRevision = void 0;
+    story.architectVerificationCriteriaRevision = void 0;
+    if (notes) story.notes = notes;
+    return true;
+  }) === true;
 }
 function markStoryArchitectVerified(directory, storyId, notes, sessionId) {
   const prd = readPrd(directory, sessionId);
@@ -10630,11 +10735,9 @@ function markStoryArchitectVerified(directory, storyId, notes, sessionId) {
   if (!story) {
     return false;
   }
-  story.architectVerified = true;
-  if (notes) {
-    story.notes = notes;
-  }
-  return writePrd(directory, prd, sessionId);
+  const governingCriteriaRevision = getGoverningCriteriaRevision(story.acceptanceCriteria, story.criterionAmendments);
+  if (!story.passes || story.completionCriteriaRevision !== governingCriteriaRevision) return false;
+  return consumeStoryArchitectApproval(directory, storyId, governingCriteriaRevision, sessionId, void 0, notes);
 }
 function getStory(directory, storyId, sessionId) {
   const prd = readPrd(directory, sessionId);
@@ -10652,18 +10755,9 @@ function getNextStory(directory, sessionId) {
   return status.nextStory;
 }
 function applyCriterionAmendment(directory, storyId, kind, input, sessionId) {
-  const prd = readPrd(directory, sessionId);
-  if (!prd) {
-    return { ok: false, error: "prd-not-found" };
-  }
-  const story = prd.userStories.find((s) => s.id === storyId);
-  if (!story) {
-    return { ok: false, error: "story-not-found" };
-  }
+  if (!findPrdPath(directory, sessionId)) return { ok: false, error: "prd-not-found" };
   const original = input.original;
-  if (typeof original !== "string" || original.trim() === "" || !story.acceptanceCriteria.includes(original)) {
-    return { ok: false, error: "original-not-active" };
-  }
+  if (typeof original !== "string" || original.trim() === "") return { ok: false, error: "original-not-active" };
   const reason = input.reason?.trim() ?? "";
   const evidence = input.evidence?.trim() ?? "";
   const authority = input.authority?.trim() ?? "";
@@ -10686,7 +10780,6 @@ function applyCriterionAmendment(directory, storyId, kind, input, sessionId) {
   if (kind === "superseded" && input.replacement !== void 0) {
     return { ok: false, error: "replacement-not-allowed" };
   }
-  const ledger = story.criterionAmendments ?? [];
   const amendment = {
     kind,
     original,
@@ -10696,20 +10789,23 @@ function applyCriterionAmendment(directory, storyId, kind, input, sessionId) {
     authority,
     timestamp: input.timestamp ?? (/* @__PURE__ */ new Date()).toISOString()
   };
-  const originalIndex = story.acceptanceCriteria.indexOf(original);
-  const nextCriteria = [...story.acceptanceCriteria];
-  nextCriteria.splice(originalIndex, 1);
-  if (kind === "replaced" && replacement !== void 0) {
-    nextCriteria.splice(originalIndex, 0, replacement);
-  }
-  story.acceptanceCriteria = nextCriteria;
-  story.criterionAmendments = [...ledger, amendment];
-  story.passes = false;
-  story.architectVerified = false;
-  if (!writePrd(directory, prd, sessionId)) {
-    return { ok: false, error: "write-failed" };
-  }
-  return { ok: true, amendment };
+  const result = mutatePrd(directory, sessionId, (prd) => {
+    const story = prd.userStories.find((candidate) => candidate.id === storyId);
+    if (!story) return { ok: false, error: "story-not-found" };
+    const originalIndex = story.acceptanceCriteria.indexOf(original);
+    if (originalIndex < 0) return { ok: false, error: "original-not-active" };
+    const nextCriteria = [...story.acceptanceCriteria];
+    nextCriteria.splice(originalIndex, 1);
+    if (kind === "replaced" && replacement !== void 0) nextCriteria.splice(originalIndex, 0, replacement);
+    story.acceptanceCriteria = nextCriteria;
+    story.criterionAmendments = [...story.criterionAmendments ?? [], amendment];
+    story.passes = false;
+    story.architectVerified = false;
+    story.completionCriteriaRevision = void 0;
+    story.architectVerificationCriteriaRevision = void 0;
+    return { ok: true, amendment };
+  });
+  return result ?? { ok: false, error: "write-failed" };
 }
 function amendCriterion(directory, storyId, input, sessionId) {
   return applyCriterionAmendment(directory, storyId, "replaced", input, sessionId);
@@ -10920,13 +11016,16 @@ ${prdPath ? `**Active PRD file:** ${prdPath}
 
 `;
 }
-var import_fs22, import_path28, PRD_FILENAME, PRD_EXAMPLE_FILENAME, MIN_CRITERION_EVIDENCE_LENGTH;
+var import_crypto9, import_fs22, import_path28, PRD_FILENAME, PRD_EXAMPLE_FILENAME, MIN_CRITERION_EVIDENCE_LENGTH;
 var init_prd = __esm({
   "src/hooks/ralph/prd.ts"() {
     "use strict";
+    import_crypto9 = require("crypto");
     import_fs22 = require("fs");
     import_path28 = require("path");
     init_worktree_paths();
+    init_mode_state_io();
+    init_atomic_write();
     PRD_FILENAME = "prd.json";
     PRD_EXAMPLE_FILENAME = "prd.example.json";
     MIN_CRITERION_EVIDENCE_LENGTH = 10;
@@ -11179,6 +11278,7 @@ function reconcileStalePrd(directory, sessionId) {
   if (!prd) {
     return null;
   }
+  const initialRevision = getPrdRevision(prd);
   const checksByStory = prd.reconciliation?.observableChecks ?? {};
   const autoReconcile = prd.reconciliation?.autoReconcile !== false;
   const reconciled = [];
@@ -11211,6 +11311,8 @@ function reconcileStalePrd(directory, sessionId) {
     if (autoReconcile && allPass) {
       story.passes = true;
       story.architectVerified = false;
+      story.completionCriteriaRevision = getStoryGoverningCriteriaRevision(story);
+      story.architectVerificationCriteriaRevision = void 0;
       story.notes = appendStoryNote(story.notes, `Reconciled from observable evidence on ${(/* @__PURE__ */ new Date()).toISOString()}: ${evidence}`);
       reconciled.push(story.id);
       entries.push({
@@ -11242,7 +11344,7 @@ function reconcileStalePrd(directory, sessionId) {
     }
   }
   const prdChanged = reconciled.length > 0;
-  if (prdChanged && !writePrd(directory, prd, sessionId)) {
+  if (prdChanged && !writePrdIfRevision(directory, prd, initialRevision, sessionId)) {
     for (const entry2 of entries) {
       if (entry2.decision === "reconciled") {
         entry2.decision = "skipped";
@@ -12297,7 +12399,7 @@ var init_omc_cli_rendering = __esm({
 
 // src/hooks/ralph/verifier.ts
 function createVerificationRequestId() {
-  return (0, import_crypto9.randomUUID)();
+  return (0, import_crypto10.randomUUID)();
 }
 function getCriticMode(mode) {
   return mode ?? DEFAULT_RALPH_CRITIC_MODE2;
@@ -12374,6 +12476,13 @@ function clearVerificationState(directory, sessionId) {
   const statePath = getVerificationStatePath(directory, sessionId);
   return clearStateFileLocked(statePath);
 }
+function consumeVerificationRequest(directory, requestId, sessionId) {
+  if (!requestId) return false;
+  return clearStateFileLockedIf(
+    getVerificationStatePath(directory, sessionId),
+    (current) => current.request_id === requestId
+  ) === "cleared";
+}
 function startVerification(directory, completionClaim, originalTask, criticMode, sessionId, currentStory) {
   const state = {
     pending: true,
@@ -12385,7 +12494,11 @@ function startVerification(directory, completionClaim, originalTask, criticMode,
     verification_scope: currentStory ? "story" : "completion",
     story_id: currentStory?.id,
     critic_mode: getCriticMode(criticMode),
-    request_id: createVerificationRequestId()
+    request_id: createVerificationRequestId(),
+    criteria_revision: currentStory?.governingCriteriaRevision ?? (() => {
+      const prd = readPrd(directory, sessionId);
+      return prd ? getPrdGoverningCriteriaRevision(prd) : void 0;
+    })()
   };
   writeVerificationState(directory, state, sessionId);
   return state;
@@ -12548,16 +12661,17 @@ function detectArchitectRejection(text) {
   }
   return { rejected: false, feedback: "" };
 }
-var import_crypto9, import_fs28, import_path33, DEFAULT_MAX_VERIFICATION_ATTEMPTS, DEFAULT_RALPH_CRITIC_MODE2;
+var import_crypto10, import_fs28, import_path33, DEFAULT_MAX_VERIFICATION_ATTEMPTS, DEFAULT_RALPH_CRITIC_MODE2;
 var init_verifier = __esm({
   "src/hooks/ralph/verifier.ts"() {
     "use strict";
-    import_crypto9 = require("crypto");
+    import_crypto10 = require("crypto");
     import_fs28 = require("fs");
     import_path33 = require("path");
     init_worktree_paths();
     init_mode_state_io();
     init_omc_cli_rendering();
+    init_prd();
     DEFAULT_MAX_VERIFICATION_ATTEMPTS = 3;
     DEFAULT_RALPH_CRITIC_MODE2 = "architect";
   }
@@ -12580,6 +12694,9 @@ __export(ralph_exports, {
   clearLinkedUltraworkState: () => clearLinkedUltraworkState,
   clearRalphState: () => clearRalphState,
   clearVerificationState: () => clearVerificationState,
+  consumeCompletionArchitectApproval: () => consumeCompletionArchitectApproval,
+  consumeStoryArchitectApproval: () => consumeStoryArchitectApproval,
+  consumeVerificationRequest: () => consumeVerificationRequest,
   createPrd: () => createPrd,
   createRalphLoopHook: () => createRalphLoopHook,
   createSimplePrd: () => createSimplePrd,
@@ -12609,7 +12726,9 @@ __export(ralph_exports, {
   getOmcProgressPath: () => getOmcProgressPath,
   getPatterns: () => getPatterns,
   getPrdCompletionStatus: () => getPrdCompletionStatus,
+  getPrdGoverningCriteriaRevision: () => getPrdGoverningCriteriaRevision,
   getPrdPath: () => getPrdPath,
+  getPrdRevision: () => getPrdRevision,
   getPrdStatus: () => getPrdStatus,
   getProgressContext: () => getProgressContext,
   getProgressPath: () => getProgressPath,
@@ -12618,6 +12737,7 @@ __export(ralph_exports, {
   getSessionEndStalePrdWarning: () => getSessionEndStalePrdWarning,
   getSessionPrdPath: () => getSessionPrdPath,
   getStory: () => getStory,
+  getStoryGoverningCriteriaRevision: () => getStoryGoverningCriteriaRevision,
   getTeamPhaseDirective: () => getTeamPhaseDirective,
   hasPrd: () => hasPrd,
   incrementRalphIteration: () => incrementRalphIteration,
@@ -12646,6 +12766,7 @@ __export(ralph_exports, {
   stripNoPrdFlag: () => stripNoPrdFlag,
   supersedeCriterion: () => supersedeCriterion,
   writePrd: () => writePrd,
+  writePrdIfRevision: () => writePrdIfRevision,
   writeRalphState: () => writeRalphState,
   writeVerificationState: () => writeVerificationState
 });
@@ -13198,7 +13319,7 @@ function createWorkflowDescriptor(workflowName, profile) {
     workflowName,
     profileVersion: 1,
     stages: normalized.stages,
-    profileHash: (0, import_crypto10.createHash)("sha256").update(canonical).digest("hex")
+    profileHash: (0, import_crypto11.createHash)("sha256").update(canonical).digest("hex")
   };
 }
 function verifyWorkflowDescriptor(descriptor) {
@@ -13497,11 +13618,11 @@ function buildContext(state, tracking) {
 function hasPipelineTracking(state) {
   return readPipelineTracking(state) !== null;
 }
-var import_crypto10, WORKFLOW_STAGE_SEQUENCES, RESERVED_WORKFLOW_NAMES;
+var import_crypto11, WORKFLOW_STAGE_SEQUENCES, RESERVED_WORKFLOW_NAMES;
 var init_pipeline = __esm({
   "src/hooks/autopilot/pipeline.ts"() {
     "use strict";
-    import_crypto10 = require("crypto");
+    import_crypto11 = require("crypto");
     init_pipeline_types();
     init_adapters();
     init_state2();
@@ -13662,7 +13783,7 @@ function validBoundary(value, sessionId, root2) {
   }
 }
 function hashTranscriptRange(fd, start, end) {
-  const hash = (0, import_crypto11.createHash)("sha256");
+  const hash = (0, import_crypto12.createHash)("sha256");
   const chunk = Buffer.allocUnsafe(TRANSCRIPT_CHUNK_BYTES);
   for (let offset = start; offset < end; ) {
     const count = (0, import_fs30.readSync)(fd, chunk, 0, Math.min(chunk.length, end - offset), offset);
@@ -13689,7 +13810,7 @@ function scanTranscriptJsonl(fd, start, end, sessionId, callback, hash) {
     const length = recordBytes2 - (crlf && recordBytes2 > 0 && record2[recordBytes2 - 1] === 13 ? 1 : 0);
     const line = decodeRecord(length);
     if (line === null) return false;
-    return !callback || callback(line, byteOffset, lineNumber, (0, import_crypto11.createHash)("sha256").update(record2.subarray(0, length)).digest("hex"));
+    return !callback || callback(line, byteOffset, lineNumber, (0, import_crypto12.createHash)("sha256").update(record2.subarray(0, length)).digest("hex"));
   };
   for (let offset = start; offset < end; ) {
     const maxRead = recordBytes2 >= MAX_JSONL_RECORD_BYTES ? 1 : MAX_JSONL_RECORD_BYTES + 1 - recordBytes2;
@@ -13728,7 +13849,7 @@ function readStableTranscript(path27, sessionId, root2) {
     const before = (0, import_fs30.fstatSync)(opened.fd, { bigint: true });
     if (!before.isFile()) return null;
     const size = Number(before.size);
-    const hash = (0, import_crypto11.createHash)("sha256");
+    const hash = (0, import_crypto12.createHash)("sha256");
     if (!scanTranscriptJsonl(opened.fd, 0, size, sessionId, void 0, hash)) return null;
     const contentSha256 = hash.digest("hex");
     const after = (0, import_fs30.fstatSync)(opened.fd, { bigint: true });
@@ -14072,12 +14193,12 @@ function prepareNamedWorkflowAdvance(state, sessionId) {
     }
   };
 }
-var import_fs30, import_crypto11, import_path35, import_util7, NAMED_SIGNALS, TRANSCRIPT_CHUNK_BYTES, MAX_JSONL_RECORD_BYTES, WORKFLOW_TRANSCRIPT_RECORD_TOO_LARGE, namedWorkflowTranscriptFailures;
+var import_fs30, import_crypto12, import_path35, import_util7, NAMED_SIGNALS, TRANSCRIPT_CHUNK_BYTES, MAX_JSONL_RECORD_BYTES, WORKFLOW_TRANSCRIPT_RECORD_TOO_LARGE, namedWorkflowTranscriptFailures;
 var init_named_workflow_resume_validator = __esm({
   "src/hooks/autopilot/named-workflow-resume-validator.ts"() {
     "use strict";
     import_fs30 = require("fs");
-    import_crypto11 = require("crypto");
+    import_crypto12 = require("crypto");
     import_path35 = require("path");
     init_config_dir();
     init_pipeline();
@@ -17127,7 +17248,7 @@ function analyzeLegacyClaudeMd(content) {
         counters.candidateWindows += 1;
         const bytes = Buffer.byteLength(normalized, "utf8");
         counters.bytesHashed += bytes;
-        const digest3 = (0, import_crypto15.createHash)("sha256").update(normalized, "utf8").digest("hex");
+        const digest3 = (0, import_crypto16.createHash)("sha256").update(normalized, "utf8").digest("hex");
         if (digest3 === variant.normalizedSha256) {
           rawMatches.push({ start: segmentLines[start].start, end: last.eolEnd, variantId: variant.id });
           exactAtStart = true;
@@ -17175,11 +17296,11 @@ function removeClaudeMdRanges(content, ranges) {
   }
   return result;
 }
-var import_crypto15, OMC_START_MARKER, OMC_END_MARKER;
+var import_crypto16, OMC_START_MARKER, OMC_END_MARKER;
 var init_claude_md_analysis = __esm({
   "src/installer/claude-md-analysis.ts"() {
     "use strict";
-    import_crypto15 = require("crypto");
+    import_crypto16 = require("crypto");
     init_legacy_claude_md_corpus();
     OMC_START_MARKER = "<!-- OMC:START -->";
     OMC_END_MARKER = "<!-- OMC:END -->";
@@ -17710,7 +17831,7 @@ function isValidHistoricalAgent(record2) {
 }
 function hasAuthenticatedHistoricalAgentBytes(filename, content) {
   const hashes = HISTORICAL_AGENT_HASHES_BY_FILENAME.get(filename);
-  return hashes?.has(`${content.length}:${(0, import_crypto16.createHash)("sha256").update(content).digest("hex")}`) ?? false;
+  return hashes?.has(`${content.length}:${(0, import_crypto17.createHash)("sha256").update(content).digest("hex")}`) ?? false;
 }
 function readRegularAgentFile(filepath) {
   try {
@@ -17867,7 +17988,7 @@ function listStandaloneHookLibPayloadFilenames() {
 }
 function hashFileContents(path27) {
   try {
-    return (0, import_crypto16.createHash)("sha256").update((0, import_fs49.readFileSync)(path27)).digest("hex");
+    return (0, import_crypto17.createHash)("sha256").update((0, import_fs49.readFileSync)(path27)).digest("hex");
   } catch {
     return null;
   }
@@ -19593,12 +19714,12 @@ function getInstallInfo() {
     return null;
   }
 }
-var import_fs49, import_crypto16, import_path60, import_url9, import_os12, import_child_process18, CLAUDE_CONFIG_DIR, AGENTS_DIR, COMMANDS_DIR, SKILLS_DIR, HOOKS_DIR, HUD_DIR, SETTINGS_FILE, VERSION_FILE, OMC_MANAGED_SKILL_MARKER, PLUGIN_FULL_SKILL_BODIES_DIR, PLUGIN_COMPACT_SKILL_SHIM_MARKER, CORE_COMMANDS, VERSION, OMC_VERSION_MARKER_PATTERN, CC_NATIVE_COMMANDS, SKININTHEGAMEBROS_ONLY_SKILLS, HISTORICAL_AGENT_HASHES_BY_FILENAME, OMC_HOOK_FILENAMES, OMC_HOOK_EXTRA_FILENAMES, STANDALONE_HOOK_TEMPLATE_FILES, OMC_PLUGIN_IDS, OMC_PLUGIN_MANIFEST_NAME, PLUGIN_SYNC_PAYLOAD, REQUIRED_PLUGIN_PAYLOAD_FILES, REQUIRED_PLUGIN_COMMAND_FILES;
+var import_fs49, import_crypto17, import_path60, import_url9, import_os12, import_child_process18, CLAUDE_CONFIG_DIR, AGENTS_DIR, COMMANDS_DIR, SKILLS_DIR, HOOKS_DIR, HUD_DIR, SETTINGS_FILE, VERSION_FILE, OMC_MANAGED_SKILL_MARKER, PLUGIN_FULL_SKILL_BODIES_DIR, PLUGIN_COMPACT_SKILL_SHIM_MARKER, CORE_COMMANDS, VERSION, OMC_VERSION_MARKER_PATTERN, CC_NATIVE_COMMANDS, SKININTHEGAMEBROS_ONLY_SKILLS, HISTORICAL_AGENT_HASHES_BY_FILENAME, OMC_HOOK_FILENAMES, OMC_HOOK_EXTRA_FILENAMES, STANDALONE_HOOK_TEMPLATE_FILES, OMC_PLUGIN_IDS, OMC_PLUGIN_MANIFEST_NAME, PLUGIN_SYNC_PAYLOAD, REQUIRED_PLUGIN_PAYLOAD_FILES, REQUIRED_PLUGIN_COMMAND_FILES;
 var init_installer = __esm({
   "src/installer/index.ts"() {
     "use strict";
     import_fs49 = require("fs");
-    import_crypto16 = require("crypto");
+    import_crypto17 = require("crypto");
     import_path60 = require("path");
     import_url9 = require("url");
     import_os12 = require("os");
@@ -25571,7 +25692,7 @@ function isAuthenticatedAutopilotCancelSignal(signal, target) {
   if (!Number.isFinite(requestedAt) || requestedAt > now + CANCEL_SIGNAL_CLOCK_SKEW_MS || now - requestedAt > CANCEL_SIGNAL_TTL_MS2 || !Number.isFinite(expiresAt) || expiresAt <= requestedAt || expiresAt - requestedAt > CANCEL_SIGNAL_TTL_MS2 || expiresAt <= now) {
     return false;
   }
-  const digest3 = (0, import_crypto18.createHash)("sha256").update(JSON.stringify(target.state)).digest("hex");
+  const digest3 = (0, import_crypto19.createHash)("sha256").update(JSON.stringify(target.state)).digest("hex");
   if (typeof signal.target_state_sha256 !== "string" || !/^[a-f0-9]{64}$/.test(signal.target_state_sha256) || signal.target_state_sha256 !== digest3) {
     return false;
   }
@@ -26206,13 +26327,17 @@ async function checkRalphLoop(sessionId, directory, cancelInProgress) {
   if (verificationState?.pending) {
     const prdStatus2 = getPrdCompletionStatus(workingDir, sessionId);
     const verifiedStory = verificationState.verification_scope === "story" && verificationState.story_id ? getStory(workingDir, verificationState.story_id, sessionId) : void 0;
-    const staleVerification = verificationState.verification_scope === "story" ? !verifiedStory?.passes || verifiedStory.architectVerified === true : prdStatus2.hasPrd && !prdStatus2.allComplete;
+    const staleVerification = verificationState.verification_scope === "story" ? !verifiedStory?.passes || verifiedStory.architectVerified === true || verifiedStory.governingCriteriaRevision !== verificationState.criteria_revision : prdStatus2.hasPrd && (!prdStatus2.allComplete || (() => {
+      const prd = readPrd(workingDir, sessionId);
+      return !prd || getPrdGoverningCriteriaRevision(prd) !== verificationState.criteria_revision;
+    })());
     if (staleVerification) {
-      clearVerificationState(workingDir, sessionId);
-      const refreshedState = readRalphState(workingDir, sessionId);
-      if (refreshedState) {
-        refreshedState.current_story_id = prdStatus2.nextStory?.id;
-        writeRalphState(workingDir, refreshedState, sessionId);
+      if (consumeVerificationRequest(workingDir, verificationState.request_id, sessionId)) {
+        const refreshedState = readRalphState(workingDir, sessionId);
+        if (refreshedState) {
+          refreshedState.current_story_id = prdStatus2.nextStory?.id;
+          writeRalphState(workingDir, refreshedState, sessionId);
+        }
       }
       verificationState = null;
     }
@@ -26220,20 +26345,53 @@ async function checkRalphLoop(sessionId, directory, cancelInProgress) {
       if (sessionId) {
         if (checkArchitectApprovalInTranscript(sessionId, verificationState)) {
           if (verificationState.verification_scope === "story" && verificationState.story_id) {
-            markStoryArchitectVerified(workingDir, verificationState.story_id, void 0, sessionId);
-            clearVerificationState(workingDir, sessionId);
-            const refreshedState = readRalphState(workingDir, sessionId);
-            if (refreshedState) {
-              const refreshedPrd = getPrdCompletionStatus(workingDir, sessionId);
-              refreshedState.current_story_id = refreshedPrd.nextStory?.id;
-              writeRalphState(workingDir, refreshedState, sessionId);
+            const consumed = consumeStoryArchitectApproval(
+              workingDir,
+              verificationState.story_id,
+              verificationState.criteria_revision ?? "",
+              sessionId,
+              void 0,
+              void 0,
+              () => consumeVerificationRequest(workingDir, verificationState.request_id, sessionId)
+            );
+            if (!consumed) {
+              verificationState = null;
+            }
+            if (consumed) {
+              const refreshedState = readRalphState(workingDir, sessionId);
+              if (refreshedState) {
+                const refreshedPrd = getPrdCompletionStatus(workingDir, sessionId);
+                refreshedState.current_story_id = refreshedPrd.nextStory?.id;
+                writeRalphState(workingDir, refreshedState, sessionId);
+              }
             }
             verificationState = readVerificationState(workingDir, sessionId);
           } else {
-            clearVerificationState(workingDir, sessionId);
-            clearRalphState(workingDir, sessionId);
-            deactivateUltrawork(workingDir, sessionId);
-            const criticLabel = verificationState.critic_mode === "codex" ? "Codex critic" : verificationState.critic_mode === "critic" ? "Critic" : "Architect";
+            const criticMode = verificationState.critic_mode;
+            const finish = () => {
+              const snapshot = { ...verificationState };
+              if (!consumeVerificationRequest(workingDir, snapshot.request_id, sessionId)) return false;
+              if (clearRalphState(workingDir, sessionId) && deactivateUltrawork(workingDir, sessionId)) return true;
+              writeVerificationState(workingDir, snapshot, sessionId);
+              return false;
+            };
+            const consumed = !prdStatus2.hasPrd ? finish() : consumeCompletionArchitectApproval(
+              workingDir,
+              verificationState.criteria_revision ?? "",
+              sessionId,
+              finish
+            );
+            if (!consumed) {
+              verificationState = null;
+            }
+            if (!consumed) {
+              return {
+                shouldBlock: true,
+                message: "[RALPH VERIFICATION INVALIDATED] The PRD changed while approval was being consumed. Re-run verification against the current criteria.",
+                mode: "ralph"
+              };
+            }
+            const criticLabel = criticMode === "codex" ? "Codex critic" : criticMode === "critic" ? "Critic" : "Architect";
             return {
               shouldBlock: false,
               message: `[RALPH LOOP VERIFIED COMPLETE] ${criticLabel} verified task completion after ${state.iteration} iteration(s). Excellent work!`,
@@ -27035,11 +27193,11 @@ function createHookOutput(result) {
     message: result.message || void 0
   };
 }
-var import_crypto18, import_fs60, import_path69, CANCEL_SIGNAL_TTL_MS2, CANCEL_SIGNAL_CLOCK_SKEW_MS, STALE_STATE_THRESHOLD_MS, PENDING_ASYNC_STATE_STALE_MS, OVERSIZE_TOOL_RESULT_REDIRECT_STOP_MAX, OVERSIZE_TOOL_RESULT_REDIRECT_STOP_TTL_MS, TERMINAL_WORKFLOW_SLOT_MODES, TERMINAL_WORKFLOW_PHASES, todoContinuationAttempts, TRANSCRIPT_TAIL_BYTES, CRITICAL_CONTEXT_STOP_PERCENT, RALPLAN_TERMINAL_PHASES, REVIEWER_TASK_TOOL_NAMES, REVIEWER_COMMAND_TOOL_NAMES, AWAITING_CONFIRMATION_TTL_MS, THINKING_ONLY_STREAK_BREAKER, THINKING_ONLY_STREAK_MAX, THINKING_ONLY_STREAK_TTL_MS, THINKING_ONLY_STREAK_BAILOUT_MESSAGE, TEAM_PIPELINE_STOP_BLOCKER_MAX, TEAM_PIPELINE_STOP_BLOCKER_TTL_MS, RALPLAN_STOP_BLOCKER_MAX, RALPLAN_STOP_BLOCKER_TTL_MS, RALPLAN_ACTIVE_AGENT_RECENCY_WINDOW_MS;
+var import_crypto19, import_fs60, import_path69, CANCEL_SIGNAL_TTL_MS2, CANCEL_SIGNAL_CLOCK_SKEW_MS, STALE_STATE_THRESHOLD_MS, PENDING_ASYNC_STATE_STALE_MS, OVERSIZE_TOOL_RESULT_REDIRECT_STOP_MAX, OVERSIZE_TOOL_RESULT_REDIRECT_STOP_TTL_MS, TERMINAL_WORKFLOW_SLOT_MODES, TERMINAL_WORKFLOW_PHASES, todoContinuationAttempts, TRANSCRIPT_TAIL_BYTES, CRITICAL_CONTEXT_STOP_PERCENT, RALPLAN_TERMINAL_PHASES, REVIEWER_TASK_TOOL_NAMES, REVIEWER_COMMAND_TOOL_NAMES, AWAITING_CONFIRMATION_TTL_MS, THINKING_ONLY_STREAK_BREAKER, THINKING_ONLY_STREAK_MAX, THINKING_ONLY_STREAK_TTL_MS, THINKING_ONLY_STREAK_BAILOUT_MESSAGE, TEAM_PIPELINE_STOP_BLOCKER_MAX, TEAM_PIPELINE_STOP_BLOCKER_TTL_MS, RALPLAN_STOP_BLOCKER_MAX, RALPLAN_STOP_BLOCKER_TTL_MS, RALPLAN_ACTIVE_AGENT_RECENCY_WINDOW_MS;
 var init_persistent_mode = __esm({
   "src/hooks/persistent-mode/index.ts"() {
     "use strict";
-    import_crypto18 = require("crypto");
+    import_crypto19 = require("crypto");
     import_fs60 = require("fs");
     init_atomic_write();
     import_path69 = require("path");
@@ -28452,7 +28610,7 @@ function sessionEndJobsDirectory(directory) {
   return path17.join(getOmcRoot(directory), "state", "session-end-jobs");
 }
 function digest(value) {
-  return (0, import_crypto19.createHash)("sha256").update(JSON.stringify(value)).digest("hex");
+  return (0, import_crypto20.createHash)("sha256").update(JSON.stringify(value)).digest("hex");
 }
 function nowIso() {
   return (/* @__PURE__ */ new Date()).toISOString();
@@ -28500,7 +28658,7 @@ function withLock(file, body) {
   const lock = lockPath(file);
   const reclaim = `${lock}.reclaim`;
   let fd;
-  const nonce = (0, import_crypto19.randomUUID)();
+  const nonce = (0, import_crypto20.randomUUID)();
   for (let attempt = 0; attempt < 250; attempt++) {
     try {
       if (fs12.existsSync(reclaim)) throw Object.assign(new Error("reclaim-in-progress"), { code: "EEXIST" });
@@ -28644,7 +28802,7 @@ function prepareCoreManifest(directory, sessionId, payload) {
       }
       const now = nowIso();
       const actions = Object.fromEntries(ACTIONS.map(([name, klass]) => [name, newAction(name, klass, durablePayload)]));
-      const job = { version: 1, jobId: (0, import_crypto19.randomUUID)(), sessionId, scopeKey: digest(directory), revision: 0, createdAt: now, updatedAt: now, ...initialDeadlines(), producers: { core: { state: "prepared", intentKey: digest(durablePayload), payloadDigest: digest(durablePayload) }, wiki: { state: "absent" } }, actions, owner: null, phase: "collecting" };
+      const job = { version: 1, jobId: (0, import_crypto20.randomUUID)(), sessionId, scopeKey: digest(directory), revision: 0, createdAt: now, updatedAt: now, ...initialDeadlines(), producers: { core: { state: "prepared", intentKey: digest(durablePayload), payloadDigest: digest(durablePayload) }, wiki: { state: "absent" } }, actions, owner: null, phase: "collecting" };
       atomicWriteJsonSync(jobPath, job);
       return readPath(jobPath);
     });
@@ -28700,7 +28858,7 @@ function sealWikiManifest(directory, sessionId, payload) {
           actions["wiki-capture"].status = "completed";
           actions["wiki-capture"].completedAt = now2;
         }
-        const job = { version: 1, jobId: (0, import_crypto19.randomUUID)(), sessionId, scopeKey: digest(directory), revision: 0, createdAt: now2, updatedAt: now2, ...initialDeadlines(), producers: { core: { state: "absent" }, wiki }, actions, owner: null, phase: "collecting" };
+        const job = { version: 1, jobId: (0, import_crypto20.randomUUID)(), sessionId, scopeKey: digest(directory), revision: 0, createdAt: now2, updatedAt: now2, ...initialDeadlines(), producers: { core: { state: "absent" }, wiki }, actions, owner: null, phase: "collecting" };
         atomicWriteJsonSync(jobPath, job);
         return readPath(jobPath);
       }
@@ -28798,7 +28956,7 @@ function claimSessionEndAction(directory, sessionId, ownerNonce, name, deadlineA
     action.attempts++;
     action.claimantNonce = ownerNonce;
     action.claimedAt = nowIso();
-    action.runner = { attempt: action.attempts, runnerNonce: (0, import_crypto19.randomUUID)(), phase: "reserved", deadlineAt: new Date(deadlineAt).toISOString() };
+    action.runner = { attempt: action.attempts, runnerNonce: (0, import_crypto20.randomUUID)(), phase: "reserved", deadlineAt: new Date(deadlineAt).toISOString() };
   });
 }
 function markSessionEndActionRunner(directory, sessionId, ownerNonce, name, runnerNonce, phase) {
@@ -28839,7 +28997,7 @@ function claimSessionEndDiscoveryTickets(directory, limit = 4, leaseMs = 15e3) {
         }
         const leased = ticket.leaseExpiresAt && Date.parse(ticket.leaseExpiresAt) > now;
         if (leased || Date.parse(ticket.retryAt) > now) continue;
-        const nonce = (0, import_crypto19.randomUUID)();
+        const nonce = (0, import_crypto20.randomUUID)();
         ticket.claimNonce = nonce;
         ticket.leaseExpiresAt = new Date(now + leaseMs).toISOString();
         claimed2.push({ sessionId: ticket.sessionId, nonce });
@@ -28938,13 +29096,13 @@ function failClosedMissingCoreProducer(directory, sessionId) {
     if (job.phase === "collecting") job.phase = "ready";
   });
 }
-var fs12, path17, import_crypto19, ACTIONS, TEST_PRODUCER_GRACE_ENV, PRODUCER_GRACE_MS, REQUIRED_ACTION_EXECUTION_MS, BEST_EFFORT_ACTION_EXECUTION_MS, REQUIRED_ACTION_MAX_ATTEMPTS, LOCK_WAIT, DISCOVERY_FILE;
+var fs12, path17, import_crypto20, ACTIONS, TEST_PRODUCER_GRACE_ENV, PRODUCER_GRACE_MS, REQUIRED_ACTION_EXECUTION_MS, BEST_EFFORT_ACTION_EXECUTION_MS, REQUIRED_ACTION_MAX_ATTEMPTS, LOCK_WAIT, DISCOVERY_FILE;
 var init_cleanup_manifest = __esm({
   "src/hooks/session-end/cleanup-manifest.ts"() {
     "use strict";
     fs12 = __toESM(require("fs"), 1);
     path17 = __toESM(require("path"), 1);
-    import_crypto19 = require("crypto");
+    import_crypto20 = require("crypto");
     init_atomic_write();
     init_worktree_paths();
     ACTIONS = [
@@ -31463,9 +31621,9 @@ function verifySlackSignature(signingSecret, signature, timestamp2, body) {
     return false;
   }
   const sigBasestring = `v0:${timestamp2}:${body}`;
-  const expectedSignature = "v0=" + (0, import_crypto20.createHmac)("sha256", signingSecret).update(sigBasestring).digest("hex");
+  const expectedSignature = "v0=" + (0, import_crypto21.createHmac)("sha256", signingSecret).update(sigBasestring).digest("hex");
   try {
-    return (0, import_crypto20.timingSafeEqual)(
+    return (0, import_crypto21.timingSafeEqual)(
       Buffer.from(expectedSignature),
       Buffer.from(signature)
     );
@@ -31572,11 +31730,11 @@ async function replySlackThread(botToken, channel, threadTs, text) {
     signal: AbortSignal.timeout(REACTION_TIMEOUT_MS)
   });
 }
-var import_crypto20, MAX_TIMESTAMP_AGE_SECONDS, VALID_ENVELOPE_TYPES, SlackConnectionStateTracker, API_TIMEOUT_MS, REACTION_TIMEOUT_MS, SlackSocketClient;
+var import_crypto21, MAX_TIMESTAMP_AGE_SECONDS, VALID_ENVELOPE_TYPES, SlackConnectionStateTracker, API_TIMEOUT_MS, REACTION_TIMEOUT_MS, SlackSocketClient;
 var init_slack_socket = __esm({
   "src/notifications/slack-socket.ts"() {
     "use strict";
-    import_crypto20 = require("crypto");
+    import_crypto21 = require("crypto");
     init_redact();
     MAX_TIMESTAMP_AGE_SECONDS = 300;
     VALID_ENVELOPE_TYPES = /* @__PURE__ */ new Set([
@@ -32662,7 +32820,7 @@ function acquireRegistryLock() {
   const started = Date.now();
   while (Date.now() - started < LOCK_TIMEOUT_MS) {
     try {
-      const token = (0, import_crypto21.randomUUID)();
+      const token = (0, import_crypto22.randomUUID)();
       const fd = (0, import_fs65.openSync)(
         getLockPath(),
         import_fs65.constants.O_CREAT | import_fs65.constants.O_EXCL | import_fs65.constants.O_WRONLY,
@@ -32837,13 +32995,13 @@ function rewriteRegistryUnsafe(mappings) {
   const content = mappings.map((m) => JSON.stringify(m)).join("\n") + "\n";
   (0, import_fs65.writeFileSync)(getRegistryPath(), content, { mode: SECURE_FILE_MODE });
 }
-var import_fs65, import_path77, import_crypto21, SECURE_FILE_MODE, MAX_AGE_MS, LOCK_TIMEOUT_MS, LOCK_RETRY_MS, LOCK_STALE_MS, LOCK_MAX_WAIT_MS, SLEEP_ARRAY;
+var import_fs65, import_path77, import_crypto22, SECURE_FILE_MODE, MAX_AGE_MS, LOCK_TIMEOUT_MS, LOCK_RETRY_MS, LOCK_STALE_MS, LOCK_MAX_WAIT_MS, SLEEP_ARRAY;
 var init_session_registry = __esm({
   "src/notifications/session-registry.ts"() {
     "use strict";
     import_fs65 = require("fs");
     import_path77 = require("path");
-    import_crypto21 = require("crypto");
+    import_crypto22 = require("crypto");
     init_platform();
     init_paths();
     SECURE_FILE_MODE = 384;
@@ -33521,7 +33679,7 @@ function acquireLock(projectPath) {
   const started = Date.now();
   while (Date.now() - started < LOCK_TIMEOUT_MS2) {
     try {
-      const token = (0, import_crypto22.randomUUID)();
+      const token = (0, import_crypto23.randomUUID)();
       const fd = (0, import_fs67.openSync)(
         getLockPath2(projectPath),
         import_fs67.constants.O_CREAT | import_fs67.constants.O_EXCL | import_fs67.constants.O_WRONLY,
@@ -33581,7 +33739,7 @@ function normalizePrompt(prompt) {
   return prompt.replace(/\s+/g, " ").trim().slice(0, 400);
 }
 function promptHash(prompt) {
-  return (0, import_crypto22.createHash)("sha1").update(prompt).digest("hex").slice(0, 12);
+  return (0, import_crypto23.createHash)("sha1").update(prompt).digest("hex").slice(0, 12);
 }
 function buildDescriptor(event, signal, context, tmuxSession, projectPath) {
   const scope = `${projectPath}::${tmuxSession}`;
@@ -33669,12 +33827,12 @@ function shouldCollapseOpenClawBurst(event, signal, context, tmuxSession) {
     return shouldCollapse;
   });
 }
-var import_fs67, import_crypto22, import_path80, STATE_DIR, STATE_FILE2, LOCK_FILE, START_WINDOW_MS, PROMPT_WINDOW_MS, STOP_WINDOW_MS, STATE_TTL_MS, LOCK_TIMEOUT_MS2, LOCK_RETRY_MS2, LOCK_STALE_MS2, TERMINAL_STATE_SUPPRESSION_WINDOW_MS, SLEEP_ARRAY2, TERMINAL_KEYS;
+var import_fs67, import_crypto23, import_path80, STATE_DIR, STATE_FILE2, LOCK_FILE, START_WINDOW_MS, PROMPT_WINDOW_MS, STOP_WINDOW_MS, STATE_TTL_MS, LOCK_TIMEOUT_MS2, LOCK_RETRY_MS2, LOCK_STALE_MS2, TERMINAL_STATE_SUPPRESSION_WINDOW_MS, SLEEP_ARRAY2, TERMINAL_KEYS;
 var init_dedupe = __esm({
   "src/openclaw/dedupe.ts"() {
     "use strict";
     import_fs67 = require("fs");
-    import_crypto22 = require("crypto");
+    import_crypto23 = require("crypto");
     import_path80 = require("path");
     init_atomic_write();
     init_platform();
@@ -33999,7 +34157,7 @@ function captureKeyFor(intent) {
   if (typeof intent.captureKey === "string" && /^[a-f0-9]{64}$/.test(intent.captureKey)) {
     return intent.captureKey;
   }
-  return (0, import_crypto23.createHash)("sha256").update(`${intent.sessionId}\0${intent.filename}\0${intent.capturedAt}`).digest("hex");
+  return (0, import_crypto24.createHash)("sha256").update(`${intent.sessionId}\0${intent.filename}\0${intent.capturedAt}`).digest("hex");
 }
 function pageHasCaptureKey(page, captureKey) {
   return page?.content.includes(`<!-- omc-wiki-capture:${captureKey} -->`) ?? false;
@@ -34215,12 +34373,12 @@ function feedProjectMemory(root2) {
   } catch {
   }
 }
-var import_fs69, import_crypto23, import_path83;
+var import_fs69, import_crypto24, import_path83;
 var init_session_hooks = __esm({
   "src/hooks/wiki/session-hooks.ts"() {
     "use strict";
     import_fs69 = require("fs");
-    import_crypto23 = require("crypto");
+    import_crypto24 = require("crypto");
     import_path83 = require("path");
     init_worktree_paths();
     init_config_dir();
@@ -34466,7 +34624,7 @@ function canonicalize(value) {
   return `{${Object.keys(record2).sort().map((key) => `${JSON.stringify(key)}:${canonicalize(record2[key])}`).join(",")}}`;
 }
 function digest2(value) {
-  return (0, import_crypto24.createHash)("sha256").update(canonicalize(value)).digest("hex");
+  return (0, import_crypto25.createHash)("sha256").update(canonicalize(value)).digest("hex");
 }
 function recordBytes(record2) {
   const payloadHash = digest2(record2);
@@ -34581,7 +34739,7 @@ function publishOwnerEpoch(cwd2, teamName, epoch, input = {}) {
   const unsigned = {
     schema_version: 1,
     epoch,
-    nonce: input.nonce ?? (0, import_crypto24.randomUUID)(),
+    nonce: input.nonce ?? (0, import_crypto25.randomUUID)(),
     pid: input.pid ?? process.pid,
     process_started_at: start,
     created_at: (/* @__PURE__ */ new Date()).toISOString(),
@@ -34589,7 +34747,7 @@ function publishOwnerEpoch(cwd2, teamName, epoch, input = {}) {
   };
   const bytes = recordBytes(unsigned);
   const record2 = JSON.parse(bytes);
-  const temp = (0, import_path85.join)((0, import_path85.dirname)(target), `.${epoch}.${record2.nonce}.${(0, import_crypto24.randomUUID)()}.tmp`);
+  const temp = (0, import_path85.join)((0, import_path85.dirname)(target), `.${epoch}.${record2.nonce}.${(0, import_crypto25.randomUUID)()}.tmp`);
   (0, import_fs70.writeFileSync)(temp, bytes, { encoding: "utf8", mode: 384, flush: true });
   try {
     (0, import_fs70.linkSync)(temp, target);
@@ -34630,11 +34788,11 @@ function requireOwnerFence(cwd2, teamName, fence) {
   if (!result.ok) throw new Error("runtime_owner_fence_lost");
   return result.record;
 }
-var import_crypto24, import_fs70, import_path85, import_node_child_process8;
+var import_crypto25, import_fs70, import_path85, import_node_child_process8;
 var init_team_owner_epoch = __esm({
   "src/team/team-owner-epoch.ts"() {
     "use strict";
-    import_crypto24 = require("crypto");
+    import_crypto25 = require("crypto");
     import_fs70 = require("fs");
     import_path85 = require("path");
     import_node_child_process8 = require("node:child_process");
@@ -35532,7 +35690,7 @@ async function claimTask(taskId, workerName2, expectedVersion, deps) {
       if (v.claim) return { ok: false, error: "claim_conflict" };
       if (v.owner && v.owner !== workerName2) return { ok: false, error: "claim_conflict" };
     }
-    const claimToken = (0, import_crypto25.randomUUID)();
+    const claimToken = (0, import_crypto26.randomUUID)();
     const updated = {
       ...v,
       status: "in_progress",
@@ -35748,7 +35906,7 @@ async function adoptRecoveryReservations(taskIds, workerName2, proof, deps) {
       if (task.status !== "pending" || task.owner || task.claim || reservation.recovery_id !== proof.recoveryId || reservation.request_id !== proof.requestId || reservation.replacement_worker !== workerName2 || reservation.replacement_generation !== proof.replacementGeneration || !deps.verifyAdoptionToken(proof.adoptionToken, reservation.adoption_token_hash)) return { ok: false, error: "claim_conflict" };
       const checkpoint = await deps.readRecoveryCheckpoint(reservation.checkpoint_path);
       if (!checkpoint.ok || checkpoint.checkpoint.resume_payload_hash !== reservation.checkpoint_hash || checkpoint.checkpoint.sequence !== reservation.continuation_sequence) return { ok: false, error: checkpointError(checkpoint.ok ? "stale" : checkpoint.error) };
-      const claimToken = (0, import_crypto25.randomUUID)();
+      const claimToken = (0, import_crypto26.randomUUID)();
       const adoptedAt = (/* @__PURE__ */ new Date()).toISOString();
       const updated = { ...task, status: "in_progress", owner: workerName2, claim: { owner: workerName2, token: claimToken, leased_until: new Date(Date.now() + 15 * 60 * 1e3).toISOString() }, version: task.version + 1, recovery_reservation: void 0, recovery_adoption: { recovery_id: reservation.recovery_id, request_id: reservation.request_id, continuation_sequence: reservation.continuation_sequence, checkpoint_path: reservation.checkpoint_path, checkpoint_hash: reservation.checkpoint_hash, replacement_worker: workerName2, replacement_generation: reservation.replacement_generation, adopted_at: adoptedAt } };
       await deps.writeAtomic(deps.taskFilePath(deps.teamName, taskId, deps.cwd), JSON.stringify(updated, null, 2));
@@ -35760,11 +35918,11 @@ async function adoptRecoveryReservations(taskIds, workerName2, proof, deps) {
   }
   return results;
 }
-var import_crypto25, import_path87, import_fs72, import_promises8;
+var import_crypto26, import_path87, import_fs72, import_promises8;
 var init_tasks = __esm({
   "src/team/state/tasks.ts"() {
     "use strict";
-    import_crypto25 = require("crypto");
+    import_crypto26 = require("crypto");
     import_path87 = require("path");
     import_fs72 = require("fs");
     import_promises8 = require("fs/promises");
@@ -36908,7 +37066,7 @@ __export(events_exports, {
 });
 async function appendTeamEvent(teamName, event, cwd2) {
   const full = {
-    event_id: (0, import_crypto26.randomUUID)(),
+    event_id: (0, import_crypto27.randomUUID)(),
     team: teamName,
     created_at: (/* @__PURE__ */ new Date()).toISOString(),
     ...event
@@ -36983,11 +37141,11 @@ async function emitMonitorDerivedEvents(teamName, tasks, workers, previousSnapsh
     }
   }
 }
-var import_crypto26, import_path89, import_promises12, import_fs74;
+var import_crypto27, import_path89, import_promises12, import_fs74;
 var init_events = __esm({
   "src/team/events.ts"() {
     "use strict";
-    import_crypto26 = require("crypto");
+    import_crypto27 = require("crypto");
     import_path89 = require("path");
     import_promises12 = require("fs/promises");
     import_fs74 = require("fs");
@@ -39169,7 +39327,7 @@ function buildWorkerLaunchSpec(shellPath) {
   return { shell: "/bin/sh", rcFile: null };
 }
 function commandFingerprint(value) {
-  return (0, import_crypto27.createHash)("sha256").update(value).digest("hex").slice(0, 12);
+  return (0, import_crypto28.createHash)("sha256").update(value).digest("hex").slice(0, 12);
 }
 function redactBoundedDiagnostic(error2, maxLength = 240) {
   const raw = error2 instanceof Error ? error2.message : String(error2);
@@ -40382,12 +40540,12 @@ async function killTeamSession(sessionName2, workerPaneIds, leaderPaneId, option
     return false;
   }
 }
-var import_fs78, import_crypto27, import_child_process26, import_util10, import_path94, import_promises14, sleep5, execFileAsync5, TMUX_SESSION_PREFIX, TMUX_MAILBOX_PANE_ID, TMUX_MAILBOX_TARGET, defaultMailboxTargetOwnershipDependencies, defaultDirectMailboxEffectDependencies, SUPPORTED_POSIX_SHELLS, ZSH_CANDIDATES, BASH_CANDIDATES, DANGEROUS_LAUNCH_BINARY_CHARS;
+var import_fs78, import_crypto28, import_child_process26, import_util10, import_path94, import_promises14, sleep5, execFileAsync5, TMUX_SESSION_PREFIX, TMUX_MAILBOX_PANE_ID, TMUX_MAILBOX_TARGET, defaultMailboxTargetOwnershipDependencies, defaultDirectMailboxEffectDependencies, SUPPORTED_POSIX_SHELLS, ZSH_CANDIDATES, BASH_CANDIDATES, DANGEROUS_LAUNCH_BINARY_CHARS;
 var init_tmux_session = __esm({
   "src/team/tmux-session.ts"() {
     "use strict";
     import_fs78 = require("fs");
-    import_crypto27 = require("crypto");
+    import_crypto28 = require("crypto");
     import_child_process26 = require("child_process");
     import_util10 = require("util");
     import_path94 = require("path");
@@ -40850,7 +41008,7 @@ function normalizeDispatchRequest(teamName, raw, nowIso2 = (/* @__PURE__ */ new 
   if (typeof raw.trigger_message !== "string" || raw.trigger_message.trim() === "") return null;
   const status = isDispatchStatus(raw.status) ? raw.status : "pending";
   return {
-    request_id: typeof raw.request_id === "string" && raw.request_id.trim() !== "" ? raw.request_id : (0, import_crypto28.randomUUID)(),
+    request_id: typeof raw.request_id === "string" && raw.request_id.trim() !== "" ? raw.request_id : (0, import_crypto29.randomUUID)(),
     kind: raw.kind,
     team_name: teamName,
     to_worker: raw.to_worker,
@@ -41041,7 +41199,7 @@ async function enqueueDispatchRequest(teamName, requestInput, cwd2) {
     const request = normalizeDispatchRequest(
       teamName,
       {
-        request_id: (0, import_crypto28.randomUUID)(),
+        request_id: (0, import_crypto29.randomUUID)(),
         ...requestInput,
         status: "pending",
         attempt_count: 0,
@@ -41109,11 +41267,11 @@ async function markDispatchRequestDelivered(teamName, requestId, patch = {}, cwd
   if (current.status === "delivered") return current;
   return await transitionDispatchRequest(teamName, requestId, current.status, "delivered", patch, cwd2);
 }
-var import_crypto28, import_fs80, import_promises16, import_path97, OMC_DISPATCH_LOCK_TIMEOUT_ENV, DEFAULT_DISPATCH_LOCK_TIMEOUT_MS, MIN_DISPATCH_LOCK_TIMEOUT_MS, MAX_DISPATCH_LOCK_TIMEOUT_MS, DISPATCH_LOCK_INITIAL_POLL_MS, DISPATCH_LOCK_MAX_POLL_MS, LOCK_STALE_MS3;
+var import_crypto29, import_fs80, import_promises16, import_path97, OMC_DISPATCH_LOCK_TIMEOUT_ENV, DEFAULT_DISPATCH_LOCK_TIMEOUT_MS, MIN_DISPATCH_LOCK_TIMEOUT_MS, MAX_DISPATCH_LOCK_TIMEOUT_MS, DISPATCH_LOCK_INITIAL_POLL_MS, DISPATCH_LOCK_MAX_POLL_MS, LOCK_STALE_MS3;
 var init_dispatch_queue = __esm({
   "src/team/dispatch-queue.ts"() {
     "use strict";
-    import_crypto28 = require("crypto");
+    import_crypto29 = require("crypto");
     import_fs80 = require("fs");
     import_promises16 = require("fs/promises");
     import_path97 = require("path");
@@ -43890,7 +44048,7 @@ function canonicalize2(value) {
   return `{${Object.keys(object3).filter((key) => object3[key] !== void 0).sort().map((key) => `${JSON.stringify(key)}:${canonicalize2(object3[key])}`).join(",")}}`;
 }
 function sha256(value) {
-  return (0, import_crypto29.createHash)("sha256").update(canonicalize2(value)).digest("hex");
+  return (0, import_crypto30.createHash)("sha256").update(canonicalize2(value)).digest("hex");
 }
 function parseCanonical(path27) {
   try {
@@ -43916,7 +44074,7 @@ function phaseDirectory(cwd2, requestId) {
 function publishImmutable(target, value) {
   const bytes = canonicalize2(value);
   (0, import_fs83.mkdirSync)((0, import_path100.dirname)(target), { recursive: true, mode: 448 });
-  const temp = (0, import_path100.join)((0, import_path100.dirname)(target), `.${(0, import_crypto29.randomUUID)()}.tmp`);
+  const temp = (0, import_path100.join)((0, import_path100.dirname)(target), `.${(0, import_crypto30.randomUUID)()}.tmp`);
   (0, import_fs83.writeFileSync)(temp, bytes, { encoding: "utf8", mode: 384, flush: true });
   try {
     (0, import_fs83.linkSync)(temp, target);
@@ -43937,7 +44095,7 @@ function publishImmutable(target, value) {
 function replaceDerivedIndex(target, value) {
   const bytes = canonicalize2(value);
   (0, import_fs83.mkdirSync)((0, import_path100.dirname)(target), { recursive: true, mode: 448 });
-  const temp = (0, import_path100.join)((0, import_path100.dirname)(target), `.${(0, import_crypto29.randomUUID)()}.repair.tmp`);
+  const temp = (0, import_path100.join)((0, import_path100.dirname)(target), `.${(0, import_crypto30.randomUUID)()}.repair.tmp`);
   (0, import_fs83.writeFileSync)(temp, bytes, { encoding: "utf8", mode: 384, flush: true });
   try {
     (0, import_fs83.renameSync)(temp, target);
@@ -43951,7 +44109,7 @@ function replaceDerivedIndex(target, value) {
 function canonicalRecoveryPayloadHash(payload) {
   return sha256({ operation: payload.operation, workspace_hash: payload.workspaceHash, team_name: payload.teamName, worker_name: payload.workerName });
 }
-function reserveRecoveryRequest(cwd2, requestId, payload, recoveryId = (0, import_crypto29.randomUUID)()) {
+function reserveRecoveryRequest(cwd2, requestId, payload, recoveryId = (0, import_crypto30.randomUUID)()) {
   assertSafeRecoveryRequestId(requestId);
   assertSafeRecoveryRequestId(recoveryId);
   const payloadHash = canonicalRecoveryPayloadHash(payload);
@@ -44052,7 +44210,7 @@ function writeRecoveryPhase(cwd2, phase) {
   if (!reservation || reservation.kind !== "reservation" || !hasMatchingRecoveryPhaseTuple(phase, reservation)) {
     throw new Error("invalid_persisted_state");
   }
-  const sequence = `${Date.now().toString().padStart(16, "0")}-${process.hrtime.bigint().toString().padStart(20, "0")}-${(0, import_crypto29.randomUUID)()}.json`;
+  const sequence = `${Date.now().toString().padStart(16, "0")}-${process.hrtime.bigint().toString().padStart(20, "0")}-${(0, import_crypto30.randomUUID)()}.json`;
   return publishImmutable((0, import_path100.join)(phaseDirectory(cwd2, phase.request_id), sequence), { ...phase, schema_version: 1, kind: "phase", updated_at: phase.updated_at || (/* @__PURE__ */ new Date()).toISOString() });
 }
 function writeRecoveryFinal(cwd2, outcome) {
@@ -44160,11 +44318,11 @@ function readRecoveryResult(cwd2, requestId) {
   const outcome = readRecoveryOutcome(cwd2, requestId);
   return outcome?.kind === "final" ? outcome.result ?? null : null;
 }
-var import_crypto29, import_fs83, import_path100, RETENTION_MS, MAX_RECOVERY_ALIAS_DEPTH, RECOVERY_ERRORS, RECOVERY_WARNINGS;
+var import_crypto30, import_fs83, import_path100, RETENTION_MS, MAX_RECOVERY_ALIAS_DEPTH, RECOVERY_ERRORS, RECOVERY_WARNINGS;
 var init_recovery_request_store = __esm({
   "src/team/recovery-request-store.ts"() {
     "use strict";
-    import_crypto29 = require("crypto");
+    import_crypto30 = require("crypto");
     import_fs83 = require("fs");
     import_path100 = require("path");
     init_state_paths();
@@ -47640,7 +47798,7 @@ async function processCliWorkerVerdicts(teamName, cwd2) {
     "team.runtime-v2.processCliWorkerVerdicts appendTeamEvent failed"
   );
   const { rename: rename7 } = await import("fs/promises");
-  const { readFileSync: readFileSync117, writeFileSync: writeFileSync47, existsSync: fsExistsSync } = await import("fs");
+  const { readFileSync: readFileSync117, writeFileSync: writeFileSync46, existsSync: fsExistsSync } = await import("fs");
   const { withFileLockSync: withFileLockSync2 } = await Promise.resolve().then(() => (init_file_lock(), file_lock_exports));
   for (const worker of config2.workers) {
     const outputFile = worker.output_file;
@@ -47722,7 +47880,7 @@ async function processCliWorkerVerdicts(teamName, cwd2) {
         if (terminalStatus === "failed") {
           taskData.error = `cli_worker_verdict:${payload.verdict}:${payload.summary}`;
         }
-        writeFileSync47(targetTaskPath, JSON.stringify(taskData, null, 2), "utf-8");
+        writeFileSync46(targetTaskPath, JSON.stringify(taskData, null, 2), "utf-8");
         transitionOk = true;
       });
     } catch {
@@ -50041,7 +50199,7 @@ function startReplyListener(_config) {
     child.unref();
     const pid = child.pid;
     if (pid) {
-      const generation = (0, import_crypto30.randomUUID)();
+      const generation = (0, import_crypto31.randomUUID)();
       writePidFile({ pid, generation });
       const state = {
         isRunning: true,
@@ -50214,7 +50372,7 @@ function processSlackSocketMessage(rawMessage, connectionState, paneId, config2,
   }
   return { injected: success, validation };
 }
-var import_fs87, import_path106, import_url13, import_child_process28, import_crypto30, import_https2, __filename2, SECURE_FILE_MODE2, MAX_LOG_SIZE_BYTES, DAEMON_ENV_ALLOWLIST, DEFAULT_STATE_DIR, PID_FILE_PATH, STATE_FILE_PATH, LOG_FILE_PATH, RateLimiter, discordBackoffUntil, PRUNE_INTERVAL_MS;
+var import_fs87, import_path106, import_url13, import_child_process28, import_crypto31, import_https2, __filename2, SECURE_FILE_MODE2, MAX_LOG_SIZE_BYTES, DAEMON_ENV_ALLOWLIST, DEFAULT_STATE_DIR, PID_FILE_PATH, STATE_FILE_PATH, LOG_FILE_PATH, RateLimiter, discordBackoffUntil, PRUNE_INTERVAL_MS;
 var init_reply_listener = __esm({
   "src/notifications/reply-listener.ts"() {
     "use strict";
@@ -50222,7 +50380,7 @@ var init_reply_listener = __esm({
     import_path106 = require("path");
     import_url13 = require("url");
     import_child_process28 = require("child_process");
-    import_crypto30 = require("crypto");
+    import_crypto31 = require("crypto");
     init_tmux_utils();
     import_https2 = require("https");
     init_daemon_module_path();
@@ -51020,7 +51178,7 @@ function reschedulePendingWorker(payload, job) {
 }
 async function processSessionEndWorker(payload) {
   const deadlineAt = Date.now() + MAX_WORKER_MS;
-  const nonce = (0, import_crypto31.randomUUID)();
+  const nonce = (0, import_crypto32.randomUUID)();
   const identity = await getProcessStartIdentity(process.pid, Math.min(deadlineAt, Date.now() + 250));
   if (!identity) return;
   let claimed = claimSessionEndJob(payload.directory, payload.sessionId, nonce, identity, deadlineAt);
@@ -51089,12 +51247,12 @@ function reconcileSessionEndJobs(directory, sessionIds) {
     if (ticket.nonce && !spawned) releaseSessionEndDiscoveryTicket(directory, ticket.sessionId, ticket.nonce, false);
   }
 }
-var import_child_process29, import_crypto31, import_url14, WORKER_ARG, MAX_WORKER_MS, workerIndex;
+var import_child_process29, import_crypto32, import_url14, WORKER_ARG, MAX_WORKER_MS, workerIndex;
 var init_worker = __esm({
   "src/hooks/session-end/worker.ts"() {
     "use strict";
     import_child_process29 = require("child_process");
-    import_crypto31 = require("crypto");
+    import_crypto32 = require("crypto");
     import_url14 = require("url");
     init_cleanup_manifest();
     init_action_runner();
@@ -58490,7 +58648,7 @@ function createRateLimitedCacheEntry(source, data, pollIntervalMs, previousCount
 function getKeychainServiceName() {
   const configDir = process.env.CLAUDE_CONFIG_DIR;
   if (configDir) {
-    const hash = (0, import_crypto35.createHash)("sha256").update(configDir).digest("hex").slice(0, 8);
+    const hash = (0, import_crypto36.createHash)("sha256").update(configDir).digest("hex").slice(0, 8);
     return `Claude Code-credentials-${hash}`;
   }
   return "Claude Code-credentials";
@@ -59427,7 +59585,7 @@ async function getUsage() {
     return { rateLimits: null, error: "network" };
   }
 }
-var import_fs118, import_path138, import_child_process38, import_crypto35, import_os20, import_https3, CACHE_TTL_FAILURE_MS, CACHE_TTL_TRANSIENT_NETWORK_MS, MAX_RATE_LIMITED_BACKOFF_MS, API_TIMEOUT_MS2, MAX_STALE_DATA_MS, TOKEN_REFRESH_URL_HOSTNAME, USAGE_CACHE_LOCK_OPTS, TOKEN_REFRESH_URL_PATH, DEFAULT_OAUTH_CLIENT_ID, ZAI_UNIT_WEEK, KIMI_USAGE_HOSTNAMES, KIMI_USAGE_PATH, KIMI_FIVE_HOUR_WINDOW_MINUTES;
+var import_fs118, import_path138, import_child_process38, import_crypto36, import_os20, import_https3, CACHE_TTL_FAILURE_MS, CACHE_TTL_TRANSIENT_NETWORK_MS, MAX_RATE_LIMITED_BACKOFF_MS, API_TIMEOUT_MS2, MAX_STALE_DATA_MS, TOKEN_REFRESH_URL_HOSTNAME, USAGE_CACHE_LOCK_OPTS, TOKEN_REFRESH_URL_PATH, DEFAULT_OAUTH_CLIENT_ID, ZAI_UNIT_WEEK, KIMI_USAGE_HOSTNAMES, KIMI_USAGE_PATH, KIMI_FIVE_HOUR_WINDOW_MINUTES;
 var init_usage_api = __esm({
   "src/hud/usage-api.ts"() {
     "use strict";
@@ -59435,7 +59593,7 @@ var init_usage_api = __esm({
     init_config_dir();
     import_path138 = require("path");
     import_child_process38 = require("child_process");
-    import_crypto35 = require("crypto");
+    import_crypto36 = require("crypto");
     import_os20 = require("os");
     import_https3 = __toESM(require("https"), 1);
     init_ssrf_guard();
@@ -91230,7 +91388,7 @@ Searched:
 var skillsTools = [loadLocalTool, loadGlobalTool, listSkillsTool];
 
 // src/tools/state-tools.ts
-var import_crypto12 = require("crypto");
+var import_crypto13 = require("crypto");
 var import_fs32 = require("fs");
 var import_os7 = require("os");
 var import_path37 = require("path");
@@ -92100,7 +92258,7 @@ function isExactNamedPauseRequest(record2) {
   return record2.active === false && typeof record2.workflowRunId === "string" && Object.keys(record2).every((key) => allowed.has(key)) && (!hasOwnProperty5(record2, "target_state_sha256") || typeof record2.target_state_sha256 === "string" && /^[a-f0-9]{64}$/.test(record2.target_state_sha256));
 }
 function matchesNamedPauseTarget(current, sessionId, workflowRunId, stateDigest2) {
-  return current.active === true && current.workflowRunId === workflowRunId && hasValidatedNamedWorkflowTuple(current) && getStateSessionOwner(current) === sessionId && (stateDigest2 === void 0 || (0, import_crypto12.createHash)("sha256").update(JSON.stringify(current)).digest("hex") === stateDigest2);
+  return current.active === true && current.workflowRunId === workflowRunId && hasValidatedNamedWorkflowTuple(current) && getStateSessionOwner(current) === sessionId && (stateDigest2 === void 0 || (0, import_crypto13.createHash)("sha256").update(JSON.stringify(current)).digest("hex") === stateDigest2);
 }
 function listSessionIdsUnderOmcRoot(omcRoot) {
   const sessionsDir = (0, import_path37.join)(omcRoot, "state", "sessions");
@@ -92481,7 +92639,7 @@ function writeSessionCancelSignal(root2, sessionId, mode, candidate) {
     mode,
     source: "state_clear",
     ...candidate?.workflowRunId ? { target_workflow_run_id: candidate.workflowRunId } : {},
-    ...candidate ? { target_state_sha256: (0, import_crypto12.createHash)("sha256").update(candidate.snapshot).digest("hex") } : {}
+    ...candidate ? { target_state_sha256: (0, import_crypto13.createHash)("sha256").update(candidate.snapshot).digest("hex") } : {}
   };
   if (!writeStateFileLocked(cancelSignalPath, payload)) {
     throw new Error(`state mutation lock unavailable for cancel signal: ${cancelSignalPath}`);
@@ -92520,7 +92678,7 @@ function isValidPublicWorkflowDescriptor(descriptor) {
   const allowed = /* @__PURE__ */ new Set(["ralplan,execution", "ralplan,execution,ralph", "ralplan,execution,qa", "ralplan,execution,ralph,qa"]);
   if (!allowed.has(stages.join(","))) return false;
   const canonical = canonicalWorkflowJson({ descriptorVersion: 1, workflowName: descriptor.workflowName, profileVersion: 1, stages });
-  return (0, import_crypto12.createHash)("sha256").update(canonical).digest("hex") === descriptor.profileHash;
+  return (0, import_crypto13.createHash)("sha256").update(canonical).digest("hex") === descriptor.profileHash;
 }
 function redactAutopilotPublicState(state) {
   if (!state || typeof state !== "object") {
@@ -92836,7 +92994,7 @@ var stateWriteTool = {
             const snapshot = JSON.stringify(currentState);
             const written = emergencyMutateStateFileIf(
               statePath,
-              (current) => JSON.stringify(current) === snapshot && isExactEmergencyNamedMutation(current, requestedRunId) && (requestedStateDigest === void 0 || (0, import_crypto12.createHash)("sha256").update(JSON.stringify(current)).digest("hex") === requestedStateDigest),
+              (current) => JSON.stringify(current) === snapshot && isExactEmergencyNamedMutation(current, requestedRunId) && (requestedStateDigest === void 0 || (0, import_crypto13.createHash)("sha256").update(JSON.stringify(current)).digest("hex") === requestedStateDigest),
               (current) => ({ ...current, active: false })
             );
             if (!written) throw new Error("autopilot run changed before deactivation");
@@ -93052,7 +93210,7 @@ var stateClearTool = {
             mode,
             source: "state_clear",
             ...candidate.workflowRunId ? { target_workflow_run_id: candidate.workflowRunId } : {},
-            target_state_sha256: (0, import_crypto12.createHash)("sha256").update(candidate.snapshot).digest("hex")
+            target_state_sha256: (0, import_crypto13.createHash)("sha256").update(candidate.snapshot).digest("hex")
           };
           try {
             writeStateFileLocked(signalPath, payload);
@@ -93274,7 +93432,7 @@ var stateClearTool = {
           const legacyPayload = {
             ...cancelSignalPayload,
             ...legacyCandidate.workflowRunId ? { target_workflow_run_id: legacyCandidate.workflowRunId } : {},
-            target_state_sha256: (0, import_crypto12.createHash)("sha256").update(legacyCandidate.snapshot).digest("hex")
+            target_state_sha256: (0, import_crypto13.createHash)("sha256").update(legacyCandidate.snapshot).digest("hex")
           };
           try {
             writeStateFileLocked(legacySignalPath, legacyPayload);
@@ -96124,7 +96282,7 @@ init_file_lock();
 init_worktree_paths();
 
 // src/shared/artifact-descriptor.ts
-var import_crypto13 = require("crypto");
+var import_crypto14 = require("crypto");
 var import_fs40 = require("fs");
 var import_path51 = require("path");
 var DEFAULT_INLINE_ARTIFACT_THRESHOLD_BYTES = 2048;
@@ -96142,7 +96300,7 @@ function createArtifactDescriptorFromPath(path27, options) {
   return {
     kind: options.kind,
     path: path27,
-    contentHash: (0, import_crypto13.createHash)("sha256").update(content).digest("hex"),
+    contentHash: (0, import_crypto14.createHash)("sha256").update(content).digest("hex"),
     createdAt: options.createdAt ?? new Date(stats.mtimeMs).toISOString(),
     producer: options.producer,
     sizeBytes: stats.size,
@@ -96385,7 +96543,7 @@ function markMessageAsRead(cwd2, messageId) {
 var import_promises6 = require("fs/promises");
 var import_path53 = require("path");
 var import_fs42 = require("fs");
-var import_crypto14 = require("crypto");
+var import_crypto15 = require("crypto");
 init_atomic_write();
 var OmxWorkerInfoSchema = external_exports.object({
   name: external_exports.string(),
@@ -96496,7 +96654,7 @@ async function listOmxMailboxMessages(teamName, workerName2, cwd2) {
 }
 async function sendOmxDirectMessage(teamName, fromWorker, toWorker, body, cwd2) {
   const msg = {
-    message_id: (0, import_crypto14.randomUUID)(),
+    message_id: (0, import_crypto15.randomUUID)(),
     from_worker: fromWorker,
     to_worker: toWorker,
     body,
@@ -96563,7 +96721,7 @@ async function listOmxTasks(teamName, cwd2) {
 }
 async function appendOmxTeamEvent(teamName, event, cwd2) {
   const full = {
-    event_id: (0, import_crypto14.randomUUID)(),
+    event_id: (0, import_crypto15.randomUUID)(),
     team: teamName,
     created_at: (/* @__PURE__ */ new Date()).toISOString(),
     ...event
@@ -101273,7 +101431,7 @@ function createHookDispatcher(registry2, options = {}) {
 }
 
 // src/hooks/registry/shadow.ts
-var import_crypto17 = require("crypto");
+var import_crypto18 = require("crypto");
 var fs11 = __toESM(require("fs"), 1);
 var path16 = __toESM(require("path"), 1);
 init_worktree_paths();
@@ -101293,7 +101451,7 @@ function decisionDigest(output) {
     hasMessage: typeof output?.message === "string" && output.message.length > 0,
     decisionKind: output?.decision === void 0 ? void 0 : typeof output.decision
   };
-  return (0, import_crypto17.createHash)("sha256").update(JSON.stringify(shape)).digest("hex");
+  return (0, import_crypto18.createHash)("sha256").update(JSON.stringify(shape)).digest("hex");
 }
 function loadHooksJson() {
   try {
@@ -103886,7 +104044,7 @@ var import_fs95 = require("fs");
 var import_path114 = require("path");
 
 // src/hooks/rules-injector/matcher.ts
-var import_crypto32 = require("crypto");
+var import_crypto33 = require("crypto");
 var import_path112 = require("path");
 
 // src/hooks/rules-injector/storage.ts
@@ -104093,7 +104251,7 @@ init_config_dir();
 init_atomic_write();
 
 // src/hooks/learner/auto-learner.ts
-var import_crypto33 = require("crypto");
+var import_crypto34 = require("crypto");
 
 // src/hooks/index.ts
 init_autopilot();
@@ -104106,7 +104264,7 @@ init_pre_compact();
 // src/hooks/pre-compact/restore.ts
 var import_fs104 = require("fs");
 var import_child_process33 = require("child_process");
-var import_crypto34 = require("crypto");
+var import_crypto35 = require("crypto");
 var import_path124 = require("path");
 var import_url16 = require("url");
 init_worktree_paths();
@@ -107581,7 +107739,7 @@ ${missing.length} provider${missing.length === 1 ? "" : "s"} missing (warn only 
 }
 
 // src/cli/commands/capabilities.ts
-var import_crypto36 = require("crypto");
+var import_crypto37 = require("crypto");
 var import_fs121 = require("fs");
 var import_path141 = require("path");
 init_definitions();
@@ -107610,7 +107768,7 @@ function sortJson(value) {
   return value;
 }
 function sha2562(value) {
-  return (0, import_crypto36.createHash)("sha256").update(value).digest("hex");
+  return (0, import_crypto37.createHash)("sha256").update(value).digest("hex");
 }
 function resolveLockfilePath(lockfile) {
   return (0, import_path141.resolve)(process.cwd(), lockfile ?? DEFAULT_CAPABILITIES_LOCKFILE);
@@ -112521,7 +112679,7 @@ async function launchCommand(args) {
 
 // src/cli/interop.ts
 var import_child_process42 = require("child_process");
-var import_crypto37 = require("crypto");
+var import_crypto38 = require("crypto");
 init_tmux_utils();
 function readInteropRuntimeFlags(env2 = process.env) {
   const rawMode = (env2.OMX_OMC_INTEROP_MODE || "off").toLowerCase();
@@ -112579,7 +112737,7 @@ function launchInteropSession(cwd2 = process.cwd()) {
     console.error("Start tmux first: tmux new-session -s myproject");
     process.exit(1);
   }
-  const sessionId = `interop-${(0, import_crypto37.randomUUID)().split("-")[0]}`;
+  const sessionId = `interop-${(0, import_crypto38.randomUUID)().split("-")[0]}`;
   const _config = initInteropSession(sessionId, cwd2, hasCodex ? cwd2 : void 0);
   console.log(`Initializing interop session: ${sessionId}`);
   console.log(`Working directory: ${cwd2}`);
