@@ -151,8 +151,9 @@ export function restoreRalphStateIfAbsent(
 export function clearRalphState(
   directory: string,
   sessionId?: string,
+  expectedState?: RalphLoopState,
 ): boolean {
-  return clearModeStateFile("ralph", directory, sessionId);
+  return clearModeStateFile("ralph", directory, sessionId, expectedState as Record<string, unknown> | undefined);
 }
 
 /**
