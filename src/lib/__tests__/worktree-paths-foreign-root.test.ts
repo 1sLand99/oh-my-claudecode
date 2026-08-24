@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { inspect } from 'node:util';
+import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 import {
   mkdtempSync,
@@ -11,7 +12,7 @@ import {
   realpathSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, basename, relative } from 'node:path';
+import { join, basename, relative, resolve } from 'node:path';
 import {
   clearWorktreeCache,
   resolveWorkingDirectoryOrLinkedWorktree,
@@ -209,6 +210,19 @@ describe('shared resolver #3858: foreign repo, linked worktree, non-git, same-ro
     expect(inspected).toContain('../foreign-vault');
     expect(inspected).not.toContain('/canonical/foreign-vault');
     expect(inspected).not.toContain('/canonical/session-project');
+    const sourceFile = fileURLToPath(import.meta.url);
+    const sourceRoot = resolve(sourceFile, '../../../..');
+    const overlapping = new ForeignWorkingDirectoryError(
+      sourceFile,
+      sourceRoot,
+      '../foreign-vault',
+    );
+    const overlappingInspect = inspect(overlapping, { depth: 8, getters: true, showHidden: false });
+    expect(overlappingInspect).toContain('at ');
+    expect(overlappingInspect).toContain('../foreign-vault');
+    expect(overlappingInspect).not.toContain(sourceFile);
+    expect(overlappingInspect).not.toContain(sourceRoot);
+    expect(overlappingInspect).toContain('<redacted>');
   });
 
   it('foreign_repository resolution and thrown error keep canonical roots opaque under serialization', () => {

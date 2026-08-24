@@ -1220,6 +1220,17 @@ function defineOpaqueCanonicalRoots(
     trustedRoot: { ...descriptor, value: trustedRoot },
   });
 }
+function redactCanonicalRoots(text: string, providedRoot: string, trustedRoot: string): string {
+  let redacted = text;
+  const roots = [providedRoot, trustedRoot]
+    .filter((root) => root.length > 0)
+    .sort((a, b) => b.length - a.length);
+  for (const root of roots) {
+    redacted = redacted.split(root).join('<redacted>');
+  }
+  return redacted;
+}
+
 
 function foreignRepositoryResolution(
   providedRoot: string,
@@ -1399,7 +1410,8 @@ export class ForeignWorkingDirectoryError extends Error {
   }
 
   [Symbol.for('nodejs.util.inspect.custom')](): string {
-    return this.stack ?? `${this.name}: ${this.message}`;
+    const raw = this.stack ?? `${this.name}: ${this.message}`;
+    return redactCanonicalRoots(raw, this.providedRoot, this.trustedRoot);
   }
 }
 
