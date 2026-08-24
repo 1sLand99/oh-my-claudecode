@@ -93,8 +93,8 @@ function assertWorkflowCommands(
     `${jobName} must not recombine the test commands`,
   ).not.toMatch(/npm test\s+--\s+--run\s*[;&|]/);
   expect(
-    workflow.split(PERF_COMMAND).length - 1,
-    `${jobName} workflow must have exactly one serialized perf command`,
+    job.split(PERF_COMMAND).length - 1,
+    `${jobName} job must have exactly one serialized perf command`,
   ).toBe(1);
   expect(
     workflow,
@@ -164,10 +164,9 @@ describe("subagent-lock test contract", () => {
 
   it("keeps CI and release as ordered, blocking functional and serialized perf gates", () => {
     const ci = readRepoFile(".github/workflows/ci.yml");
-    const release = readRepoFile(".github/workflows/release.yml");
 
     assertWorkflowCommands(ci, "test");
-    assertWorkflowCommands(release, "release", true);
+    assertWorkflowCommands(ci, "release", true);
     expect(extractJob(ci, "build")).toMatch(
       /^    needs: \[[^\]]*\btest\b[^\]]*\]$/m,
     );

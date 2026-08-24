@@ -25,6 +25,7 @@ describe('plugin shipping release guidance', () => {
   });
 
   it('keeps candidate artifact containment non-authoritative and credential-free', () => {
+    const ciJobs = CI_WORKFLOW.slice(0, CI_WORKFLOW.indexOf('\n  release:'));
     expect(PACKAGE_JSON.scripts?.['plugin:shipping:check-pr']).toBe(
       'node scripts/plugin-shipping-surface.mjs check-pr',
     );
@@ -34,12 +35,12 @@ describe('plugin shipping release guidance', () => {
     expect(CI_WORKFLOW).toContain(
       'node scripts/ci/check-no-committed-build-artifacts.mjs --base "$BASE_SHA" --head "$HEAD_SHA"',
     );
-    expect(CI_WORKFLOW).not.toContain('npm ci --ignore-scripts');
-    expect(CI_WORKFLOW).not.toContain('GH_TOKEN');
-    expect(CI_WORKFLOW).not.toContain('gh api');
-    expect(CI_WORKFLOW).not.toContain('PR_AUTHOR_ASSOCIATION');
-    expect(CI_WORKFLOW).not.toContain('plugin:shipping:check-pr');
-    expect(CI_WORKFLOW).not.toContain('claude-md-coordinator');
+    expect(ciJobs).not.toContain('npm ci --ignore-scripts');
+    expect(ciJobs).not.toContain('GH_TOKEN');
+    expect(ciJobs).not.toContain('gh api');
+    expect(ciJobs).not.toContain('PR_AUTHOR_ASSOCIATION');
+    expect(ciJobs).not.toContain('plugin:shipping:check-pr');
+    expect(ciJobs).not.toContain('claude-md-coordinator');
     expect(CONTRIBUTING).toContain('credential-free, candidate-side classifier');
     expect(CONTRIBUTING).toContain('non-authoritative for every contributor and maintainer');
     expect(CONTRIBUTING).toContain('workflow root **W**');

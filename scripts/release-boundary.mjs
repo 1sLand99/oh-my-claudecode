@@ -26,7 +26,7 @@ const GITHUB_ACTIONS_WORKFLOW_V1_BUILD_TYPE = 'https://slsa-framework.github.io/
 const GITHUB_HOSTED_BUILDER_ID = 'https://github.com/actions/runner/github-hosted';
 
 const REPOSITORY_URL = 'https://github.com/Yeachan-Heo/oh-my-claudecode';
-const WORKFLOW_PATH = '.github/workflows/release.yml';
+const WORKFLOW_PATH = '.github/workflows/ci.yml';
 const EXPECTED_BINS = Object.freeze({
   'oh-my-claudecode': 'bin/oh-my-claudecode.js',
   omc: 'bin/oh-my-claudecode.js',
@@ -473,7 +473,7 @@ export function writeEvidence(tarballPath, outputPath) {
   return evidence;
 }
 
-function assertRecordedEvidenceMatches(recordedEvidence, recomputedEvidence, { allowProvenance = false } = {}) {
+function assertRecordedEvidenceMatches(recordedEvidence, recomputedEvidence) {
   if (!isPlainObject(recordedEvidence)) {
     fail('evidence must be a JSON object');
   }
@@ -484,30 +484,17 @@ function assertRecordedEvidenceMatches(recordedEvidence, recomputedEvidence, { a
   }
   for (const key of Object.keys(recordedEvidence)) {
     if (!Object.hasOwn(recomputedEvidence, key)) {
-      if (!allowProvenance || (key !== 'provenance' && key !== 'provenanceMode')) {
-        fail(`evidence contains unexpected field: ${key}`);
-      }
-      if (key === 'provenance' && !isPlainObject(recordedEvidence.provenance)) {
-        fail('evidence provenance must be an object');
-      }
-      if (key === 'provenanceMode' && recordedEvidence.provenanceMode !== 'sigstore-fallback') {
-        fail('evidence provenanceMode must be sigstore-fallback');
-      }
-    }
-  }
-  if (allowProvenance && (Object.hasOwn(recordedEvidence, 'provenance') || Object.hasOwn(recordedEvidence, 'provenanceMode'))) {
-    if (recordedEvidence.provenanceMode !== 'sigstore-fallback' || !isPlainObject(recordedEvidence.provenance) || recordedEvidence.provenance.mode !== recordedEvidence.provenanceMode) {
-      fail('evidence provenance and provenanceMode must record sigstore-fallback together');
+      fail(`evidence contains unexpected field: ${key}`);
     }
   }
   return recordedEvidence;
 }
 
-function assertEvidenceFromTarball(tarballPath, evidencePath, options) {
+function assertEvidenceFromTarball(tarballPath, evidencePath) {
   const archive = readTarball(tarballPath);
   const recomputedEvidence = buildEvidenceFromBytes(archive.bytes, basename(tarballPath));
   const recordedEvidence = readJsonFile(evidencePath, 'evidence');
-  return assertRecordedEvidenceMatches(recordedEvidence, recomputedEvidence, options);
+  return assertRecordedEvidenceMatches(recordedEvidence, recomputedEvidence);
 }
 
 export function assertEvidence(tarballPath, evidencePath) {
@@ -930,54 +917,6 @@ export function assertSlsaProvenance(payload, { packageName, version, tag, sha, 
   return true;
 }
 
-function hasCompetingNpmFailure(logText) {
-  const npmErrorCode = /\bnpm\s+(?:err!|error)\s+code\s+([a-z][a-z0-9_:-]*)\b/gi;
-  for (const match of logText.matchAll(npmErrorCode)) {
-    if (match[1].toUpperCase() !== 'TLOG_CREATE_ENTRY_ERROR') return true;
-  }
-  if (/\b(?:e401|e403|e409|epublishconflict|einvalidpackagename|einvalidtagname|einvalidversion|eintegrity|enetwork|etimedout|econn(?:reset|refused)|enotfound|eai_again)\b/i.test(logText)) {
-    return true;
-  }
-  if (/\b(?:unauthori[sz]ed|forbidden|permission denied|access denied|authentication|auth token|cannot publish over|publish conflict|version already exists|already published|invalid package|invalid tag|invalid version|package validation|network|timed out|connection (?:refused|reset)|fetch failed|integrity|checksum|fatal(?:\s+error)?)\b/i.test(logText)) {
-    return true;
-  }
-  for (const line of logText.split(/\r?\n/)) {
-    if (!/\bnpm\s+(?:err!|error)|\bfatal(?:\s+error)?\b/i.test(line)) continue;
-    if (/a complete log of this run can be found/i.test(line)) continue;
-    if (!/\b(?:tlog_create_entry_error|sigstore|rekor|transparency[-\s]+log|tlog)\b/i.test(line)) return true;
-  }
-  return false;
-}
-
-/** Return one reviewed classifier name, never a truthy generic error match. */
-export function classifySigstoreRekorFailure(logText) {
-  if (typeof logText !== 'string' || logText.trim() === '' || hasCompetingNpmFailure(logText)) return null;
-  const hasTlogCreateEntryError = /\bTLOG_CREATE_ENTRY_ERROR\b/i.test(logText);
-  const rekorSigstore = /\b(?:sigstore|rekor)\b[\s\S]{0,160}\b(?:transparency\s+log|tlog)\b/i;
-  const tlogRekorSigstore = /\b(?:transparency\s+log|tlog)\b[\s\S]{0,160}\b(?:sigstore|rekor)\b/i;
-  const createFailure = /\b(?:create|submit|write)\b[\s\S]{0,80}\b(?:failed|failure|error|unavailable|unreachable|timeout)\b/i;
-  const hasSigstoreRekorTransparencyLogFailure = (rekorSigstore.test(logText) || tlogRekorSigstore.test(logText)) && createFailure.test(logText);
-  const classifiers = [
-    ...(hasTlogCreateEntryError ? ['TLOG_CREATE_ENTRY_ERROR'] : []),
-    ...(hasSigstoreRekorTransparencyLogFailure ? ['SIGSTORE_REKOR_TRANSPARENCY_LOG'] : []),
-  ];
-  return classifiers.length === 1 ? classifiers[0] : null;
-}
-
-export function assertSigstoreFallback(publishLogPath) {
-  let publishLogText;
-  try {
-    publishLogText = readFileSync(publishLogPath, 'utf8');
-  } catch (error) {
-    fail(`cannot read publish log: ${error instanceof Error ? error.message : String(error)}`);
-  }
-  const classifier = classifySigstoreRekorFailure(publishLogText);
-  if (!classifier) {
-    fail('publish log does not contain exactly one recognized Sigstore/Rekor transparency-log failure without competing errors');
-  }
-  return { classifier };
-}
-
 function canonicalRegistryUrl(value, label) {
   let parsed;
   try {
@@ -1036,57 +975,7 @@ function assertMatchingSlsaBundles(npmVerifiedAttestation, registryAttestation) 
   }
 }
 
-async function fetchAttestationForFallback(url) {
-  const response = await fetchBounded(url);
-  if (response.status === 404) return null;
-  if (response.status !== 200) {
-    fail(`attestation endpoint returned HTTP ${response.status} during fallback verification`);
-  }
-  let text;
-  try {
-    text = await response.text();
-  } catch (error) {
-    fail(`cannot read fallback attestation response: ${error instanceof Error ? error.message : String(error)}`);
-  }
-  const document = parseJson(text, 'fallback attestation response');
-  const attestations = attestationList(document);
-  if (attestations.some(attestation => isPlainObject(attestation) && attestation.predicateType === SLSA_PREDICATE_TYPE)) {
-    fail('fallback cannot ignore a present SLSA provenance attestation');
-  }
-  return document;
-}
-
-function updateFallbackEvidence(evidencePath, evidence, { classifier, tag, sha }) {
-  const workflowRunId = process.env.GITHUB_RUN_ID;
-  if (typeof workflowRunId !== 'string' || workflowRunId.trim() === '') {
-    fail('GITHUB_RUN_ID is required to record reduced-assurance fallback evidence');
-  }
-  const updated = {
-    ...evidence,
-    provenanceMode: 'sigstore-fallback',
-    provenance: {
-      mode: 'sigstore-fallback',
-      classifier,
-      assurance: 'reduced',
-      workflowRunId,
-      tag,
-      sourceSha: sha,
-      archiveDigests: {
-        sha512: evidence.sha512.hex,
-        sha256: evidence.sha256,
-        sha1: evidence.sha1,
-        byteLength: evidence.byteLength,
-        npmIntegrity: evidence.npmIntegrity,
-        archiveManifest: evidence.archiveManifest.digest,
-      },
-    },
-  };
-  writeFileSync(evidencePath, `${stableJson(updated)}\n`, 'utf8');
-  return updated;
-}
-
 export async function verifyRegistry({ packageName, version, tag, sha, evidencePath, tarballPath, provenance, publishLog, auditPath }) {
-
   const expectedPackage = requireString(packageName, 'package');
   const expectedVersion = requireVersion(version);
   const expectedTag = requireString(tag, 'tag');
@@ -1094,22 +983,16 @@ export async function verifyRegistry({ packageName, version, tag, sha, evidenceP
     fail(`tag must equal v${expectedVersion}`);
   }
   const expectedSha = requireSha(sha);
-  if (provenance !== 'required' && provenance !== 'sigstore-fallback') {
-    fail('provenance must be required or sigstore-fallback');
+  if (provenance !== 'required') {
+    fail('provenance must be required');
   }
-  if (provenance === 'required') {
-    if (publishLog !== undefined) fail('--publish-log is only valid with --provenance sigstore-fallback');
-    if (auditPath === undefined) fail('--audit is required for --provenance required');
-  } else {
-    if (auditPath !== undefined) fail('--audit is only valid with --provenance required');
-    if (!publishLog) fail('--publish-log is required for sigstore-fallback');
-  }
+  if (publishLog !== undefined) fail('--publish-log is not valid with --provenance required');
+  if (auditPath === undefined) fail('--audit is required for --provenance required');
 
   const evidence = validateEvidence(
     assertEvidenceFromTarball(
       requireString(tarballPath, 'tarball'),
       evidencePath,
-      { allowProvenance: true },
     ),
     {
       packageName: expectedPackage,
@@ -1118,13 +1001,11 @@ export async function verifyRegistry({ packageName, version, tag, sha, evidenceP
     },
   );
   const base = registryBaseUrl();
-  const npmVerifiedAttestation = provenance === 'required'
-    ? selectNpmVerifiedSlsaAttestation(auditPath, {
-      packageName: expectedPackage,
-      version: expectedVersion,
-      registry: base,
-    })
-    : null;
+  const npmVerifiedAttestation = selectNpmVerifiedSlsaAttestation(auditPath, {
+    packageName: expectedPackage,
+    version: expectedVersion,
+    registry: base,
+  });
 
   const encodedPackage = encodePackageName(expectedPackage);
   const encodedVersion = encodeURIComponent(expectedVersion);
@@ -1162,30 +1043,18 @@ export async function verifyRegistry({ packageName, version, tag, sha, evidenceP
   });
 
   const attestationUrl = registryPath(base, `-/npm/v1/attestations/${encodedPackage}@${encodedVersion}`);
-  if (provenance === 'required') {
-    const attestationDocument = await fetchJsonRequired(attestationUrl, 'attestation endpoint');
-    const registryAttestation = selectSlsaAttestation(attestationDocument);
-    assertMatchingSlsaBundles(npmVerifiedAttestation, registryAttestation);
-    const payload = decodeDssePayload(npmVerifiedAttestation);
-    assertSlsaProvenance(payload, {
-      packageName: expectedPackage,
-      version: expectedVersion,
-      tag: expectedTag,
-      sha: expectedSha,
-      sha512: evidence.sha512.hex,
-    });
-    return { provenance: 'required', evidence };
-  }
-
-
-  const { classifier } = assertSigstoreFallback(publishLog);
-  await fetchAttestationForFallback(attestationUrl);
-  const updatedEvidence = updateFallbackEvidence(evidencePath, evidence, {
-    classifier,
+  const attestationDocument = await fetchJsonRequired(attestationUrl, 'attestation endpoint');
+  const registryAttestation = selectSlsaAttestation(attestationDocument);
+  assertMatchingSlsaBundles(npmVerifiedAttestation, registryAttestation);
+  const payload = decodeDssePayload(npmVerifiedAttestation);
+  assertSlsaProvenance(payload, {
+    packageName: expectedPackage,
+    version: expectedVersion,
     tag: expectedTag,
     sha: expectedSha,
+    sha512: evidence.sha512.hex,
   });
-  return { provenance: 'sigstore-fallback', classifier, evidence: updatedEvidence };
+  return { provenance: 'required', evidence };
 }
 
 function parseCliArguments(argv) {
@@ -1252,22 +1121,13 @@ export async function cliMain(argv = process.argv.slice(2)) {
       requireFlags(flags, ['tarball', 'evidence']);
       assertEvidence(flags.tarball, flags.evidence);
       break;
-    case 'assert-sigstore-fallback':
-      requireFlags(flags, ['publish-log']);
-      process.stdout.write(`${assertSigstoreFallback(flags['publish-log']).classifier}\n`);
-
-      break;
     case 'verify-registry':
-      requireFlags(flags, ['package', 'version', 'tag', 'sha', 'evidence', 'tarball', 'provenance'], ['publish-log', 'audit']);
-      if (flags.provenance === 'required') {
-        if (Object.hasOwn(flags, 'publish-log')) fail('--publish-log is only valid with --provenance sigstore-fallback');
-        if (!Object.hasOwn(flags, 'audit')) fail('--audit is required with --provenance required');
+      requireFlags(flags, ['package', 'version', 'tag', 'sha', 'evidence', 'tarball', 'provenance'], ['audit', 'publish-log']);
+      if (flags.provenance !== 'required') {
+        fail('provenance must be required');
       }
-      if (flags.provenance === 'sigstore-fallback') {
-        if (Object.hasOwn(flags, 'audit')) fail('--audit is only valid with --provenance required');
-        if (!Object.hasOwn(flags, 'publish-log')) fail('--publish-log is required with --provenance sigstore-fallback');
-      }
-
+      if (Object.hasOwn(flags, 'publish-log')) fail('--publish-log is not valid with --provenance required');
+      if (!Object.hasOwn(flags, 'audit')) fail('--audit is required with --provenance required');
       await verifyRegistry({
         packageName: flags.package,
         version: flags.version,
@@ -1276,7 +1136,6 @@ export async function cliMain(argv = process.argv.slice(2)) {
         evidencePath: flags.evidence,
         tarballPath: flags.tarball,
         provenance: flags.provenance,
-        publishLog: flags['publish-log'],
         auditPath: flags.audit,
       });
       break;
