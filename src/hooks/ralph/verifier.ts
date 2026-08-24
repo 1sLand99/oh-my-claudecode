@@ -16,7 +16,7 @@ import { randomUUID } from 'crypto';
 import { existsSync, readFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { resolveSessionStatePath, ensureSessionStateDir, getOmcRoot } from '../../lib/worktree-paths.js';
-import { clearStateFileLocked, clearStateFileLockedIf, writeStateFileLocked, writeStateFileLockedCreateIf } from '../../lib/mode-state-io.js';
+import { clearStateFileLocked, clearStateFileLockedIf, writeStateFileLocked, writeStateFileLockedCreateIf, writeStateFileLockedIf } from '../../lib/mode-state-io.js';
 import { formatOmcCliInvocation } from '../../utils/omc-cli-rendering.js';
 import { getPrdGoverningCriteriaRevision, readPrd, type UserStory } from './prd.js';
 import type { RalphCriticMode } from './loop.js';
@@ -116,8 +116,15 @@ export function readVerificationState(directory: string, sessionId?: string): Ve
   try {
     const state = JSON.parse(readFileSync(statePath, 'utf-8')) as VerificationState;
     if (!state.request_id) {
-      state.request_id = createVerificationRequestId();
-      writeVerificationState(directory, state, sessionId);
+      const requestId = createVerificationRequestId();
+      const result = writeStateFileLockedIf(
+        statePath,
+        current => !current.request_id,
+        current => ({ ...current, request_id: requestId }),
+      );
+      if (result === 'written') state.request_id = requestId;
+      else if (result === 'skipped') return readVerificationState(directory, sessionId);
+      else return null;
     }
     return state;
   } catch {
