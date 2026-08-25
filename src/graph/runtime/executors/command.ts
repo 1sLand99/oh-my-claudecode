@@ -1,0 +1,260 @@
+/**
+ * Command node executor for graph runtime v2.
+ *
+ * Spawns the node's command via a platform shell and reports an outcome
+ * object — command failures (non-zero exit, timeout, spawn infra errors)
+ * are reported as `failed` outcomes, never thrown. Terminal-success
+ * evidence duty stays with the runner/scheduler.
+ */
+
+import { spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
+
+import type {
+  ExecutableKind,
+  NodeExecutionContext,
+  NodeExecutionOutput,
+  NodeExecutor,
+} from "../types.js";
+import type { GraphCommandNode, GraphEvidenceReference } from "../../types.js";
+
+/** Per-stream captured output cap; the TAIL is kept. */
+const STREAM_TAIL_CHARS = 2000;
+
+/** Grace period after the first kill before escalating to a hard kill. */
+const KILL_ESCALATION_MS = 5000;
+
+/**
+ * Output shape for command attempts. Extends the frozen
+ * NodeExecutionOutput with the idempotency key computed for idempotent
+ * effect policies (structurally compatible; see team-lead note).
+ */
+export interface CommandExecutionOutput extends NodeExecutionOutput {
+  readonly external_idempotency_key?: string;
+}
+
+interface CommandRunResult {
+  readonly timed_out: boolean;
+  /** null when killed by a signal or the process never spawned. */
+  readonly exit_code: number | null;
+  readonly infra_error?: string;
+}
+
+/** Keeps only the trailing STREAM_TAIL_CHARS of one output stream. */
+class StreamTail {
+  private content = "";
+
+  append(chunk: string): void {
+    const combined = this.content + chunk;
+    this.content =
+      combined.length > STREAM_TAIL_CHARS
+        ? combined.slice(combined.length - STREAM_TAIL_CHARS)
+        : combined;
+  }
+
+  excerpt(): string {
+    return this.content.trim();
+  }
+}
+
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * Best-effort termination of the whole process tree.
+ *
+ * On Windows child.kill() terminates only cmd.exe and leaves grandchildren
+ * holding the stdio pipes (so "close" would not fire until they exit on
+ * their own), so the tree kill IS the first-line kill there. On POSIX the
+ * shell typically execs the single command, so a plain kill reaches it.
+ */
+function terminateProcessTree(child: ChildProcess): void {
+  if (process.platform === "win32") {
+    if (child.pid === undefined) {
+      return;
+    }
+    try {
+      // ponytail: taskkill tree-kill covers shell+grandchildren; Job Objects
+      // are the upgrade path if detached/detached-process cases appear.
+      spawn("taskkill", ["/F", "/T", "/PID", String(child.pid)], { stdio: "ignore" });
+    } catch {
+      // Nothing further to do; the run result already reports failure.
+    }
+    return;
+  }
+  try {
+    child.kill("SIGKILL");
+  } catch {
+    // Process already gone.
+  }
+}
+
+function runCommand(
+  command: string,
+  timeoutMs: number,
+  stdoutTail: StreamTail,
+  stderrTail: StreamTail,
+): Promise<CommandRunResult> {
+  return new Promise<CommandRunResult>((resolve) => {
+    let child: ChildProcess;
+    try {
+      child = spawn(command, {
+        shell: true,
+        cwd: process.cwd(),
+        env: process.env,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (error) {
+      resolve({ timed_out: false, exit_code: null, infra_error: describeError(error) });
+      return;
+    }
+
+    let settled = false;
+    let timedOut = false;
+    let exitCode: number | null = null;
+    let infraError: string | undefined;
+    let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
+    let escalationTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const settle = (): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timeoutTimer !== undefined) clearTimeout(timeoutTimer);
+      if (escalationTimer !== undefined) clearTimeout(escalationTimer);
+      resolve({ timed_out: timedOut, exit_code: exitCode, infra_error: infraError });
+    };
+
+    if (child.stdout) {
+      child.stdout.setEncoding("utf8");
+      child.stdout.on("data", (chunk: string) => stdoutTail.append(chunk));
+    }
+    if (child.stderr) {
+      child.stderr.setEncoding("utf8");
+      child.stderr.on("data", (chunk: string) => stderrTail.append(chunk));
+    }
+
+    child.on("error", (error: Error) => {
+      infraError = describeError(error);
+      settle();
+    });
+
+    child.on("close", (code) => {
+      exitCode = code;
+      settle();
+    });
+
+    timeoutTimer = setTimeout(() => {
+      timedOut = true;
+      try {
+        if (process.platform === "win32") {
+          terminateProcessTree(child);
+        } else {
+          child.kill();
+        }
+      } catch {
+        // Soft kill refused; escalation below applies the hard kill.
+      }
+      escalationTimer = setTimeout(() => {
+        // Still unsettled means the tree has not fully exited (pipes open or
+        // process alive) — apply the hard kill regardless of shell exit state.
+        if (!settled) {
+          terminateProcessTree(child);
+        }
+      }, KILL_ESCALATION_MS);
+    }, timeoutMs);
+  });
+}
+
+function substituteIdempotencyTokens(
+  template: string,
+  tokens: Readonly<Record<string, string>>,
+): string {
+  return template.replace(/\{(\w+)\}/g, (match, token: string) =>
+    Object.prototype.hasOwnProperty.call(tokens, token) ? tokens[token]! : match,
+  );
+}
+
+export class CommandNodeExecutor implements NodeExecutor {
+  readonly kinds: readonly ExecutableKind[] = ["command"];
+
+  async execute(context: NodeExecutionContext): Promise<NodeExecutionOutput> {
+    const dispatched = context.node;
+    if (dispatched.kind !== "command") {
+      throw new Error(
+        `CommandNodeExecutor cannot execute node kind "${dispatched.kind}" (${dispatched.id})`,
+      );
+    }
+    const node: GraphCommandNode = dispatched;
+
+    const startedAtMs = Date.now();
+    const stdoutTail = new StreamTail();
+    const stderrTail = new StreamTail();
+    const result = await runCommand(node.command, node.timeout_ms, stdoutTail, stderrTail);
+    const durationMs = Date.now() - startedAtMs;
+
+    const succeeded =
+      !result.infra_error && !result.timed_out && result.exit_code === 0;
+    const outcome: NodeExecutionOutput["outcome"] = succeeded ? "succeeded" : "failed";
+
+    const baseStats = `exit=${result.exit_code ?? "none"} duration_ms=${durationMs}`;
+
+    const summaryParts: string[] = [];
+    if (result.timed_out) {
+      summaryParts.push(`timeout after ${node.timeout_ms}ms`);
+    }
+    if (result.infra_error) {
+      summaryParts.push(`spawn infra error: ${result.infra_error}`);
+    }
+    summaryParts.push(baseStats);
+
+    const evidenceRefs: GraphEvidenceReference[] = [
+      { kind: "command", ref: node.command, summary: baseStats },
+    ];
+
+    const stdoutExcerpt = stdoutTail.excerpt();
+    if (stdoutExcerpt) {
+      summaryParts.push(`stdout tail: ${stdoutExcerpt}`);
+      evidenceRefs.push({
+        kind: "command",
+        ref: `stdout:${node.command}`,
+        summary: stdoutExcerpt,
+      });
+    }
+    const stderrExcerpt = stderrTail.excerpt();
+    if (stderrExcerpt) {
+      summaryParts.push(`stderr tail: ${stderrExcerpt}`);
+      evidenceRefs.push({
+        kind: "command",
+        ref: `stderr:${node.command}`,
+        summary: stderrExcerpt,
+      });
+    }
+
+    let externalIdempotencyKey: string | undefined;
+    if (node.effect_policy.policy === "idempotent") {
+      externalIdempotencyKey = substituteIdempotencyTokens(
+        node.effect_policy.idempotency_key_template,
+        {
+          run_id: context.descriptor.run_id,
+          node_id: node.id,
+          activation_id: context.activation_id,
+          attempt_id: context.attempt_id,
+          attempt_no: String(context.attempt_no),
+        },
+      );
+    }
+
+    const output: CommandExecutionOutput = {
+      outcome,
+      output_summary: summaryParts.join("; "),
+      evidence_refs: evidenceRefs,
+      ...(externalIdempotencyKey === undefined
+        ? {}
+        : { external_idempotency_key: externalIdempotencyKey }),
+    };
+    return output;
+  }
+}
