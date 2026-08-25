@@ -12,6 +12,7 @@ import { join } from "path";
 
 import { atomicWriteJsonSync } from "../../lib/atomic-write.js";
 
+import { resolveRunDir } from "./run-dir.js";
 import type {
   ProjectionSnapshotEnvelope,
   ProjectionStore,
@@ -66,7 +67,7 @@ export class FileProjectionStore implements ProjectionStore {
   private readonly filePath: string;
 
   constructor(runsRoot: string, runId: string) {
-    this.filePath = join(runsRoot, runId, PROJECTION_FILE_NAME);
+    this.filePath = join(resolveRunDir(runsRoot, runId), PROJECTION_FILE_NAME);
   }
 
   async save(envelope: ProjectionSnapshotEnvelope): Promise<void> {

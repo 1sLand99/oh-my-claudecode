@@ -26,6 +26,7 @@ import { AgentNodeExecutor } from '../graph/runtime/executors/agent.js';
 import { CommandNodeExecutor } from '../graph/runtime/executors/command.js';
 import { createStdinApprovalGate } from '../graph/runtime/approval.js';
 import { createAsciiProgressReporter } from '../graph/runtime/progress.js';
+import { resolveRunDir } from '../graph/runtime/run-dir.js';
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -63,7 +64,15 @@ async function loadSealedDescriptor(
     return null;
   }
 
-  const storedPath = join(runsRoot, fresh.run_id, 'descriptor.json');
+  // Contained run dir (P1-3): the resume probe must not follow a symlinked or
+  // traversal-shaped run directory outside the runs root.
+  let storedPath: string;
+  try {
+    storedPath = join(resolveRunDir(runsRoot, fresh.run_id), 'descriptor.json');
+  } catch (error) {
+    fail(`invalid run directory for run "${fresh.run_id}": ${errorMessage(error)}`, 1);
+    return null;
+  }
   if (!existsSync(storedPath)) {
     return fresh;
   }

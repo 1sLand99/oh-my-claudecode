@@ -18,6 +18,7 @@ import {
 } from "fs";
 import { dirname, join } from "path";
 import { canonicalJson } from "../descriptor.js";
+import { resolveRunDir } from "./run-dir.js";
 import { JournalCorruptionError } from "./types.js";
 import type { Journal, JournalRecord } from "./types.js";
 
@@ -80,7 +81,7 @@ export class FileJournal implements Journal {
         "FileJournal is not bound to a run; pass runId to the constructor",
       );
     }
-    return join(this.runsRoot, this.runId, "journal.jsonl");
+    return join(resolveRunDir(this.runsRoot, this.runId), "journal.jsonl");
   }
 
   async append(record: JournalRecord): Promise<void> {
