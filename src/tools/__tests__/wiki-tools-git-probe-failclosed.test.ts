@@ -143,7 +143,11 @@ describe('wiki tools fail closed on generic git probe failure (#3858 remaining P
     process.env.PATH = originalPath;
     setGitShowToplevelProbeForTests(undefined);
     clearWorktreeCache();
-    rmSync(tempDir, { recursive: true, force: true });
+    rmSync(tempDir, {
+      recursive: true,
+      force: true,
+      ...(process.platform === 'win32' && { maxRetries: 10, retryDelay: 100 }),
+    });
   });
 
   function assertNoWikiIo(secretBefore: string): void {

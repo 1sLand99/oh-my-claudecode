@@ -122,7 +122,11 @@ describe('git probe fail-closed classification (#3858 remaining P1)', () => {
     process.env.PATH = originalPath;
     setGitShowToplevelProbeForTests(undefined);
     clearWorktreeCache();
-    rmSync(tempDir, { recursive: true, force: true });
+    rmSync(tempDir, {
+      recursive: true,
+      force: true,
+      ...(process.platform === 'win32' && { maxRetries: 10, retryDelay: 100 }),
+    });
   });
 
   it('trusted repo subdirectory with PATH-prepended fake git exiting 1 does not return ok/trustedRoot', () => {
