@@ -69,10 +69,10 @@ describe('alias-retirement registry', () => {
     // Raised 37 -> 40 canonical when execute/review/research shipped as real
     // skill directories; this is an addition, not an alias retirement.
     const all = createBuiltinSkills();
-    expect(all).toHaveLength(33);
+    expect(all).toHaveLength(34);
     const canonical = all.filter((s) => !s.aliasOf);
     const aliases = all.filter((s) => !!s.aliasOf);
-    expect(canonical).toHaveLength(31);
+    expect(canonical).toHaveLength(32);
     expect(aliases).toHaveLength(2);
     expect(aliases.map((s) => s.name).sort()).toEqual(['cancel-ralph', 'psm'].sort());
   });
