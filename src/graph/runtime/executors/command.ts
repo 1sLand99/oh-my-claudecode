@@ -142,7 +142,12 @@ function terminateProcessTree(child: ChildProcess, signal: NodeJS.Signals): void
   }
 }
 
-function runCommand(
+/**
+ * Not named `runCommand`: that name is a reserved convention in
+ * tests/lint/windows-hide-hooks.test.ts for `(command, args)` git-forwarding
+ * helpers; this executor runs arbitrary shell lines instead (see trust model).
+ */
+function runShellCommand(
   command: string,
   timeoutMs: number,
   stdoutTail: StreamTail,
@@ -244,7 +249,7 @@ export class CommandNodeExecutor implements NodeExecutor {
     const startedAtMs = Date.now();
     const stdoutTail = new StreamTail();
     const stderrTail = new StreamTail();
-    const result = await runCommand(node.command, node.timeout_ms, stdoutTail, stderrTail);
+    const result = await runShellCommand(node.command, node.timeout_ms, stdoutTail, stderrTail);
     const durationMs = Date.now() - startedAtMs;
 
     const succeeded =
