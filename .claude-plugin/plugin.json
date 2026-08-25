@@ -27,6 +27,7 @@
     "./skills/deepinit/",
     "./skills/execute/",
     "./skills/external-context/",
+    "./skills/graph/",
     "./skills/hud/",
     "./skills/omc-doctor/",
     "./skills/omc-setup/",
