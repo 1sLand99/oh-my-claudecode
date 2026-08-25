@@ -15,6 +15,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   utimesSync,
   writeFileSync,
@@ -29,6 +30,7 @@ import { FenceError } from "../../runtime/types.js";
 import type { FenceLockPayload } from "../../runtime/types.js";
 
 const LOCK_NAME = "owner.lock";
+const EPOCH_FILE_NAME = "owner.epoch";
 
 function makeFence(dir: string, staleGraceMs = 1000): FileOwnershipFence {
   return new FileOwnershipFence(dirname(dir), basename(dir), { staleGraceMs });
@@ -111,6 +113,47 @@ describe("FileOwnershipFence", () => {
       pid: process.pid,
       epoch: 2,
     });
+    expect(readFileSync(join(dir, EPOCH_FILE_NAME), "utf8").trim()).toBe("2");
+  });
+
+  it("keeps epoch continuity across release/restart via the owner.epoch sidecar", async () => {
+    const dir = makeRunDir();
+
+    // Generation 1: seeded dead-pid takeover -> epoch 2 (journal history
+    // would hold epoch-2 records after this run).
+    craftJsonLock(dir, {
+      pid: spawnDeadPid(),
+      epoch: 1,
+      timestamp: Date.now(),
+    });
+    backdate(join(dir, LOCK_NAME));
+    const first = makeFence(dir);
+    await expect(first.acquire()).resolves.toEqual({
+      outcome: "acquired",
+      epoch: 2,
+    });
+    // Run completes normally: only the live lock is removed; the sidecar
+    // and journal stay behind.
+    await expect(first.release(2)).resolves.toBe(true);
+    expect(existsSync(join(dir, LOCK_NAME))).toBe(false);
+    expect(existsSync(join(dir, EPOCH_FILE_NAME))).toBe(true);
+
+    // Later resume with no owner.lock: sidecar ceiling 2 forbids reissuing
+    // it, so the next holder gets epoch 3 — no fold false-positive against
+    // the persisted epoch-2 journal records.
+    const second = makeFence(dir);
+    await expect(second.acquire()).resolves.toEqual({
+      outcome: "acquired",
+      epoch: 3,
+    });
+    await expect(second.release(3)).resolves.toBe(true);
+
+    // Two-generation positive scenario keeps advancing without repeats.
+    await expect(second.acquire()).resolves.toEqual({
+      outcome: "acquired",
+      epoch: 4,
+    });
+    expect(readFileSync(join(dir, EPOCH_FILE_NAME), "utf8").trim()).toBe("4");
   });
 
   it("releases atomically once and refuses a second release (AC-6)", async () => {
@@ -121,6 +164,25 @@ describe("FileOwnershipFence", () => {
     await expect(fence.release(1)).resolves.toBe(true);
     expect(existsSync(join(dir, LOCK_NAME))).toBe(false);
     await expect(fence.release(1)).resolves.toBe(false);
+  });
+
+  it("refuses to release after an external swap planted a new owner's lock (single-writer)", async () => {
+    const dir = makeRunDir();
+    const fence = makeFence(dir);
+    await fence.acquire();
+
+    // Maintainer probe: externally move our lock away, then plant a
+    // replacement epoch-2 lock at the same path.
+    renameSync(join(dir, LOCK_NAME), join(dir, `${LOCK_NAME}.stolen`));
+    craftJsonLock(dir, { pid: process.pid, epoch: 2, timestamp: Date.now() });
+
+    // Stale holder's release must not touch the replacement owner's lock.
+    await expect(fence.release(1)).resolves.toBe(false);
+    expect(readLockPayload(dir)).toMatchObject({ pid: process.pid, epoch: 2 });
+    expect(existsSync(join(dir, LOCK_NAME))).toBe(true);
+
+    // The same identity guard fences out stale assertions.
+    expect(() => fence.assertEpoch(1)).toThrow(FenceError);
   });
 
   it("interleave probe: exactly one winner per dir per round (AC-5)", async () => {

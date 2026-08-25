@@ -11,11 +11,17 @@
  *   observe ENOENT/EEXIST/EPERM and retry); the winner reads the old epoch
  *   from the tombstone it now exclusively owns and re-creates the lock at
  *   old_epoch + 1 (AC-4).
+ * - Epoch continuity: `<run_dir>/owner.epoch` sidecar records the highest
+ *   epoch ever issued (plain integer text, atomically persisted while we
+ *   exclusively hold the lock). New creations never reissue an epoch the
+ *   sidecar has seen, so resume after release keeps advancing past journal
+ *   history instead of restarting at 1.
  */
 
 import {
   closeSync,
   constants as fsConstants,
+  fstatSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -26,12 +32,28 @@ import {
 } from "fs";
 import { randomBytes } from "crypto";
 import { dirname, join } from "path";
+import { atomicWriteFileSync } from "../../lib/atomic-write.js";
 import { isProcessAlive } from "../../platform/index.js";
+import { resolveRunDir } from "./run-dir.js";
 import { FenceError } from "./types.js";
 import type { FenceAcquireResult, FenceLockPayload, OwnershipFence } from "./types.js";
 
 const DEFAULT_STALE_GRACE_MS = 30_000;
 const LOCK_FILE_NAME = "owner.lock";
+const EPOCH_FILE_NAME = "owner.epoch";
+
+/**
+ * Highest epoch ever issued for this run, parsed from the sidecar; null when
+ * the sidecar is missing or unreadable (fresh run / lost continuity).
+ */
+function readSidecarCeiling(filePath: string): number | null {
+  try {
+    const value = Number.parseInt(readFileSync(filePath, "utf8").trim(), 10);
+    return Number.isInteger(value) && value >= 1 ? value : null;
+  } catch {
+    return null;
+  }
+}
 
 export interface FileOwnershipFenceOptions {
   /** Age (ms) after which a dead/unparseable lock may be taken over. Default: 30000 */
@@ -68,20 +90,27 @@ export class FileOwnershipFence implements OwnershipFence {
         "FileOwnershipFence is not bound to a run; pass runId to the constructor",
       );
     }
-    return join(this.runsRoot, this.runId, LOCK_FILE_NAME);
+    return join(resolveRunDir(this.runsRoot, this.runId), LOCK_FILE_NAME);
   }
 
   async acquire(): Promise<FenceAcquireResult> {
     const lockPath = this.lockPath();
+    const epochFilePath = join(dirname(lockPath), EPOCH_FILE_NAME);
     let candidateEpoch = 1;
-    // Each takeover strictly advances the epoch via the tombstone, so every
-    // iteration makes progress toward either acquisition or a live-holder busy.
+    // Each iteration makes progress toward either acquisition or a
+    // live-holder busy. The sidecar ceiling is re-read every iteration
+    // because a concurrent racer may have persisted a higher epoch between
+    // our attempts.
     for (;;) {
-      const fd = this.tryCreate(lockPath, candidateEpoch);
+      const ceiling = readSidecarCeiling(epochFilePath);
+      // Never reissue an epoch the sidecar has seen; a missing/corrupt
+      // sidecar imposes no floor (fresh runs still start at epoch 1).
+      const candidate = Math.max(candidateEpoch, (ceiling ?? 0) + 1);
+      const fd = this.tryCreate(lockPath, epochFilePath, candidate);
       if (fd !== null) {
         this.fd = fd;
-        this.heldEpoch = candidateEpoch;
-        return { outcome: "acquired", epoch: candidateEpoch };
+        this.heldEpoch = candidate;
+        return { outcome: "acquired", epoch: candidate };
       }
 
       // EEXIST — inspect the existing lock best-effort.
@@ -112,12 +141,10 @@ export class FileOwnershipFence implements OwnershipFence {
       }
 
       // We exclusively own the tombstone now: read the old epoch from it.
-      // ponytail: best-effort — an unparseable tombstone loses epoch
-      // continuity (fallback 1 -> candidate 2 even if the old lock held N>1).
-      // Epochs are informational only; ownership safety comes from
-      // O_EXCL create + atomic rename, not from the epoch value. Upgrade
-      // path: persist a run-scoped epoch counter outside the lock if journal
-      // OCC ever needs strict monotonicity across corrupt takeovers.
+      // ponytail: best-effort — an unparseable tombstone falls back to
+      // old_epoch 1; continuity then rests on the owner.epoch sidecar, and
+      // only if BOTH are lost can an epoch value repeat. Ownership safety
+      // comes from O_EXCL create + atomic rename, not from the epoch value.
       let oldEpoch = 1; // fallback per protocol when unreadable
       try {
         const parsed: unknown = JSON.parse(readFileSync(tombstone, "utf8"));
@@ -141,7 +168,12 @@ export class FileOwnershipFence implements OwnershipFence {
   }
 
   assertEpoch(epoch: number): void {
-    if (this.fd === null || this.heldEpoch === null || epoch !== this.heldEpoch) {
+    if (
+      this.fd === null ||
+      this.heldEpoch === null ||
+      epoch !== this.heldEpoch ||
+      !this.holdsLiveLockFile(this.lockPath())
+    ) {
       throw new FenceError(
         "fenced_out",
         `epoch ${epoch} is not owned by this process (held: ${String(this.heldEpoch)})`,
@@ -154,6 +186,14 @@ export class FileOwnershipFence implements OwnershipFence {
       return false;
     }
     const lockPath = this.lockPath();
+    // Identity check before any mutation: the file at the lock path must
+    // still be OUR held file. A stale holder must never rename away a
+    // replacement owner's lock planted at the same path.
+    if (!this.holdsLiveLockFile(lockPath)) {
+      // We no longer own the run; leave whatever is there untouched.
+      this.clearHeld();
+      return false;
+    }
     const tombstone = `${lockPath}.tomb.${randomBytes(6).toString("hex")}`;
     try {
       renameSync(lockPath, tombstone);
@@ -176,9 +216,16 @@ export class FileOwnershipFence implements OwnershipFence {
 
   /**
    * Single O_EXCL creation attempt. Returns the open fd on success, null on
-   * EEXIST; any other error propagates.
+   * EEXIST; any other error propagates. On success the epoch sidecar is
+   * atomically updated BEFORE ownership is handed out — a sidecar write
+   * failure cleans up our just-created lock and propagates rather than
+   * silently issuing an epoch that a later resume could reissue.
    */
-  private tryCreate(lockPath: string, epoch: number): number | null {
+  private tryCreate(
+    lockPath: string,
+    epochFilePath: string,
+    epoch: number,
+  ): number | null {
     mkdirSync(dirname(lockPath), { recursive: true });
     let fd: number;
     try {
@@ -200,6 +247,9 @@ export class FileOwnershipFence implements OwnershipFence {
         timestamp: Date.now(),
       };
       writeSync(fd, JSON.stringify(payload), null, "utf8");
+      // Persist epoch continuity while we still hold exclusive ownership of
+      // the just-created lock (temp+rename inside; failure cleans up below).
+      atomicWriteFileSync(epochFilePath, String(epoch));
     } catch (error) {
       closeSync(fd);
       // We exclusively created this file moments ago; removing our own
@@ -238,6 +288,30 @@ export class FileOwnershipFence implements OwnershipFence {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Verify the file currently at lockPath is still the exact file we hold an
+   * fd for: same inode and size (fstatSync on our held fd vs statSync on the
+   * path) AND payload epoch matching heldEpoch. Any stat failure or mismatch
+   * fails closed — the caller must not mutate the path.
+   */
+  private holdsLiveLockFile(lockPath: string): boolean {
+    if (this.fd === null || this.heldEpoch === null) {
+      return false;
+    }
+    try {
+      const ours = fstatSync(this.fd);
+      const theirs = statSync(lockPath);
+      if (ours.ino !== theirs.ino || ours.size !== theirs.size) {
+        return false;
+      }
+    } catch {
+      // Lock path vanished or is unreadable: we do not own what is there.
+      return false;
+    }
+    const payload = this.readPayload(lockPath);
+    return payload !== null && payload.epoch === this.heldEpoch;
   }
 
   private clearHeld(): void {
