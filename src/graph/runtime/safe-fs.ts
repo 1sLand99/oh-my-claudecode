@@ -5,6 +5,7 @@ import {
   lstatSync,
   openSync,
   readFileSync,
+  statSync,
 } from "fs";
 import { join } from "path";
 import type { RunDirHandle } from "./run-dir.js";
@@ -59,16 +60,11 @@ export function withContainedPath<T>(
   operation: (filePath: string) => T,
 ): T {
   if (process.platform === "win32") {
-    const directoryFd = openNoFollow(runDir.path, fsConstants.O_RDONLY);
-    try {
-      const stats = fstatSync(directoryFd);
-      if (stats.dev !== runDir.device || stats.ino !== runDir.inode) {
-        throw new Error("run directory identity changed");
-      }
-      return operation(join(runDir.path, fileName));
-    } finally {
-      closeSync(directoryFd);
+    const stats = statSync(runDir.path);
+    if (stats.dev !== runDir.device || stats.ino !== runDir.inode) {
+      throw new Error("run directory identity changed");
     }
+    return operation(join(runDir.path, fileName));
   }
   const directoryFd = openNoFollow(
     runDir.path,
