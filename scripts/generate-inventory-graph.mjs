@@ -209,7 +209,7 @@ function resolveImportSpec(fromPath, spec) {
       join(base, spec + '.cjs'),
       join(base, spec, 'index.ts'),
       join(base, spec, 'index.js'),
-    ].map((candidate) => toPosix(resolve('/', candidate)).slice(1));
+    ].map((candidate) => toPosix(candidate).replace(/^\.\//, '').replace(/^\/+/, ''));
     return { kind: 'relative', spec, candidates };
   }
   return { kind: 'external', spec, candidates: [] };
