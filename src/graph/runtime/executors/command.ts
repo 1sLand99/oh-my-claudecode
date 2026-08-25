@@ -5,6 +5,12 @@
  * object — command failures (non-zero exit, timeout, spawn infra errors)
  * are reported as `failed` outcomes, never thrown. Terminal-success
  * evidence duty stays with the runner/scheduler.
+ *
+ * Trust model: the descriptor author holds code-execution authority over
+ * this host — commands are arbitrary shell lines, so no sandboxing is
+ * attempted. What IS bounded here is ambient secret exposure: the child
+ * inherits only an allowlisted environment (see CHILD_ENV_ALLOWLIST), not
+ * the host's full environment.
  */
 
 import { spawn } from "node:child_process";
@@ -23,6 +29,21 @@ const STREAM_TAIL_CHARS = 2000;
 
 /** Grace period after the first kill before escalating to a hard kill. */
 const KILL_ESCALATION_MS = 5000;
+
+/**
+ * Environment variables a spawned command may inherit. Everything else in
+ * the host environment (API keys, tokens, session state) is scrubbed.
+ * GRAPH_* variables are graph-runtime configuration and pass through.
+ */
+const CHILD_ENV_ALLOWLIST = [
+  "PATH",
+  "HOME",
+  "USERPROFILE",
+  "TEMP",
+  "TMP",
+  "LANG",
+  "TZ",
+] as const;
 
 /**
  * Output shape for command attempts. Extends the frozen
@@ -57,6 +78,27 @@ class StreamTail {
   }
 }
 
+/**
+ * Allowlist-scrubbed environment for spawned commands. The host's full
+ * environment (API keys, tokens, session state) never reaches children:
+ * only the allowlisted operational variables plus GRAPH_* pass through.
+ */
+function buildChildEnv(): NodeJS.ProcessEnv {
+  const child: Record<string, string> = {};
+  for (const key of CHILD_ENV_ALLOWLIST) {
+    const value = process.env[key];
+    if (value !== undefined) {
+      child[key] = value;
+    }
+  }
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key.startsWith("GRAPH_") && value !== undefined) {
+      child[key] = value;
+    }
+  }
+  return child;
+}
+
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -64,12 +106,14 @@ function describeError(error: unknown): string {
 /**
  * Best-effort termination of the whole process tree.
  *
- * On Windows child.kill() terminates only cmd.exe and leaves grandchildren
- * holding the stdio pipes (so "close" would not fire until they exit on
- * their own), so the tree kill IS the first-line kill there. On POSIX the
- * shell typically execs the single command, so a plain kill reaches it.
+ * On Windows, `taskkill /F /T` is the tree kill and serves as both soft
+ * and hard kill. On POSIX the command runs under `sh -c`, which does NOT
+ * exec-replace itself for compound commands: a plain child.kill() reaches
+ * only the shell PID while grandchildren survive holding the stdio pipes
+ * ("close" never fires). The shell is therefore spawned DETACHED (own
+ * process group) and kills address the NEGATIVE pid - the whole group.
  */
-function terminateProcessTree(child: ChildProcess): void {
+function terminateProcessTree(child: ChildProcess, signal: NodeJS.Signals): void {
   if (process.platform === "win32") {
     if (child.pid === undefined) {
       return;
@@ -83,10 +127,18 @@ function terminateProcessTree(child: ChildProcess): void {
     }
     return;
   }
+  if (child.pid === undefined) {
+    return;
+  }
   try {
-    child.kill("SIGKILL");
+    process.kill(-child.pid, signal);
   } catch {
-    // Process already gone.
+    // Group kill refused (no such group); fall back to the shell PID.
+    try {
+      child.kill(signal);
+    } catch {
+      // Process already gone.
+    }
   }
 }
 
@@ -102,8 +154,11 @@ function runCommand(
       child = spawn(command, {
         shell: true,
         cwd: process.cwd(),
-        env: process.env,
+        env: buildChildEnv(),
         stdio: ["ignore", "pipe", "pipe"],
+        // Detached => own process group => the NEGATIVE-pid group kill in
+        // terminateProcessTree can reach grandchildren, not just the shell.
+        ...(process.platform === "win32" ? {} : { detached: true }),
       });
     } catch (error) {
       resolve({ timed_out: false, exit_code: null, infra_error: describeError(error) });
@@ -146,22 +201,18 @@ function runCommand(
       settle();
     });
 
-    timeoutTimer = setTimeout(() => {
+        timeoutTimer = setTimeout(() => {
       timedOut = true;
+      // Soft kill first: SIGTERM to the whole process group (POSIX) or the
+      // taskkill tree kill (Windows). Escalation below applies SIGKILL.
       try {
-        if (process.platform === "win32") {
-          terminateProcessTree(child);
-        } else {
-          child.kill();
-        }
+        terminateProcessTree(child, "SIGTERM");
       } catch {
         // Soft kill refused; escalation below applies the hard kill.
       }
       escalationTimer = setTimeout(() => {
-        // Still unsettled means the tree has not fully exited (pipes open or
-        // process alive) — apply the hard kill regardless of shell exit state.
         if (!settled) {
-          terminateProcessTree(child);
+          terminateProcessTree(child, "SIGKILL");
         }
       }, KILL_ESCALATION_MS);
     }, timeoutMs);

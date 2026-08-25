@@ -97,10 +97,11 @@ describe("CommandNodeExecutor", () => {
     expect(output.external_idempotency_key).toBeUndefined();
   });
 
-  it("fails fast on timeout and notes the timeout in the summary", async () => {
+  it("fails fast on timeout, kills the tree, and leaves no orphaned grandchild", async () => {
     const executor = new CommandNodeExecutor();
     const node = commandNode({
-      command: "node -e \"setTimeout(()=>{},10000)\"",
+      command:
+        "node -e \"console.log('GPID:' + process.pid); setTimeout(()=>{},10000)\"",
       timeout_ms: 300,
     });
     const startedAtMs = Date.now();
@@ -112,6 +113,24 @@ describe("CommandNodeExecutor", () => {
     expect(output.output_summary).toContain("timeout after 300ms");
     // Must not wait for the child's own 10s timer to elapse.
     expect(elapsedMs).toBeLessThan(9_000);
+
+    // Deterministic orphan check: the grandchild printed its own PID before
+    // sleeping; after the tree kill that process must be gone.
+    const gpid = Number(
+      /\bGPID:(\d+)\b/.exec(output.output_summary ?? "")?.[1] ?? "0",
+    );
+    expect(gpid).toBeGreaterThan(0);
+    const deadline = Date.now() + 2_000;
+    let gone = false;
+    while (Date.now() < deadline && !gone) {
+      try {
+        process.kill(gpid, 0);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      } catch {
+        gone = true;
+      }
+    }
+    expect(gone).toBe(true);
   }, 20_000);
 
   it("substitutes idempotency key tokens for idempotent policies", async () => {
@@ -142,5 +161,25 @@ describe("CommandNodeExecutor", () => {
     expect(output.outcome).toBe("succeeded");
     expect(output.output_summary).toContain("END-MARKER");
     expect(output.output_summary).not.toContain("START-MARKER");
+  });
+
+  it("scrubs non-allowlisted env from the child; GRAPH_* passes through", async () => {
+    const executor = new CommandNodeExecutor();
+    process.env.PARENT_SECRET_TOKEN = "leak-me";
+    process.env.GRAPH_TEST_MARKER = "sentinel-ok";
+    try {
+      const node = commandNode({
+        command:
+          "node -e \"process.stdout.write(String(process.env['PARENT_SECRET_TOKEN']===undefined)+'|'+String(process.env['GRAPH_TEST_MARKER']))\"",
+      });
+
+      const output = await executor.execute(contextFor(node));
+
+      expect(output.outcome).toBe("succeeded");
+      expect(output.output_summary).toContain("true|sentinel-ok");
+    } finally {
+      delete process.env.PARENT_SECRET_TOKEN;
+      delete process.env.GRAPH_TEST_MARKER;
+    }
   });
 });

@@ -111,4 +111,23 @@ describe("AgentNodeExecutor", () => {
     expect(output.outcome).toBe("succeeded");
     expect(output.output_summary?.length).toBe(2000);
   });
+
+  it("accumulates multi-message streams instead of keeping only the last chunk", async () => {
+    const executor = new AgentNodeExecutor(async function* () {
+      yield {
+        type: "assistant",
+        message: { content: [{ type: "text", text: "part one." }] },
+      };
+      yield {
+        type: "assistant",
+        message: { content: [{ type: "text", text: "part two." }] },
+      };
+    });
+
+    const output = await executor.execute(makeContext());
+
+    expect(output.outcome).toBe("succeeded");
+    expect(output.output_summary).toContain("part one.");
+    expect(output.output_summary).toContain("part two.");
+  });
 });

@@ -115,7 +115,9 @@ export class AgentNodeExecutor implements NodeExecutor {
           }
           return assistantText(value) ?? "";
         }
-        let text = "";
+        // Accumulate every assistant text chunk: multi-message streams must
+        // land their full output in output_summary, not just the last chunk.
+        const parts: string[] = [];
         for await (const message of returned) {
           const final = sdkResult(message);
           if (final) {
@@ -123,9 +125,11 @@ export class AgentNodeExecutor implements NodeExecutor {
             return final.text;
           }
           const chunk = assistantText(message);
-          if (chunk !== null) text = chunk;
+          if (chunk !== null && chunk.length > 0) {
+            parts.push(chunk);
+          }
         }
-        return text;
+        return parts.join("\n");
       };
 
       // Rejects when the timer fires even if the underlying query never settles.
