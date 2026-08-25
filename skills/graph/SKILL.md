@@ -80,6 +80,27 @@ anything needing adaptive re-planning mid-run (graphs are deterministic).
   "terminal_verification_node_id": "a1"
 }
 
-Edge kinds: fixed | conditional (needs route on result) | fan_out/join pairs
+Edge kinds: fixed | conditional | fan_out/join pairs
 | back_edge (bounded retries via max_traversals). See src/graph/schema.ts for
-the authoritative Zod schema.
+the authoritative Zod schema — and read the Capability Boundary section above
+for what built-in executors actually execute today.
+
+## Capability Boundary & Semantics (read before authoring)
+
+- **Edge support**: built-in command/agent executors cover `fixed` edges and
+  `fan_out`/`join` pairs. `conditional` and `back_edge` routes are fully
+  supported by the runtime and scheduler contracts but require a custom
+  NodeExecutor that emits `route` on its results — built-in executors never
+  produce routes, so graphs relying on them fail fast with
+  `route_required` rather than guessing.
+- **Crash-recovery guarantee is at-least-once** for executable nodes: a crash
+  between an external side effect and its journal append re-executes that node
+  on resume. `idempotent` policies surface `external_idempotency_key` for
+  downstream dedupe systems; `reconcile` expects external reconciliation.
+  Exactly-once for external side effects is out of scope for v1.
+- **Trust boundary**: running a descriptor executes its commands with process
+  authority — the descriptor AUTHOR holds code-execution power. Only run
+  descriptors you wrote or trust. The runner scrubs child environments to an
+  allowlist (PATH, HOME/USERPROFILE, TEMP/TMP, LANG, TZ, GRAPH_*) instead of
+  inheriting host secrets; it does not sandbox filesystem/process access.
+  Treat `.omc/graph-runs/<run_id>/descriptor.json` as executable content.
