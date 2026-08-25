@@ -153,6 +153,7 @@ function runCommand(
     try {
       child = spawn(command, {
         shell: true,
+        windowsHide: true,
         cwd: process.cwd(),
         env: buildChildEnv(),
         stdio: ["ignore", "pipe", "pipe"],
