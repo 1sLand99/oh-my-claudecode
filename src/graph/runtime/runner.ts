@@ -11,7 +11,6 @@
  * including embedded request fingerprints.
  */
 
-import { readFileSync } from "fs";
 import { join } from "path";
 
 import {
@@ -32,10 +31,12 @@ import {
   resolveJoin,
 } from "../scheduler.js";
 import { atomicWriteFileSync } from "../../lib/atomic-write.js";
-import { resolveRunDir } from "./run-dir.js";
+import { resolveRunDirHandle } from "./run-dir.js";
+import type { RunDirHandle } from "./run-dir.js";
 import { computeJournalFingerprint, FileJournal } from "./journal.js";
 import { FileOwnershipFence } from "./fence.js";
 import { FileProjectionStore } from "./store.js";
+import { readContainedFileNoFollow, withContainedPath } from "./safe-fs.js";
 
 import { EXIT_CODES, FenceError, JournalCorruptionError } from "./types.js";
 import type {
@@ -495,7 +496,7 @@ export async function runGraph(
   const runId = sealed.run_id;
   // Contained run dir (P1-3): validates run_id, rejects symlink escapes, and
   // creates the directory before any persistence component touches disk.
-  const runDir = resolveRunDir(runsRoot, runId);
+  const runDirHandle: RunDirHandle = resolveRunDirHandle(runsRoot, runId);
   const fence = new FileOwnershipFence(runsRoot, runId);
   const journal = new FileJournal(runsRoot, runId);
   const store = new FileProjectionStore(runsRoot, runId);
@@ -529,12 +530,13 @@ export async function runGraph(
 
   try {
     emit({ type: "run_started", run_id: runId, goal: sealed.goal });
-    const descriptorPath = join(runDir, DESCRIPTOR_FILE_NAME);
-
     let stored: SealedGraphDescriptor;
     let rawDescriptor: string | null;
     try {
-      rawDescriptor = readFileSync(descriptorPath, "utf8");
+      rawDescriptor = readContainedFileNoFollow(
+        runDirHandle,
+        DESCRIPTOR_FILE_NAME,
+      );
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         rawDescriptor = null;
@@ -544,7 +546,9 @@ export async function runGraph(
     }
     let descriptorIsFresh = false;
     if (rawDescriptor === null) {
-      atomicWriteFileSync(descriptorPath, canonicalJson(sealed));
+      withContainedPath(runDirHandle, DESCRIPTOR_FILE_NAME, (path) => {
+        atomicWriteFileSync(path, canonicalJson(sealed));
+      });
       stored = sealed;
       descriptorIsFresh = true;
     } else {

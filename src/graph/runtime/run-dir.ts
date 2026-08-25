@@ -8,12 +8,18 @@
  * the directory, failing closed on any escape.
  */
 
-import { lstatSync, mkdirSync, realpathSync } from "fs";
+import { lstatSync, mkdirSync, realpathSync, statSync } from "fs";
 import { join, sep } from "path";
 
 import { ensureDirSync } from "../../lib/atomic-write.js";
 
 const RUN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+
+export interface RunDirHandle {
+  readonly path: string;
+  readonly device: number;
+  readonly inode: number;
+}
 
 /**
  * Resolve (and create) the contained run directory for one run.
@@ -24,6 +30,14 @@ const RUN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
  * on symlinked or escaping directories.
  */
 export function resolveRunDir(runsRoot: string, runId: string): string {
+  return resolveRunDirHandle(runsRoot, runId).path;
+}
+
+/** Resolve a run directory and capture the directory identity for safe I/O. */
+export function resolveRunDirHandle(
+  runsRoot: string,
+  runId: string,
+): RunDirHandle {
   // Charset check plus defense-in-depth separators/dot segments: the regex
   // already excludes them, but reject explicitly so traversal can never ride
   // on a future pattern relaxation.
@@ -66,5 +80,6 @@ export function resolveRunDir(runsRoot: string, runId: string): string {
     );
   }
 
-  return target;
+  const identity = statSync(target);
+  return { path: target, device: identity.dev, inode: identity.ino };
 }

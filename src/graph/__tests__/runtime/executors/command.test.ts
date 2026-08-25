@@ -140,6 +140,8 @@ describe("CommandNodeExecutor", () => {
         policy: "idempotent",
         idempotency_key_template: "{run_id}:{node_id}:{attempt_no}",
       },
+      command:
+        "node -e \"process.stdout.write(process.env.GRAPH_IDEMPOTENCY_KEY ?? '')\"",
     });
 
     const output = (await executor.execute(
@@ -147,6 +149,22 @@ describe("CommandNodeExecutor", () => {
     )) as CommandExecutionOutput;
 
     expect(output.external_idempotency_key).toBe("run-test:cmd:2");
+    expect(output.output_summary).toContain("run-test:cmd:2");
+  });
+
+  it("fails closed for reconcile policy instead of executing an unreconciled effect", async () => {
+    const executor = new CommandNodeExecutor();
+    const node = commandNode({
+      effect_policy: { policy: "reconcile" },
+      command: "node -e \"throw new Error('must not execute')\"",
+    });
+
+    const output = await executor.execute(contextFor(node));
+
+    expect(output.outcome).toBe("failed");
+    expect(output.output_summary).toBe(
+      "reconcile policy requires a custom executor",
+    );
   });
 
   it("keeps only the tail when stdout exceeds the 2000-char cap", async () => {

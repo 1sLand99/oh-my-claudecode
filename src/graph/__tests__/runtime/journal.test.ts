@@ -3,7 +3,14 @@
  * and ordered concurrent appends.
  */
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -103,6 +110,23 @@ describe("FileJournal", () => {
 
     // Assert
     expect(records).toEqual([]);
+  });
+
+  it("fails closed when journal.jsonl is a symlink", async () => {
+    const runsRoot = makeRunsRoot();
+    const outside = join(makeRunsRoot(), "outside.jsonl");
+    writeFileSync(outside, "outside", "utf8");
+    mkdirSync(join(runsRoot, "run-1"), { recursive: true });
+    symlinkSync(outside, journalPath(runsRoot));
+    const journal = new FileJournal(runsRoot, "run-1");
+
+    await expect(journal.readAll()).rejects.toBeInstanceOf(
+      JournalCorruptionError,
+    );
+    await expect(journal.append(makeRecord(0))).rejects.toBeInstanceOf(
+      JournalCorruptionError,
+    );
+    expect(readFileSync(outside, "utf8")).toBe("outside");
   });
 
   it("throws JournalCorruptionError with truncatedCount >= 1 on a trailing partial line [AC-8]", async () => {

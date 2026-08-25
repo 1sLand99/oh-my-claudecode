@@ -116,6 +116,36 @@ describe("FileOwnershipFence", () => {
     expect(readFileSync(join(dir, EPOCH_FILE_NAME), "utf8").trim()).toBe("2");
   });
 
+  it("does not take over a replacement lock raced into the stale path", async () => {
+    const dir = makeRunDir();
+    const staleLock = join(dir, LOCK_NAME);
+    craftJsonLock(dir, {
+      pid: spawnDeadPid(),
+      epoch: 1,
+      timestamp: Date.now(),
+    });
+    backdate(staleLock);
+
+    let raced = false;
+    const racedFence = new FileOwnershipFence(dirname(dir), basename(dir), {
+      staleGraceMs: 1000,
+      beforeTakeoverRename: () => {
+        if (raced) return;
+        raced = true;
+        renameSync(staleLock, join(dir, `${LOCK_NAME}.old`));
+        craftJsonLock(dir, {
+          pid: process.pid,
+          epoch: 2,
+          timestamp: Date.now(),
+        });
+      },
+    });
+
+    await expect(racedFence.acquire()).resolves.toEqual({ outcome: "busy" });
+    expect(readLockPayload(dir)).toMatchObject({ pid: process.pid, epoch: 2 });
+    expect(existsSync(join(dir, `${LOCK_NAME}.old`))).toBe(true);
+  });
+
   it("keeps epoch continuity across release/restart via the owner.epoch sidecar", async () => {
     const dir = makeRunDir();
 

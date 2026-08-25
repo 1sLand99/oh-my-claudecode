@@ -7,12 +7,13 @@
  * (atomicWriteJsonSync); every read fails closed on corruption (AC-3).
  */
 
-import { readFileSync } from "fs";
 import { join } from "path";
 
 import { atomicWriteJsonSync } from "../../lib/atomic-write.js";
 
-import { resolveRunDir } from "./run-dir.js";
+import { resolveRunDirHandle } from "./run-dir.js";
+import type { RunDirHandle } from "./run-dir.js";
+import { readContainedFileNoFollow, withContainedPath } from "./safe-fs.js";
 import type {
   ProjectionSnapshotEnvelope,
   ProjectionStore,
@@ -59,15 +60,67 @@ function parseStoredEnvelope(raw: unknown): ProjectionSnapshotEnvelope {
       "descriptor_hash is not a lowercase sha256 hex digest",
     );
   }
+  if (typeof candidate.run_id !== "string" || candidate.run_id.length === 0) {
+    throw new ProjectionStoreError(
+      "corrupt",
+      "projection run_id is missing or invalid",
+    );
+  }
+  if (
+    typeof candidate.revision_id !== "string" ||
+    candidate.revision_id.length === 0
+  ) {
+    throw new ProjectionStoreError(
+      "corrupt",
+      "projection revision_id is missing or invalid",
+    );
+  }
+  if (
+    typeof candidate.epoch !== "number" ||
+    !Number.isInteger(candidate.epoch) ||
+    candidate.epoch < 1
+  ) {
+    throw new ProjectionStoreError(
+      "corrupt",
+      "projection epoch is missing or invalid",
+    );
+  }
+  if (
+    typeof candidate.saved_at_seq !== "number" ||
+    !Number.isInteger(candidate.saved_at_seq) ||
+    candidate.saved_at_seq < -1
+  ) {
+    throw new ProjectionStoreError(
+      "corrupt",
+      "projection saved_at_seq is missing or invalid",
+    );
+  }
+  if (
+    typeof candidate.projection !== "object" ||
+    candidate.projection === null ||
+    Array.isArray(candidate.projection)
+  ) {
+    throw new ProjectionStoreError(
+      "corrupt",
+      "projection body is missing or invalid",
+    );
+  }
   return candidate;
 }
 
 /** Load/save surface over one run's `<run_id>/projection.json`. */
 export class FileProjectionStore implements ProjectionStore {
-  private readonly filePath: string;
+  private readonly runsRoot: string;
+  private readonly runId: string;
 
   constructor(runsRoot: string, runId: string) {
-    this.filePath = join(resolveRunDir(runsRoot, runId), PROJECTION_FILE_NAME);
+    this.runsRoot = runsRoot;
+    this.runId = runId;
+    resolveRunDirHandle(runsRoot, runId);
+  }
+
+  private runDir(): RunDirHandle {
+    return resolveRunDirHandle(this.runsRoot, this.runId);
   }
 
   async save(envelope: ProjectionSnapshotEnvelope): Promise<void> {
@@ -102,16 +155,26 @@ export class FileProjectionStore implements ProjectionStore {
       );
     }
 
-    atomicWriteJsonSync(this.filePath, envelope);
+    withContainedPath(this.runDir(), PROJECTION_FILE_NAME, (filePath) => {
+      atomicWriteJsonSync(filePath, envelope);
+    });
   }
 
   async load(): Promise<ProjectionSnapshotEnvelope | null> {
+    const runDir = this.runDir();
+    const filePath = join(runDir.path, PROJECTION_FILE_NAME);
     let content: string;
     try {
-      content = readFileSync(this.filePath, "utf8");
+      content = readContainedFileNoFollow(runDir, PROJECTION_FILE_NAME);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         return null;
+      }
+      if ((err as NodeJS.ErrnoException).code === "ELOOP") {
+        throw new ProjectionStoreError(
+          "corrupt",
+          `projection ${filePath} must not be a symbolic link`,
+        );
       }
       throw err;
     }

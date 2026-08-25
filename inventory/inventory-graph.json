@@ -5,22 +5,22 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "992c4353cce084ec0b9e0d8610e813b3b204c3a5",
-    "sourceSha256": "0793c930d66d7cee472c4cb84492464a97bce48d60ddfa1279eca693cf1dc861",
+    "head": "711d36e3b9fe47f043c0797eba46599cc1b23b8a",
+    "sourceSha256": "f22426ba0528c461a9d90011a11560dbee936c4d2de73688853245e46f7a45c7",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "992c4353cce084ec0b9e0d8610e813b3b204c3a5",
-  "sourceSha256": "0793c930d66d7cee472c4cb84492464a97bce48d60ddfa1279eca693cf1dc861",
+  "head": "711d36e3b9fe47f043c0797eba46599cc1b23b8a",
+  "sourceSha256": "f22426ba0528c461a9d90011a11560dbee936c4d2de73688853245e46f7a45c7",
   "counts": {
     "public": {
       "skills": 32,
       "commands": 21,
       "workflows": 8,
-      "agents": 18,
-      "total": 79
+      "agents": 20,
+      "total": 81
     },
     "internal": {
       "hookFiles": 295,
@@ -107,21 +107,23 @@
     "agents": [
       "analyst",
       "architect",
+      "code-reviewer",
+      "code-simplifier",
       "critic",
-      "definitions",
+      "debugger",
       "designer",
       "document-specialist",
       "executor",
       "explore",
-      "index",
+      "git-master",
       "planner",
-      "prompt-helpers",
       "qa-tester",
+      "reviewer",
       "scientist",
-      "skininthegamebros-guidance",
+      "security-reviewer",
+      "test-engineer",
       "tracer",
-      "types",
-      "utils",
+      "verifier",
       "writer"
     ],
     "workflows": [
@@ -51035,11 +51037,6 @@
       },
       {
         "from": "src/cli/graph.ts",
-        "to": "external:node:fs/promises",
-        "kind": "imports"
-      },
-      {
-        "from": "src/cli/graph.ts",
         "to": "external:node:path",
         "kind": "imports"
       },
@@ -51075,7 +51072,17 @@
       },
       {
         "from": "src/cli/graph.ts",
+        "to": "src/graph/runtime/run-dir.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/graph.ts",
         "to": "src/graph/runtime/runner.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/graph.ts",
+        "to": "src/graph/runtime/safe-fs.ts",
         "kind": "imports"
       },
       {
@@ -53415,6 +53422,11 @@
       },
       {
         "from": "src/graph/runtime/executors/agent.ts",
+        "to": "src/graph/runtime/executors/authority.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/runtime/executors/agent.ts",
         "to": "src/graph/runtime/types.ts",
         "kind": "type-imports"
       },
@@ -53432,6 +53444,11 @@
         "from": "src/graph/runtime/executors/command.ts",
         "to": "external:node:child_process",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/graph/runtime/executors/command.ts",
+        "to": "src/graph/runtime/executors/authority.ts",
+        "kind": "imports"
       },
       {
         "from": "src/graph/runtime/executors/command.ts",
@@ -53510,6 +53527,16 @@
       },
       {
         "from": "src/graph/runtime/journal.ts",
+        "to": "src/graph/runtime/run-dir.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/graph/runtime/journal.ts",
+        "to": "src/graph/runtime/safe-fs.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/runtime/journal.ts",
         "to": "src/graph/runtime/types.ts",
         "kind": "imports"
       },
@@ -53540,11 +53567,6 @@
       },
       {
         "from": "src/graph/runtime/runner.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/graph/runtime/runner.ts",
         "to": "external:path",
         "kind": "imports"
       },
@@ -53566,6 +53588,16 @@
       {
         "from": "src/graph/runtime/runner.ts",
         "to": "src/graph/runtime/run-dir.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/runtime/runner.ts",
+        "to": "src/graph/runtime/run-dir.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/graph/runtime/runner.ts",
+        "to": "src/graph/runtime/safe-fs.ts",
         "kind": "imports"
       },
       {
@@ -53600,17 +53632,22 @@
       },
       {
         "from": "src/graph/runtime/store.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/graph/runtime/store.ts",
         "to": "external:path",
         "kind": "imports"
       },
       {
         "from": "src/graph/runtime/store.ts",
         "to": "src/graph/runtime/run-dir.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/runtime/store.ts",
+        "to": "src/graph/runtime/run-dir.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/graph/runtime/store.ts",
+        "to": "src/graph/runtime/safe-fs.ts",
         "kind": "imports"
       },
       {
@@ -75901,11 +75938,11 @@
     ],
     "stats": {
       "nodeCount": 6825,
-      "edgeCount": 7100,
-      "importEdgeCount": 5824,
+      "edgeCount": 7107,
+      "importEdgeCount": 5827,
       "registerEdgeCount": 53
     }
   },
   "inventorySha256": "b1ccbc62159d75f3df2ae469240e06a03105674890dc236ef85ab4ba0506f859",
-  "manifestSha256": "2d8a009ae59b4afb9ce07b3b942a1df0f0ce0b9760780eb5e1e67c43b69b66ac"
+  "manifestSha256": "f8ce18a6cc6efdc8ed64a7bd509942bf0ba99aa643bd1ce32ba2d433cb9c7b7d"
 }

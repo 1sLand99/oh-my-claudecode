@@ -58,7 +58,16 @@ describe("AgentNodeExecutor", () => {
     ]);
     expect(receivedOptions).toMatchObject({
       prompt: expect.stringContaining("\n\nGoal: Verify human approval gate"),
+      options: {
+        cwd: process.cwd(),
+        tools: ["Read", "Glob", "Grep"],
+        permissionMode: "dontAsk",
+        additionalDirectories: [],
+        persistSession: false,
+      },
     });
+    expect((receivedOptions as { options: { env: NodeJS.ProcessEnv } }).options.env)
+      .not.toHaveProperty("PARENT_SECRET_TOKEN");
   });
 
   it("fails when the query throws", async () => {
@@ -86,6 +95,36 @@ describe("AgentNodeExecutor", () => {
 
     expect(output.outcome).toBe("failed");
     expect(output.output_summary).toBe("timeout after 10ms");
+  });
+
+  it("aborts and interrupts a streaming query at the timeout boundary", async () => {
+    let interrupted = 0;
+    let signal: AbortSignal | undefined;
+    const query = {
+      [Symbol.asyncIterator]() {
+        return this;
+      },
+      next: () => new Promise<never>(() => {}),
+      interrupt: async () => {
+        interrupted += 1;
+      },
+    };
+    const executor = new AgentNodeExecutor((options: unknown) => {
+      signal =
+        (options as { options: { abortController: AbortController } }).options
+          .abortController.signal;
+      return query;
+    });
+
+    const base = makeContext();
+    const output = await executor.execute({
+      ...base,
+      node: { ...base.node, timeout_ms: 10 },
+    });
+
+    expect(output.output_summary).toBe("timeout after 10ms");
+    expect(signal?.aborted).toBe(true);
+    expect(interrupted).toBe(1);
   });
 
   it("fails on empty response", async () => {
@@ -129,5 +168,52 @@ describe("AgentNodeExecutor", () => {
     expect(output.outcome).toBe("succeeded");
     expect(output.output_summary).toContain("part one.");
     expect(output.output_summary).toContain("part two.");
+  });
+
+  it("rejects reconcile policy without invoking the SDK", async () => {
+    let invoked = false;
+    const executor = new AgentNodeExecutor(() => {
+      invoked = true;
+      return Promise.resolve({});
+    });
+    const base = makeContext();
+    const output = await executor.execute({
+      ...base,
+      node: { ...base.node, effect_policy: { policy: "reconcile" } },
+    });
+
+    expect(output.outcome).toBe("failed");
+    expect(output.output_summary).toBe(
+      "reconcile policy requires a custom executor",
+    );
+    expect(invoked).toBe(false);
+  });
+
+  it("surfaces an idempotency key before the agent effect starts", async () => {
+    let receivedOptions: unknown;
+    const executor = new AgentNodeExecutor(async function* (options: unknown) {
+      receivedOptions = options;
+      yield {
+        type: "assistant",
+        message: { content: [{ type: "text", text: "read-only result" }] },
+      };
+    });
+    const base = makeContext();
+    const output = await executor.execute({
+      ...base,
+      node: {
+        ...base.node,
+        effect_policy: {
+          policy: "idempotent",
+          idempotency_key_template: "{run_id}:{activation_id}",
+        },
+      },
+    });
+
+    expect(output.external_idempotency_key).toBe("run-approval:act-1");
+    expect(
+      (receivedOptions as { options: { env: NodeJS.ProcessEnv } }).options.env
+        .GRAPH_IDEMPOTENCY_KEY,
+    ).toBe("run-approval:act-1");
   });
 });

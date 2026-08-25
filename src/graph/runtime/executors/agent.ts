@@ -14,6 +14,11 @@ import type {
   NodeExecutor,
 } from "../types.js";
 import type { GraphEvidenceReference } from "../../types.js";
+import {
+  buildAgentEnv,
+  idempotencyKeyFor,
+  READ_ONLY_AGENT_TOOLS,
+} from "./authority.js";
 
 /** Injectable SDK surface: the real `query` or a test fake. */
 export type AgentQueryImpl = (
@@ -42,6 +47,18 @@ function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
       Symbol.asyncIterator
     ] === "function"
   );
+}
+
+function stopQuery(value: unknown): void {
+  if (!isRecord(value)) return;
+  const interrupt = value.interrupt;
+  if (typeof interrupt === "function") {
+    void Promise.resolve(interrupt.call(value)).catch(() => {});
+  }
+  const returnMethod = value.return;
+  if (typeof returnMethod === "function") {
+    void Promise.resolve(returnMethod.call(value)).catch(() => {});
+  }
 }
 
 /** Text of an assistant message's text blocks, or null when not one. */
@@ -89,10 +106,24 @@ export class AgentNodeExecutor implements NodeExecutor {
     if (node.kind !== "agent") {
       return failed(context, `unsupported node kind ${node.kind}`);
     }
+    if (node.effect_policy.policy === "reconcile") {
+      return failed(context, "reconcile policy requires a custom executor");
+    }
 
     const prompt = `${node.instructions}\n\nGoal: ${context.descriptor.goal}`;
     const abortController = new AbortController();
-    const timer = setTimeout(() => abortController.abort(), node.timeout_ms);
+    const idempotencyKey = idempotencyKeyFor(context);
+    let activeQuery: unknown;
+    let timeoutTriggered = false;
+    let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = new Promise<never>((_, reject) => {
+      timeoutTimer = setTimeout(() => {
+        timeoutTriggered = true;
+        abortController.abort();
+        stopQuery(activeQuery);
+        reject(new AgentTimeoutError(node.timeout_ms));
+      }, node.timeout_ms);
+    });
 
     try {
       let queryFn: AgentQueryImpl;
@@ -104,8 +135,38 @@ export class AgentNodeExecutor implements NodeExecutor {
           query(options as { prompt: string; options?: Options });
       }
 
+      const canUseTool: NonNullable<Options["canUseTool"]> = async (
+        toolName,
+        input,
+      ) => {
+        if (
+          (READ_ONLY_AGENT_TOOLS as readonly string[]).includes(toolName)
+        ) {
+          return { behavior: "allow", updatedInput: input };
+        }
+        return {
+          behavior: "deny",
+          message: "Graph agent execution permits read-only tools only",
+          interrupt: true,
+        };
+      };
+
       const collect = async (): Promise<string> => {
-        const returned = queryFn({ prompt, options: { abortController } });
+        const returned = queryFn({
+          prompt,
+          options: {
+            abortController,
+            cwd: process.cwd(),
+            env: buildAgentEnv(idempotencyKey),
+            tools: [...READ_ONLY_AGENT_TOOLS],
+            permissionMode: "dontAsk",
+            canUseTool,
+            additionalDirectories: [],
+            persistSession: false,
+          },
+        });
+        activeQuery = returned;
+        if (timeoutTriggered) stopQuery(activeQuery);
         if (!isAsyncIterable(returned)) {
           const value = await returned;
           const final = sdkResult(value);
@@ -132,15 +193,6 @@ export class AgentNodeExecutor implements NodeExecutor {
         return parts.join("\n");
       };
 
-      // Rejects when the timer fires even if the underlying query never settles.
-      const timedOut = new Promise<never>((_, reject) => {
-        abortController.signal.addEventListener(
-          "abort",
-          () => reject(new AgentTimeoutError(node.timeout_ms)),
-          { once: true },
-        );
-      });
-
       const work = collect();
       try {
         const text = await Promise.race([work, timedOut]);
@@ -151,6 +203,9 @@ export class AgentNodeExecutor implements NodeExecutor {
           outcome: "succeeded",
           output_summary: truncate(text),
           evidence_refs: evidenceRefs(context),
+          ...(idempotencyKey === undefined
+            ? {}
+            : { external_idempotency_key: idempotencyKey }),
         };
       } finally {
         work.catch(() => {}); // loser of the race may still reject post-abort
@@ -162,7 +217,7 @@ export class AgentNodeExecutor implements NodeExecutor {
       const message = error instanceof Error ? error.message : String(error);
       return failed(context, `error: ${truncate(message)}`);
     } finally {
-      clearTimeout(timer);
+      if (timeoutTimer !== undefined) clearTimeout(timeoutTimer);
     }
   }
 }

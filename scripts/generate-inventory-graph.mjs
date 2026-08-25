@@ -24,7 +24,7 @@
  */
 
 import { readdir, readFile, stat, mkdir, writeFile } from 'node:fs/promises';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, relative, dirname, resolve } from 'node:path';
 import { execFileSync, execSync } from 'node:child_process';
@@ -133,6 +133,28 @@ function isAncestorCommit(root, sha) {
   }
 }
 
+function assertOutputPathContained(root, outPath) {
+  const rootReal = realpathSync(root);
+  let parent = dirname(outPath);
+  while (!existsSync(parent)) {
+    const next = dirname(parent);
+    if (next === parent) break;
+    parent = next;
+  }
+  const parentReal = realpathSync(parent);
+  const rootPrefix = `${rootReal}${pathSeparator(rootReal)}`;
+  if (parentReal !== rootReal && !parentReal.startsWith(rootPrefix)) {
+    throw new Error('--out parent must resolve inside the repository root');
+  }
+  if (existsSync(outPath) && lstatSync(outPath).isSymbolicLink()) {
+    throw new Error('--out must not be a symbolic link');
+  }
+}
+
+function pathSeparator(pathValue) {
+  return pathValue.includes('\\') ? '\\' : '/';
+}
+
 function scanDependencies(source, filePath) {
   const out = [];
   const sourceFile = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, false);
@@ -178,6 +200,54 @@ function classifyPath(p) {
   if (p.startsWith('bridge/')) return 'generated-bridge';
   if (p.startsWith('scripts/')) return 'script';
   return 'other';
+}
+
+/**
+ * Public agent inventory is role-based, not a census of helper .ts files.
+ * WORKFLOW_ROLES is the registry authority and includes Tier-0 roles plus
+ * routable internal specialists; src/agents also contains helpers, barrels,
+ * and prompt infrastructure that must never appear as public agents.
+ */
+function readWorkflowRoleNames(root) {
+  const registryPath = join(root, 'src/workflow/registry.ts');
+  const source = readFileSync(registryPath, 'utf8');
+  const sourceFile = ts.createSourceFile(
+    registryPath,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const names = [];
+  function visit(node) {
+    if (
+      ts.isVariableDeclaration(node) &&
+      node.name.getText(sourceFile) === 'WORKFLOW_ROLES' &&
+      node.initializer &&
+      ts.isArrayLiteralExpression(node.initializer)
+    ) {
+      for (const element of node.initializer.elements) {
+        if (!ts.isObjectLiteralExpression(element)) continue;
+        const nameProperty = element.properties.find(
+          (property) =>
+            ts.isPropertyAssignment(property) &&
+            property.name.getText(sourceFile) === 'name',
+        );
+        if (
+          nameProperty &&
+          ts.isPropertyAssignment(nameProperty) &&
+          ts.isStringLiteral(nameProperty.initializer)
+        ) {
+          names.push(nameProperty.initializer.text);
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+  if (names.length === 0) {
+    throw new Error('WORKFLOW_ROLES must define at least one registered agent role');
+  }
+  return [...new Set(names)].sort();
 }
 
 function isSourceForGraph(p) {
@@ -276,7 +346,11 @@ export async function generateInventoryGraph(opts = {}) {
   const commands = relStable.filter((p) => /^commands\/[^/]+\.md$/.test(p)).map((p) => p.slice('commands/'.length, -3)).sort();
   const commandPaths = relStable.filter((p) => /^commands\/[^/]+\.md$/.test(p)).sort();
   const workflows = relStable.filter((p) => p.startsWith('.github/workflows/')).sort();
-  const agents = relStable.filter((p) => /^src\/agents\/[^/]+\.ts$/.test(p)).map((p) => p.slice('src/agents/'.length, -3)).sort();
+  const agentDefinitionFiles = relStable
+    .filter((p) => /^src\/agents\/[^/]+\.ts$/.test(p))
+    .map((p) => p.slice('src/agents/'.length, -3))
+    .sort();
+  const agents = readWorkflowRoleNames(root);
   const hookFiles = relStable.filter((p) => p.startsWith('src/hooks/')).sort();
   const featureFiles = relStable.filter((p) => p.startsWith('src/features/')).sort();
   const toolFiles = relStable.filter((p) => p.startsWith('src/tools/')).sort();
@@ -457,7 +531,7 @@ export async function generateInventoryGraph(opts = {}) {
       commands: commands.length,
       hookFiles: hookFiles.length,
       workflows: workflows.length,
-      agentDefinitions: agents.length,
+      agentDefinitions: agentDefinitionFiles.length,
       promptLikeFiles: promptSources.length,
     },
     public: {
@@ -520,6 +594,7 @@ async function main() {
   if (outRelative.startsWith('..') || resolve(REPO_ROOT, outRelative) !== outPath) {
     throw new Error('--out must resolve inside the repository root');
   }
+  assertOutputPathContained(REPO_ROOT, outPath);
 
   if (wantVerify) {
     const fresh = await generateInventoryGraph();

@@ -74,6 +74,12 @@ describe('workflow registry — risk classes and gate policy', () => {
       expect(e.owner).toBe(REGISTRY_OWNER);
     }
   });
+
+  it('classifies the graph skill as a security boundary', () => {
+    const graph = getEntry('graph', 'skill');
+    expect(graph?.riskClass).toBe('security-boundary');
+    expect(graph?.decision).toBe('keep');
+  });
 });
 
 describe('workflow registry — aliases and classification', () => {

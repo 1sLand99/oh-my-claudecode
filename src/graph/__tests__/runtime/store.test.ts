@@ -4,7 +4,13 @@
  * Covers round-trip fidelity, missing-file null, fail-closed corruption,
  * descriptor binding (AC-3), and idempotent resave.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
@@ -90,6 +96,30 @@ describe("FileProjectionStore", () => {
       name: "ProjectionStoreError",
       code: "corrupt",
     });
+  });
+
+  it("fails closed on a structurally incomplete snapshot envelope", async () => {
+    const runDir = join(runsRoot, "run-1");
+    mkdirSync(runDir, { recursive: true });
+    writeFileSync(
+      join(runDir, "projection.json"),
+      JSON.stringify({ schema_version: 1, descriptor_hash: HASH_A }),
+      "utf8",
+    );
+    const store = new FileProjectionStore(runsRoot, "run-1");
+
+    await expect(store.load()).rejects.toMatchObject({ code: "corrupt" });
+  });
+
+  it("fails closed when projection.json is a symlink", async () => {
+    const runDir = join(runsRoot, "run-1");
+    const outside = join(runsRoot, "outside.json");
+    mkdirSync(runDir, { recursive: true });
+    writeFileSync(outside, JSON.stringify(makeEnvelope()), "utf8");
+    symlinkSync(outside, join(runDir, "projection.json"));
+    const store = new FileProjectionStore(runsRoot, "run-1");
+
+    await expect(store.load()).rejects.toMatchObject({ code: "corrupt" });
   });
 
   it("rejects a different descriptor_hash over an existing snapshot", async () => {

@@ -10,16 +10,20 @@
 
 import {
   closeSync,
+  constants as fsConstants,
   fsyncSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
   writeSync,
 } from "fs";
 import { createHash } from "crypto";
-import { dirname, join } from "path";
+import { join } from "path";
 import { canonicalJson } from "../descriptor.js";
-import { resolveRunDir } from "./run-dir.js";
+import { resolveRunDirHandle } from "./run-dir.js";
+import type { RunDirHandle } from "./run-dir.js";
+import {
+  openNoFollow,
+  readContainedFileNoFollow,
+  withContainedPath,
+} from "./safe-fs.js";
 import { JournalCorruptionError } from "./types.js";
 import type {
   Journal,
@@ -100,17 +104,8 @@ export class FileJournal implements Journal {
     this.runId = runId;
   }
 
-  private journalPath(): string {
-    if (this.runId === undefined) {
-      throw new Error(
-        "FileJournal is not bound to a run; pass runId to the constructor",
-      );
-    }
-    return join(resolveRunDir(this.runsRoot, this.runId), "journal.jsonl");
-  }
-
   async append(record: JournalAppendRecord): Promise<void> {
-    const filePath = this.journalPath();
+    const runDir = this.runDir();
     const unsignedRecord = { ...record } as Record<string, unknown>;
     delete unsignedRecord.journal_fingerprint;
     const committed: JournalRecord = {
@@ -121,24 +116,55 @@ export class FileJournal implements Journal {
     };
     const line = `${canonicalJson(committed)}\n`;
     // O_APPEND single writeSync + fsync: one complete line per append by contract.
-    mkdirSync(dirname(filePath), { recursive: true });
-    const fd = openSync(filePath, "a");
-    try {
-      writeSync(fd, line);
-      fsyncSync(fd);
-    } finally {
-      closeSync(fd);
+    withContainedPath(runDir, "journal.jsonl", (filePath) => {
+      let fd: number;
+      try {
+        fd = openNoFollow(
+          filePath,
+          fsConstants.O_APPEND | fsConstants.O_CREAT | fsConstants.O_WRONLY,
+        );
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ELOOP") {
+          throw new JournalCorruptionError(
+            `journal ${filePath} is a symbolic link`,
+            1,
+          );
+        }
+        throw error;
+      }
+      try {
+        writeSync(fd, line);
+        fsyncSync(fd);
+      } finally {
+        closeSync(fd);
+      }
+    });
+  }
+
+  private runDir(): RunDirHandle {
+    if (this.runId === undefined) {
+      throw new Error(
+        "FileJournal is not bound to a run; pass runId to the constructor",
+      );
     }
+    return resolveRunDirHandle(this.runsRoot, this.runId);
   }
 
   async readAll(): Promise<readonly JournalRecord[]> {
-    const filePath = this.journalPath();
+    const runDir = this.runDir();
+    const filePath = join(runDir.path, "journal.jsonl");
     let content: string;
     try {
-      content = readFileSync(filePath, "utf8");
+      content = readContainedFileNoFollow(runDir, "journal.jsonl");
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         return [];
+      }
+      if ((error as NodeJS.ErrnoException).code === "ELOOP") {
+        throw new JournalCorruptionError(
+          `journal ${filePath} is a symbolic link`,
+          1,
+        );
       }
       throw error;
     }

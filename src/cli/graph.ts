@@ -8,7 +8,6 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   canonicalJson,
@@ -26,7 +25,12 @@ import { AgentNodeExecutor } from '../graph/runtime/executors/agent.js';
 import { CommandNodeExecutor } from '../graph/runtime/executors/command.js';
 import { createStdinApprovalGate } from '../graph/runtime/approval.js';
 import { createAsciiProgressReporter } from '../graph/runtime/progress.js';
-import { resolveRunDir } from '../graph/runtime/run-dir.js';
+import { resolveRunDirHandle } from '../graph/runtime/run-dir.js';
+import type { RunDirHandle } from '../graph/runtime/run-dir.js';
+import {
+  readContainedFileNoFollow,
+  readFileNoFollow,
+} from '../graph/runtime/safe-fs.js';
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -50,7 +54,7 @@ async function loadSealedDescriptor(
 ): Promise<SealedGraphDescriptor | null> {
   let parsedUser: unknown;
   try {
-    parsedUser = JSON.parse(await readFile(descriptorPath, 'utf-8'));
+    parsedUser = JSON.parse(readFileNoFollow(descriptorPath));
   } catch (error) {
     fail(`cannot read descriptor file "${descriptorPath}": ${errorMessage(error)}`, 1);
     return null;
@@ -67,8 +71,10 @@ async function loadSealedDescriptor(
   // Contained run dir (P1-3): the resume probe must not follow a symlinked or
   // traversal-shaped run directory outside the runs root.
   let storedPath: string;
+  let runDirHandle: RunDirHandle;
   try {
-    storedPath = join(resolveRunDir(runsRoot, fresh.run_id), 'descriptor.json');
+    runDirHandle = resolveRunDirHandle(runsRoot, fresh.run_id);
+    storedPath = join(runDirHandle.path, 'descriptor.json');
   } catch (error) {
     fail(`invalid run directory for run "${fresh.run_id}": ${errorMessage(error)}`, 1);
     return null;
@@ -79,7 +85,14 @@ async function loadSealedDescriptor(
 
   let stored: SealedGraphDescriptor;
   try {
-    stored = parseSealedGraphDescriptor(JSON.parse(await readFile(storedPath, 'utf-8')));
+    stored = parseSealedGraphDescriptor(
+      JSON.parse(
+        readContainedFileNoFollow(
+          runDirHandle,
+          'descriptor.json',
+        ),
+      ),
+    );
   } catch (error) {
     fail(`stored descriptor "${storedPath}" is not a valid sealed descriptor: ${errorMessage(error)}`, 1);
     return null;

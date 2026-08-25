@@ -58,12 +58,15 @@ function readSidecarCeiling(filePath: string): number | null {
 export interface FileOwnershipFenceOptions {
   /** Age (ms) after which a dead/unparseable lock may be taken over. Default: 30000 */
   readonly staleGraceMs?: number;
+  /** Test-only interlock used to deterministically exercise takeover races. */
+  readonly beforeTakeoverRename?: () => void;
 }
 
 export class FileOwnershipFence implements OwnershipFence {
   private readonly runsRoot: string;
   private readonly runId?: string;
   private readonly staleGraceMs: number;
+  private readonly beforeTakeoverRename?: () => void;
   /** fd of the held lock file while we own the run; null otherwise. */
   private fd: number | null = null;
   private heldEpoch: number | null = null;
@@ -82,6 +85,7 @@ export class FileOwnershipFence implements OwnershipFence {
     this.runsRoot = runsRoot;
     this.runId = runId;
     this.staleGraceMs = options?.staleGraceMs ?? DEFAULT_STALE_GRACE_MS;
+    this.beforeTakeoverRename = options?.beforeTakeoverRename;
   }
 
   private lockPath(): string {
@@ -131,6 +135,9 @@ export class FileOwnershipFence implements OwnershipFence {
         return { outcome: "busy" };
       }
 
+      const staleIdentity = this.readLockIdentity(lockPath);
+      this.beforeTakeoverRename?.();
+
       // Takeover step: atomic rename to a unique tombstone. Exactly one
       // racer wins; losers observe ENOENT/EEXIST/EPERM here and retry (AC-6).
       const tombstone = `${lockPath}.tomb.${randomBytes(6).toString("hex")}`;
@@ -138,6 +145,29 @@ export class FileOwnershipFence implements OwnershipFence {
         renameSync(lockPath, tombstone);
       } catch {
         continue; // Another racer won the move; restart from step 1.
+      }
+
+      // Rename is atomic but has no compare-and-swap form. A racer can
+      // replace the stale path between our inspection and rename. Verify the
+      // object we moved before treating the tombstone as ours; if it is a
+      // replacement owner's lock, restore its live path or discard only our
+      // extra tombstone link and never adopt/delete its ownership.
+      const movedIdentity = this.readLockIdentity(tombstone);
+      if (!this.sameLockIdentity(staleIdentity, movedIdentity)) {
+        try {
+          if (!this.pathExists(lockPath)) {
+            renameSync(tombstone, lockPath);
+          } else {
+            unlinkSync(tombstone);
+          }
+        } catch {
+          try {
+            unlinkSync(tombstone);
+          } catch {
+            // Best effort cleanup of the foreign tombstone link.
+          }
+        }
+        continue;
       }
 
       // We exclusively own the tombstone now: read the old epoch from it.
@@ -287,6 +317,51 @@ export class FileOwnershipFence implements OwnershipFence {
       };
     } catch {
       return null;
+    }
+  }
+
+  private readLockIdentity(lockPath: string): {
+    readonly ino: number;
+    readonly size: number;
+    readonly mtimeMs: number;
+    readonly payload: FenceLockPayload | null;
+  } | null {
+    try {
+      const stats = statSync(lockPath);
+      return {
+        ino: stats.ino,
+        size: stats.size,
+        mtimeMs: stats.mtimeMs,
+        payload: this.readPayload(lockPath),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private sameLockIdentity(
+    left: ReturnType<FileOwnershipFence["readLockIdentity"]>,
+    right: ReturnType<FileOwnershipFence["readLockIdentity"]>,
+  ): boolean {
+    if (left === null || right === null) return false;
+    const leftPayload = left.payload;
+    const rightPayload = right.payload;
+    return (
+      left.ino === right.ino &&
+      left.size === right.size &&
+      left.mtimeMs === right.mtimeMs &&
+      leftPayload?.pid === rightPayload?.pid &&
+      leftPayload?.epoch === rightPayload?.epoch &&
+      leftPayload?.timestamp === rightPayload?.timestamp
+    );
+  }
+
+  private pathExists(path: string): boolean {
+    try {
+      statSync(path);
+      return true;
+    } catch {
+      return false;
     }
   }
 

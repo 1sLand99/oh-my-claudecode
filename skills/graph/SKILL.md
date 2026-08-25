@@ -93,14 +93,23 @@ for what built-in executors actually execute today.
   NodeExecutor that emits `route` on its results — built-in executors never
   produce routes, so graphs relying on them fail fast with
   `route_required` rather than guessing.
-- **Crash-recovery guarantee is at-least-once** for executable nodes: a crash
+- **Crash-recovery guarantee is at-least-once** for command nodes: a crash
   between an external side effect and its journal append re-executes that node
-  on resume. `idempotent` policies surface `external_idempotency_key` for
-  downstream dedupe systems; `reconcile` expects external reconciliation.
+  on resume. For `idempotent` commands, the resolved key is available to the
+  command as `GRAPH_IDEMPOTENCY_KEY` before it starts and is also recorded for
+  downstream dedupe. Built-in executors reject `reconcile`; reconciliation
+  requires a custom executor with an actual external reconciliation authority.
   Exactly-once for external side effects is out of scope for v1.
-- **Trust boundary**: running a descriptor executes its commands with process
-  authority — the descriptor AUTHOR holds code-execution power. Only run
-  descriptors you wrote or trust. The runner scrubs child environments to an
-  allowlist (PATH, HOME/USERPROFILE, TEMP/TMP, LANG, TZ, GRAPH_*) instead of
-  inheriting host secrets; it does not sandbox filesystem/process access.
-  Treat `.omc/graph-runs/<run_id>/descriptor.json` as executable content.
+- **Command trust boundary**: command nodes are arbitrary shell lines with
+  process authority in the current working directory. Only run descriptors
+  you wrote or trust. Command children receive an allowlisted environment
+  (PATH, HOME/USERPROFILE, TEMP/TMP, locale/timezone, USER identity,
+  `GRAPH_*`, and the optional idempotency key), not the host's full secrets.
+  Commands are not filesystem/process sandboxed.
+- **Agent authority boundary**: built-in agent nodes are explicitly read-only.
+  They run in the current working directory with no additional directories,
+  only `Read`, `Glob`, and `Grep`, `permissionMode: dontAsk`, session
+  persistence disabled, and a provider-specific environment allowlist. Agent
+  timeouts abort and interrupt the SDK query. Use a custom executor for any
+  agent that needs mutation or external effects. Treat
+  `.omc/graph-runs/<run_id>/descriptor.json` as executable content.

@@ -23,27 +23,13 @@ import type {
   NodeExecutor,
 } from "../types.js";
 import type { GraphCommandNode, GraphEvidenceReference } from "../../types.js";
+import { buildCommandEnv, idempotencyKeyFor } from "./authority.js";
 
 /** Per-stream captured output cap; the TAIL is kept. */
 const STREAM_TAIL_CHARS = 2000;
 
 /** Grace period after the first kill before escalating to a hard kill. */
 const KILL_ESCALATION_MS = 5000;
-
-/**
- * Environment variables a spawned command may inherit. Everything else in
- * the host environment (API keys, tokens, session state) is scrubbed.
- * GRAPH_* variables are graph-runtime configuration and pass through.
- */
-const CHILD_ENV_ALLOWLIST = [
-  "PATH",
-  "HOME",
-  "USERPROFILE",
-  "TEMP",
-  "TMP",
-  "LANG",
-  "TZ",
-] as const;
 
 /**
  * Output shape for command attempts. Extends the frozen
@@ -76,27 +62,6 @@ class StreamTail {
   excerpt(): string {
     return this.content.trim();
   }
-}
-
-/**
- * Allowlist-scrubbed environment for spawned commands. The host's full
- * environment (API keys, tokens, session state) never reaches children:
- * only the allowlisted operational variables plus GRAPH_* pass through.
- */
-function buildChildEnv(): NodeJS.ProcessEnv {
-  const child: Record<string, string> = {};
-  for (const key of CHILD_ENV_ALLOWLIST) {
-    const value = process.env[key];
-    if (value !== undefined) {
-      child[key] = value;
-    }
-  }
-  for (const [key, value] of Object.entries(process.env)) {
-    if (key.startsWith("GRAPH_") && value !== undefined) {
-      child[key] = value;
-    }
-  }
-  return child;
 }
 
 function describeError(error: unknown): string {
@@ -152,6 +117,7 @@ function runShellCommand(
   timeoutMs: number,
   stdoutTail: StreamTail,
   stderrTail: StreamTail,
+  idempotencyKey?: string,
 ): Promise<CommandRunResult> {
   return new Promise<CommandRunResult>((resolve) => {
     let child: ChildProcess;
@@ -160,7 +126,7 @@ function runShellCommand(
         shell: true,
         windowsHide: true,
         cwd: process.cwd(),
-        env: buildChildEnv(),
+        env: buildCommandEnv(idempotencyKey),
         stdio: ["ignore", "pipe", "pipe"],
         // Detached => own process group => the NEGATIVE-pid group kill in
         // terminateProcessTree can reach grandchildren, not just the shell.
@@ -225,15 +191,6 @@ function runShellCommand(
   });
 }
 
-function substituteIdempotencyTokens(
-  template: string,
-  tokens: Readonly<Record<string, string>>,
-): string {
-  return template.replace(/\{(\w+)\}/g, (match, token: string) =>
-    Object.prototype.hasOwnProperty.call(tokens, token) ? tokens[token]! : match,
-  );
-}
-
 export class CommandNodeExecutor implements NodeExecutor {
   readonly kinds: readonly ExecutableKind[] = ["command"];
 
@@ -249,7 +206,21 @@ export class CommandNodeExecutor implements NodeExecutor {
     const startedAtMs = Date.now();
     const stdoutTail = new StreamTail();
     const stderrTail = new StreamTail();
-    const result = await runShellCommand(node.command, node.timeout_ms, stdoutTail, stderrTail);
+    if (node.effect_policy.policy === "reconcile") {
+      return {
+        outcome: "failed",
+        output_summary: "reconcile policy requires a custom executor",
+        evidence_refs: [{ kind: "command", ref: node.command }],
+      };
+    }
+    const externalIdempotencyKey = idempotencyKeyFor(context);
+    const result = await runShellCommand(
+      node.command,
+      node.timeout_ms,
+      stdoutTail,
+      stderrTail,
+      externalIdempotencyKey,
+    );
     const durationMs = Date.now() - startedAtMs;
 
     const succeeded =
@@ -288,20 +259,6 @@ export class CommandNodeExecutor implements NodeExecutor {
         ref: `stderr:${node.command}`,
         summary: stderrExcerpt,
       });
-    }
-
-    let externalIdempotencyKey: string | undefined;
-    if (node.effect_policy.policy === "idempotent") {
-      externalIdempotencyKey = substituteIdempotencyTokens(
-        node.effect_policy.idempotency_key_template,
-        {
-          run_id: context.descriptor.run_id,
-          node_id: node.id,
-          activation_id: context.activation_id,
-          attempt_id: context.attempt_id,
-          attempt_no: String(context.attempt_no),
-        },
-      );
     }
 
     const output: CommandExecutionOutput = {
