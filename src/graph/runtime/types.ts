@@ -92,15 +92,20 @@ export interface JournalRecord {
   /** Must equal the projection's descriptor_hash; replay rejects drift. */
   readonly descriptor_hash: string;
   readonly transition: GraphCommittedTransition;
+  /** SHA-256 over the complete envelope, including epoch and transition. */
+  readonly journal_fingerprint: string;
 }
+
+/** Journal append input before the runtime computes its envelope fingerprint. */
+export type JournalAppendRecord = Omit<JournalRecord, "journal_fingerprint">;
 
 /**
  * Append-only OCC journal over `<runsRoot>/<run_id>/journal.jsonl`.
- * Epoch-staleness enforcement lives in the runner's loop-top assertEpoch;
- * the journal itself stays dumb by contract.
+ * Epoch-staleness enforcement lives in the runner's loop and commit boundary;
+ * the journal fingerprint binds each record to its writer epoch.
  */
 export interface Journal {
-  append(record: JournalRecord): Promise<void>;
+  append(record: JournalAppendRecord): Promise<void>;
   /**
    * Reads all well-formed records. Throws JournalCorruptionError (with
    * truncatedCount) on any unparseable/incomplete line — never returns

@@ -18,14 +18,20 @@ import { join } from "path";
 import { afterEach, describe, expect, it } from "vitest";
 import { resolveRunDir } from "../../runtime/run-dir.js";
 import { FileOwnershipFence } from "../../runtime/fence.js";
-import { FileJournal } from "../../runtime/journal.js";
+import {
+  computeJournalFingerprint,
+  FileJournal,
+} from "../../runtime/journal.js";
 import { FileProjectionStore } from "../../runtime/store.js";
-import type { JournalRecord } from "../../runtime/types.js";
+import type {
+  JournalAppendRecord,
+  JournalRecord,
+} from "../../runtime/types.js";
 
 const HASH = "a".repeat(64);
 
 function makeRecord(seq: number): JournalRecord {
-  return {
+  const record = {
     seq,
     epoch: 1,
     descriptor_hash: HASH,
@@ -42,6 +48,10 @@ function makeRecord(seq: number): JournalRecord {
       attempt_id: `attempt-${seq}`,
       evidence_refs: [],
     },
+  } satisfies JournalAppendRecord;
+  return {
+    ...record,
+    journal_fingerprint: computeJournalFingerprint(record),
   };
 }
 

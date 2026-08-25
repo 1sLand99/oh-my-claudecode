@@ -1,11 +1,11 @@
 /**
  * Append-only OCC journal over `<runsRoot>/<run_id>/journal.jsonl`.
  *
- * The journal stays deliberately dumb: it persists records verbatim and
- * validates envelope shape on read (seq/epoch/descriptor_hash/transition
- * presence, fail-closed). Deep transition validation happens at the
- * scheduler replay fold; epoch ownership fencing is a runner-level concern
- * (OwnershipFence) — the binding lives inside each record.
+ * The journal persists committed records with an envelope fingerprint that
+ * includes seq/epoch/descriptor_hash/transition. It validates envelope shape
+ * and the fingerprint format on read (fail-closed). Deep transition
+ * validation happens at the scheduler replay fold; epoch ownership fencing is
+ * a runner-level concern (OwnershipFence).
  */
 
 import {
@@ -16,13 +16,32 @@ import {
   readFileSync,
   writeSync,
 } from "fs";
+import { createHash } from "crypto";
 import { dirname, join } from "path";
 import { canonicalJson } from "../descriptor.js";
 import { resolveRunDir } from "./run-dir.js";
 import { JournalCorruptionError } from "./types.js";
-import type { Journal, JournalRecord } from "./types.js";
+import type {
+  Journal,
+  JournalAppendRecord,
+  JournalRecord,
+} from "./types.js";
 
 const DESCRIPTOR_HASH_PATTERN = /^[a-f0-9]{64}$/;
+const JOURNAL_FINGERPRINT_PATTERN = /^[a-f0-9]{64}$/;
+
+/**
+ * Authenticates the runtime envelope binding, including the writer epoch.
+ * Scheduler request fingerprints intentionally remain Graph Core concerns;
+ * this digest binds the runtime-only epoch to the exact committed record.
+ */
+export function computeJournalFingerprint(record: JournalAppendRecord): string {
+  const unsignedRecord = { ...record } as Record<string, unknown>;
+  delete unsignedRecord.journal_fingerprint;
+  return createHash("sha256")
+    .update(canonicalJson(unsignedRecord))
+    .digest("hex");
+}
 
 /** Envelope validation for one parsed record; returns an error message or null. */
 function envelopeError(value: unknown): string | null {
@@ -57,6 +76,12 @@ function envelopeError(value: unknown): string | null {
   ) {
     return "transition must be present as an object";
   }
+  if (
+    typeof record.journal_fingerprint !== "string" ||
+    !JOURNAL_FINGERPRINT_PATTERN.test(record.journal_fingerprint)
+  ) {
+    return "journal_fingerprint must be a lowercase sha256 hex digest";
+  }
   return null;
 }
 
@@ -84,9 +109,17 @@ export class FileJournal implements Journal {
     return join(resolveRunDir(this.runsRoot, this.runId), "journal.jsonl");
   }
 
-  async append(record: JournalRecord): Promise<void> {
+  async append(record: JournalAppendRecord): Promise<void> {
     const filePath = this.journalPath();
-    const line = `${canonicalJson(record)}\n`;
+    const unsignedRecord = { ...record } as Record<string, unknown>;
+    delete unsignedRecord.journal_fingerprint;
+    const committed: JournalRecord = {
+      ...(unsignedRecord as JournalAppendRecord),
+      journal_fingerprint: computeJournalFingerprint(
+        unsignedRecord as JournalAppendRecord,
+      ),
+    };
+    const line = `${canonicalJson(committed)}\n`;
     // O_APPEND single writeSync + fsync: one complete line per append by contract.
     mkdirSync(dirname(filePath), { recursive: true });
     const fd = openSync(filePath, "a");

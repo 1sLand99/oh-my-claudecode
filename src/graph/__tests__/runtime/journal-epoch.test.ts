@@ -21,6 +21,7 @@ import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 import { canonicalJson, sealGraphDescriptor } from "../../descriptor.js";
+import { computeJournalFingerprint } from "../../runtime/journal.js";
 import { runGraph } from "../../runtime/runner.js";
 import { EXIT_CODES } from "../../runtime/types.js";
 import type {
@@ -93,8 +94,13 @@ async function completeRunWithEpochs(
   const lines = readFileSync(journalPath, "utf8").split("\n").filter(Boolean);
   const rewritten = lines.map((line, index) => {
     const record = JSON.parse(line) as JournalRecord;
-    (record as { epoch: number }).epoch = epochForLine(index);
-    return canonicalJson(record);
+    const { journal_fingerprint: _journalFingerprint, ...withoutFingerprint } =
+      record;
+    const unsigned = { ...withoutFingerprint, epoch: epochForLine(index) };
+    return canonicalJson({
+      ...unsigned,
+      journal_fingerprint: computeJournalFingerprint(unsigned),
+    });
   });
   writeFileSync(journalPath, `${rewritten.join("\n")}\n`, "utf8");
   return { sealed, lines };
@@ -110,8 +116,13 @@ describe("journal epoch provenance (P1-4)", () => {
     const lines = readFileSync(journalPath, "utf8").split("\n").filter(Boolean);
     expect(lines.length).toBeGreaterThanOrEqual(2);
     const forged = JSON.parse(lines[0] as string) as JournalRecord;
-    (forged as { epoch: number }).epoch = 1 + 998;
-    lines[0] = canonicalJson(forged);
+    const { journal_fingerprint: _journalFingerprint, ...withoutFingerprint } =
+      forged;
+    const unsigned = { ...withoutFingerprint, epoch: 1 + 998 };
+    lines[0] = canonicalJson({
+      ...unsigned,
+      journal_fingerprint: computeJournalFingerprint(unsigned),
+    });
     writeFileSync(journalPath, `${lines.join("\n")}\n`, "utf8");
 
     // Act: resume over the forged history.
@@ -119,6 +130,27 @@ describe("journal epoch provenance (P1-4)", () => {
     const result = await runGraph(sealed, runOptions(runsRoot, resumeExecutor));
 
     // Assert: fold rejects the forged provenance before executing anything.
+    expect(result.terminal).toBe("failed");
+    expect(result.exit_code).toBe(EXIT_CODES.CORRUPT_JOURNAL);
+    expect(resumeExecutor.calls).toEqual([]);
+  });
+
+  it("fails closed when all records are rebound to the acquired epoch without rebinding their envelopes", async () => {
+    const runsRoot = makeRunsRoot();
+    const { sealed } = await completeRunWithEpochs(runsRoot, () => 1);
+    const journalPath = join(runsRoot, sealed.run_id, "journal.jsonl");
+    const lines = readFileSync(journalPath, "utf8").split("\n").filter(Boolean);
+    const rewritten = lines.map((line) => {
+      const record = JSON.parse(line) as JournalRecord;
+      // Epoch 2 is valid for the resuming owner, but the old envelope
+      // fingerprint still authenticates epoch 1.
+      return canonicalJson({ ...record, epoch: 2 });
+    });
+    writeFileSync(journalPath, `${rewritten.join("\n")}\n`, "utf8");
+
+    const resumeExecutor = new OkExecutor();
+    const result = await runGraph(sealed, runOptions(runsRoot, resumeExecutor));
+
     expect(result.terminal).toBe("failed");
     expect(result.exit_code).toBe(EXIT_CODES.CORRUPT_JOURNAL);
     expect(resumeExecutor.calls).toEqual([]);

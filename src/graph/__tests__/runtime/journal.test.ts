@@ -7,14 +7,20 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs"
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, describe, expect, it } from "vitest";
-import { FileJournal } from "../../runtime/journal.js";
+import {
+  computeJournalFingerprint,
+  FileJournal,
+} from "../../runtime/journal.js";
 import { JournalCorruptionError } from "../../runtime/types.js";
-import type { JournalRecord } from "../../runtime/types.js";
+import type {
+  JournalAppendRecord,
+  JournalRecord,
+} from "../../runtime/types.js";
 
 const HASH = "a".repeat(64);
 
 function makeRecord(seq: number): JournalRecord {
-  return {
+  const record = {
     seq,
     epoch: 1,
     descriptor_hash: HASH,
@@ -31,6 +37,10 @@ function makeRecord(seq: number): JournalRecord {
       attempt_id: `attempt-${seq}`,
       evidence_refs: [],
     },
+  } satisfies JournalAppendRecord;
+  return {
+    ...record,
+    journal_fingerprint: computeJournalFingerprint(record),
   };
 }
 

@@ -33,7 +33,7 @@ import {
 } from "../scheduler.js";
 import { atomicWriteFileSync } from "../../lib/atomic-write.js";
 import { resolveRunDir } from "./run-dir.js";
-import { FileJournal } from "./journal.js";
+import { computeJournalFingerprint, FileJournal } from "./journal.js";
 import { FileOwnershipFence } from "./fence.js";
 import { FileProjectionStore } from "./store.js";
 
@@ -375,6 +375,14 @@ function foldOneRecord(
   record: JournalRecord,
 ): GraphSchedulerProjection {
   const transition = record.transition;
+  const { journal_fingerprint: recordedFingerprint, ...unsignedRecord } =
+    record;
+  if (recordedFingerprint !== computeJournalFingerprint(unsignedRecord)) {
+    throw new GraphSchedulerError(
+      "transition_fenced",
+      `journal record ${record.seq} fails its envelope fingerprint`,
+    );
+  }
   let applied;
   switch (transition.outcome) {
     case "succeeded":
@@ -608,12 +616,16 @@ export async function runGraph(
     ): Promise<void> => {
       const seq = nextSeq;
       nextSeq += 1;
+      // Do not publish a transition after ownership has been lost while an
+      // executor or approval prompt was in flight.
+      fence.assertEpoch(epoch);
       await journal.append({
         seq,
         epoch,
         descriptor_hash: stored.descriptor_hash,
         transition,
       });
+      fence.assertEpoch(epoch);
       await store.save({
         schema_version: 1,
         descriptor_hash: stored.descriptor_hash,
