@@ -32,6 +32,7 @@ import {
   resolveJoin,
 } from "../scheduler.js";
 import { atomicWriteFileSync } from "../../lib/atomic-write.js";
+import { resolveRunDir } from "./run-dir.js";
 import { FileJournal } from "./journal.js";
 import { FileOwnershipFence } from "./fence.js";
 import { FileProjectionStore } from "./store.js";
@@ -484,6 +485,9 @@ export async function runGraph(
   const runsRoot =
     options.runsRoot ?? join(process.cwd(), ...DEFAULT_RUNS_ROOT_SEGMENTS);
   const runId = sealed.run_id;
+  // Contained run dir (P1-3): validates run_id, rejects symlink escapes, and
+  // creates the directory before any persistence component touches disk.
+  const runDir = resolveRunDir(runsRoot, runId);
   const fence = new FileOwnershipFence(runsRoot, runId);
   const journal = new FileJournal(runsRoot, runId);
   const store = new FileProjectionStore(runsRoot, runId);
@@ -517,7 +521,7 @@ export async function runGraph(
 
   try {
     emit({ type: "run_started", run_id: runId, goal: sealed.goal });
-    const descriptorPath = join(runsRoot, runId, DESCRIPTOR_FILE_NAME);
+    const descriptorPath = join(runDir, DESCRIPTOR_FILE_NAME);
 
     let stored: SealedGraphDescriptor;
     let rawDescriptor: string | null;
@@ -563,6 +567,10 @@ export async function runGraph(
         projection,
       });
     }
+    // Epoch provenance: takeovers only ever raise the epoch, so committed
+    // history must be non-decreasing and must never exceed the epoch this
+    // process acquired — anything else is forged or stale-writer provenance.
+    let lastRecordEpoch = 0;
     for (const record of records) {
       if (record.descriptor_hash !== stored.descriptor_hash) {
         throw new GraphSchedulerError(
@@ -570,6 +578,13 @@ export async function runGraph(
           `journal record ${record.seq} is bound to descriptor ${record.descriptor_hash}`,
         );
       }
+      if (record.epoch < lastRecordEpoch || record.epoch > epoch) {
+        throw new GraphSchedulerError(
+          "transition_fenced",
+          `journal record ${record.seq} carries epoch ${record.epoch} outside fenced history (last ${lastRecordEpoch}, acquired ${epoch})`,
+        );
+      }
+      lastRecordEpoch = record.epoch;
       projection = foldOneRecord(stored, projection, record);
     }
     emit({ type: "replayed", records: records.length, epoch });
