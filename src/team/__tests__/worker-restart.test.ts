@@ -15,6 +15,7 @@ describe('worker-restart', () => {
   let testDir: string;
   let previousHome: string | undefined;
   let previousUserProfile: string | undefined;
+  let previousStateDir: string | undefined;
   const teamName = 'test-team';
   const workerName = 'worker1';
 
@@ -22,8 +23,10 @@ describe('worker-restart', () => {
     testDir = mkdtempSync(join(tmpdir(), 'worker-restart-test-'));
     previousHome = process.env.HOME;
     previousUserProfile = process.env.USERPROFILE;
+    previousStateDir = process.env.OMC_STATE_DIR;
     process.env.HOME = testDir;
     process.env.USERPROFILE = testDir;
+    delete process.env.OMC_STATE_DIR;
   });
 
   afterEach(() => {
@@ -32,6 +35,8 @@ describe('worker-restart', () => {
     else process.env.HOME = previousHome;
     if (previousUserProfile === undefined) delete process.env.USERPROFILE;
     else process.env.USERPROFILE = previousUserProfile;
+    if (previousStateDir === undefined) delete process.env.OMC_STATE_DIR;
+    else process.env.OMC_STATE_DIR = previousStateDir;
   });
 
   describe('shouldRestart', () => {

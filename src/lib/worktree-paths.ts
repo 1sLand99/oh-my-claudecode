@@ -246,6 +246,7 @@ export function isSensitiveStateLocation(dir: string): boolean {
   let candidate: string;
   try {
     candidate = resolve(dir);
+    try { candidate = realpathSync(candidate); } catch { /* non-existent paths retain lexical validation */ }
   } catch {
     return true;
   }
