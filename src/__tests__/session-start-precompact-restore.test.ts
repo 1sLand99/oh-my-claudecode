@@ -35,6 +35,7 @@ function makeProject(root: string): string {
   const project = join(root, 'project');
   // session-start validateCwd requires a real workspace anchor (.git / .omc-workspace)
   mkdirSync(join(project, '.git'), { recursive: true });
+  execFileSync('git', ['init', '--quiet'], { cwd: project, stdio: 'ignore' });
   return project;
 }
 

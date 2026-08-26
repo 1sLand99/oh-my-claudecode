@@ -32,6 +32,7 @@ import { basename, dirname, join, sep } from 'path';
 import { homedir } from 'os';
 import { pathToFileURL } from 'url';
 import { createHash } from 'crypto';
+import { execFileSync } from 'child_process';
 
 vi.mock('fs', async () => {
   const actual = await vi.importActual<typeof import('fs')>('fs');
@@ -84,6 +85,7 @@ function withPublisherPreload<T>(
 
 function createTempDir(): string {
   const dir = mkdtempSync(join(homedir(), 'precompact-restore-test-'));
+  execFileSync('git', ['init', '--quiet'], { cwd: dir, stdio: 'ignore' });
   mkdirSync(join(dir, '.omc', 'state'), { recursive: true });
   return dir;
 }
