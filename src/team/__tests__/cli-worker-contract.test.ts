@@ -74,6 +74,8 @@ describe('cli-worker-contract', () => {
       expect(fragment).toContain('code-reviewer');
       expect(fragment).toContain('/tmp/team/workers/worker-1/verdict.json');
       expect(fragment).toContain('"verdict": "approve" | "revise" | "reject"');
+      expect(fragment).toContain('"claim_token": "<claim token from the claim response>"');
+      expect(fragment).toContain('"launch_attempt_id": "<exact OMC_WORKER_LAUNCH_ATTEMPT_ID>"');
       expect(fragment).toContain('REQUIRED: Structured Verdict Output');
     });
 

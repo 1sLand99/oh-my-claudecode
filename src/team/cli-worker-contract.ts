@@ -48,6 +48,9 @@ export interface CliWorkerOutputPayload {
   verdict: CliWorkerVerdict;
   summary: string;
   findings: CliWorkerFinding[];
+  claim_token?: string;
+  task_version?: number;
+  launch_attempt_id?: string;
 }
 
 const VALID_VERDICTS: ReadonlySet<string> = new Set(['approve', 'revise', 'reject']);
@@ -94,6 +97,9 @@ export function renderCliWorkerOutputContract(
     '{',
     `  "role": "${role}",`,
     '  "task_id": "<task id from the assignment above>",',
+    '  "claim_token": "<claim token from the claim response>",',
+    '  "task_version": <task version from the claim response>,',
+    '  "launch_attempt_id": "<exact OMC_WORKER_LAUNCH_ATTEMPT_ID>",',
     '  "verdict": "approve" | "revise" | "reject",',
     '  "summary": "one- or two-sentence overall assessment",',
     '  "findings": [',
@@ -147,6 +153,18 @@ export function parseCliWorkerVerdict(raw: string): CliWorkerOutputPayload {
   if (!TASK_ID_SAFE_PATTERN.test(taskId)) {
     throw new Error(`verdict_invalid_task_id:${taskId}`);
   }
+  const claimToken = obj.claim_token;
+  if (claimToken !== undefined && (typeof claimToken !== 'string' || !claimToken)) {
+    throw new Error('verdict_invalid_claim_token');
+  }
+  const taskVersion = obj.task_version;
+  if (taskVersion !== undefined && (typeof taskVersion !== 'number' || !Number.isInteger(taskVersion) || taskVersion < 0)) {
+    throw new Error('verdict_invalid_task_version');
+  }
+  const launchAttemptId = obj.launch_attempt_id;
+  if (launchAttemptId !== undefined && (typeof launchAttemptId !== 'string' || !launchAttemptId)) {
+    throw new Error('verdict_invalid_launch_attempt_id');
+  }
   const verdict = obj.verdict;
   if (typeof verdict !== 'string' || !VALID_VERDICTS.has(verdict)) {
     throw new Error(`verdict_invalid_verdict:${String(verdict)}`);
@@ -188,6 +206,9 @@ export function parseCliWorkerVerdict(raw: string): CliWorkerOutputPayload {
     verdict: verdict as CliWorkerVerdict,
     summary,
     findings,
+    ...(claimToken !== undefined ? { claim_token: claimToken } : {}),
+    ...(taskVersion !== undefined ? { task_version: taskVersion } : {}),
+    ...(launchAttemptId !== undefined ? { launch_attempt_id: launchAttemptId } : {}),
   };
 }
 

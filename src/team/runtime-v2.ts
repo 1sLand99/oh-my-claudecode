@@ -2811,9 +2811,17 @@ export async function executeRecoverDeadWorkerV2Owner(
       adoptAll: async (sagaInput, proof, taskIds) => {
         const pending = pendingRecoveryPanes.get(sagaInput.recoveryId);
         if (!pending?.startupContext) return { ok: false, error: 'worker_activation_failed' };
+        const startupAttemptId = pending.startupContext.attempt.attempt_id;
         const adoption = await withWorkerLaunchAttemptFence(pending.startupContext.attempt, async () => {
           await ensureFence();
-          return teamAdoptRecoveryReservations(input.teamName, input.cwd, taskIds, sagaInput.workerName, proof);
+          return teamAdoptRecoveryReservations(
+            input.teamName,
+            input.cwd,
+            taskIds,
+            sagaInput.workerName,
+            proof,
+            startupAttemptId,
+          );
         });
         if (!adoption.ok) return { ok: false, error: 'worker_activation_failed' };
         const results = adoption.value;
@@ -3965,7 +3973,10 @@ export async function processCliWorkerVerdicts(
           : null;
         const claimMatchesCursorWorker = !cursorReviewer || (
           claim?.owner === worker.name
+          && payload.claim_token === claim.token
+          && payload.task_version === taskData.version
           && (worker.launch_attempt_id === undefined || claim.launch_attempt_id === worker.launch_attempt_id)
+          && (worker.launch_attempt_id === undefined || payload.launch_attempt_id === worker.launch_attempt_id)
         );
         if (taskData.owner === worker.name
           && taskData.status === 'in_progress'
@@ -3995,6 +4006,9 @@ export async function processCliWorkerVerdicts(
             && (processedTask.status === 'completed' || processedTask.status === 'failed')
             && (!cursorReviewer || processedTaskRole === workerRole)
             && metadata?.verdict_source === 'cli_worker_output_contract'
+            && (!cursorReviewer
+              || (metadata.verdict_claim_token === payload.claim_token
+                && metadata.verdict_task_version === payload.task_version))
             && (worker.launch_attempt_id === undefined
               || metadata.verdict_worker_launch_attempt_id === worker.launch_attempt_id)
             && metadata.verdict === payload.verdict;
@@ -4036,6 +4050,18 @@ export async function processCliWorkerVerdicts(
           if (taskData.status !== 'in_progress' || taskData.owner !== worker.name) {
             return false;
           }
+          const claim = taskData.claim && typeof taskData.claim === 'object'
+            ? taskData.claim as unknown as Record<string, unknown>
+            : null;
+          if (cursorReviewer && (
+            claim?.owner !== worker.name
+            || claim.token !== payload.claim_token
+            || taskData.version !== payload.task_version
+            || (worker.launch_attempt_id !== undefined && claim.launch_attempt_id !== worker.launch_attempt_id)
+            || (worker.launch_attempt_id !== undefined && payload.launch_attempt_id !== worker.launch_attempt_id)
+          )) {
+            return false;
+          }
           const prevMetadata = (taskData.metadata && typeof taskData.metadata === 'object')
             ? taskData.metadata as Record<string, unknown>
             : {};
@@ -4049,6 +4075,10 @@ export async function processCliWorkerVerdicts(
             verdict_findings: payload.findings,
             verdict_role: payload.role,
             verdict_source: 'cli_worker_output_contract',
+            ...(cursorReviewer ? {
+              verdict_claim_token: payload.claim_token,
+              verdict_task_version: payload.task_version,
+            } : {}),
             ...(worker.launch_attempt_id
               ? { verdict_worker_launch_attempt_id: worker.launch_attempt_id }
               : {}),

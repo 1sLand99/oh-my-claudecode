@@ -394,7 +394,12 @@ export async function adoptRecoveryReservations(taskIds: string[], workerName: s
       const checkpoint = await deps.readRecoveryCheckpoint(reservation.checkpoint_path);
       if (!checkpoint.ok || checkpoint.checkpoint.resume_payload_hash !== reservation.checkpoint_hash || checkpoint.checkpoint.sequence !== reservation.continuation_sequence) return { ok: false as const, error: checkpointError(checkpoint.ok ? 'stale' : checkpoint.error) };
       const claimToken = randomUUID(); const adoptedAt = new Date().toISOString();
-      const updated: TeamTaskV2 = { ...task, status: 'in_progress', owner: workerName, claim: { owner: workerName, token: claimToken, leased_until: new Date(Date.now() + 15 * 60 * 1000).toISOString() }, version: task.version + 1, recovery_reservation: undefined, recovery_adoption: { recovery_id: reservation.recovery_id, request_id: reservation.request_id, continuation_sequence: reservation.continuation_sequence, checkpoint_path: reservation.checkpoint_path, checkpoint_hash: reservation.checkpoint_hash, replacement_worker: workerName, replacement_generation: reservation.replacement_generation, adopted_at: adoptedAt } };
+      const updated: TeamTaskV2 = { ...task, status: 'in_progress', owner: workerName, claim: {
+        owner: workerName,
+        token: claimToken,
+        leased_until: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+        ...(deps.launchAttemptId ? { launch_attempt_id: deps.launchAttemptId } : {}),
+      }, version: task.version + 1, recovery_reservation: undefined, recovery_adoption: { recovery_id: reservation.recovery_id, request_id: reservation.request_id, continuation_sequence: reservation.continuation_sequence, checkpoint_path: reservation.checkpoint_path, checkpoint_hash: reservation.checkpoint_hash, replacement_worker: workerName, replacement_generation: reservation.replacement_generation, adopted_at: adoptedAt } };
       await deps.writeAtomic(deps.taskFilePath(deps.teamName, taskId, deps.cwd), JSON.stringify(updated, null, 2));
       return { ok: true as const, task: updated, claimToken, checkpoint: checkpoint.checkpoint, replayed: false };
     });

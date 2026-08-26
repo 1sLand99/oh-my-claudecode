@@ -97,6 +97,8 @@ describe('runtime-v2 role routing — processCliWorkerVerdicts (AC-7)', () => {
     await mkdir(join(teamRoot, 'tasks'), { recursive: true });
     await mkdir(join(teamRoot, 'workers', 'worker-1'), { recursive: true });
     const outputFile = join(teamRoot, 'workers', 'worker-1', 'verdict.json');
+    const workerCli = opts.workerCli ?? 'codex';
+    const launchAttemptId = 'attempt-worker-1';
 
     if (opts.paneAlive) {
       mocks.isWorkerAlive.mockResolvedValue(true);
@@ -118,11 +120,12 @@ describe('runtime-v2 role routing — processCliWorkerVerdicts (AC-7)', () => {
               name: 'worker-1',
               index: 1,
               role: 'critic',
-              worker_cli: opts.workerCli ?? 'codex',
+              worker_cli: workerCli,
               assigned_tasks: ['1'],
               pane_id: '%2',
               working_dir: cwd,
               output_file: outputFile,
+              ...(workerCli === 'cursor' ? { launch_attempt_id: launchAttemptId } : {}),
             },
           ],
           created_at: new Date().toISOString(),
@@ -152,7 +155,13 @@ describe('runtime-v2 role routing — processCliWorkerVerdicts (AC-7)', () => {
           status: 'in_progress',
           owner: 'worker-1',
           role: 'critic',
-          claim: { owner: 'worker-1', token: 'tk-1', leased_until: new Date(Date.now() + 60000).toISOString() },
+          version: 1,
+          claim: {
+            owner: 'worker-1',
+            token: 'tk-1',
+            leased_until: new Date(Date.now() + 60000).toISOString(),
+            ...(workerCli === 'cursor' ? { launch_attempt_id: launchAttemptId } : {}),
+          },
           created_at: new Date().toISOString(),
         },
         null,
@@ -167,6 +176,11 @@ describe('runtime-v2 role routing — processCliWorkerVerdicts (AC-7)', () => {
         : JSON.stringify({
             role: opts.verdictRole ?? 'code-reviewer',
             task_id: '1',
+            ...(workerCli === 'cursor' ? {
+              claim_token: 'tk-1',
+              task_version: 1,
+              launch_attempt_id: launchAttemptId,
+            } : {}),
             verdict: opts.verdict,
             summary: `${opts.verdict} summary`,
             findings: opts.verdict === 'approve'
