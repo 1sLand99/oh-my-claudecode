@@ -115,6 +115,31 @@ jobs:
           src/installer/__tests__/claude-md-transaction.test.ts
           src/team/__tests__/cli-detection.windows.integration.test.ts
 
+  better-sqlite3-node26:
+    name: better-sqlite3 Node 26 (${{ matrix.os }})
+    if: github.event_name != 'push' || github.ref_type != 'tag'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-2022]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Smoke-test native SQLite on Node 26
+        run: node -e "const Database = require('better-sqlite3'); const db = new Database(':memory:'); db.prepare('select 1 as ok').get(); db.close();"
+
   test-precompact-restore:
     name: PreCompact restore (${{ matrix.os }})
     if: github.event_name != 'push' || github.ref_type != 'tag'
