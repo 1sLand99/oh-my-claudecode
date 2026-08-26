@@ -99,8 +99,11 @@ describe('daemon bootstrap', () => {
     expect(childEnv.TMUX).toBe('/tmp/tmux-1000/default,100,0');
     expect(childEnv.OMC_STATE_DIR).toBe('/tmp/omc-central-state');
     expect(childEnv.CLAUDE_CONFIG_DIR).toBe('/tmp/claude-profile');
-    expect(childEnv.CLAUDE_SESSION_ID).toBe('session-current');
-    expect(childEnv.CLAUDECODE_SESSION_ID).toBe('session-legacy-alias');
+    // A detached daemon must not pin itself to the launching session: that
+    // session's cache is removed at session end, while another live session
+    // may have the version the daemon should use on its next poll.
+    expect(childEnv.CLAUDE_SESSION_ID).toBeUndefined();
+    expect(childEnv.CLAUDECODE_SESSION_ID).toBeUndefined();
     expect(childEnv.ANTHROPIC_API_KEY).toBeUndefined();
     expect(childEnv.GITHUB_TOKEN).toBeUndefined();
 
