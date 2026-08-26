@@ -377,6 +377,10 @@ describe('model-contract', () => {
       expect(noModel).toEqual([]);
       expect(noModel).not.toContain('--model');
 
+      const emptyModel = buildLaunchArgs('cursor', { teamName: 't', workerName: 'w', cwd: '/tmp', model: '' });
+      expect(emptyModel).toEqual([]);
+      expect(emptyModel).not.toContain('--model');
+
       const withModel = buildLaunchArgs('cursor', { teamName: 't', workerName: 'w', cwd: '/tmp', model: 'cursor-grok-4.6-high' });
       expect(withModel).toEqual(['--model', 'cursor-grok-4.6-high']);
     });
