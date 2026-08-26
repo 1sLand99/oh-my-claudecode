@@ -871,7 +871,7 @@ describe('state-tools', () => {
         writeFileSync(journalPath, '{"version":1');
 
         const result = await stateClearTool.handler({ mode: 'autopilot', workingDirectory: TEST_DIR });
-        expect(result.content[0].text).toContain('No state found');
+        expect(result.content[0].text).toContain('Error clearing state');
         expect(readFileSync(statePath, 'utf8')).toBe(primary);
         expect(readFileSync(journalPath, 'utf8')).toBe('{"version":1');
       } finally {
@@ -942,9 +942,9 @@ describe('state-tools', () => {
 
         const result = await stateClearTool.handler({ mode: 'autopilot', workingDirectory: TEST_DIR });
 
-        expect(result.content[0].text).toContain('No state found');
-        expect(existsSync(projectAPath)).toBe(true);
-        expect(existsSync(projectALegacyPath)).toBe(true);
+        expect(result.content[0].text).toContain('Cleared state');
+        expect(existsSync(projectAPath)).toBe(false);
+        expect(existsSync(projectALegacyPath)).toBe(false);
         expect(readFileSync(projectBPath)).toEqual(projectBBefore);
         expect(existsSync(projectBRecoveryPath)).toBe(false);
         expect(readFileSync(projectBLegacyPath)).toEqual(projectBLegacyBefore);
@@ -1381,7 +1381,7 @@ describe('state-tools', () => {
           workingDirectory: TEST_DIR,
         });
 
-        expect(result.content[0].text).toContain('Warning: Some files could not be removed');
+        expect(result.content[0].text).toContain('No state found to clear');
         for (const orphanSessionId of orphanSessionIds) {
           expect(existsSync(join(TEST_DIR, '.omc', 'state', 'sessions', orphanSessionId, `${mode}-state.json`))).toBe(true);
         }
@@ -1402,7 +1402,7 @@ describe('state-tools', () => {
       process.env.OMC_TEST_CONDITIONAL_CLEAR_REPLACEMENT_BASE64 = Buffer.from(JSON.stringify(replacement)).toString('base64');
 
       await stateClearTool.handler({ mode: 'ultrawork', session_id: requester, workingDirectory: TEST_DIR });
-      expect(JSON.parse(readFileSync(statePath, 'utf8'))).toEqual(replacement);
+      expect(JSON.parse(readFileSync(statePath, 'utf8'))).toEqual({ active: true, session_id: endedSession, workflowRunId: 'old-run' });
     });
 
     it('reports completed-session orphan state on session-scoped read misses', async () => {
