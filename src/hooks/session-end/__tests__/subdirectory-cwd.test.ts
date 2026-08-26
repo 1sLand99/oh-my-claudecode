@@ -49,9 +49,15 @@ const mockResolveToWorktreeRoot = vi.mocked(resolveToWorktreeRoot);
 describe('processSessionEnd cwd normalization (issue #891)', () => {
   let worktreeRoot: string;
   let subdirectory: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
 
   beforeEach(() => {
     worktreeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'omc-891-root-'));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = worktreeRoot;
+    process.env.USERPROFILE = worktreeRoot;
     subdirectory = path.join(worktreeRoot, 'src', 'deep', 'nested');
     fs.mkdirSync(subdirectory, { recursive: true });
 
@@ -64,6 +70,10 @@ describe('processSessionEnd cwd normalization (issue #891)', () => {
 
   afterEach(() => {
     fs.rmSync(worktreeRoot, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
     vi.clearAllMocks();
   });
 
