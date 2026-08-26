@@ -78,7 +78,9 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # better-sqlite3 12.10+ ships Windows prebuilds from Node 22 onward.
+          # The hosted VS 2025 image cannot build this native module from source.
+          node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
@@ -128,7 +130,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: ${{ matrix.os == 'windows-latest' && '22' || '20' }}
           cache: 'npm'
 
       - name: Install dependencies
@@ -235,7 +237,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: ${{ matrix.os == 'windows-latest' && '22' || '20' }}
           cache: 'npm'
 
       - name: Install dependencies
