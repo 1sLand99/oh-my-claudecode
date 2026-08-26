@@ -3830,7 +3830,7 @@ export async function processCliWorkerVerdicts(
   );
 
   const { rename } = await import('fs/promises');
-  const { renameSync, readFileSync, existsSync: fsExistsSync } = await import('fs');
+  const { renameSync, readFileSync, writeFileSync, existsSync: fsExistsSync } = await import('fs');
   const { withFileLockSync } = await import('../lib/file-lock.js');
   const { withTaskClaimLock, writeAtomic } = await import('./team-ops.js');
 
@@ -4007,36 +4007,66 @@ export async function processCliWorkerVerdicts(
     const terminalStatus = payload.verdict === 'approve' ? 'completed' : 'failed';
     let transitionOk = false;
     try {
-      const transition = await withTaskClaimLock(sanitized, targetTaskId, cwd, async () => {
-        const raw = await readFile(targetTaskPath!, 'utf-8');
-        const taskData = JSON.parse(raw) as Record<string, unknown>;
-        if (taskData.status !== 'in_progress' || taskData.owner !== worker.name) {
-          return false;
-        }
-        const prevMetadata = (taskData.metadata && typeof taskData.metadata === 'object')
-          ? taskData.metadata as Record<string, unknown>
-          : {};
-        taskData.status = terminalStatus;
-        taskData.completed_at = new Date().toISOString();
-        taskData.claim = undefined;
-        taskData.metadata = {
-          ...prevMetadata,
-          verdict: payload.verdict,
-          verdict_summary: payload.summary,
-          verdict_findings: payload.findings,
-          verdict_role: payload.role,
-          verdict_source: 'cli_worker_output_contract',
-        };
-        if (terminalStatus === 'failed') {
-          taskData.error = `cli_worker_verdict:${payload.verdict}:${payload.summary}`;
-        }
-        taskData.version = typeof taskData.version === 'number' && Number.isFinite(taskData.version)
-          ? taskData.version + 1
-          : 1;
-        await writeAtomic(targetTaskPath!, JSON.stringify(taskData, null, 2));
-        return true;
-      });
-      transitionOk = transition.ok && transition.value;
+      if (cursorReviewer) {
+        const transition = await withTaskClaimLock(sanitized, targetTaskId, cwd, async () => {
+          const raw = await readFile(targetTaskPath!, 'utf-8');
+          const taskData = JSON.parse(raw) as Record<string, unknown>;
+          if (taskData.status !== 'in_progress' || taskData.owner !== worker.name) {
+            return false;
+          }
+          const prevMetadata = (taskData.metadata && typeof taskData.metadata === 'object')
+            ? taskData.metadata as Record<string, unknown>
+            : {};
+          taskData.status = terminalStatus;
+          taskData.completed_at = new Date().toISOString();
+          taskData.claim = undefined;
+          taskData.metadata = {
+            ...prevMetadata,
+            verdict: payload.verdict,
+            verdict_summary: payload.summary,
+            verdict_findings: payload.findings,
+            verdict_role: payload.role,
+            verdict_source: 'cli_worker_output_contract',
+          };
+          if (terminalStatus === 'failed') {
+            taskData.error = `cli_worker_verdict:${payload.verdict}:${payload.summary}`;
+          }
+          taskData.version = typeof taskData.version === 'number' && Number.isFinite(taskData.version)
+            ? taskData.version + 1
+            : 1;
+          await writeAtomic(targetTaskPath!, JSON.stringify(taskData, null, 2));
+          return true;
+        });
+        transitionOk = transition.ok && transition.value;
+      } else {
+        // Preserve the existing post-exit path for non-Cursor providers.
+        withFileLockSync(targetTaskPath + '.lock', () => {
+          const raw = readFileSync(targetTaskPath!, 'utf-8');
+          const taskData = JSON.parse(raw) as Record<string, unknown>;
+          if (taskData.status !== 'in_progress' || taskData.owner !== worker.name) {
+            return;
+          }
+          const prevMetadata = (taskData.metadata && typeof taskData.metadata === 'object')
+            ? taskData.metadata as Record<string, unknown>
+            : {};
+          taskData.status = terminalStatus;
+          taskData.completed_at = new Date().toISOString();
+          taskData.claim = undefined;
+          taskData.metadata = {
+            ...prevMetadata,
+            verdict: payload.verdict,
+            verdict_summary: payload.summary,
+            verdict_findings: payload.findings,
+            verdict_role: payload.role,
+            verdict_source: 'cli_worker_output_contract',
+          };
+          if (terminalStatus === 'failed') {
+            taskData.error = `cli_worker_verdict:${payload.verdict}:${payload.summary}`;
+          }
+          writeFileSync(targetTaskPath!, JSON.stringify(taskData, null, 2), 'utf-8');
+          transitionOk = true;
+        });
+      }
     } catch {
       // lock or filesystem failure — leave task in_progress, do not rename verdict file
     }
