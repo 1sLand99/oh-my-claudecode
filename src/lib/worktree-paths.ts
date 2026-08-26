@@ -286,10 +286,10 @@ export function resolveNonGitStateAnchor(startDir?: string): string {
   try {
     const current = resolve(startDir || process.cwd());
     if (isSensitiveStateLocation(current)) return resolveNonGitFallbackRoot();
+    return resolveNonGitFallbackRoot();
   } catch {
     return resolveNonGitFallbackRoot();
   }
-  return resolveNonGitFallbackRoot();
 }
 
 /**
@@ -852,10 +852,8 @@ export function getOmcRoot(worktreeRoot?: string): string {
     // into the parent project's (preserves submodule identity).
     const root = worktreeRoot || getGitTopLevel() || process.cwd();
     const workspaceRoot = findWorkspaceRoot(root);
-    const nonGitCanonicalRoot = !getGitTopLevel(root) && !workspaceRoot;
-    const projectId = nonGitCanonicalRoot
-      ? 'non-git'
-      : getProjectIdentifier(root);
+    const gitTopLevel = getGitTopLevel(root);
+    const projectId = !gitTopLevel && !workspaceRoot ? 'non-git' : getProjectIdentifier(root);
     const centralizedPath = join(customDir, projectId);
 
     // Log notice if both legacy .omc/ and new centralized dir exist
