@@ -64,6 +64,9 @@ const SECURE_FILE_MODE = 0o600;
 const DAEMON_ENV_ALLOWLIST = [
   // Core system paths
   'PATH', 'HOME', 'USERPROFILE',
+  // OMC state/profile context (non-secret paths and session identifiers)
+  'OMC_STATE_DIR', 'CLAUDE_CONFIG_DIR',
+  'CLAUDE_SESSION_ID', 'CLAUDECODE_SESSION_ID',
   // User identification
   'USER', 'USERNAME', 'LOGNAME',
   // Locale settings

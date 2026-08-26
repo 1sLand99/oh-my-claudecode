@@ -72,6 +72,8 @@ interface UsageCache {
   rateLimitedUntil?: number;
   /** Timestamp of the last successful API fetch (drives stale data cutoff) */
   lastSuccessAt?: number;
+  /** User-Agent identity that received a rate-limit response (Anthropic only) */
+  rateLimitIdentity?: string;
 }
 
 interface OAuthCredentials {
@@ -400,6 +402,8 @@ interface WriteCacheOptions {
   rateLimitedUntil?: number;
   errorReason?: UsageErrorReason;
   lastSuccessAt?: number;
+  /** User-Agent identity associated with an Anthropic rate-limit response */
+  rateLimitIdentity?: string;
 }
 
 /**
@@ -424,6 +428,7 @@ function writeCache(opts: WriteCacheOptions): void {
       rateLimitedCount: opts.rateLimitedCount && opts.rateLimitedCount > 0 ? opts.rateLimitedCount : undefined,
       rateLimitedUntil: opts.rateLimitedUntil,
       lastSuccessAt: opts.lastSuccessAt,
+      rateLimitIdentity: opts.rateLimitIdentity,
     };
 
     writeFileSync(cachePath, JSON.stringify(cache, null, 2));
@@ -463,8 +468,14 @@ function getTransientNetworkBackoffMs(pollIntervalMs: number): number {
   return Math.max(CACHE_TTL_TRANSIENT_NETWORK_MS, sanitizePollIntervalMs(pollIntervalMs));
 }
 
-function isCacheValid(cache: UsageCache, pollIntervalMs: number): boolean {
+function isCacheValid(cache: UsageCache, pollIntervalMs: number, rateLimitIdentity?: string): boolean {
   if (cache.rateLimited) {
+    if (
+      cache.source === 'anthropic' &&
+      (cache.rateLimitIdentity ?? 'anonymous') !== (rateLimitIdentity ?? 'anonymous')
+    ) {
+      return false;
+    }
     if (cache.rateLimitedUntil != null) {
       return Date.now() < cache.rateLimitedUntil;
     }
@@ -517,6 +528,7 @@ function createRateLimitedCacheEntry(
   pollIntervalMs: number,
   previousCount: number,
   lastSuccessAt?: number,
+  rateLimitIdentity?: string,
 ): UsageCache {
   const timestamp = Date.now();
   const rateLimitedCount = previousCount + 1;
@@ -531,6 +543,7 @@ function createRateLimitedCacheEntry(
     rateLimitedCount,
     rateLimitedUntil: timestamp + getRateLimitedBackoffMs(pollIntervalMs, rateLimitedCount),
     lastSuccessAt,
+    rateLimitIdentity,
   };
 }
 
@@ -1762,13 +1775,21 @@ async function fetchAndCacheUsage<T>(opts: {
   parseFn: (data: T) => RateLimits | null;
   cache: UsageCache | null;
   pollIntervalMs: number;
+  rateLimitIdentity?: string;
 }): Promise<UsageResult> {
-  const { source, fetchFn, parseFn, cache, pollIntervalMs } = opts;
+  const { source, fetchFn, parseFn, cache, pollIntervalMs, rateLimitIdentity } = opts;
   const result = await fetchFn();
 
   if (result.rateLimited) {
     const prevLastSuccess = cache?.lastSuccessAt;
-    const rateLimitedCache = createRateLimitedCacheEntry(source, cache?.data || null, pollIntervalMs, cache?.rateLimitedCount || 0, prevLastSuccess);
+    const rateLimitedCache = createRateLimitedCacheEntry(
+      source,
+      cache?.data || null,
+      pollIntervalMs,
+      cache?.rateLimitedCount || 0,
+      prevLastSuccess,
+      rateLimitIdentity,
+    );
     writeCache({
       data: rateLimitedCache.data,
       error: rateLimitedCache.error,
@@ -1778,6 +1799,7 @@ async function fetchAndCacheUsage<T>(opts: {
       rateLimitedUntil: rateLimitedCache.rateLimitedUntil,
       errorReason: 'rate_limited',
       lastSuccessAt: rateLimitedCache.lastSuccessAt,
+      rateLimitIdentity: rateLimitedCache.rateLimitIdentity,
     });
     if (rateLimitedCache.data) {
       if (prevLastSuccess && Date.now() - prevLastSuccess > MAX_STALE_DATA_MS) {
@@ -1845,19 +1867,30 @@ export async function getUsage(opts?: { clientVersion?: string }): Promise<Usage
   const currentSource: UsageSource =
     isMinimax ? 'minimax' : isKimi ? 'kimi' : isZai && authToken ? 'zai' : 'anthropic';
   const pollIntervalMs = getUsagePollIntervalMs();
+  const rateLimitIdentity = currentSource === 'anthropic'
+    ? buildUserAgent(opts?.clientVersion) ?? 'anonymous'
+    : undefined;
 
   // Migrate legacy single-file cache to provider-specific file (one-shot, best-effort)
   migrateLegacyCache(currentSource);
 
   const initialCache = readCache(currentSource);
-  if (initialCache && isCacheValid(initialCache, pollIntervalMs) && initialCache.source === currentSource) {
+  if (
+    initialCache &&
+    isCacheValid(initialCache, pollIntervalMs, rateLimitIdentity) &&
+    initialCache.source === currentSource
+  ) {
     return getCachedUsageResult(initialCache);
   }
 
   try {
     return await withFileLock(lockPathFor(getCachePath(currentSource)), async () => {
       const cache = readCache(currentSource);
-      if (cache && isCacheValid(cache, pollIntervalMs) && cache.source === currentSource) {
+      if (
+        cache &&
+        isCacheValid(cache, pollIntervalMs, rateLimitIdentity) &&
+        cache.source === currentSource
+      ) {
         return getCachedUsageResult(cache);
       }
 
@@ -1933,6 +1966,7 @@ export async function getUsage(opts?: { clientVersion?: string }): Promise<Usage
           }),
           cache,
           pollIntervalMs,
+          rateLimitIdentity,
         });
       }
 

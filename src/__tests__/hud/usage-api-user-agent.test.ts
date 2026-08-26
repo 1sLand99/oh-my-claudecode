@@ -24,9 +24,15 @@ import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import { buildUserAgent, getUsage } from '../../hud/usage-api.js';
 
+const lockState = vi.hoisted(() => ({ tail: Promise.resolve() }));
+
 // Mock file-lock so withFileLock always executes the callback.
 vi.mock('../../lib/file-lock.js', () => ({
-  withFileLock: vi.fn((_lockPath: string, fn: () => unknown) => fn()),
+  withFileLock: vi.fn((_lockPath: string, fn: () => unknown) => {
+    const run = lockState.tail.then(fn);
+    lockState.tail = run.then(() => undefined, () => undefined);
+    return run;
+  }),
   lockPathFor: vi.fn((p: string) => p + '.lock'),
 }));
 
@@ -93,6 +99,22 @@ function stubUsage200(httpsRequest: ReturnType<typeof vi.fn>): void {
   });
 }
 
+/** Answer the next https.request with a rate-limit response. */
+function stubUsage429(httpsRequest: ReturnType<typeof vi.fn>): void {
+  httpsRequest.mockImplementationOnce((_options: unknown, callback: (res: unknown) => void) => {
+    const req = new EventEmitter() as EventEmitter & { end: () => void; destroy: () => void };
+    req.destroy = vi.fn();
+    req.end = () => {
+      const res = new EventEmitter() as EventEmitter & { statusCode?: number };
+      res.statusCode = 429;
+      callback(res);
+      res.emit('data', JSON.stringify({ error: { type: 'rate_limit_error' } }));
+      res.emit('end');
+    };
+    return req;
+  });
+}
+
 describe('buildUserAgent', () => {
   it('names the Claude Code version the session is actually running', () => {
     // Mutation that fails this: drop the header, or stop interpolating the version.
@@ -132,6 +154,7 @@ describe('GET /api/oauth/usage request headers', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    lockState.tail = Promise.resolve();
     process.env = { ...originalEnv };
     delete process.env.ANTHROPIC_BASE_URL;
     delete process.env.ANTHROPIC_AUTH_TOKEN;
@@ -183,5 +206,34 @@ describe('GET /api/oauth/usage request headers', () => {
 
     const headers = httpsModule.default.request.mock.calls[0][0].headers;
     expect('User-Agent' in headers).toBe(false);
+  });
+
+  it('does not let an anonymous 429 suppress a concurrent versioned request', async () => {
+    const cacheFiles = new Map<string, string>();
+    vi.mocked(fs.existsSync).mockImplementation(
+      (p) => String(p).endsWith('.credentials.json') || cacheFiles.has(String(p)),
+    );
+    vi.mocked(fs.readFileSync).mockImplementation((p) => {
+      const path = String(p);
+      return (path.endsWith('.credentials.json') ? FAKE_CREDENTIALS : cacheFiles.get(path) ?? '{}') as never;
+    });
+    vi.mocked(fs.writeFileSync).mockImplementation((p, content) => {
+      cacheFiles.set(String(p), String(content));
+    });
+
+    stubUsage429(httpsModule.default.request);
+    stubUsage200(httpsModule.default.request);
+
+    const [, versioned] = await Promise.all([
+      getUsage(),
+      getUsage({ clientVersion: '2.1.232' }),
+    ]);
+
+    expect(httpsModule.default.request).toHaveBeenCalledTimes(2);
+    const requests = httpsModule.default.request.mock.calls.map((call) => call[0].headers);
+    expect(requests.some((headers) => !('User-Agent' in headers))).toBe(true);
+    expect(requests.some((headers) => headers['User-Agent'] === 'claude-code/2.1.232')).toBe(true);
+    expect(versioned.rateLimits).not.toBeNull();
+    expect(versioned.error).toBeUndefined();
   });
 });
