@@ -41,7 +41,7 @@ describe('Wiki Lint', () => {
   let tempDir: string;
 
   beforeEach(async () => {
-    tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'wiki-lint-test-'));
+    tempDir = await fsp.mkdtemp(path.join(os.homedir(), 'wiki-lint-test-'));
     ensureWikiDir(tempDir);
   });
 

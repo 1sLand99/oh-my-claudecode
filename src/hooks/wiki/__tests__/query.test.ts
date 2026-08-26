@@ -39,7 +39,7 @@ describe('Wiki Query', () => {
   let tempDir: string;
 
   beforeEach(async () => {
-    tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'wiki-query-test-'));
+    tempDir = await fsp.mkdtemp(path.join(os.homedir(), 'wiki-query-test-'));
     ensureWikiDir(tempDir);
   });
 

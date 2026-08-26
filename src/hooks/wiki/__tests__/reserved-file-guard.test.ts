@@ -23,7 +23,7 @@ describe('writePageUnsafe reserved file guard', () => {
   let tempDir: string;
 
   beforeEach(async () => {
-    tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'wiki-guard-'));
+    tempDir = await fsp.mkdtemp(path.join(os.homedir(), 'wiki-guard-'));
     ensureWikiDir(tempDir);
   });
 

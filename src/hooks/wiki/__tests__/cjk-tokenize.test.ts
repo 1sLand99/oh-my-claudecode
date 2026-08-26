@@ -121,7 +121,7 @@ describe('queryWiki with CJK content', () => {
   let tempDir: string;
 
   beforeEach(async () => {
-    tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'wiki-cjk-test-'));
+    tempDir = await fsp.mkdtemp(path.join(os.homedir(), 'wiki-cjk-test-'));
     ensureWikiDir(tempDir);
   });
 
