@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'fs';
+import { mkdtempSync as rawMkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
@@ -24,6 +24,24 @@ const tmuxCalls = vi.hoisted(() => ({
   afterSplit: null as (() => void) | null,
   afterKillPane: null as (() => void) | null,
 }));
+
+let fixtureRoot: string | undefined;
+let previousHome: string | undefined;
+let previousUserProfile: string | undefined;
+let previousStateDir: string | undefined;
+function mkdtempSync(prefix: string): string {
+  const root = rawMkdtempSync(prefix);
+  if (!fixtureRoot) {
+    fixtureRoot = root;
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    previousStateDir = process.env.OMC_STATE_DIR;
+    process.env.HOME = root;
+    process.env.USERPROFILE = root;
+    delete process.env.OMC_STATE_DIR;
+  }
+  return root;
+}
 
 vi.mock('child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('child_process')>();
@@ -169,7 +187,7 @@ function setupTaskDir(cwd: string): void {
 
 function denyTaskReset(cwd: string): void {
   writeFileSync(
-    join(cwd, '.omc/state/team/test-team/tasks/1.lock'),
+    join(cwd, '.omc/state/team/test-team/tasks/task-1.lock'),
     JSON.stringify({ pid: process.pid, timestamp: Date.now() }),
   );
 }
@@ -192,6 +210,19 @@ describe('spawnWorkerForTask – prompt mode and interactive worker launch', () 
     delete process.env.OMC_SHELL_READY_TIMEOUT_MS;
     cwd = mkdtempSync(join(tmpdir(), 'runtime-gemini-prompt-'));
     setupTaskDir(cwd);
+  });
+
+  afterEach(() => {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
+    if (previousStateDir === undefined) delete process.env.OMC_STATE_DIR;
+    else process.env.OMC_STATE_DIR = previousStateDir;
+    fixtureRoot = undefined;
+    previousHome = undefined;
+    previousUserProfile = undefined;
+    previousStateDir = undefined;
   });
 
   it('gemini worker launch args include -p flag with inbox path', async () => {
