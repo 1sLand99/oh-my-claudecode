@@ -1,6 +1,6 @@
 import { execFileSync } from 'child_process';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
-import { tmpdir } from 'os';
+import { homedir } from 'os';
 import { delimiter, join } from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -52,14 +52,24 @@ function writeTranscriptWithoutContext(filePath: string, inputTokens: number): v
 describe('context-guard-stop safe recovery messaging (issue #1373)', () => {
   let tempDir: string;
   let transcriptPath: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
 
   beforeEach(() => {
-    tempDir = mkdtempSync(join(tmpdir(), 'context-guard-stop-'));
+    tempDir = mkdtempSync(join(homedir(), 'context-guard-stop-'));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = tempDir;
+    process.env.USERPROFILE = tempDir;
     transcriptPath = join(tempDir, 'transcript.jsonl');
   });
 
   afterEach(() => {
     rmSync(tempDir, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
   });
 
   it('blocks high-context stops with explicit compact-first recovery advice', () => {
