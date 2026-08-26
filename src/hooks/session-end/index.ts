@@ -8,7 +8,7 @@ import type { NotificationPlatform } from '../../notifications/types.js';
 import { cleanupBridgeSessions } from '../../tools/python-repl/bridge-manager.js';
 import { resolveToWorktreeRoot, getOmcRoot, validateSessionId, isValidTranscriptPath, resolveSessionStatePath } from '../../lib/worktree-paths.js';
 import { SESSION_END_MODE_STATE_FILES, SESSION_METRICS_MODE_FILES } from '../../lib/mode-names.js';
-import { canClearStateForSession, clearModeStateFile, readModeState } from '../../lib/mode-state-io.js';
+import { canClearStateForSession, clearModeStateFile, readModeState, readModeStateWithMeta } from '../../lib/mode-state-io.js';
 import { completeForegroundCleanup, completeForegroundCleanupAndSealCore, prepareCoreManifest, readSessionEndJob, sealWikiManifest } from './cleanup-manifest.js';
 import { spawnSessionEndWorker } from './worker.js';
 import { buildWikiSessionEndCaptureIntent } from '../wiki/session-hooks.js';
@@ -533,7 +533,7 @@ export function cleanupModeStates(directory: string, sessionId?: string): { file
       // For JSON files, check if active before removing
       if (file.endsWith('.json')) {
         const sessionState = sessionId
-          ? readModeState<Record<string, unknown>>(mode, directory, sessionId)
+          ? readModeStateWithMeta<Record<string, unknown>>(mode, directory, sessionId)
           : null;
 
         let shouldCleanup = sessionState?.active === true && (!sessionId || canClearStateForSession(sessionState, sessionId));
@@ -663,7 +663,7 @@ function extractTeamNameFromState(state: Record<string, unknown> | null): string
 
 async function findSessionOwnedTeams(directory: string, sessionId: string): Promise<string[]> {
   const teamNames = new Set<string>();
-  const teamState = readModeState<Record<string, unknown>>('team', directory, sessionId);
+  const teamState = readModeStateWithMeta<Record<string, unknown>>('team', directory, sessionId);
   const stateTeamName = extractTeamNameFromState(teamState);
   if (stateTeamName) {
     teamNames.add(stateTeamName);
@@ -888,7 +888,7 @@ export async function runForegroundSessionEndCleanup(directory: string, sessionI
 
 /** Foreground path: only durable local state and worker launch; deferred adapters are worker-owned. */
 function buildDurableSessionEndPayload(directory: string, input: SessionEndInput, metrics: SessionMetrics): Record<string, unknown> {
-  const teamState = readModeState<Record<string, unknown>>('team', directory, input.session_id);
+  const teamState = readModeStateWithMeta<Record<string, unknown>>('team', directory, input.session_id);
   const teamName = teamState && canClearStateForSession(teamState, input.session_id)
     ? extractTeamNameFromState(teamState)
     : undefined;

@@ -1315,6 +1315,21 @@ export function readModeState<T = Record<string, unknown>>(
   }
 }
 
+/** Read the persisted state envelope, retaining `_meta` for authorization checks. */
+export function readModeStateWithMeta<T = Record<string, unknown>>(
+  mode: string,
+  directory?: string,
+  sessionId?: string,
+): T | null {
+  const filePath = resolveFile(mode, directory, sessionId);
+  if (!existsSync(filePath)) return null;
+  try {
+    return JSON.parse(readFileSync(filePath, 'utf-8')) as T;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Clear (delete) a mode state file from disk.
  *

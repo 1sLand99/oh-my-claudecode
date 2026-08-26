@@ -3,7 +3,7 @@ import { execSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { clearWorktreeCache } from '../../lib/worktree-paths.js';
 import {
   addUltragoalGoal,
@@ -701,7 +701,7 @@ describe('ultragoal artifacts', () => {
 
   describe('multi-repo workspace anchor', () => {
     it('writes artifacts to the workspace anchor .omc/ when .omc-workspace marker exists in a parent dir', async () => {
-      const workspaceRoot = await mkdtemp(join(tmpdir(), 'omc-workspace-anchor-'));
+      const workspaceRoot = await mkdtemp(join(homedir(), 'omc-workspace-anchor-'));
       try {
         // Create workspace marker so getOmcRoot() anchors to workspaceRoot
         writeFileSync(join(workspaceRoot, '.omc-workspace'), '{}');

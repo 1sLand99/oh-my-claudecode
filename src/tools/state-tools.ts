@@ -391,9 +391,12 @@ function cleanupTeamRuntimeState(root: string, teamNames?: string[]): number {
   }
 
   for (const teamName of teamNames ?? []) {
-    if (!teamName) continue;
+    if (!teamName || !/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(teamName)) continue;
     try {
-      rmSync(join(teamStateRoot, teamName), { recursive: true, force: true });
+      const teamPath = resolve(teamStateRoot, teamName);
+      const withinRoot = relative(resolve(teamStateRoot), teamPath);
+      if (withinRoot.startsWith(`..${sep}`) || withinRoot === '..' || isAbsolute(withinRoot)) continue;
+      rmSync(teamPath, { recursive: true, force: true });
       removed += 1;
     } catch {
       // best effort
@@ -2057,7 +2060,7 @@ export const stateGetStatusTool: ToolDefinition<{
                 try {
                   const content = readFileSync(statePath, 'utf-8');
                   const state = JSON.parse(content);
-                  return state.active === true;
+                  return state.active === true && canClearStateForSession(state, sessionId);
                 } catch { return false; }
               })());
 
@@ -2117,7 +2120,7 @@ export const stateGetStatusTool: ToolDefinition<{
                 if (existsSync(sessionPath)) {
                   const content = readFileSync(sessionPath, 'utf-8');
                   const state = JSON.parse(content);
-                  return state.active === true;
+                  return state.active === true && canClearStateForSession(state, sid);
                 }
                 return false;
               } catch {

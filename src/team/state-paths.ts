@@ -220,14 +220,18 @@ export const TeamPaths = {
  * Get absolute path for a team state file.
  */
 export function absPath(cwd: string, relativePath: string): string {
-  return isAbsolute(relativePath) ? relativePath : join(cwd, relativePath);
+  if (isAbsolute(relativePath)) return relativePath;
+  if (relativePath === '.omc' || relativePath.startsWith('.omc/')) {
+    return join(getOmcRoot(cwd), relativePath.slice('.omc'.length).replace(/^\//, ''));
+  }
+  return join(cwd, relativePath);
 }
 
 /**
  * Get absolute root path for a team's state directory.
  */
 export function teamStateRoot(cwd: string, teamName: string): string {
-  return join(cwd, TeamPaths.root(teamName));
+  return absPath(cwd, TeamPaths.root(teamName));
 }
 
 /**
