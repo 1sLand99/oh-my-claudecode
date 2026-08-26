@@ -5,6 +5,7 @@ import { formatOmcCliInvocation } from '../utils/omc-cli-rendering.js';
 import type { CliAgentType } from './model-contract.js';
 import { sanitizeName } from './tmux-session.js';
 import { validateResolvedPath } from './fs-utils.js';
+import { teamStateRoot } from './state-paths.js';
 
 export interface WorkerBootstrapParams {
   teamName: string;
@@ -305,7 +306,7 @@ export async function composeInitialInbox(
   cwd: string,
   cliOutputContract?: string,
 ): Promise<void> {
-  const inboxPath = join(cwd, `.omc/state/team/${teamName}/workers/${workerName}/inbox.md`);
+  const inboxPath = join(teamStateRoot(cwd, sanitizeName(teamName)), 'workers', sanitizeName(workerName), 'inbox.md');
   await mkdir(dirname(inboxPath), { recursive: true });
   const finalContent = cliOutputContract && !content.includes(cliOutputContract)
     ? `${content}\n${cliOutputContract}`
@@ -328,8 +329,8 @@ export async function appendToInbox(
 ): Promise<void> {
   const safeTeam = sanitizeName(teamName);
   const safeWorker = sanitizeName(workerName);
-  const inboxPath = join(cwd, `.omc/state/team/${safeTeam}/workers/${safeWorker}/inbox.md`);
-  validateResolvedPath(inboxPath, cwd);
+  const inboxPath = join(teamStateRoot(cwd, safeTeam), 'workers', safeWorker, 'inbox.md');
+  validateResolvedPath(inboxPath, teamStateRoot(cwd, safeTeam));
   await mkdir(dirname(inboxPath), { recursive: true });
   await appendFile(inboxPath, `\n\n---\n${message}`, 'utf-8');
 }
@@ -345,15 +346,16 @@ export async function ensureWorkerStateDir(
   workerName: string,
   cwd: string
 ): Promise<void> {
-  const workerDir = join(cwd, `.omc/state/team/${teamName}/workers/${workerName}`);
+  const root = teamStateRoot(cwd, sanitizeName(teamName));
+  const workerDir = join(root, 'workers', sanitizeName(workerName));
   await mkdir(workerDir, { recursive: true });
 
   // Also ensure mailbox dir
-  const mailboxDir = join(cwd, `.omc/state/team/${teamName}/mailbox`);
+  const mailboxDir = join(root, 'mailbox');
   await mkdir(mailboxDir, { recursive: true });
 
   // And tasks dir
-  const tasksDir = join(cwd, `.omc/state/team/${teamName}/tasks`);
+  const tasksDir = join(root, 'tasks');
   await mkdir(tasksDir, { recursive: true });
 }
 
@@ -366,7 +368,7 @@ export async function writeWorkerOverlay(
 ): Promise<string> {
   const { teamName, workerName, cwd } = params;
   const overlay = generateWorkerOverlay(params);
-  const overlayPath = join(cwd, `.omc/state/team/${teamName}/workers/${workerName}/AGENTS.md`);
+  const overlayPath = join(teamStateRoot(cwd, sanitizeName(teamName)), 'workers', sanitizeName(workerName), 'AGENTS.md');
   await mkdir(dirname(overlayPath), { recursive: true });
   await writeFile(overlayPath, overlay, 'utf-8');
   return overlayPath;

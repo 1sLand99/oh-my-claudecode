@@ -421,6 +421,7 @@ export async function startTeam(config: TeamConfig): Promise<TeamRuntime> {
       teamName, workerName: wName, agentType,
       tasks: tasks.map((t, idx) => ({ id: String(idx + 1), subject: t.subject, description: t.description })),
       cwd,
+      instructionStateRoot: root,
     });
   }
 

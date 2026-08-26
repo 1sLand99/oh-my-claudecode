@@ -18,6 +18,7 @@ vi.mock('../tmux-session.js', async () => {
 describe('assignTask trigger delivery', () => {
   let previousHome: string | undefined;
   let previousUserProfile: string | undefined;
+  let previousStateDir: string | undefined;
 
   beforeEach(() => {
     mocks.sendToWorker.mockReset();
@@ -28,6 +29,8 @@ describe('assignTask trigger delivery', () => {
     else process.env.HOME = previousHome;
     if (previousUserProfile === undefined) delete process.env.USERPROFILE;
     else process.env.USERPROFILE = previousUserProfile;
+    if (previousStateDir === undefined) delete process.env.OMC_STATE_DIR;
+    else process.env.OMC_STATE_DIR = previousStateDir;
   });
 
   it('rolls task assignment back when tmux trigger cannot be delivered', async () => {
@@ -35,8 +38,10 @@ describe('assignTask trigger delivery', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'team-runtime-assign-'));
     previousHome = process.env.HOME;
     previousUserProfile = process.env.USERPROFILE;
+    previousStateDir = process.env.OMC_STATE_DIR;
     process.env.HOME = cwd;
     process.env.USERPROFILE = cwd;
+    delete process.env.OMC_STATE_DIR;
     const teamName = 'assign-team';
     const root = join(cwd, '.omc', 'state', 'team', teamName);
     mkdirSync(join(root, 'tasks'), { recursive: true });
