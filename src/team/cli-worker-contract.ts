@@ -53,6 +53,13 @@ export interface CliWorkerOutputPayload {
   launch_attempt_id?: string;
 }
 
+export interface CliWorkerVerdictIdentity {
+  taskId?: string;
+  claimToken?: string;
+  taskVersion?: number;
+  launchAttemptId?: string;
+}
+
 const VALID_VERDICTS: ReadonlySet<string> = new Set(['approve', 'revise', 'reject']);
 const VALID_SEVERITIES: ReadonlySet<string> = new Set(['critical', 'major', 'minor', 'nit']);
 
@@ -81,6 +88,7 @@ export function shouldInjectContract(
 export function renderCliWorkerOutputContract(
   role: CanonicalTeamRole,
   output_file: string,
+  identity: CliWorkerVerdictIdentity = {},
 ): string {
   return [
     '',
@@ -96,10 +104,10 @@ export function renderCliWorkerOutputContract(
     '```json',
     '{',
     `  "role": "${role}",`,
-    '  "task_id": "<task id from the assignment above>",',
-    '  "claim_token": "<claim token from the claim response>",',
-    '  "task_version": <task version from the claim response>,',
-    '  "launch_attempt_id": "<exact OMC_WORKER_LAUNCH_ATTEMPT_ID>",',
+    `  "task_id": "${identity.taskId ?? '<task id from the assignment above>'}",`,
+    `  "claim_token": "${identity.claimToken ?? '<claim token from the claim response>'}",`,
+    `  "task_version": ${identity.taskVersion ?? '<task version from the claim response>'},`,
+    `  "launch_attempt_id": "${identity.launchAttemptId ?? '<exact OMC_WORKER_LAUNCH_ATTEMPT_ID>'}",`,
     '  "verdict": "approve" | "revise" | "reject",',
     '  "summary": "one- or two-sentence overall assessment",',
     '  "findings": [',

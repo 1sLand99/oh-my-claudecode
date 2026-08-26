@@ -83,6 +83,19 @@ describe('cli-worker-contract', () => {
       const fragment = renderCliWorkerOutputContract('critic', '/x/verdict.json');
       expect(fragment).toContain('"critical" | "major" | "minor" | "nit"');
     });
+
+    it('renders authenticated identity values for recovery continuations', () => {
+      const fragment = renderCliWorkerOutputContract('critic', '/x/verdict.json', {
+        taskId: '7',
+        claimToken: 'claim-7',
+        taskVersion: 4,
+        launchAttemptId: 'attempt-7',
+      });
+      expect(fragment).toContain('"task_id": "7"');
+      expect(fragment).toContain('"claim_token": "claim-7"');
+      expect(fragment).toContain('"task_version": 4');
+      expect(fragment).toContain('"launch_attempt_id": "attempt-7"');
+    });
   });
 
   describe('cliWorkerOutputFilePath', () => {

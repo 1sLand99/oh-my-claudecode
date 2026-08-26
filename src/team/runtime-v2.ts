@@ -2766,6 +2766,10 @@ export async function executeRecoverDeadWorkerV2Owner(
               replacement_generation: sagaInput.replacementGeneration,
               operational_state: 'active' as const,
               ...(pending.startupContext ? { launch_attempt_id: pending.startupContext.attempt.attempt_id } : {}),
+              ...(pending.agentType === 'cursor'
+                && shouldInjectContract(normalizeDelegationRole(pending.worker.role) as CanonicalTeamRole, pending.agentType)
+                ? { output_file: cliWorkerOutputFilePath(teamStateRoot(input.cwd, input.teamName), sagaInput.workerName) }
+                : {}),
             }
           : candidate);
         const nextRevision = current.stateRevision + 1;
@@ -2878,15 +2882,32 @@ export async function executeRecoverDeadWorkerV2Owner(
         const waitForBoundedStartupEvidence = (resubmit?: () => Promise<StartupInboxResubmitOutcome>) =>
           settleStartupEvidence(evidencePolicy, waitForCurrentEvidence, resubmit);
         const instruction = continuations.length > 0
-          ? continuations.map(continuation => renderRecoveryContinuationInstruction({
-            teamName: input.teamName,
-            workerName: sagaInput.workerName,
-            taskId: continuation.taskId,
-            taskVersion: continuation.taskVersion,
-            claimToken: continuation.claimToken,
-            sequence: continuation.sequence,
-            resumePayload: continuation.payload,
-          })).join('\n\n')
+          ? continuations.map(continuation => {
+            const continuationInstruction = renderRecoveryContinuationInstruction({
+              teamName: input.teamName,
+              workerName: sagaInput.workerName,
+              taskId: continuation.taskId,
+              taskVersion: continuation.taskVersion,
+              claimToken: continuation.claimToken,
+              sequence: continuation.sequence,
+              resumePayload: continuation.payload,
+            });
+            const recoveryRole = normalizeDelegationRole(pending.worker.role) as CanonicalTeamRole;
+            const recoveryContract = pending.agentType === 'cursor'
+              && shouldInjectContract(recoveryRole, pending.agentType)
+              ? renderCliWorkerOutputContract(
+                recoveryRole,
+                cliWorkerOutputFilePath(teamStateRoot(input.cwd, input.teamName), sagaInput.workerName),
+                {
+                  taskId: continuation.taskId,
+                  claimToken: continuation.claimToken,
+                  taskVersion: continuation.taskVersion,
+                  launchAttemptId: startupAttemptId,
+                },
+              )
+              : '';
+            return `${continuationInstruction}${recoveryContract ? `\n${recoveryContract}` : ''}`;
+          }).join('\n\n')
           : 'Recovery completed for this idle worker. Wait for a real team task assignment and do not create or claim fake work.';
         const inboxPublished = await withWorkerLaunchAttemptFence(startupContext.attempt, async () => {
           await ensureFence();
@@ -4019,6 +4040,24 @@ export async function processCliWorkerVerdicts(
               taskId: payload.task_id,
               status: 'already_terminal',
               verdict: payload.verdict,
+            });
+            continue;
+          }
+          const currentClaim = processedTask.claim && typeof processedTask.claim === 'object'
+            ? processedTask.claim as Record<string, unknown>
+            : null;
+          const activeClaimMismatch = processedTask.owner === worker.name
+            && processedTask.status === 'in_progress'
+            && currentClaim?.owner === worker.name
+            && (!cursorReviewer || processedTaskRole === workerRole);
+          if (activeClaimMismatch) {
+            try { await rename(verdictFile, processedOutputFile); } catch { /* best-effort quarantine */ }
+            results.push({
+              workerName: worker.name,
+              taskId: payload.task_id,
+              status: 'skipped',
+              verdict: payload.verdict,
+              reason: 'cursor_verdict_claim_mismatch',
             });
             continue;
           }
