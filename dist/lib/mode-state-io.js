@@ -9,7 +9,7 @@ import { closeSync, existsSync, fstatSync, fsyncSync, linkSync, mkdirSync, openS
 import { basename, dirname, join } from 'path';
 import { createHash, randomUUID } from 'crypto';
 import { spawnSync } from 'child_process';
-import { getOmcRoot, probeGitTopLevel, resolveNonGitStateAnchor, resolveStatePath, resolveSessionStatePath, ensureSessionStateDir, ensureOmcDir, listSessionIds, } from './worktree-paths.js';
+import { getGitTopLevel, getOmcRoot, resolveStatePath, resolveSessionStatePath, ensureSessionStateDir, ensureOmcDir, listSessionIds, } from './worktree-paths.js';
 import { atomicWriteJsonSync } from './atomic-write.js';
 function flockPath() { return process.env.NODE_ENV === 'test' && process.env.OMC_TEST_FLOCK_AVAILABLE === '0' ? null : existsSync('/usr/bin/flock') ? '/usr/bin/flock' : existsSync('/bin/flock') ? '/bin/flock' : null; }
 const LOCK_REMOVAL_SCRIPT = String.raw `
@@ -1127,12 +1127,7 @@ export function canClearStateForSession(state, sessionId) {
 // ---------------------------------------------------------------------------
 function resolveStateRoot(directory) {
     const baseDir = directory || process.cwd();
-    const probe = probeGitTopLevel(baseDir);
-    if (probe.status === 'ok')
-        return probe.root;
-    if (probe.status === 'not_a_repository')
-        return resolveNonGitStateAnchor(baseDir);
-    throw new Error('Git probe failed while resolving runtime state root');
+    return getGitTopLevel(baseDir) || baseDir;
 }
 /**
  * Resolve the state file path for a given mode.
@@ -1337,18 +1332,6 @@ export function readModeState(mode, directory, sessionId) {
             return rest;
         }
         return parsed;
-    }
-    catch {
-        return null;
-    }
-}
-/** Read the persisted state envelope, retaining `_meta` for authorization checks. */
-export function readModeStateWithMeta(mode, directory, sessionId) {
-    const filePath = resolveFile(mode, directory, sessionId);
-    if (!existsSync(filePath))
-        return null;
-    try {
-        return JSON.parse(readFileSync(filePath, 'utf-8'));
     }
     catch {
         return null;

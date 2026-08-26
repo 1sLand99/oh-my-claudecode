@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { homedir } from 'os';
+import { tmpdir } from 'os';
 import { initNotepad, readNotepad, getPriorityContext, getWorkingMemory, addWorkingMemoryEntry, setPriorityContext, addManualEntry, pruneOldEntries, getNotepadStats, formatNotepadContext, DEFAULT_CONFIG, PRIORITY_HEADER, WORKING_MEMORY_HEADER, MANUAL_HEADER, getManualSection, getNotepadPath } from '../hooks/notepad/index.js';
 describe('Notepad Module', () => {
     let testDir;
     beforeEach(() => {
         // Create a unique temp directory for each test
-        testDir = join(homedir(), `notepad-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        testDir = join(tmpdir(), `notepad-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
         mkdirSync(testDir, { recursive: true });
     });
     afterEach(() => {

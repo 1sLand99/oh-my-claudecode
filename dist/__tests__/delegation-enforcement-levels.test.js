@@ -112,7 +112,7 @@ describe('delegation-enforcement-levels', () => {
         const sourceFileInput = {
             toolName: 'Write',
             toolInput: { filePath: 'src/app.ts' },
-            directory: '/home/test-project',
+            directory: '/tmp/test-project',
         };
         it('defaults to warn when no config file exists', () => {
             mockExistsSync.mockReturnValue(false);
@@ -126,7 +126,7 @@ describe('delegation-enforcement-levels', () => {
             // Local config exists with 'off', global has 'strict'
             mockExistsSync.mockImplementation((p) => {
                 const s = String(p);
-                if (s.endsWith('/.omc/config.json'))
+                if (/[\\/]tmp[\\/]test-project[\\/]\.omc[\\/]config\.json$/.test(s))
                     return true;
                 if (/[\\/]mock[\\/]home[\\/]\.claude[\\/]\.omc-config\.json$/.test(s))
                     return true;
@@ -134,7 +134,7 @@ describe('delegation-enforcement-levels', () => {
             });
             mockReadFileSync.mockImplementation((p) => {
                 const s = String(p);
-                if (s.endsWith('/.omc/config.json')) {
+                if (/[\\/]tmp[\\/]test-project[\\/]\.omc[\\/]config\.json$/.test(s)) {
                     return JSON.stringify({ delegationEnforcementLevel: 'off' });
                 }
                 if (/[\\/]mock[\\/]home[\\/]\.claude[\\/]\.omc-config\.json$/.test(s)) {
@@ -199,7 +199,7 @@ describe('delegation-enforcement-levels', () => {
         it('supports enforcementLevel key as alternative', () => {
             mockExistsSync.mockImplementation((p) => {
                 const s = String(p);
-                if (s.endsWith('/.omc/config.json'))
+                if (/[\\/]tmp[\\/]test-project[\\/]\.omc[\\/]config\.json$/.test(s))
                     return true;
                 return false;
             });

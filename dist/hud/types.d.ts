@@ -33,12 +33,6 @@ export interface OmcHudState {
 export interface StatuslineStdin {
     /** Transcript path for parsing conversation history */
     transcript_path?: string;
-    /**
-     * Claude Code version, e.g. "2.1.232". Claude Code puts this in every
-     * statusline payload; it is the version the session is actually running, and
-     * it is what the usage API's User-Agent must name (see buildUserAgent).
-     */
-    version?: string;
     /** Current working directory */
     cwd?: string;
     /** Model information from Claude Code statusline stdin */

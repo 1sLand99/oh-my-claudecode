@@ -35,7 +35,6 @@ import { resolvePluginDirArg } from '../lib/plugin-dir.js';
 import { launchCommand } from './launch.js';
 import { interopCommand } from './interop.js';
 import { askCommand, ASK_USAGE } from './ask.js';
-import { graphCommand } from './graph.js';
 import { warnIfWin32 } from './win32-warning.js';
 import { autoresearchCommand } from './autoresearch.js';
 import { runHudWatchLoop } from './hud-watch.js';
@@ -1413,10 +1412,6 @@ program
     .action(async (args) => {
     await aliasRetirementCommand(args ?? []);
 });
-/**
- * Graph command - Execute sealed graph descriptors (graph runtime v2)
- */
-program.addCommand(graphCommand());
 /**
  * Returns the fully-configured commander program.
  *

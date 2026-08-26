@@ -17865,7 +17865,7 @@ var StdioServerTransport = class {
 var import_node_crypto2 = require("node:crypto");
 var import_child_process5 = require("child_process");
 var import_path12 = require("path");
-var import_url2 = require("url");
+var import_url = require("url");
 var import_fs12 = require("fs");
 var import_promises4 = require("fs/promises");
 
@@ -17894,7 +17894,6 @@ var import_child_process = require("child_process");
 var import_fs = require("fs");
 var import_os2 = require("os");
 var import_path2 = require("path");
-var import_url = require("url");
 
 // src/utils/config-dir.ts
 var import_path = require("path");
@@ -17921,8 +17920,8 @@ var OmcPaths = {
 };
 var MAX_WORKTREE_CACHE_SIZE = 8;
 var worktreeCacheMap = /* @__PURE__ */ new Map();
+var toplevelCacheMap = /* @__PURE__ */ new Map();
 var superprojectCacheMap = /* @__PURE__ */ new Map();
-var canonicalWorkingDirectoryRoots = /* @__PURE__ */ new WeakMap();
 var workspaceCacheMap = /* @__PURE__ */ new Map();
 function findWorkspaceRoot(startDir) {
   if (process.env.OMC_DISABLE_MULTIREPO === "1") return null;
@@ -18026,325 +18025,35 @@ function resolveSuperprojectRoot(cwd) {
   }
   return anchor;
 }
-var SENSITIVE_DIR_BASENAMES = /* @__PURE__ */ new Set([
-  ".ssh",
-  ".gnupg",
-  ".aws",
-  ".azure",
-  ".gcloud",
-  ".kube",
-  "ssh",
-  ".pki",
-  ".config",
-  ".claude",
-  ".claude.json",
-  ".codex",
-  ".gemini",
-  ".cursor",
-  ".vscode",
-  ".ollama",
-  ".docker",
-  ".npm",
-  ".cache",
-  ".local",
-  "desktop",
-  "documents",
-  "downloads",
-  "pictures",
-  "photos",
-  "music",
-  "movies",
-  "videos",
-  "public",
-  "library"
-]);
-function sensitiveAbsoluteRoots() {
-  const roots = [];
-  const temp = (() => {
-    try {
-      return (0, import_path2.resolve)((0, import_os2.tmpdir)());
-    } catch {
-      return null;
-    }
-  })();
-  if (temp) roots.push(temp);
-  if (process.platform === "win32") {
-    const home = (() => {
-      try {
-        return (0, import_path2.resolve)((0, import_os2.homedir)());
-      } catch {
-        return null;
-      }
-    })();
-    roots.push("C:\\Windows", "C:\\Program Files", "C:\\Program Files (x86)", "C:\\ProgramData");
-    const drive = (home && /^[a-zA-Z]:/.exec(home))?.[0];
-    if (drive) roots.push(`${drive}\\Windows`, `${drive}\\Program Files`, `${drive}\\Program Files (x86)`, `${drive}\\ProgramData`);
-  } else {
-    roots.push("/var", "/usr", "/etc", "/opt", "/private/var");
-  }
-  return roots;
-}
-function isFilesystemRoot(dir) {
-  return (0, import_path2.dirname)(dir) === dir;
-}
-function isWithinPath(ancestor, candidate) {
-  const rel = (0, import_path2.relative)(ancestor, candidate);
-  return rel === "" || !rel.startsWith(`..${import_path2.sep}`) && rel !== ".." && !(0, import_path2.isAbsolute)(rel);
-}
-function isSensitiveStateLocation(dir) {
-  let candidate;
-  try {
-    candidate = (0, import_path2.resolve)(dir);
-    try {
-      candidate = (0, import_fs.realpathSync)(candidate);
-    } catch {
-    }
-  } catch {
-    return true;
-  }
-  const home = (() => {
-    try {
-      return (0, import_path2.resolve)((0, import_os2.homedir)());
-    } catch {
-      return null;
-    }
-  })();
-  let cursor = candidate;
-  for (; ; ) {
-    const name = (0, import_path2.basename)(cursor);
-    const lowerName = name.toLowerCase();
-    if (home && cursor === candidate && (cursor === home || process.platform === "win32" && cursor.toLowerCase() === home.toLowerCase())) return true;
-    if (name.startsWith(".") && name !== OmcPaths.ROOT) return true;
-    if (SENSITIVE_DIR_BASENAMES.has(lowerName)) return true;
-    if (isFilesystemRoot(cursor)) break;
-    cursor = (0, import_path2.dirname)(cursor);
-  }
-  if (candidate === "/tmp" || candidate === "/private/tmp") return true;
-  if (isFilesystemRoot(candidate)) return true;
-  return sensitiveAbsoluteRoots().some((root) => {
-    const normalizedCandidate = process.platform === "win32" ? candidate.toLowerCase() : candidate;
-    const normalizedRoot = process.platform === "win32" ? root.toLowerCase() : root;
-    return normalizedCandidate === normalizedRoot || isWithinPath(normalizedRoot, normalizedCandidate);
-  });
-}
-function resolveNonGitFallbackRoot() {
-  const home = (0, import_path2.resolve)((0, import_os2.homedir)());
-  if (isFilesystemRoot(home)) {
-    throw new Error("Cannot resolve a safe non-git OMC state root: home resolves to the filesystem root.");
-  }
-  return home;
-}
-function resolveNonGitStateAnchor(startDir) {
-  try {
-    const current = (0, import_path2.resolve)(startDir || process.cwd());
-    const workspaceRoot = findWorkspaceRoot(current);
-    if (workspaceRoot && !isSensitiveStateLocation(workspaceRoot)) return workspaceRoot;
-    if (isSensitiveStateLocation(current)) return resolveNonGitFallbackRoot();
-    return resolveNonGitFallbackRoot();
-  } catch {
-    return resolveNonGitFallbackRoot();
-  }
-}
 function resolveStateAnchorRoot(worktreeRoot) {
   if (worktreeRoot) return resolveSuperprojectRoot(worktreeRoot) || worktreeRoot;
-  return getWorktreeRoot() || resolveNonGitStateAnchor();
+  return getWorktreeRoot() || process.cwd();
 }
-var gitShowToplevelProbeForTests;
-function gitErrorStderr(error2) {
-  if (!error2 || typeof error2 !== "object") {
-    return "";
+function getGitTopLevel(cwd) {
+  const effectiveCwd = cwd || process.cwd();
+  if (toplevelCacheMap.has(effectiveCwd)) {
+    const root = toplevelCacheMap.get(effectiveCwd);
+    toplevelCacheMap.delete(effectiveCwd);
+    toplevelCacheMap.set(effectiveCwd, root);
+    return root || null;
   }
-  const err = error2;
-  if (Buffer.isBuffer(err.stderr)) {
-    return err.stderr.toString("utf8");
-  }
-  if (typeof err.stderr === "string") {
-    return err.stderr;
-  }
-  return typeof err.message === "string" ? err.message : "";
-}
-function isGitCommandPath(path4) {
-  if (typeof path4 !== "string" || path4.length === 0) {
-    return false;
-  }
-  const base = (0, import_path2.basename)(path4);
-  return base === "git" || base === "git.exe" || base === "git.cmd" || base === "git.bat";
-}
-function isConfirmedGitExecutableNotFound(error2) {
-  if (!error2 || typeof error2 !== "object") {
-    return false;
-  }
-  const err = error2;
-  if (err.code !== "ENOENT") {
-    return false;
-  }
-  if (err.killed === true) {
-    return false;
-  }
-  if (typeof err.status === "number") {
-    return false;
-  }
-  if (typeof err.signal === "string" && err.signal.length > 0) {
-    return false;
-  }
-  const syscall = typeof err.syscall === "string" ? err.syscall.toLowerCase() : "";
-  if (!syscall.includes("spawn")) {
-    return false;
-  }
-  return syscall.includes("git") || isGitCommandPath(err.path);
-}
-function isNotAGitRepositoryError(error2) {
-  if (!error2 || typeof error2 !== "object") {
-    return false;
-  }
-  const err = error2;
-  if (err.code === "ENOENT" || err.code === "ETIMEDOUT" || err.code === "EACCES") {
-    return false;
-  }
-  if (typeof err.signal === "string" && err.signal.length > 0) {
-    return false;
-  }
-  const stderr = gitErrorStderr(error2);
-  return err.status === 128 && /not a git repository/i.test(stderr);
-}
-function formatGitProbeDetail(error2) {
-  if (!error2 || typeof error2 !== "object") {
-    return String(error2);
-  }
-  const err = error2;
-  if (err.code === "ENOENT") {
-    return "git executable not found";
-  }
-  if (err.code === "EACCES") {
-    return "git executable not accessible";
-  }
-  if (err.code === "ETIMEDOUT" || err.killed === true) {
-    return "git probe timed out";
-  }
-  if (typeof err.signal === "string" && err.signal.length > 0) {
-    return `git killed by ${err.signal}`;
-  }
-  const stderr = gitErrorStderr(error2).trim();
-  if (stderr.length > 0) {
-    return stderr.split("\n")[0] ?? stderr;
-  }
-  if (typeof err.message === "string" && err.message.length > 0) {
-    return err.message;
-  }
-  if (typeof err.status === "number") {
-    return `git exited ${err.status}`;
-  }
-  return "unknown git probe failure";
-}
-function findGitMetadataDir(start) {
-  let current = start;
-  for (; ; ) {
-    if ((0, import_fs.existsSync)((0, import_path2.join)(current, ".git"))) {
-      return current;
-    }
-    const parent = (0, import_path2.dirname)(current);
-    if (parent === current) {
-      return null;
-    }
-    current = parent;
-  }
-}
-function expandPathForCompare(path4) {
-  const normalized = (0, import_path2.resolve)(path4);
   try {
-    return import_fs.realpathSync.native(normalized);
-  } catch {
-    try {
-      return (0, import_fs.realpathSync)(normalized);
-    } catch {
-      return null;
+    const root = (0, import_child_process.execFileSync)("git", ["rev-parse", "--show-toplevel"], {
+      cwd: effectiveCwd,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+      timeout: 5e3
+    }).trim();
+    if (toplevelCacheMap.size >= MAX_WORKTREE_CACHE_SIZE) {
+      const oldest = toplevelCacheMap.keys().next().value;
+      if (oldest !== void 0) toplevelCacheMap.delete(oldest);
     }
-  }
-}
-function canonicalizeExistingPath(path4) {
-  try {
-    return (0, import_fs.realpathSync)((0, import_path2.resolve)(path4));
+    toplevelCacheMap.set(effectiveCwd, root);
+    return root;
   } catch {
     return null;
   }
-}
-function sameCanonicalPath(left, right) {
-  const a = expandPathForCompare(left);
-  const b = expandPathForCompare(right);
-  if (!a || !b) {
-    return false;
-  }
-  if (a === b) {
-    return true;
-  }
-  if (process.platform !== "win32") {
-    return false;
-  }
-  const fold = (value) => value.replaceAll("/", "\\").toLowerCase();
-  return fold(a) === fold(b);
-}
-function isCredibleGitWorktreeRoot(root) {
-  try {
-    if (!(0, import_fs.statSync)(root).isDirectory()) {
-      return false;
-    }
-  } catch {
-    return false;
-  }
-  const rootReal = canonicalizeExistingPath(root);
-  if (!rootReal) {
-    return false;
-  }
-  const metadataDir = findGitMetadataDir(rootReal);
-  return metadataDir !== null && sameCanonicalPath(metadataDir, rootReal);
-}
-function classifyGitShowToplevelStdout(stdout, cwd) {
-  const root = stdout.trim();
-  if (root.length === 0 || !(0, import_path2.isAbsolute)(root) || !isCredibleGitWorktreeRoot(root)) {
-    return { status: "probe_failed", detail: "malformed git toplevel output" };
-  }
-  const cwdReal = canonicalizeExistingPath(cwd);
-  if (!cwdReal) {
-    return { status: "probe_failed", detail: "malformed git toplevel output" };
-  }
-  const metadataDir = findGitMetadataDir(cwdReal);
-  if (!metadataDir || !sameCanonicalPath(metadataDir, root)) {
-    return { status: "probe_failed", detail: "malformed git toplevel output" };
-  }
-  return { status: "ok", root: canonicalizeExistingPath(metadataDir) ?? metadataDir };
-}
-function classifyGitShowToplevelError(error2) {
-  if (isNotAGitRepositoryError(error2)) {
-    return { status: "not_a_repository" };
-  }
-  if (isConfirmedGitExecutableNotFound(error2)) {
-    return { status: "git_missing" };
-  }
-  return { status: "probe_failed", detail: formatGitProbeDetail(error2) };
-}
-function runGitShowToplevel(cwd) {
-  if (gitShowToplevelProbeForTests) {
-    const result = gitShowToplevelProbeForTests(cwd);
-    return Buffer.isBuffer(result) ? result.toString("utf8") : result;
-  }
-  return (0, import_child_process.execFileSync)("git", ["rev-parse", "--show-toplevel"], {
-    cwd,
-    encoding: "utf-8",
-    stdio: ["pipe", "pipe", "pipe"],
-    windowsHide: true,
-    timeout: 5e3
-  });
-}
-function probeGitTopLevel(cwd) {
-  try {
-    return classifyGitShowToplevelStdout(runGitShowToplevel(cwd), cwd);
-  } catch (error2) {
-    return classifyGitShowToplevelError(error2);
-  }
-}
-function getGitTopLevel(cwd) {
-  const probe = probeGitTopLevel(cwd || process.cwd());
-  return probe.status === "ok" ? probe.root : null;
 }
 function getWorktreeRoot(cwd) {
   const effectiveCwd = cwd || process.cwd();
@@ -18421,9 +18130,7 @@ function getOmcRoot(worktreeRoot) {
   const customDir = process.env.OMC_STATE_DIR;
   if (customDir) {
     const root2 = worktreeRoot || getGitTopLevel() || process.cwd();
-    const workspaceRoot = findWorkspaceRoot(root2);
-    const gitTopLevel = getGitTopLevel(root2);
-    const projectId = !gitTopLevel && !workspaceRoot ? "non-git" : getProjectIdentifier(root2);
+    const projectId = getProjectIdentifier(root2);
     const centralizedPath = (0, import_path2.join)(customDir, projectId);
     const legacyPath = (0, import_path2.join)(root2, OmcPaths.ROOT);
     const warningKey = `${legacyPath}:${centralizedPath}`;
@@ -18436,86 +18143,12 @@ function getOmcRoot(worktreeRoot) {
     return centralizedPath;
   }
   const workspaceAnchor = findWorkspaceRoot(worktreeRoot);
-  if (workspaceAnchor && !isSensitiveStateLocation(workspaceAnchor)) {
+  if (workspaceAnchor) {
     return (0, import_path2.join)(workspaceAnchor, OmcPaths.ROOT);
   }
   const root = resolveStateAnchorRoot(worktreeRoot);
-  if (!getGitTopLevel(root)) {
-    return (0, import_path2.join)(resolveNonGitStateAnchor(root), OmcPaths.ROOT);
-  }
   return (0, import_path2.join)(root, OmcPaths.ROOT);
 }
-function callerVisibleTrustedRootLabel(trustedRoot) {
-  const label = (0, import_path2.basename)(trustedRoot);
-  return label.length > 0 ? label : "current repository";
-}
-function attachCanonicalWorkingDirectoryRoots(target, providedRoot, trustedRoot) {
-  canonicalWorkingDirectoryRoots.set(target, { providedRoot, trustedRoot });
-}
-function canonicalRootAliases(root) {
-  if (root.length === 0) {
-    return [];
-  }
-  const aliases = /* @__PURE__ */ new Set([root]);
-  try {
-    aliases.add((0, import_url.pathToFileURL)(root).href);
-  } catch {
-  }
-  try {
-    const real = (0, import_fs.realpathSync)(root);
-    aliases.add(real);
-    aliases.add((0, import_url.pathToFileURL)(real).href);
-  } catch {
-  }
-  if (import_path2.sep === "\\") {
-    aliases.add(root.replaceAll("\\", "/"));
-  }
-  return [...aliases].sort((a, b) => b.length - a.length);
-}
-function redactCanonicalRoots(text, providedRoot, trustedRoot) {
-  let redacted = text;
-  const roots = [...canonicalRootAliases(providedRoot), ...canonicalRootAliases(trustedRoot)].sort((a, b) => b.length - a.length);
-  for (const root of roots) {
-    redacted = redacted.split(root).join("<redacted>");
-  }
-  return redacted;
-}
-function redactErrorStack(stack, providedRoot, trustedRoot) {
-  const newline = stack.includes("\r\n") ? "\r\n" : "\n";
-  const lines = stack.split(/\r?\n/);
-  if (lines.length <= 1) {
-    return stack;
-  }
-  const [header, ...frames] = lines;
-  return [header, ...frames.map((frame) => redactCanonicalRoots(frame, providedRoot, trustedRoot))].join(newline);
-}
-var ForeignWorkingDirectoryError = class extends Error {
-  callerLabel;
-  constructor(providedRoot, trustedRoot, callerLabel) {
-    super(
-      `workingDirectory '${callerLabel}' belongs to a different repository than '${callerVisibleTrustedRootLabel(trustedRoot)}' and was not used. Cross-repository access is not permitted; pass a path inside the current repository or start the session there.`
-    );
-    this.name = "ForeignWorkingDirectoryError";
-    this.callerLabel = callerLabel;
-    attachCanonicalWorkingDirectoryRoots(this, providedRoot, trustedRoot);
-    Object.defineProperty(this, "stack", {
-      value: redactErrorStack(this.stack ?? `${this.name}: ${this.message}`, providedRoot, trustedRoot),
-      enumerable: false,
-      configurable: true,
-      writable: true
-    });
-  }
-  toJSON() {
-    return {
-      name: this.name,
-      message: this.message,
-      callerLabel: this.callerLabel
-    };
-  }
-  [/* @__PURE__ */ Symbol.for("nodejs.util.inspect.custom")]() {
-    return this.stack ?? `${this.name}: ${this.message}`;
-  }
-};
 
 // src/cli/tmux-utils.ts
 var import_child_process2 = require("child_process");
@@ -18725,11 +18358,7 @@ var TeamPaths = {
   recoveryAuditIndex: () => ".omc/state/team-recovery/audit.jsonl"
 };
 function absPath(cwd, relativePath) {
-  if ((0, import_path4.isAbsolute)(relativePath)) return relativePath;
-  if (relativePath === ".omc" || relativePath.startsWith(".omc/")) {
-    return (0, import_path4.join)(getOmcRoot(cwd), relativePath.slice(".omc".length).replace(/^\//, ""));
-  }
-  return (0, import_path4.join)(cwd, relativePath);
+  return (0, import_path4.isAbsolute)(relativePath) ? relativePath : (0, import_path4.join)(cwd, relativePath);
 }
 
 // src/lib/atomic-write.ts
@@ -20477,7 +20106,7 @@ var import_meta = {};
 var __ownDir = (() => {
   if (typeof __dirname !== "undefined" && __dirname) return __dirname;
   try {
-    return (0, import_url2.fileURLToPath)(new URL(".", import_meta.url));
+    return (0, import_url.fileURLToPath)(new URL(".", import_meta.url));
   } catch {
     return process.cwd();
   }

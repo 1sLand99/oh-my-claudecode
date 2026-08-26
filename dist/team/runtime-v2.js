@@ -3010,7 +3010,7 @@ export async function startTeamV2(config) {
             await ensureLeaderInbox(sanitized, leaderCwd);
             // Seed an introductory leader-inbox note so the leader knows the inbox
             // exists and where to read it. This mirrors the worker bootstrap pattern.
-            await appendToLeaderInbox(sanitized, extendLeaderBootstrapPrompt(sanitized, leaderCwd), leaderCwd);
+            await appendToLeaderInbox(sanitized, extendLeaderBootstrapPrompt(sanitized), leaderCwd);
             // M6: try to recover from a previous run before starting fresh.
             try {
                 await recoverFromRestart({

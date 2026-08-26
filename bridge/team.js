@@ -27,10 +27,9 @@ var init_encode_project_path = __esm({
 // src/lib/worktree-paths.ts
 import { createHash } from "crypto";
 import { execFileSync } from "child_process";
-import { existsSync, mkdirSync, readFileSync, realpathSync, readdirSync, writeFileSync, unlinkSync, statSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, readdirSync, writeFileSync, unlinkSync } from "fs";
 import { homedir as homedir2, tmpdir } from "os";
 import { resolve, normalize as normalize2, relative, sep as sep2, join as join2, isAbsolute, basename, dirname } from "path";
-import { pathToFileURL } from "url";
 function findWorkspaceRoot(startDir) {
   if (process.env.OMC_DISABLE_MULTIREPO === "1") return null;
   const effectiveStart = startDir || process.cwd();
@@ -133,292 +132,35 @@ function resolveSuperprojectRoot(cwd) {
   }
   return anchor;
 }
-function sensitiveAbsoluteRoots() {
-  const roots = [];
-  const temp = (() => {
-    try {
-      return resolve(tmpdir());
-    } catch {
-      return null;
-    }
-  })();
-  if (temp) roots.push(temp);
-  if (process.platform === "win32") {
-    const home = (() => {
-      try {
-        return resolve(homedir2());
-      } catch {
-        return null;
-      }
-    })();
-    roots.push("C:\\Windows", "C:\\Program Files", "C:\\Program Files (x86)", "C:\\ProgramData");
-    const drive = (home && /^[a-zA-Z]:/.exec(home))?.[0];
-    if (drive) roots.push(`${drive}\\Windows`, `${drive}\\Program Files`, `${drive}\\Program Files (x86)`, `${drive}\\ProgramData`);
-  } else {
-    roots.push("/var", "/usr", "/etc", "/opt", "/private/var");
-  }
-  return roots;
-}
-function isFilesystemRoot(dir) {
-  return dirname(dir) === dir;
-}
-function isWithinPath(ancestor, candidate) {
-  const rel = relative(ancestor, candidate);
-  return rel === "" || !rel.startsWith(`..${sep2}`) && rel !== ".." && !isAbsolute(rel);
-}
-function isSensitiveStateLocation(dir) {
-  let candidate;
-  try {
-    candidate = resolve(dir);
-    try {
-      candidate = realpathSync(candidate);
-    } catch {
-    }
-  } catch {
-    return true;
-  }
-  const home = (() => {
-    try {
-      return resolve(homedir2());
-    } catch {
-      return null;
-    }
-  })();
-  let cursor = candidate;
-  for (; ; ) {
-    const name = basename(cursor);
-    const lowerName = name.toLowerCase();
-    if (home && cursor === candidate && (cursor === home || process.platform === "win32" && cursor.toLowerCase() === home.toLowerCase())) return true;
-    if (name.startsWith(".") && name !== OmcPaths.ROOT) return true;
-    if (SENSITIVE_DIR_BASENAMES.has(lowerName)) return true;
-    if (isFilesystemRoot(cursor)) break;
-    cursor = dirname(cursor);
-  }
-  if (candidate === "/tmp" || candidate === "/private/tmp") return true;
-  if (isFilesystemRoot(candidate)) return true;
-  return sensitiveAbsoluteRoots().some((root) => {
-    const normalizedCandidate = process.platform === "win32" ? candidate.toLowerCase() : candidate;
-    const normalizedRoot = process.platform === "win32" ? root.toLowerCase() : root;
-    return normalizedCandidate === normalizedRoot || isWithinPath(normalizedRoot, normalizedCandidate);
-  });
-}
-function resolveNonGitFallbackRoot() {
-  const home = resolve(homedir2());
-  if (isFilesystemRoot(home)) {
-    throw new Error("Cannot resolve a safe non-git OMC state root: home resolves to the filesystem root.");
-  }
-  return home;
-}
-function resolveNonGitStateAnchor(startDir) {
-  try {
-    const current = resolve(startDir || process.cwd());
-    const workspaceRoot = findWorkspaceRoot(current);
-    if (workspaceRoot && !isSensitiveStateLocation(workspaceRoot)) return workspaceRoot;
-    if (isSensitiveStateLocation(current)) return resolveNonGitFallbackRoot();
-    return resolveNonGitFallbackRoot();
-  } catch {
-    return resolveNonGitFallbackRoot();
-  }
-}
 function resolveStateAnchorRoot(worktreeRoot) {
   if (worktreeRoot) return resolveSuperprojectRoot(worktreeRoot) || worktreeRoot;
-  return getWorktreeRoot() || resolveNonGitStateAnchor();
+  return getWorktreeRoot() || process.cwd();
 }
-function gitErrorStderr(error) {
-  if (!error || typeof error !== "object") {
-    return "";
+function getGitTopLevel(cwd) {
+  const effectiveCwd = cwd || process.cwd();
+  if (toplevelCacheMap.has(effectiveCwd)) {
+    const root = toplevelCacheMap.get(effectiveCwd);
+    toplevelCacheMap.delete(effectiveCwd);
+    toplevelCacheMap.set(effectiveCwd, root);
+    return root || null;
   }
-  const err = error;
-  if (Buffer.isBuffer(err.stderr)) {
-    return err.stderr.toString("utf8");
-  }
-  if (typeof err.stderr === "string") {
-    return err.stderr;
-  }
-  return typeof err.message === "string" ? err.message : "";
-}
-function isGitCommandPath(path4) {
-  if (typeof path4 !== "string" || path4.length === 0) {
-    return false;
-  }
-  const base = basename(path4);
-  return base === "git" || base === "git.exe" || base === "git.cmd" || base === "git.bat";
-}
-function isConfirmedGitExecutableNotFound(error) {
-  if (!error || typeof error !== "object") {
-    return false;
-  }
-  const err = error;
-  if (err.code !== "ENOENT") {
-    return false;
-  }
-  if (err.killed === true) {
-    return false;
-  }
-  if (typeof err.status === "number") {
-    return false;
-  }
-  if (typeof err.signal === "string" && err.signal.length > 0) {
-    return false;
-  }
-  const syscall = typeof err.syscall === "string" ? err.syscall.toLowerCase() : "";
-  if (!syscall.includes("spawn")) {
-    return false;
-  }
-  return syscall.includes("git") || isGitCommandPath(err.path);
-}
-function isNotAGitRepositoryError(error) {
-  if (!error || typeof error !== "object") {
-    return false;
-  }
-  const err = error;
-  if (err.code === "ENOENT" || err.code === "ETIMEDOUT" || err.code === "EACCES") {
-    return false;
-  }
-  if (typeof err.signal === "string" && err.signal.length > 0) {
-    return false;
-  }
-  const stderr = gitErrorStderr(error);
-  return err.status === 128 && /not a git repository/i.test(stderr);
-}
-function formatGitProbeDetail(error) {
-  if (!error || typeof error !== "object") {
-    return String(error);
-  }
-  const err = error;
-  if (err.code === "ENOENT") {
-    return "git executable not found";
-  }
-  if (err.code === "EACCES") {
-    return "git executable not accessible";
-  }
-  if (err.code === "ETIMEDOUT" || err.killed === true) {
-    return "git probe timed out";
-  }
-  if (typeof err.signal === "string" && err.signal.length > 0) {
-    return `git killed by ${err.signal}`;
-  }
-  const stderr = gitErrorStderr(error).trim();
-  if (stderr.length > 0) {
-    return stderr.split("\n")[0] ?? stderr;
-  }
-  if (typeof err.message === "string" && err.message.length > 0) {
-    return err.message;
-  }
-  if (typeof err.status === "number") {
-    return `git exited ${err.status}`;
-  }
-  return "unknown git probe failure";
-}
-function findGitMetadataDir(start) {
-  let current = start;
-  for (; ; ) {
-    if (existsSync(join2(current, ".git"))) {
-      return current;
-    }
-    const parent = dirname(current);
-    if (parent === current) {
-      return null;
-    }
-    current = parent;
-  }
-}
-function expandPathForCompare(path4) {
-  const normalized = resolve(path4);
   try {
-    return realpathSync.native(normalized);
-  } catch {
-    try {
-      return realpathSync(normalized);
-    } catch {
-      return null;
+    const root = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+      cwd: effectiveCwd,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+      timeout: 5e3
+    }).trim();
+    if (toplevelCacheMap.size >= MAX_WORKTREE_CACHE_SIZE) {
+      const oldest = toplevelCacheMap.keys().next().value;
+      if (oldest !== void 0) toplevelCacheMap.delete(oldest);
     }
-  }
-}
-function canonicalizeExistingPath(path4) {
-  try {
-    return realpathSync(resolve(path4));
+    toplevelCacheMap.set(effectiveCwd, root);
+    return root;
   } catch {
     return null;
   }
-}
-function sameCanonicalPath(left, right) {
-  const a = expandPathForCompare(left);
-  const b = expandPathForCompare(right);
-  if (!a || !b) {
-    return false;
-  }
-  if (a === b) {
-    return true;
-  }
-  if (process.platform !== "win32") {
-    return false;
-  }
-  const fold = (value) => value.replaceAll("/", "\\").toLowerCase();
-  return fold(a) === fold(b);
-}
-function isCredibleGitWorktreeRoot(root) {
-  try {
-    if (!statSync(root).isDirectory()) {
-      return false;
-    }
-  } catch {
-    return false;
-  }
-  const rootReal = canonicalizeExistingPath(root);
-  if (!rootReal) {
-    return false;
-  }
-  const metadataDir = findGitMetadataDir(rootReal);
-  return metadataDir !== null && sameCanonicalPath(metadataDir, rootReal);
-}
-function classifyGitShowToplevelStdout(stdout, cwd) {
-  const root = stdout.trim();
-  if (root.length === 0 || !isAbsolute(root) || !isCredibleGitWorktreeRoot(root)) {
-    return { status: "probe_failed", detail: "malformed git toplevel output" };
-  }
-  const cwdReal = canonicalizeExistingPath(cwd);
-  if (!cwdReal) {
-    return { status: "probe_failed", detail: "malformed git toplevel output" };
-  }
-  const metadataDir = findGitMetadataDir(cwdReal);
-  if (!metadataDir || !sameCanonicalPath(metadataDir, root)) {
-    return { status: "probe_failed", detail: "malformed git toplevel output" };
-  }
-  return { status: "ok", root: canonicalizeExistingPath(metadataDir) ?? metadataDir };
-}
-function classifyGitShowToplevelError(error) {
-  if (isNotAGitRepositoryError(error)) {
-    return { status: "not_a_repository" };
-  }
-  if (isConfirmedGitExecutableNotFound(error)) {
-    return { status: "git_missing" };
-  }
-  return { status: "probe_failed", detail: formatGitProbeDetail(error) };
-}
-function runGitShowToplevel(cwd) {
-  if (gitShowToplevelProbeForTests) {
-    const result = gitShowToplevelProbeForTests(cwd);
-    return Buffer.isBuffer(result) ? result.toString("utf8") : result;
-  }
-  return execFileSync("git", ["rev-parse", "--show-toplevel"], {
-    cwd,
-    encoding: "utf-8",
-    stdio: ["pipe", "pipe", "pipe"],
-    windowsHide: true,
-    timeout: 5e3
-  });
-}
-function probeGitTopLevel(cwd) {
-  try {
-    return classifyGitShowToplevelStdout(runGitShowToplevel(cwd), cwd);
-  } catch (error) {
-    return classifyGitShowToplevelError(error);
-  }
-}
-function getGitTopLevel(cwd) {
-  const probe = probeGitTopLevel(cwd || process.cwd());
-  return probe.status === "ok" ? probe.root : null;
 }
 function getWorktreeRoot(cwd) {
   const effectiveCwd = cwd || process.cwd();
@@ -494,9 +236,7 @@ function getOmcRoot(worktreeRoot) {
   const customDir = process.env.OMC_STATE_DIR;
   if (customDir) {
     const root2 = worktreeRoot || getGitTopLevel() || process.cwd();
-    const workspaceRoot = findWorkspaceRoot(root2);
-    const gitTopLevel = getGitTopLevel(root2);
-    const projectId = !gitTopLevel && !workspaceRoot ? "non-git" : getProjectIdentifier(root2);
+    const projectId = getProjectIdentifier(root2);
     const centralizedPath = join2(customDir, projectId);
     const legacyPath = join2(root2, OmcPaths.ROOT);
     const warningKey = `${legacyPath}:${centralizedPath}`;
@@ -509,60 +249,13 @@ function getOmcRoot(worktreeRoot) {
     return centralizedPath;
   }
   const workspaceAnchor = findWorkspaceRoot(worktreeRoot);
-  if (workspaceAnchor && !isSensitiveStateLocation(workspaceAnchor)) {
+  if (workspaceAnchor) {
     return join2(workspaceAnchor, OmcPaths.ROOT);
   }
   const root = resolveStateAnchorRoot(worktreeRoot);
-  if (!getGitTopLevel(root)) {
-    return join2(resolveNonGitStateAnchor(root), OmcPaths.ROOT);
-  }
   return join2(root, OmcPaths.ROOT);
 }
-function callerVisibleTrustedRootLabel(trustedRoot) {
-  const label = basename(trustedRoot);
-  return label.length > 0 ? label : "current repository";
-}
-function attachCanonicalWorkingDirectoryRoots(target, providedRoot, trustedRoot) {
-  canonicalWorkingDirectoryRoots.set(target, { providedRoot, trustedRoot });
-}
-function canonicalRootAliases(root) {
-  if (root.length === 0) {
-    return [];
-  }
-  const aliases = /* @__PURE__ */ new Set([root]);
-  try {
-    aliases.add(pathToFileURL(root).href);
-  } catch {
-  }
-  try {
-    const real = realpathSync(root);
-    aliases.add(real);
-    aliases.add(pathToFileURL(real).href);
-  } catch {
-  }
-  if (sep2 === "\\") {
-    aliases.add(root.replaceAll("\\", "/"));
-  }
-  return [...aliases].sort((a, b) => b.length - a.length);
-}
-function redactCanonicalRoots(text, providedRoot, trustedRoot) {
-  let redacted = text;
-  const roots = [...canonicalRootAliases(providedRoot), ...canonicalRootAliases(trustedRoot)].sort((a, b) => b.length - a.length);
-  for (const root of roots) {
-    redacted = redacted.split(root).join("<redacted>");
-  }
-  return redacted;
-}
-function redactErrorStack(stack, providedRoot, trustedRoot) {
-  const newline = stack.includes("\r\n") ? "\r\n" : "\n";
-  const lines = stack.split(/\r?\n/);
-  if (lines.length <= 1) {
-    return stack;
-  }
-  const [header, ...frames] = lines;
-  return [header, ...frames.map((frame) => redactCanonicalRoots(frame, providedRoot, trustedRoot))].join(newline);
-}
-var WORKSPACE_MARKER, OmcPaths, MAX_WORKTREE_CACHE_SIZE, worktreeCacheMap, superprojectCacheMap, canonicalWorkingDirectoryRoots, workspaceCacheMap, SENSITIVE_DIR_BASENAMES, gitShowToplevelProbeForTests, dualDirWarnings, ForeignWorkingDirectoryError;
+var WORKSPACE_MARKER, OmcPaths, MAX_WORKTREE_CACHE_SIZE, worktreeCacheMap, toplevelCacheMap, superprojectCacheMap, workspaceCacheMap, dualDirWarnings;
 var init_worktree_paths = __esm({
   "src/lib/worktree-paths.ts"() {
     "use strict";
@@ -588,69 +281,10 @@ var init_worktree_paths = __esm({
     };
     MAX_WORKTREE_CACHE_SIZE = 8;
     worktreeCacheMap = /* @__PURE__ */ new Map();
+    toplevelCacheMap = /* @__PURE__ */ new Map();
     superprojectCacheMap = /* @__PURE__ */ new Map();
-    canonicalWorkingDirectoryRoots = /* @__PURE__ */ new WeakMap();
     workspaceCacheMap = /* @__PURE__ */ new Map();
-    SENSITIVE_DIR_BASENAMES = /* @__PURE__ */ new Set([
-      ".ssh",
-      ".gnupg",
-      ".aws",
-      ".azure",
-      ".gcloud",
-      ".kube",
-      "ssh",
-      ".pki",
-      ".config",
-      ".claude",
-      ".claude.json",
-      ".codex",
-      ".gemini",
-      ".cursor",
-      ".vscode",
-      ".ollama",
-      ".docker",
-      ".npm",
-      ".cache",
-      ".local",
-      "desktop",
-      "documents",
-      "downloads",
-      "pictures",
-      "photos",
-      "music",
-      "movies",
-      "videos",
-      "public",
-      "library"
-    ]);
     dualDirWarnings = /* @__PURE__ */ new Set();
-    ForeignWorkingDirectoryError = class extends Error {
-      callerLabel;
-      constructor(providedRoot, trustedRoot, callerLabel) {
-        super(
-          `workingDirectory '${callerLabel}' belongs to a different repository than '${callerVisibleTrustedRootLabel(trustedRoot)}' and was not used. Cross-repository access is not permitted; pass a path inside the current repository or start the session there.`
-        );
-        this.name = "ForeignWorkingDirectoryError";
-        this.callerLabel = callerLabel;
-        attachCanonicalWorkingDirectoryRoots(this, providedRoot, trustedRoot);
-        Object.defineProperty(this, "stack", {
-          value: redactErrorStack(this.stack ?? `${this.name}: ${this.message}`, providedRoot, trustedRoot),
-          enumerable: false,
-          configurable: true,
-          writable: true
-        });
-      }
-      toJSON() {
-        return {
-          name: this.name,
-          message: this.message,
-          callerLabel: this.callerLabel
-        };
-      }
-      [/* @__PURE__ */ Symbol.for("nodejs.util.inspect.custom")]() {
-        return this.stack ?? `${this.name}: ${this.message}`;
-      }
-    };
   }
 });
 
@@ -703,20 +337,15 @@ function normalizeTaskFileStem(taskId) {
   return trimmed;
 }
 function absPath(cwd, relativePath) {
-  if (isAbsolute2(relativePath)) return relativePath;
-  if (relativePath === ".omc" || relativePath.startsWith(".omc/")) {
-    return join3(getOmcRoot(cwd), relativePath.slice(".omc".length).replace(/^\//, ""));
-  }
-  return join3(cwd, relativePath);
+  return isAbsolute2(relativePath) ? relativePath : join3(cwd, relativePath);
 }
 function teamStateRoot(cwd, teamName) {
-  return absPath(cwd, TeamPaths.root(teamName));
+  return join3(cwd, TeamPaths.root(teamName));
 }
 var TeamPaths;
 var init_state_paths = __esm({
   "src/team/state-paths.ts"() {
     "use strict";
-    init_worktree_paths();
     TeamPaths = {
       root: (teamName) => `.omc/state/team/${teamName}`,
       config: (teamName) => `.omc/state/team/${teamName}/config.json`,
@@ -4337,13 +3966,13 @@ import {
   unlinkSync as unlinkSync5,
   writeSync as writeSync3,
   readFileSync as readFileSync6,
-  statSync as statSync2,
+  statSync,
   constants as fsConstants
 } from "fs";
 import * as path3 from "path";
 function isLockStale(lockPath, staleLockMs) {
   try {
-    const stat2 = statSync2(lockPath);
+    const stat2 = statSync(lockPath);
     const ageMs = Date.now() - stat2.mtimeMs;
     if (ageMs < staleLockMs) return false;
     try {
@@ -5631,20 +5260,20 @@ function resolveShellFromCandidates(paths, rcFile) {
   }
   return null;
 }
-function resolveSupportedShellAffinity(shellPath2) {
-  if (!shellPath2) return null;
-  const name = basename6(shellPath2.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "");
+function resolveSupportedShellAffinity(shellPath) {
+  if (!shellPath) return null;
+  const name = basename6(shellPath.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "");
   if (name !== "zsh" && name !== "bash") return null;
-  if (!existsSync11(shellPath2)) return null;
+  if (!existsSync11(shellPath)) return null;
   const home = process.env.HOME ?? "";
   const rcFile = home ? `${home}/.${name}rc` : null;
-  return { shell: shellPath2, rcFile };
+  return { shell: shellPath, rcFile };
 }
-function buildWorkerLaunchSpec(shellPath2) {
+function buildWorkerLaunchSpec(shellPath) {
   if (isUnixLikeOnWindows2()) {
     return { shell: "/bin/sh", rcFile: null };
   }
-  const preferred = resolveSupportedShellAffinity(shellPath2);
+  const preferred = resolveSupportedShellAffinity(shellPath);
   if (preferred) return preferred;
   const home = process.env.HOME ?? "";
   const zshRc = home ? `${home}/.zshrc` : null;
@@ -5772,8 +5401,8 @@ function workerPaneShellCommand() {
 function escapeForCmdSet(value) {
   return value.replace(/(["%])/g, "$1$1");
 }
-function shellNameFromPath(shellPath2) {
-  const shellName = basename6(shellPath2.replace(/\\/g, "/"));
+function shellNameFromPath(shellPath) {
+  const shellName = basename6(shellPath.replace(/\\/g, "/"));
   return shellName.replace(/\.(exe|cmd|bat)$/i, "");
 }
 function shellEscape(value) {
@@ -7622,7 +7251,7 @@ var init_cache_occupancy = __esm({
 
 // src/utils/paths.ts
 import { join as join16, dirname as dirname15 } from "path";
-import { existsSync as existsSync12, readFileSync as readFileSync9, readdirSync as readdirSync5, statSync as statSync3, lstatSync, unlinkSync as unlinkSync7, rmSync, renameSync as renameSync3, symlinkSync } from "fs";
+import { existsSync as existsSync12, readFileSync as readFileSync9, readdirSync as readdirSync5, statSync as statSync2, lstatSync, unlinkSync as unlinkSync7, rmSync, renameSync as renameSync3, symlinkSync } from "fs";
 import { homedir as homedir3 } from "os";
 function getConfigDir() {
   if (process.platform === "win32") {
@@ -9944,10 +9573,6 @@ import { join as join21, dirname as dirname19 } from "path";
 function buildInstructionPath(...parts) {
   return join21(...parts).replaceAll("\\", "/");
 }
-function shellPath(path4) {
-  if (path4.startsWith("$OMC_TEAM_STATE_ROOT/")) return `"${path4}"`;
-  return `'${path4.replaceAll("'", "'\\''")}'`;
-}
 function buildTeamStateInstructionPath(teamName, instructionStateRoot, ...teamRelativeParts) {
   const baseParts = instructionStateRoot === DEFAULT_INSTRUCTION_STATE_ROOT ? [instructionStateRoot, "team", teamName] : [instructionStateRoot];
   return buildInstructionPath(...baseParts, ...teamRelativeParts);
@@ -10045,7 +9670,6 @@ function generateWorkerOverlay(params) {
   const inboxPath = buildTeamStateInstructionPath(teamName, instructionStateRoot, "workers", workerName, "inbox.md");
   const statusPath = buildTeamStateInstructionPath(teamName, instructionStateRoot, "workers", workerName, "status.json");
   const shutdownAckPath = buildTeamStateInstructionPath(teamName, instructionStateRoot, "workers", workerName, "shutdown-ack.json");
-  const quotedSentinelPath = shellPath(sentinelPath);
   const claimTaskCommand = formatOmcCliInvocation(`team api claim-task --input "{\\"team_name\\":\\"${teamName}\\",\\"task_id\\":\\"<id>\\",\\"worker\\":\\"${workerName}\\"}" --json`);
   const sendAckCommand = formatOmcCliInvocation(`team api send-message --input "{\\"team_name\\":\\"${teamName}\\",\\"from_worker\\":\\"${workerName}\\",\\"to_worker\\":\\"leader-fixed\\",\\"body\\":\\"ACK: ${workerName} initialized\\"}" --json`);
   const completeTaskCommand = formatOmcCliInvocation(`team api transition-task-status --input "{\\"team_name\\":\\"${teamName}\\",\\"task_id\\":\\"<id>\\",\\"from\\":\\"in_progress\\",\\"to\\":\\"completed\\",\\"claim_token\\":\\"<claim_token>\\",\\"result\\":\\"Summary: <what changed>\\\\nVerification: <tests/checks run>\\\\nSubagent skip reason: worker protocol forbids nested subagents; completed focused probe in-session\\"}" --json`);
@@ -10067,7 +9691,7 @@ You are a **team worker**, not the team leader. Operate strictly within worker p
 ## FIRST ACTION REQUIRED
 Before doing anything else, write your ready sentinel file:
 \`\`\`bash
-mkdir -p "$(dirname ${quotedSentinelPath})" && touch ${quotedSentinelPath}
+mkdir -p $(dirname ${sentinelPath}) && touch ${sentinelPath}
 \`\`\`
 
 ## MANDATORY WORKFLOW \u2014 Follow These Steps In Order
@@ -10171,7 +9795,7 @@ ${bootstrapInstructions}
 ` : ""}`;
 }
 async function composeInitialInbox(teamName, workerName, content, cwd, cliOutputContract) {
-  const inboxPath = join21(teamStateRoot(cwd, sanitizeName(teamName)), "workers", sanitizeName(workerName), "inbox.md");
+  const inboxPath = join21(cwd, `.omc/state/team/${teamName}/workers/${workerName}/inbox.md`);
   await mkdir7(dirname19(inboxPath), { recursive: true });
   const finalContent = cliOutputContract && !content.includes(cliOutputContract) ? `${content}
 ${cliOutputContract}` : content;
@@ -10180,8 +9804,8 @@ ${cliOutputContract}` : content;
 async function appendToInbox(teamName, workerName, message, cwd) {
   const safeTeam = sanitizeName(teamName);
   const safeWorker = sanitizeName(workerName);
-  const inboxPath = join21(teamStateRoot(cwd, safeTeam), "workers", safeWorker, "inbox.md");
-  validateResolvedPath(inboxPath, teamStateRoot(cwd, safeTeam));
+  const inboxPath = join21(cwd, `.omc/state/team/${safeTeam}/workers/${safeWorker}/inbox.md`);
+  validateResolvedPath(inboxPath, cwd);
   await mkdir7(dirname19(inboxPath), { recursive: true });
   await appendFile2(inboxPath, `
 
@@ -10189,18 +9813,17 @@ async function appendToInbox(teamName, workerName, message, cwd) {
 ${message}`, "utf-8");
 }
 async function ensureWorkerStateDir(teamName, workerName, cwd) {
-  const root = teamStateRoot(cwd, sanitizeName(teamName));
-  const workerDir = join21(root, "workers", sanitizeName(workerName));
+  const workerDir = join21(cwd, `.omc/state/team/${teamName}/workers/${workerName}`);
   await mkdir7(workerDir, { recursive: true });
-  const mailboxDir = join21(root, "mailbox");
+  const mailboxDir = join21(cwd, `.omc/state/team/${teamName}/mailbox`);
   await mkdir7(mailboxDir, { recursive: true });
-  const tasksDir = join21(root, "tasks");
+  const tasksDir = join21(cwd, `.omc/state/team/${teamName}/tasks`);
   await mkdir7(tasksDir, { recursive: true });
 }
 async function writeWorkerOverlay(params) {
   const { teamName, workerName, cwd } = params;
   const overlay = generateWorkerOverlay(params);
-  const overlayPath = join21(teamStateRoot(cwd, sanitizeName(teamName)), "workers", sanitizeName(workerName), "AGENTS.md");
+  const overlayPath = join21(cwd, `.omc/state/team/${teamName}/workers/${workerName}/AGENTS.md`);
   await mkdir7(dirname19(overlayPath), { recursive: true });
   await writeFile5(overlayPath, overlay, "utf-8");
   return overlayPath;
@@ -10213,7 +9836,6 @@ var init_worker_bootstrap = __esm({
     init_omc_cli_rendering();
     init_tmux_session();
     init_fs_utils();
-    init_state_paths();
     init_model_contract();
     DEFAULT_INSTRUCTION_STATE_ROOT = ".omc/state";
   }
@@ -11668,11 +11290,11 @@ import { existsSync as existsSync24 } from "fs";
 import { dirname as dirname21, join as join28 } from "path";
 function leaderInboxPath(teamName, cwd) {
   const safe = sanitizeName(teamName);
-  return join28(teamStateRoot(cwd, safe), "leader", "inbox.md");
+  return join28(cwd, `.omc/state/team/${safe}/leader/inbox.md`);
 }
 async function ensureLeaderInbox(teamName, cwd) {
   const inboxPath = leaderInboxPath(teamName, cwd);
-  validateResolvedPath(inboxPath, teamStateRoot(cwd, sanitizeName(teamName)));
+  validateResolvedPath(inboxPath, cwd);
   await mkdir10(dirname21(inboxPath), { recursive: true });
   if (!existsSync24(inboxPath)) {
     await writeFile7(inboxPath, LEADER_INBOX_HEADER, "utf-8");
@@ -11681,16 +11303,16 @@ async function ensureLeaderInbox(teamName, cwd) {
 }
 async function appendToLeaderInbox(teamName, message, cwd) {
   const inboxPath = leaderInboxPath(teamName, cwd);
-  validateResolvedPath(inboxPath, teamStateRoot(cwd, sanitizeName(teamName)));
+  validateResolvedPath(inboxPath, cwd);
   await mkdir10(dirname21(inboxPath), { recursive: true });
   await appendFile4(inboxPath, `
 
 ---
 ${message}`, "utf-8");
 }
-function extendLeaderBootstrapPrompt(teamName, cwd) {
+function extendLeaderBootstrapPrompt(teamName) {
   const safe = sanitizeName(teamName);
-  const path4 = cwd ? join28(teamStateRoot(cwd, safe), "leader", "inbox.md") : `.omc/state/team/${safe}/leader/inbox.md`;
+  const path4 = `.omc/state/team/${safe}/leader/inbox.md`;
   return `Runtime notifications appear at ${path4} \u2014 check this file periodically and after long-running operations.`;
 }
 var LEADER_INBOX_HEADER;
@@ -11699,7 +11321,6 @@ var init_leader_inbox = __esm({
     "use strict";
     init_tmux_session();
     init_fs_utils();
-    init_state_paths();
     LEADER_INBOX_HEADER = `# Leader Inbox
 
 Runtime notifications (merge conflicts, rebase events, etc.) appear here.
@@ -16262,7 +15883,7 @@ async function startTeamV2(config) {
       await ensureLeaderInbox(sanitized, leaderCwd);
       await appendToLeaderInbox(
         sanitized,
-        extendLeaderBootstrapPrompt(sanitized, leaderCwd),
+        extendLeaderBootstrapPrompt(sanitized),
         leaderCwd
       );
       try {
@@ -17266,14 +16887,13 @@ init_tmux_session();
 init_fs_utils();
 init_platform();
 init_state_paths();
-import { readFileSync as readFileSync15, readdirSync as readdirSync9, existsSync as existsSync20, openSync as openSync4, closeSync as closeSync4, unlinkSync as unlinkSync9, writeSync as writeSync4, statSync as statSync4, constants as fsConstants2 } from "fs";
+import { readFileSync as readFileSync15, readdirSync as readdirSync9, existsSync as existsSync20, openSync as openSync4, closeSync as closeSync4, unlinkSync as unlinkSync9, writeSync as writeSync4, statSync as statSync3, constants as fsConstants2 } from "fs";
 import { join as join24 } from "path";
 
 // src/team/runtime.ts
-init_state_paths();
 function stateRoot(cwd, teamName) {
   validateTeamName(teamName);
-  return teamStateRoot(cwd, teamName);
+  return join25(cwd, `.omc/state/team/${teamName}`);
 }
 async function writeJson(filePath, data) {
   await atomicWriteJson2(filePath, data);
@@ -17305,7 +16925,7 @@ async function readJsonSafe3(filePath) {
   return null;
 }
 function taskPath(root, taskId) {
-  return join25(root, "tasks", `${normalizeTaskFileStem(taskId)}.json`);
+  return join25(root, "tasks", `${taskId}.json`);
 }
 async function readTask(root, taskId) {
   return readJsonSafe3(taskPath(root, taskId));
