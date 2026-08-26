@@ -5,10 +5,24 @@ import { join } from 'path';
 import { cleanupTransientState } from '../../hooks/session-end/index.js';
 describe('cleanupTransientState — session-scoped hud-stdin-cache', () => {
     let tmpRoot;
+    let previousHome;
+    let previousUserProfile;
     beforeEach(() => {
         tmpRoot = mkdtempSync(join(tmpdir(), 'omc-session-end-cleanup-'));
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        process.env.HOME = tmpRoot;
+        process.env.USERPROFILE = tmpRoot;
     });
     afterEach(() => {
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
         rmSync(tmpRoot, { recursive: true, force: true });
     });
     it('removes the ending session\'s hud-stdin-cache.json and prunes its empty directory', () => {

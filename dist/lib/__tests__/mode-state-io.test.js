@@ -8,13 +8,25 @@ import { emergencyMutateStateFileIf, recoverEmergencyStateFile, captureModeState
 import { atomicWriteJsonSync } from '../atomic-write.js';
 import { clearWorktreeCache, getProjectIdentifier } from '../worktree-paths.js';
 let tempDir;
+const previousHome = process.env.HOME;
+const previousUserProfile = process.env.USERPROFILE;
 describe('mode-state-io', () => {
     beforeEach(() => {
         tempDir = mkdtempSync(join(tmpdir(), 'mode-state-io-test-'));
+        process.env.HOME = tempDir;
+        process.env.USERPROFILE = tempDir;
         clearWorktreeCache();
     });
     afterEach(() => {
         rmSync(tempDir, { recursive: true, force: true });
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
         clearWorktreeCache();
         delete process.env.OMC_STATE_DIR;
         delete process.env.OMC_TEST_CONDITIONAL_CLEAR_REPLACEMENT_PATH;

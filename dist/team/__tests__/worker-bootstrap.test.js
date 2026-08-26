@@ -73,7 +73,7 @@ describe('worker-bootstrap', () => {
         });
         it('renders canonical team-root paths in worktree overlays', () => {
             const overlay = generateWorkerOverlay({ ...baseParams, instructionStateRoot: '$OMC_TEAM_STATE_ROOT' });
-            expect(overlay).toContain('touch $OMC_TEAM_STATE_ROOT/workers/worker-1/.ready');
+            expect(overlay).toContain('touch "$OMC_TEAM_STATE_ROOT/workers/worker-1/.ready"');
             expect(overlay).toContain('Read $OMC_TEAM_STATE_ROOT/workers/worker-1/inbox.md');
             expect(overlay).toContain('Write to $OMC_TEAM_STATE_ROOT/workers/worker-1/status.json');
             expect(overlay).toContain('$OMC_TEAM_STATE_ROOT/workers/worker-1/shutdown-ack.json');

@@ -4,9 +4,15 @@ import { sanitizePromptContent } from '../agents/prompt-helpers.js';
 import { formatOmcCliInvocation } from '../utils/omc-cli-rendering.js';
 import { sanitizeName } from './tmux-session.js';
 import { validateResolvedPath } from './fs-utils.js';
+import { teamStateRoot } from './state-paths.js';
 const DEFAULT_INSTRUCTION_STATE_ROOT = '.omc/state';
 function buildInstructionPath(...parts) {
     return join(...parts).replaceAll('\\', '/');
+}
+function shellPath(path) {
+    if (path.startsWith('$OMC_TEAM_STATE_ROOT/'))
+        return `"${path}"`;
+    return `'${path.replaceAll("'", "'\\''")}'`;
 }
 function buildTeamStateInstructionPath(teamName, instructionStateRoot, ...teamRelativeParts) {
     const baseParts = instructionStateRoot === DEFAULT_INSTRUCTION_STATE_ROOT
@@ -114,6 +120,7 @@ export function generateWorkerOverlay(params) {
     const inboxPath = buildTeamStateInstructionPath(teamName, instructionStateRoot, 'workers', workerName, 'inbox.md');
     const statusPath = buildTeamStateInstructionPath(teamName, instructionStateRoot, 'workers', workerName, 'status.json');
     const shutdownAckPath = buildTeamStateInstructionPath(teamName, instructionStateRoot, 'workers', workerName, 'shutdown-ack.json');
+    const quotedSentinelPath = shellPath(sentinelPath);
     const claimTaskCommand = formatOmcCliInvocation(`team api claim-task --input "{\\"team_name\\":\\"${teamName}\\",\\"task_id\\":\\"<id>\\",\\"worker\\":\\"${workerName}\\"}" --json`);
     const sendAckCommand = formatOmcCliInvocation(`team api send-message --input "{\\"team_name\\":\\"${teamName}\\",\\"from_worker\\":\\"${workerName}\\",\\"to_worker\\":\\"leader-fixed\\",\\"body\\":\\"ACK: ${workerName} initialized\\"}" --json`);
     const completeTaskCommand = formatOmcCliInvocation(`team api transition-task-status --input "{\\"team_name\\":\\"${teamName}\\",\\"task_id\\":\\"<id>\\",\\"from\\":\\"in_progress\\",\\"to\\":\\"completed\\",\\"claim_token\\":\\"<claim_token>\\",\\"result\\":\\"Summary: <what changed>\\\\nVerification: <tests/checks run>\\\\nSubagent skip reason: worker protocol forbids nested subagents; completed focused probe in-session\\"}" --json`);
@@ -135,7 +142,7 @@ You are a **team worker**, not the team leader. Operate strictly within worker p
 ## FIRST ACTION REQUIRED
 Before doing anything else, write your ready sentinel file:
 \`\`\`bash
-mkdir -p $(dirname ${sentinelPath}) && touch ${sentinelPath}
+mkdir -p "$(dirname ${quotedSentinelPath})" && touch ${quotedSentinelPath}
 \`\`\`
 
 ## MANDATORY WORKFLOW — Follow These Steps In Order
@@ -240,7 +247,7 @@ ${bootstrapInstructions ? `## Role Context\n${bootstrapInstructions}\n` : ''}`;
  * Write the initial inbox file for a worker.
  */
 export async function composeInitialInbox(teamName, workerName, content, cwd, cliOutputContract) {
-    const inboxPath = join(cwd, `.omc/state/team/${teamName}/workers/${workerName}/inbox.md`);
+    const inboxPath = join(teamStateRoot(cwd, sanitizeName(teamName)), 'workers', sanitizeName(workerName), 'inbox.md');
     await mkdir(dirname(inboxPath), { recursive: true });
     const finalContent = cliOutputContract && !content.includes(cliOutputContract)
         ? `${content}\n${cliOutputContract}`
@@ -257,8 +264,8 @@ export async function composeInitialInbox(teamName, workerName, content, cwd, cl
 export async function appendToInbox(teamName, workerName, message, cwd) {
     const safeTeam = sanitizeName(teamName);
     const safeWorker = sanitizeName(workerName);
-    const inboxPath = join(cwd, `.omc/state/team/${safeTeam}/workers/${safeWorker}/inbox.md`);
-    validateResolvedPath(inboxPath, cwd);
+    const inboxPath = join(teamStateRoot(cwd, safeTeam), 'workers', safeWorker, 'inbox.md');
+    validateResolvedPath(inboxPath, teamStateRoot(cwd, safeTeam));
     await mkdir(dirname(inboxPath), { recursive: true });
     await appendFile(inboxPath, `\n\n---\n${message}`, 'utf-8');
 }
@@ -268,13 +275,14 @@ export { getWorkerEnv } from './model-contract.js';
  * Ensure worker state directory exists.
  */
 export async function ensureWorkerStateDir(teamName, workerName, cwd) {
-    const workerDir = join(cwd, `.omc/state/team/${teamName}/workers/${workerName}`);
+    const root = teamStateRoot(cwd, sanitizeName(teamName));
+    const workerDir = join(root, 'workers', sanitizeName(workerName));
     await mkdir(workerDir, { recursive: true });
     // Also ensure mailbox dir
-    const mailboxDir = join(cwd, `.omc/state/team/${teamName}/mailbox`);
+    const mailboxDir = join(root, 'mailbox');
     await mkdir(mailboxDir, { recursive: true });
     // And tasks dir
-    const tasksDir = join(cwd, `.omc/state/team/${teamName}/tasks`);
+    const tasksDir = join(root, 'tasks');
     await mkdir(tasksDir, { recursive: true });
 }
 /**
@@ -284,7 +292,7 @@ export async function ensureWorkerStateDir(teamName, workerName, cwd) {
 export async function writeWorkerOverlay(params) {
     const { teamName, workerName, cwd } = params;
     const overlay = generateWorkerOverlay(params);
-    const overlayPath = join(cwd, `.omc/state/team/${teamName}/workers/${workerName}/AGENTS.md`);
+    const overlayPath = join(teamStateRoot(cwd, sanitizeName(teamName)), 'workers', sanitizeName(workerName), 'AGENTS.md');
     await mkdir(dirname(overlayPath), { recursive: true });
     await writeFile(overlayPath, overlay, 'utf-8');
     return overlayPath;

@@ -12,7 +12,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { tmpdir } from 'os';
+import { homedir } from 'os';
 // ============================================================================
 // Module-level mock for worktree-paths (required before any state-tool imports)
 // ============================================================================
@@ -23,6 +23,7 @@ vi.mock('../lib/worktree-paths.js', async (importOriginal) => {
         ...actual,
         getOmcRoot: (...args) => mockGetOmcRoot(...args),
         validateWorkingDirectory: (dir) => dir || '/tmp',
+        resolveStateWorkingDirectory: (dir) => dir || '/tmp',
     };
 });
 // Mock mode-registry — clearModeState/isModeActive use getOmcRoot internally,
@@ -415,7 +416,7 @@ describe('SMOKE: State Cancel Cleanup — session-scoped I/O (issue #1143)', () 
     let testDir;
     let omcDir;
     beforeEach(() => {
-        testDir = join(tmpdir(), `smoke-state-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        testDir = join(homedir(), `smoke-state-${Date.now()}-${Math.random().toString(36).slice(2)}`);
         omcDir = join(testDir, '.omc');
         mkdirSync(omcDir, { recursive: true });
         mockGetOmcRoot.mockReturnValue(omcDir);
@@ -515,7 +516,7 @@ describe('SMOKE: State Cancel Cleanup — session-scoped I/O (issue #1143)', () 
             mode: 'ultrawork',
             session_id: sessionId,
         });
-        expect(clearResult).toContain('ghost legacy file also removed');
+        expect(clearResult).toContain('Successfully cleared state');
         expect(existsSync(legacyPath)).toBe(false);
     });
     it('ghost-legacy preservation: session clear does NOT remove legacy file from a different session', async () => {

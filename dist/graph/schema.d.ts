@@ -716,9 +716,9 @@ export declare const graphDescriptorSchema: z.ZodObject<{
     descriptor_hash: z.ZodOptional<z.ZodString>;
 }, "strict", z.ZodTypeAny, {
     run_id: string;
-    goal: string;
     descriptor_version: 1;
     revision_id: string;
+    goal: string;
     nodes: ({
         title: string;
         id: string;
@@ -793,9 +793,9 @@ export declare const graphDescriptorSchema: z.ZodObject<{
     descriptor_hash?: string | undefined;
 }, {
     run_id: string;
-    goal: string;
     descriptor_version: 1;
     revision_id: string;
+    goal: string;
     nodes: ({
         title: string;
         id: string;

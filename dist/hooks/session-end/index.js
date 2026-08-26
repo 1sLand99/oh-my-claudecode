@@ -7,7 +7,7 @@ import { buildConfigFromEnv, getEnabledPlatforms, getNotificationConfig } from '
 import { cleanupBridgeSessions } from '../../tools/python-repl/bridge-manager.js';
 import { resolveToWorktreeRoot, getOmcRoot, validateSessionId, isValidTranscriptPath, resolveSessionStatePath } from '../../lib/worktree-paths.js';
 import { SESSION_END_MODE_STATE_FILES, SESSION_METRICS_MODE_FILES } from '../../lib/mode-names.js';
-import { clearModeStateFile, readModeState } from '../../lib/mode-state-io.js';
+import { canClearStateForSession, clearModeStateFile, readModeStateWithMeta } from '../../lib/mode-state-io.js';
 import { completeForegroundCleanup, completeForegroundCleanupAndSealCore, prepareCoreManifest, readSessionEndJob, sealWikiManifest } from './cleanup-manifest.js';
 import { spawnSessionEndWorker } from './worker.js';
 import { buildWikiSessionEndCaptureIntent } from '../wiki/session-hooks.js';
@@ -432,9 +432,9 @@ export function cleanupModeStates(directory, sessionId) {
             // For JSON files, check if active before removing
             if (file.endsWith('.json')) {
                 const sessionState = sessionId
-                    ? readModeState(mode, directory, sessionId)
+                    ? readModeStateWithMeta(mode, directory, sessionId)
                     : null;
-                let shouldCleanup = sessionState?.active === true;
+                let shouldCleanup = sessionState?.active === true && (!sessionId || canClearStateForSession(sessionState, sessionId));
                 if (!shouldCleanup && fs.existsSync(localPath)) {
                     const content = fs.readFileSync(localPath, 'utf-8');
                     const state = JSON.parse(content);
@@ -444,8 +444,7 @@ export function cleanupModeStates(directory, sessionId) {
                         // If sessionId is provided, only clean matching states
                         // If state has no session_id, it's legacy - clean it
                         // If state.session_id matches our sessionId, clean it
-                        const stateSessionId = state.session_id;
-                        if (!sessionId || !stateSessionId || stateSessionId === sessionId) {
+                        if (!sessionId || canClearStateForSession(state, sessionId)) {
                             shouldCleanup = true;
                         }
                     }
@@ -548,7 +547,7 @@ function extractTeamNameFromState(state) {
 }
 async function findSessionOwnedTeams(directory, sessionId) {
     const teamNames = new Set();
-    const teamState = readModeState('team', directory, sessionId);
+    const teamState = readModeStateWithMeta('team', directory, sessionId);
     const stateTeamName = extractTeamNameFromState(teamState);
     if (stateTeamName) {
         teamNames.add(stateTeamName);
@@ -749,8 +748,10 @@ export async function runForegroundSessionEndCleanup(directory, sessionId, persi
 }
 /** Foreground path: only durable local state and worker launch; deferred adapters are worker-owned. */
 function buildDurableSessionEndPayload(directory, input, metrics) {
-    const teamState = readModeState('team', directory, input.session_id);
-    const teamName = extractTeamNameFromState(teamState);
+    const teamState = readModeStateWithMeta('team', directory, input.session_id);
+    const teamName = teamState && canClearStateForSession(teamState, input.session_id)
+        ? extractTeamNameFromState(teamState)
+        : undefined;
     // Keep only routing identifiers and booleans: credentials remain in the inherited worker environment.
     return {
         transcriptPath: input.transcript_path,
