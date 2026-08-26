@@ -11,12 +11,12 @@ import { logAuditEvent, readAuditLog } from '../audit-log.js';
 import { getClaudeConfigDir } from '../../utils/config-dir.js';
 
 const TEST_TEAM = 'test-bridge-int';
-// Task files now live in the canonical .omc/state/team path (relative to WORK_DIR)
-const TEAMS_DIR = join(getClaudeConfigDir(), 'teams', TEST_TEAM);
 // Resolve symlinks (macOS /var -> /private/var) so validateResolvedPath matches
 const WORK_DIR = join(realpathSync(tmpdir()), '__test_bridge_work__');
 const originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
 process.env.CLAUDE_CONFIG_DIR = join(WORK_DIR, '.claude');
+// Task files now live in the canonical .omc/state/team path (relative to WORK_DIR)
+const TEAMS_DIR = join(getClaudeConfigDir(), 'teams', TEST_TEAM);
 // Canonical tasks dir for this team
 const originalHome = process.env.HOME;
 const originalUserProfile = process.env.USERPROFILE;
