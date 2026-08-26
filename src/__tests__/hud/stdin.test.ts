@@ -627,6 +627,28 @@ describe('readStdinCache — env-less reader fallback to most recent session cac
     expect(got?.version).toBe('2.1.232');
   });
 
+  it('prefers a newer valid legacy cache over an older session cache', () => {
+    const stateDir = join(tmpRoot, '.omc', 'state');
+    const sessionDir = join(stateDir, 'sessions', 'session-old');
+    mkdirSync(sessionDir, { recursive: true });
+    writeFileSync(
+      join(stateDir, 'hud-stdin-cache.json'),
+      JSON.stringify(makeStdin({ transcript_path: '/tmp/newer-legacy.jsonl', version: '2.1.232' })),
+    );
+    writeFileSync(
+      join(sessionDir, 'hud-stdin-cache.json'),
+      JSON.stringify(makeStdin({ transcript_path: '/tmp/older-session.jsonl', version: '2.1.100' })),
+    );
+
+    const now = Date.now() / 1000;
+    utimesSync(join(stateDir, 'hud-stdin-cache.json'), now, now);
+    utimesSync(join(sessionDir, 'hud-stdin-cache.json'), now - 60, now - 60);
+
+    const got = readStdinCache();
+    expect(got?.transcript_path).toBe('/tmp/newer-legacy.jsonl');
+    expect(got?.version).toBe('2.1.232');
+  });
+
   it('skips a malformed newest session cache and returns an older valid cache', () => {
     const stateDir = join(tmpRoot, '.omc', 'state');
     const oldSession = join(stateDir, 'sessions', 'session-old');

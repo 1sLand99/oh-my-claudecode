@@ -236,4 +236,32 @@ describe('GET /api/oauth/usage request headers', () => {
     expect(versioned.rateLimits).not.toBeNull();
     expect(versioned.error).toBeUndefined();
   });
+
+  it('keeps active Anthropic backoffs independent for different versions', async () => {
+    const cacheFiles = new Map<string, string>();
+    vi.mocked(fs.existsSync).mockImplementation(
+      (p) => String(p).endsWith('.credentials.json') || cacheFiles.has(String(p)),
+    );
+    vi.mocked(fs.readFileSync).mockImplementation((p) => {
+      const path = String(p);
+      return (path.endsWith('.credentials.json') ? FAKE_CREDENTIALS : cacheFiles.get(path) ?? '{}') as never;
+    });
+    vi.mocked(fs.writeFileSync).mockImplementation((p, content) => {
+      cacheFiles.set(String(p), String(content));
+    });
+
+    stubUsage429(httpsModule.default.request);
+    stubUsage429(httpsModule.default.request);
+
+    await Promise.all([
+      getUsage({ clientVersion: '2.1.232' }),
+      getUsage({ clientVersion: '2.1.233' }),
+    ]);
+    const firstFollowUp = await getUsage({ clientVersion: '2.1.232' });
+    const secondFollowUp = await getUsage({ clientVersion: '2.1.233' });
+
+    expect(httpsModule.default.request).toHaveBeenCalledTimes(2);
+    expect(firstFollowUp.error).toBe('rate_limited');
+    expect(secondFollowUp.error).toBe('rate_limited');
+  });
 });

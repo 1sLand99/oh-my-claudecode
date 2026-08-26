@@ -120,12 +120,11 @@ export function readStdinCache(): StatuslineStdin | null {
     return tryRead(scopedPath);
   }
 
-  // Env-less reader: prefer the most recent valid session-scoped cache as a
-  // best-effort surface of "the active session's HUD". Fall back to the
-  // legacy flat cache only when no session cache can be read. This keeps a
-  // stale legacy snapshot from hiding the versioned cache used by a current
-  // detached session.
-  return readMostRecentSessionCache(root) ?? tryRead(legacyPath);
+  // Env-less reader: compare the legacy and session-scoped caches by mtime and
+  // return the newest valid entry. This lets a current session cache outrank a
+  // stale legacy snapshot without allowing an older session cache to hide a
+  // newer flat cache written by a statusline process without session context.
+  return readMostRecentCache(root, legacyPath);
 }
 
 /** Parse only object-shaped cache entries; malformed values are not cache hits. */
@@ -136,8 +135,8 @@ function parseCachedStdin(raw: string): StatuslineStdin | null {
 }
 
 /**
- * Scan `state/sessions/{id}/hud-stdin-cache.json` and return the contents
- * of the most recently modified valid one. Only used when no session id is
+ * Scan the legacy and session-scoped cache paths and return the contents of
+ * the most recently modified valid one. Only used when no session id is
  * available in the environment (e.g. a tmux-hosted `omc hud --watch` reader
  * that did not inherit `CLAUDE_SESSION_ID`). Malformed newest entries are
  * skipped so they do not hide an older valid cache.
@@ -146,7 +145,7 @@ function parseCachedStdin(raw: string): StatuslineStdin | null {
  * `getSessionStateDir`) so this fallback honors `OMC_STATE_DIR` and any
  * other centralized-state configuration.
  */
-function readMostRecentSessionCache(root: string): StatuslineStdin | null {
+function readMostRecentCache(root: string, legacyPath: string): StatuslineStdin | null {
   let sessionIds: string[];
   try {
     sessionIds = listSessionIds(root);
@@ -154,6 +153,12 @@ function readMostRecentSessionCache(root: string): StatuslineStdin | null {
     return null;
   }
   const candidates: Array<{ path: string; mtimeMs: number }> = [];
+  try {
+    const st = statSync(legacyPath);
+    if (st.isFile()) candidates.push({ path: legacyPath, mtimeMs: st.mtimeMs });
+  } catch {
+    // The legacy cache is optional.
+  }
   for (const sid of sessionIds) {
     let candidate: string;
     try {
