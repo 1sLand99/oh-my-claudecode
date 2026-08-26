@@ -66,6 +66,10 @@ describe("Project Memory PreCompact storage integration", () => {
       path.join(os.tmpdir(), "project-memory-precompact-"),
     );
     tempDirs.push(projectRoot);
+    const previousHome = process.env.HOME;
+    const previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = projectRoot;
+    process.env.USERPROFILE = projectRoot;
     await fs.writeFile(path.join(projectRoot, "package.json"), "{}\n");
     await fs.mkdir(path.join(projectRoot, ".omc"), { recursive: true });
     await fs.writeFile(
@@ -90,5 +94,9 @@ describe("Project Memory PreCompact storage integration", () => {
     expect(result.systemMessage).toContain("[Project Environment]");
     expect(result.systemMessage).not.toContain("[Directives]");
     expect(result.systemMessage).not.toContain("[Recent Learnings]");
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
   });
 });
