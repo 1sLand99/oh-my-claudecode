@@ -448,6 +448,11 @@ describe('runtime v2 startup inbox dispatch', () => {
       cwd,
     });
 
+    const config = JSON.parse(await readFile(
+      join(cwd, '.omc', 'state', 'team', 'cursor-bootstrap-team', 'config.json'),
+      'utf-8',
+    ));
+    expect(config.workers[0].role).toBe('critic');
     const inbox = await readFile(
       join(cwd, '.omc', 'state', 'team', 'cursor-bootstrap-team', 'workers', 'worker-1', 'inbox.md'),
       'utf-8',
