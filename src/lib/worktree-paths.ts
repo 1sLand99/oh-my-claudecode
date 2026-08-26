@@ -852,9 +852,7 @@ export function getOmcRoot(worktreeRoot?: string): string {
     // into the parent project's (preserves submodule identity).
     const root = worktreeRoot || getGitTopLevel() || process.cwd();
     const workspaceRoot = findWorkspaceRoot(root);
-    const nonGitCanonicalRoot = !getGitTopLevel(root) && !workspaceRoot && (!worktreeRoot || (() => {
-      try { return resolveNonGitStateAnchor(root) === resolve(root); } catch { return false; }
-    })());
+    const nonGitCanonicalRoot = !getGitTopLevel(root) && !workspaceRoot;
     const projectId = nonGitCanonicalRoot
       ? 'non-git'
       : getProjectIdentifier(root);
@@ -883,7 +881,7 @@ export function getOmcRoot(worktreeRoot?: string): string {
   }
 
   const root = resolveStateAnchorRoot(worktreeRoot);
-  if (isSensitiveStateLocation(root) && !getGitTopLevel(root)) {
+  if (!getGitTopLevel(root)) {
     return join(resolveNonGitStateAnchor(root), OmcPaths.ROOT);
   }
   return join(root, OmcPaths.ROOT);

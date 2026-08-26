@@ -26,13 +26,23 @@ import {
 
 describe('Session-Scoped State Isolation', () => {
   let tempDir: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
 
   beforeEach(() => {
     tempDir = mkdtempSync(join(homedir(), 'session-isolation-test-'));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = tempDir;
+    process.env.USERPROFILE = tempDir;
   });
 
   afterEach(() => {
     rmSync(tempDir, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
     delete process.env.OMC_TEST_CONDITIONAL_CLEAR_REPLACEMENT_PATH;
     delete process.env.OMC_TEST_CONDITIONAL_CLEAR_REPLACEMENT_BASE64;
   });
@@ -350,8 +360,8 @@ describe('Session-Scoped State Isolation', () => {
       // Session A should also NOT see its own legacy state (must use session-scoped file)
       expect(isModeActive('ralph', tempDir, 'session-A')).toBe(false);
 
-      // Without sessionId, legacy state is still visible (backward compat)
-      expect(isModeActive('ralph', tempDir)).toBe(true);
+      // Session-owned legacy state is hidden from unscoped status.
+      expect(isModeActive('ralph', tempDir)).toBe(false);
     });
 
     it('should reject state with mismatched session_id even in session-scoped file', () => {

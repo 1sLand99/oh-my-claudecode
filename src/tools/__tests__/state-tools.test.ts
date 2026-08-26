@@ -102,12 +102,23 @@ function completedPortableWorkflowState(sessionId: string): Record<string, unkno
 }
 
 describe('state-tools', () => {
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
+
   beforeEach(() => {
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = TEST_DIR;
+    process.env.USERPROFILE = TEST_DIR;
     mkdirSync(join(TEST_DIR, '.omc', 'state'), { recursive: true });
   });
 
   afterEach(() => {
     rmSync(TEST_DIR, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
     delete process.env.OMC_TEST_CONDITIONAL_CLEAR_REPLACEMENT_PATH;
     delete process.env.OMC_TEST_CONDITIONAL_CLEAR_REPLACEMENT_BASE64;
     delete process.env.OMC_TEST_FLOCK_AVAILABLE;

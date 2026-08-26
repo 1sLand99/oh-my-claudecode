@@ -1367,7 +1367,7 @@ export const stateClearTool: ToolDefinition<{
           }
         }
         const completedCandidates = findCompletedSessionStateCandidates(mode, root, sessionId)
-          .filter((candidate) => isStateCandidateForProject(mode, candidate.path, candidate.state, root));
+          .filter((candidate) => isStateCandidateForProject(mode, candidate.path, candidate.state, root) && canClearStateForSession(candidate.state, sessionId));
         const legacyCandidates = discoverStatePaths(getLegacyStateFileCandidates(mode, root)).filter((candidate) => isStateCandidateForProject(mode, candidate.path, candidate.state, root));
         const localCandidates = discoverStatePaths(getWorkingDirectoryLocalStateClearCandidates(mode, root, sessionId))
           .filter((candidate) => isStateCandidateForProject(mode, candidate.path, candidate.state, root));

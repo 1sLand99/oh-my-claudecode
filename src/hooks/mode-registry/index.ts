@@ -256,6 +256,10 @@ function isJsonModeActive(
     const content = readFileSync(stateFile, "utf-8");
     const state = JSON.parse(content);
 
+    if (getStateSessionOwner(state)) {
+      return false;
+    }
+
     if (config.activeProperty) {
       return state[config.activeProperty] === true;
     }
