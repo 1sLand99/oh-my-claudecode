@@ -75,6 +75,14 @@ const gte = (version: string, minimum: string): boolean => {
   return vPatch >= mPatch;
 };
 
+/** True when a version satisfies the caret range shape used by this dependency. */
+const satisfiesDeclaredRange = (version: string, range: string): boolean => {
+  const floor = floorOf(range);
+  const [versionMajor] = version.split(".").map(Number);
+  const [floorMajor] = floor.split(".").map(Number);
+  return versionMajor === floorMajor && gte(version, floor);
+};
+
 /** Node majors better-sqlite3 upstream supports within the current semver major (odd majors are upstream-supported non-LTS lines, e.g. 23.x). */
 const SUPPORTED_NODE_MAJORS = [20, 22, 23, 24, 25, 26] as const;
 
@@ -90,8 +98,13 @@ describe("better-sqlite3 lockfile contract (issue #3872)", () => {
     const { deps } = readManifest();
     const locked = readLocked();
     expect(gte(locked.version, NODE_26_CAPABLE_FLOOR)).toBe(true);
-    // Lock resolution must stay inside the declared range shape (same major).
-    expect(locked.version.startsWith(`${floorOf(deps["better-sqlite3"]).split(".")[0]}.`)).toBe(true);
+    // Lock resolution must satisfy the complete declared caret range.
+    expect(satisfiesDeclaredRange(locked.version, deps["better-sqlite3"])).toBe(true);
+  });
+
+  it("rejects a locked version below the declared caret floor", () => {
+    expect(satisfiesDeclaredRange("12.11.1", "^12.12.0")).toBe(false);
+    expect(satisfiesDeclaredRange("13.0.0", "^12.10.0")).toBe(false);
   });
 
   it("locked engines cover every upstream-supported Node major", () => {
