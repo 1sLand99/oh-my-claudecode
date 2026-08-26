@@ -11,12 +11,27 @@ import {
 
 const TEST_CWD = join(tmpdir(), `omc-test-leader-inbox-${process.pid}`);
 const TEST_TEAM = 'my-team';
+let previousHome: string | undefined;
+let previousUserProfile: string | undefined;
+let previousStateDir: string | undefined;
 
 beforeEach(() => {
+  previousHome = process.env.HOME;
+  previousUserProfile = process.env.USERPROFILE;
+  previousStateDir = process.env.OMC_STATE_DIR;
+  process.env.HOME = TEST_CWD;
+  process.env.USERPROFILE = TEST_CWD;
+  delete process.env.OMC_STATE_DIR;
   mkdirSync(TEST_CWD, { recursive: true });
 });
 
 afterEach(() => {
+  if (previousHome === undefined) delete process.env.HOME;
+  else process.env.HOME = previousHome;
+  if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+  else process.env.USERPROFILE = previousUserProfile;
+  if (previousStateDir === undefined) delete process.env.OMC_STATE_DIR;
+  else process.env.OMC_STATE_DIR = previousStateDir;
   rmSync(TEST_CWD, { recursive: true, force: true });
 });
 

@@ -3625,7 +3625,7 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
       // exists and where to read it. This mirrors the worker bootstrap pattern.
       await appendToLeaderInbox(
         sanitized,
-        extendLeaderBootstrapPrompt(sanitized),
+        extendLeaderBootstrapPrompt(sanitized, leaderCwd),
         leaderCwd,
       );
 

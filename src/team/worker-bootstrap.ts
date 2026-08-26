@@ -29,6 +29,11 @@ function buildInstructionPath(...parts: string[]): string {
   return join(...parts).replaceAll('\\', '/');
 }
 
+function shellPath(path: string): string {
+  if (path.startsWith('$OMC_TEAM_STATE_ROOT/')) return `"${path}"`;
+  return `'${path.replaceAll("'", "'\\''")}'`;
+}
+
 function buildTeamStateInstructionPath(
   teamName: string,
   instructionStateRoot: string,
@@ -171,6 +176,7 @@ export function generateWorkerOverlay(params: WorkerBootstrapParams): string {
   const inboxPath = buildTeamStateInstructionPath(teamName, instructionStateRoot, 'workers', workerName, 'inbox.md');
   const statusPath = buildTeamStateInstructionPath(teamName, instructionStateRoot, 'workers', workerName, 'status.json');
   const shutdownAckPath = buildTeamStateInstructionPath(teamName, instructionStateRoot, 'workers', workerName, 'shutdown-ack.json');
+  const quotedSentinelPath = shellPath(sentinelPath);
   const claimTaskCommand = formatOmcCliInvocation(`team api claim-task --input "{\\"team_name\\":\\"${teamName}\\",\\"task_id\\":\\"<id>\\",\\"worker\\":\\"${workerName}\\"}" --json`);
   const sendAckCommand = formatOmcCliInvocation(`team api send-message --input "{\\"team_name\\":\\"${teamName}\\",\\"from_worker\\":\\"${workerName}\\",\\"to_worker\\":\\"leader-fixed\\",\\"body\\":\\"ACK: ${workerName} initialized\\"}" --json`);
   const completeTaskCommand = formatOmcCliInvocation(`team api transition-task-status --input "{\\"team_name\\":\\"${teamName}\\",\\"task_id\\":\\"<id>\\",\\"from\\":\\"in_progress\\",\\"to\\":\\"completed\\",\\"claim_token\\":\\"<claim_token>\\",\\"result\\":\\"Summary: <what changed>\\\\nVerification: <tests/checks run>\\\\nSubagent skip reason: worker protocol forbids nested subagents; completed focused probe in-session\\"}" --json`);
@@ -194,7 +200,7 @@ You are a **team worker**, not the team leader. Operate strictly within worker p
 ## FIRST ACTION REQUIRED
 Before doing anything else, write your ready sentinel file:
 \`\`\`bash
-mkdir -p $(dirname ${sentinelPath}) && touch ${sentinelPath}
+mkdir -p "$(dirname ${quotedSentinelPath})" && touch ${quotedSentinelPath}
 \`\`\`
 
 ## MANDATORY WORKFLOW — Follow These Steps In Order
