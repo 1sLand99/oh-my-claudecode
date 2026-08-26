@@ -286,7 +286,7 @@ export function resolveNonGitStateAnchor(startDir?: string): string {
   try {
     const current = resolve(startDir || process.cwd());
     const workspaceRoot = findWorkspaceRoot(current);
-    if (workspaceRoot) return workspaceRoot;
+    if (workspaceRoot && !isSensitiveStateLocation(workspaceRoot)) return workspaceRoot;
     if (isSensitiveStateLocation(current)) return resolveNonGitFallbackRoot();
     return resolveNonGitFallbackRoot();
   } catch {
@@ -876,7 +876,7 @@ export function getOmcRoot(worktreeRoot?: string): string {
   // workspaces where the parent dir is not itself a git repo: all sub-repos
   // share the same .omc/ at the marker location.
   const workspaceAnchor = findWorkspaceRoot(worktreeRoot);
-  if (workspaceAnchor) {
+  if (workspaceAnchor && !isSensitiveStateLocation(workspaceAnchor)) {
     return join(workspaceAnchor, OmcPaths.ROOT);
   }
 
