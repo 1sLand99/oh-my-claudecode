@@ -392,7 +392,7 @@ describe('runtime v2 startup inbox dispatch', () => {
     expect(requests[0]?.transport_preference).toBe('transport_direct');
     expect(requests[0]?.fallback_allowed).toBe(true);
     expect(requests[0]?.inbox_correlation_key).toBe('startup:worker-1:1:attempt-worker-1');
-    expect(requests[0]?.trigger_message).toContain('.omc/state/team/dispatch-team/workers/worker-1/inbox.md');
+    expect(requests[0]?.trigger_message).toContain('$OMC_TEAM_STATE_ROOT/workers/worker-1/inbox.md');
     expect(requests[0]?.trigger_message).toContain('execute now');
     expect(requests[0]?.trigger_message).toContain('concrete progress');
 
@@ -1876,10 +1876,10 @@ describe('runtime v2 startup inbox dispatch', () => {
 
     expect(modelContractMocks.getPromptModeArgs).toHaveBeenCalledWith(
       'gemini',
-      expect.stringContaining('.omc/state/team/dispatch-team/workers/worker-1/inbox.md'),
+      expect.stringContaining('$OMC_TEAM_STATE_ROOT/workers/worker-1/inbox.md'),
     );
     const promptModeInstruction = modelContractMocks.getPromptModeArgs.mock.calls[0]?.[1];
-    expect(promptModeInstruction).toContain('Open .omc/state/team/dispatch-team/workers/worker-1/inbox.md');
+    expect(promptModeInstruction).toContain('Open $OMC_TEAM_STATE_ROOT/workers/worker-1/inbox.md');
     expect(promptModeInstruction).not.toContain('claim-task');
     expect(promptModeInstruction).not.toContain('transition-task-status');
     expect(promptModeInstruction).not.toContain('blocked');
@@ -1890,7 +1890,7 @@ describe('runtime v2 startup inbox dispatch', () => {
       expect.objectContaining({
         launchBinary: '/usr/bin/gemini',
         launchArgs: expect.arrayContaining([
-          expect.stringContaining('.omc/state/team/dispatch-team/workers/worker-1/inbox.md'),
+          expect.stringContaining('$OMC_TEAM_STATE_ROOT/workers/worker-1/inbox.md'),
         ]),
       }),
     );

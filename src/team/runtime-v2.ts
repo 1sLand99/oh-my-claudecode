@@ -1115,7 +1115,7 @@ async function spawnV2Worker(opts: SpawnV2WorkerOptions): Promise<SpawnV2WorkerR
   const instruction = buildV2TaskInstruction(
     opts.teamName, opts.workerName, opts.task, opts.taskId, cliOutputContract,
   );
-  const instructionStateRoot = opts.worktreePath ? '$OMC_TEAM_STATE_ROOT' : undefined;
+  const instructionStateRoot = '$OMC_TEAM_STATE_ROOT';
   const startupBaseline = await captureWorkerStartupBaseline(
     opts.teamName, opts.workerName, opts.taskId, opts.cwd,
   );
@@ -2926,7 +2926,7 @@ export async function executeRecoverDeadWorkerV2Owner(
           const recoveryTriggerMessage = `${generateTriggerMessage(
             input.teamName,
             sagaInput.workerName,
-            pending.worker.worktree_path ? '$OMC_TEAM_STATE_ROOT' : undefined,
+            '$OMC_TEAM_STATE_ROOT',
           )} [launch:${startupContext.attempt.attempt_id.slice(0, 12)}]`;
           const outcome = await queueInboxInstruction({
             teamName: input.teamName,
@@ -3329,7 +3329,7 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
     if (!binary) throw new Error(`No validated binary available for ${assignment.agentType}`);
     const startupPrompt = taskIndex !== undefined && isPromptModeAgent(assignment.agentType)
       ? generatePromptModeStartupPrompt(sanitized, workerName,
-        worktree ? '$OMC_TEAM_STATE_ROOT' : undefined, outputContract)
+        '$OMC_TEAM_STATE_ROOT', outputContract)
       : undefined;
     const transportPrompt = startupPrompt && process.platform === 'win32' && /\.(?:cmd|bat)$/i.test(binary)
       ? startupPrompt.replace(/\s*\r?\n\s*/g, ' ')
@@ -3356,7 +3356,7 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
         })),
         cwd: leaderCwd,
         ...(config.rolePrompt ? { bootstrapInstructions: config.rolePrompt } : {}),
-        ...(workerWorktrees.has(wName) ? { instructionStateRoot: '$OMC_TEAM_STATE_ROOT' } : {}),
+        instructionStateRoot: '$OMC_TEAM_STATE_ROOT',
       });
       const worktree = workerWorktrees.get(wName);
       if (worktree) {
@@ -4415,9 +4415,7 @@ export async function shutdownTeamV2(
       await writeShutdownRequest(sanitized, w.name, 'leader-fixed', cwd);
       shutdownRequestTimes.set(w.name, requestedAt);
       // Write shutdown inbox
-      const shutdownAckPath = w.worktree_path
-        ? `$OMC_TEAM_STATE_ROOT/workers/${w.name}/shutdown-ack.json`
-        : TeamPaths.shutdownAck(sanitized, w.name);
+      const shutdownAckPath = `$OMC_TEAM_STATE_ROOT/workers/${w.name}/shutdown-ack.json`;
       const shutdownInbox = `# Shutdown Request\n\nAll tasks are complete. Please wrap up and respond with a shutdown acknowledgement.\n\nWrite your ack to: ${shutdownAckPath}\nFormat: {"status":"accept","reason":"ok","updated_at":"<iso>"}\n\nThen exit your session.\n`;
       await writeWorkerInbox(sanitized, w.name, shutdownInbox, cwd);
     } catch (err) {

@@ -8,7 +8,7 @@ import type { NotificationPlatform } from '../../notifications/types.js';
 import { cleanupBridgeSessions } from '../../tools/python-repl/bridge-manager.js';
 import { resolveToWorktreeRoot, getOmcRoot, validateSessionId, isValidTranscriptPath, resolveSessionStatePath } from '../../lib/worktree-paths.js';
 import { SESSION_END_MODE_STATE_FILES, SESSION_METRICS_MODE_FILES } from '../../lib/mode-names.js';
-import { canClearStateForSession, clearModeStateFile, readModeState, readModeStateWithMeta } from '../../lib/mode-state-io.js';
+import { canClearStateForSession, clearModeStateFile, readModeStateWithMeta } from '../../lib/mode-state-io.js';
 import { completeForegroundCleanup, completeForegroundCleanupAndSealCore, prepareCoreManifest, readSessionEndJob, sealWikiManifest } from './cleanup-manifest.js';
 import { spawnSessionEndWorker } from './worker.js';
 import { buildWikiSessionEndCaptureIntent } from '../wiki/session-hooks.js';
@@ -664,7 +664,9 @@ function extractTeamNameFromState(state: Record<string, unknown> | null): string
 async function findSessionOwnedTeams(directory: string, sessionId: string): Promise<string[]> {
   const teamNames = new Set<string>();
   const teamState = readModeStateWithMeta<Record<string, unknown>>('team', directory, sessionId);
-  const stateTeamName = extractTeamNameFromState(teamState);
+  const stateTeamName = canClearStateForSession(teamState, sessionId)
+    ? extractTeamNameFromState(teamState)
+    : null;
   if (stateTeamName) {
     teamNames.add(stateTeamName);
   }

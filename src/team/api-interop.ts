@@ -480,8 +480,8 @@ export function buildLegacyTeamDeprecationHint(
 
 const WORKTREE_TRIGGER_STATE_ROOT = '$OMC_TEAM_STATE_ROOT';
 
-function resolveInstructionStateRoot(worktreePath?: string | null): string | undefined {
-  return worktreePath ? WORKTREE_TRIGGER_STATE_ROOT : undefined;
+function resolveInstructionStateRoot(_worktreePath?: string | null): string {
+  return WORKTREE_TRIGGER_STATE_ROOT;
 }
 
 function hasExactText(value: unknown): value is string {

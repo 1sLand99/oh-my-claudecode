@@ -1890,7 +1890,7 @@ export const stateListActiveTool: ToolDefinition<{
             if (existsSync(statePath)) {
               const content = readFileSync(statePath, 'utf-8');
               const state = JSON.parse(content);
-              if (state.active) {
+              if (state.active && canClearStateForSession(state, sessionId)) {
                 activeModes.push(mode);
               }
             }
@@ -1972,7 +1972,7 @@ export const stateListActiveTool: ToolDefinition<{
             if (existsSync(statePath)) {
               const content = readFileSync(statePath, 'utf-8');
               const state = JSON.parse(content);
-              if (state.active) {
+              if (state.active && canClearStateForSession(state, sid)) {
                 sessionActiveModes.push(mode);
               }
             }

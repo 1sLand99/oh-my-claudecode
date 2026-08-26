@@ -11,7 +11,6 @@ import { basename, dirname, join } from 'path';
 import { createHash, randomUUID } from 'crypto';
 import { spawnSync } from 'child_process';
 import {
-  getGitTopLevel,
   getOmcRoot,
   probeGitTopLevel,
   resolveNonGitStateAnchor,
@@ -1253,6 +1252,13 @@ export function writeModeState(
         ...(ownerPid !== undefined ? { ownerPid } : {}),
       },
     };
+    if (sessionId) {
+      return writeStateFileLockedCreateIf(
+        filePath,
+        current => current === null || canClearStateForSession(current, sessionId),
+        () => envelope,
+      ) === 'written';
+    }
     return writeStateFileLocked(filePath, envelope);
   } catch {
     return false;
@@ -1304,6 +1310,9 @@ export function readModeState<T = Record<string, unknown>>(
   try {
     const content = readFileSync(filePath, 'utf-8');
     const parsed = JSON.parse(content);
+    if (sessionId && parsed && typeof parsed === 'object' && !canClearStateForSession(parsed as Record<string, unknown>, sessionId)) {
+      return null;
+    }
     // Strip _meta envelope if present
     if (parsed && typeof parsed === 'object' && '_meta' in parsed) {
       const { _meta: _, ...rest } = parsed;
@@ -1373,7 +1382,8 @@ export function clearModeStateFile(
       const expectedSnapshot = JSON.stringify(Object.fromEntries(Object.entries(expectedState).filter(([key]) => key !== '_meta')));
       const result = clearStateFileLockedIf(
         directPath,
-        (current) => JSON.stringify(Object.fromEntries(Object.entries(current).filter(([key]) => key !== '_meta'))) === expectedSnapshot,
+        (current) => canClearStateForSession(current, sessionId)
+          && JSON.stringify(Object.fromEntries(Object.entries(current).filter(([key]) => key !== '_meta'))) === expectedSnapshot,
         undefined,
         captured.direct.generation,
       );
@@ -1420,7 +1430,11 @@ export function clearModeStateFile(
         }
       }
     } else {
-      unlinkIfPresent(directPath);
+      const directResult = clearStateFileLockedIf(
+        directPath,
+        current => canClearStateForSession(current, sessionId),
+      );
+      if (directResult === 'failed' || (directResult === 'skipped' && existsSync(directPath))) success = false;
       for (const artifactPath of getRuntimeArtifactCandidates(mode, baseDir, sessionId)) {
         unlinkIfPresent(artifactPath);
       }

@@ -72,7 +72,7 @@ describe('worker-bootstrap', () => {
       expect(generateTriggerMessage('test-team', 'worker-1', '$OMC_TEAM_STATE_ROOT'))
         .not.toContain('$OMC_TEAM_STATE_ROOT/team/test-team');
       expect(generateTriggerMessage('test-team', 'worker-1', '$OMC_TEAM_STATE_ROOT'))
-        .toContain('work now');
+        .toContain('execute now');
       expect(generateMailboxTriggerMessage('test-team', 'worker-1', 2, '$OMC_TEAM_STATE_ROOT'))
         .toContain('$OMC_TEAM_STATE_ROOT/mailbox/worker-1.json');
       expect(generateMailboxTriggerMessage('test-team', 'worker-1', 2, '$OMC_TEAM_STATE_ROOT'))

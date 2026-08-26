@@ -51,9 +51,6 @@ export function generateTriggerMessage(
   teamStateRoot = DEFAULT_INSTRUCTION_STATE_ROOT,
 ): string {
   const inboxPath = buildTeamStateInstructionPath(teamName, teamStateRoot, 'workers', workerName, 'inbox.md');
-  if (teamStateRoot !== DEFAULT_INSTRUCTION_STATE_ROOT) {
-    return `Read ${inboxPath}, work now, report progress.`;
-  }
   return `Read ${inboxPath}, execute now, report concrete progress.`;
 }
 
