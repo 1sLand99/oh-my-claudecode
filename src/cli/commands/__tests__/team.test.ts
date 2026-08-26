@@ -70,10 +70,28 @@ describe('teamCommand help output', () => {
 describe('teamCommand api operations', () => {
   let wd: string;
   let previousCwd: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
+  let previousStateDir: string | undefined;
+
+  const isolateFixtureHome = (directory: string) => {
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    previousStateDir = process.env.OMC_STATE_DIR;
+    process.env.HOME = directory;
+    process.env.USERPROFILE = directory;
+    delete process.env.OMC_STATE_DIR;
+  };
 
   afterEach(async () => {
     if (previousCwd) process.chdir(previousCwd);
     if (wd) await rm(wd, { recursive: true, force: true }).catch(() => {});
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
+    if (previousStateDir === undefined) delete process.env.OMC_STATE_DIR;
+    else process.env.OMC_STATE_DIR = previousStateDir;
     process.exitCode = 0;
   });
 
@@ -91,6 +109,7 @@ describe('teamCommand api operations', () => {
 
   it('executes send-message with stable JSON envelope', async () => {
     wd = await mkdtemp(join(tmpdir(), 'omc-team-cli-'));
+    isolateFixtureHome(wd);
     previousCwd = process.cwd();
     process.chdir(wd);
     await initTeamState('cli-test', wd);
@@ -117,6 +136,7 @@ describe('teamCommand api operations', () => {
 
   it('supports claim-safe lifecycle: create -> claim -> transition', async () => {
     wd = await mkdtemp(join(tmpdir(), 'omc-team-lifecycle-'));
+    isolateFixtureHome(wd);
     previousCwd = process.cwd();
     process.chdir(wd);
     await initTeamState('lifecycle', wd);
@@ -212,6 +232,7 @@ describe('teamCommand api operations', () => {
 
   it('ignores stale team state without a live tmux session when enforcing leader spawn gate', async () => {
     wd = await mkdtemp(join(tmpdir(), 'omc-team-stale-gate-'));
+    isolateFixtureHome(wd);
     const stale = join(wd, '.omc', 'state', 'team', 'stale-team');
     await mkdir(stale, { recursive: true });
     await writeFile(join(stale, 'config.json'), JSON.stringify({
@@ -232,6 +253,7 @@ describe('teamCommand api operations', () => {
 
   it('allows nested team spawn only when parent governance enables it', async () => {
     wd = await mkdtemp(join(tmpdir(), 'omc-team-governance-'));
+    isolateFixtureHome(wd);
     previousCwd = process.cwd();
     process.chdir(wd);
     const base = join(wd, '.omc', 'state', 'team', 'demo-team');
