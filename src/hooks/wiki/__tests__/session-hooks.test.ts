@@ -17,7 +17,7 @@ describe('Wiki Session Hooks', () => {
   let originalClaudeConfigDir: string | undefined;
 
   beforeEach(async () => {
-    tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'wiki-session-hooks-'));
+    tempDir = await fsp.mkdtemp(path.join(os.homedir(), 'wiki-session-hooks-'));
     configDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'wiki-session-config-'));
     originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
     process.env.CLAUDE_CONFIG_DIR = configDir;
@@ -56,7 +56,7 @@ describe('feedProjectMemory (environment.md)', () => {
   let originalClaudeConfigDir: string | undefined;
 
   beforeEach(async () => {
-    tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'wiki-pm-'));
+    tempDir = await fsp.mkdtemp(path.join(os.homedir(), 'wiki-pm-'));
     configDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'wiki-pm-config-'));
     originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
     process.env.CLAUDE_CONFIG_DIR = configDir;
