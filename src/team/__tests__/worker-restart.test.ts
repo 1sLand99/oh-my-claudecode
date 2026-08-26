@@ -13,15 +13,25 @@ import type { McpWorkerMember } from '../types.js';
 
 describe('worker-restart', () => {
   let testDir: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
   const teamName = 'test-team';
   const workerName = 'worker1';
 
   beforeEach(() => {
     testDir = mkdtempSync(join(tmpdir(), 'worker-restart-test-'));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = testDir;
+    process.env.USERPROFILE = testDir;
   });
 
   afterEach(() => {
     rmSync(testDir, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
   });
 
   describe('shouldRestart', () => {
