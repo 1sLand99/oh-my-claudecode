@@ -170,6 +170,8 @@ describe('worker-bootstrap', () => {
       // explicit statement that writing the verdict is not a reason to exit.
       expect(overlay).toContain('REQUIRED: Structured Verdict Output');
       expect(overlay).toContain('do NOT edit, create, or delete any file');
+      expect(overlay).toContain('the leader completes or fails this task');
+      expect(overlay).not.toContain('On success:');
       expect(overlay).toContain('keep waiting for the next mailbox message');
     });
     it('does not activate reviewer restrictions from task text', () => {

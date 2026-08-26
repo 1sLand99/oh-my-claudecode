@@ -20,6 +20,7 @@
  */
 
 import type { CanonicalTeamRole } from '../shared/types.js';
+import { TASK_ID_SAFE_PATTERN } from './contracts.js';
 import type { CliAgentType } from './model-contract.js';
 
 /** Roles that emit a structured verdict and therefore use the output-file contract. */
@@ -142,6 +143,9 @@ export function parseCliWorkerVerdict(raw: string): CliWorkerOutputPayload {
   const taskId = obj.task_id;
   if (typeof taskId !== 'string' || !taskId) {
     throw new Error('verdict_missing_task_id');
+  }
+  if (!TASK_ID_SAFE_PATTERN.test(taskId)) {
+    throw new Error(`verdict_invalid_task_id:${taskId}`);
   }
   const verdict = obj.verdict;
   if (typeof verdict !== 'string' || !VALID_VERDICTS.has(verdict)) {

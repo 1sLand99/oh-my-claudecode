@@ -268,6 +268,7 @@ describe('runtime-v2 role routing — processCliWorkerVerdicts (AC-7)', () => {
     })]);
     const task = JSON.parse(await readFile(taskPath, 'utf-8'));
     expect(task.status).toBe('completed');
+    expect(task.version).toBe(2);
     expect(task.metadata).toMatchObject({
       verdict: 'approve',
       verdict_source: 'cli_worker_output_contract',

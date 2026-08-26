@@ -152,6 +152,13 @@ describe('cli-worker-contract', () => {
       expect(() => parseCliWorkerVerdict(raw)).toThrow(/verdict_invalid_verdict/);
     });
 
+    it('rejects task identifiers that could escape the task directory', () => {
+      const raw = JSON.stringify({
+        role: 'critic', task_id: '../other-team/task-1', verdict: 'approve', summary: 's', findings: [],
+      });
+      expect(() => parseCliWorkerVerdict(raw)).toThrow(/verdict_invalid_task_id/);
+    });
+
     it('rejects unknown severity value', () => {
       const raw = JSON.stringify({
         role: 'critic',

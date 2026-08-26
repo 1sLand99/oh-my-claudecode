@@ -63,7 +63,7 @@ import type {
 } from './types.js';
 import type { TeamPhase } from './phase-controller.js';
 import { validateTeamName } from './team-name.js';
-import { WORKER_NAME_SAFE_PATTERN } from './contracts.js';
+import { TASK_ID_SAFE_PATTERN, WORKER_NAME_SAFE_PATTERN } from './contracts.js';
 import type { CliAgentType } from './model-contract.js';
 import {
   buildValidatedWorkerLaunchDescriptor, clearResolvedPathCache, validateWorkerLaunchDescriptor, resolveValidatedBinaryPath,
@@ -765,6 +765,20 @@ function buildV2TaskInstruction(
   const failTaskCommand = formatOmcCliInvocation(
     `team api transition-task-status --input '${JSON.stringify({ team_name: teamName, task_id: taskId, from: 'in_progress', to: 'failed', claim_token: '<claim_token>' })}' --json`,
   );
+  const cursorReviewer = agentType === 'cursor' && Boolean(cliOutputContract);
+  const lifecycleInstructions = cursorReviewer
+    ? [
+      `3. Write the structured verdict from the trusted reviewer contract below when the review is complete.`,
+      `4. ACK/progress replies are not a stop signal. Keep the Cursor session alive for further mailbox instructions; the leader transitions this task after consuming the verdict.`,
+    ]
+    : [
+      `3. On completion (use claim_token from step 1):`,
+      `   ${completeTaskCommand}`,
+      `   The result field is required for completion evidence. For broad delegated tasks, include either "Subagent skip reason: <why no nested worker was needed/allowed>" or, only when explicitly allowed by the leader, "Subagent spawn evidence: <child task names/thread ids and integrated findings>".`,
+      `4. On failure (use claim_token from step 1):`,
+      `   ${failTaskCommand}`,
+      `5. ACK/progress replies are not a stop signal. Keep executing your assigned or next feasible work until the task is actually complete or failed, then transition and exit.`,
+    ];
   return [
     `## REQUIRED: Task Lifecycle Commands`,
     `You MUST run these commands. Do NOT skip any step.`,
@@ -773,12 +787,7 @@ function buildV2TaskInstruction(
     `   ${claimTaskCommand}`,
     `   Save the claim_token from the response.`,
     `2. Do the work described below.`,
-    `3. On completion (use claim_token from step 1):`,
-    `   ${completeTaskCommand}`,
-    `   The result field is required for completion evidence. For broad delegated tasks, include either "Subagent skip reason: <why no nested worker was needed/allowed>" or, only when explicitly allowed by the leader, "Subagent spawn evidence: <child task names/thread ids and integrated findings>".`,
-    `4. On failure (use claim_token from step 1):`,
-    `   ${failTaskCommand}`,
-    `5. ACK/progress replies are not a stop signal. Keep executing your assigned or next feasible work until the task is actually complete or failed, then transition and exit.`,
+    ...lifecycleInstructions,
     ``,
     `## Task Assignment`,
     `Task ID: ${taskId}`,
@@ -787,7 +796,9 @@ function buildV2TaskInstruction(
     ``,
     task.description,
     ``,
-    `REMINDER: You MUST run transition-task-status before exiting. Do NOT write done.json or edit task files directly.`,
+    cursorReviewer
+      ? `REMINDER: Write the verdict before yielding the review turn. Do NOT run transition-task-status or write done.json; the leader owns the terminal transition.`
+      : `REMINDER: You MUST run transition-task-status before exiting. Do NOT write done.json or edit task files directly.`,
     ...(agentType === 'cursor' ? [renderCursorWorkerGuidance(Boolean(cliOutputContract))] : []),
     ...(cliOutputContract ? [cliOutputContract] : []),
   ].join('\n');
@@ -3940,6 +3951,7 @@ export async function processCliWorkerVerdicts(
     let targetTaskId: string | null = null;
     let targetTaskPath: string | null = null;
     for (const taskId of candidateTaskIds) {
+      if (!TASK_ID_SAFE_PATTERN.test(taskId)) continue;
       const taskPath = absPath(cwd, TeamPaths.taskFile(sanitized, taskId));
       if (!fsExistsSync(taskPath)) continue;
       try {
@@ -3948,9 +3960,17 @@ export async function processCliWorkerVerdicts(
         const taskRole = typeof taskData.role === 'string'
           ? normalizeDelegationRole(taskData.role)
           : null;
+        const claim = taskData.claim && typeof taskData.claim === 'object'
+          ? taskData.claim as unknown as Record<string, unknown>
+          : null;
+        const claimMatchesCursorWorker = !cursorReviewer || (
+          claim?.owner === worker.name
+          && (worker.launch_attempt_id === undefined || claim.launch_attempt_id === worker.launch_attempt_id)
+        );
         if (taskData.owner === worker.name
           && taskData.status === 'in_progress'
-          && (!cursorReviewer || taskRole === workerRole)) {
+          && (!cursorReviewer || taskRole === workerRole)
+          && claimMatchesCursorWorker) {
           targetTaskId = taskId;
           targetTaskPath = taskPath;
           break;
@@ -3975,6 +3995,8 @@ export async function processCliWorkerVerdicts(
             && (processedTask.status === 'completed' || processedTask.status === 'failed')
             && (!cursorReviewer || processedTaskRole === workerRole)
             && metadata?.verdict_source === 'cli_worker_output_contract'
+            && (worker.launch_attempt_id === undefined
+              || metadata.verdict_worker_launch_attempt_id === worker.launch_attempt_id)
             && metadata.verdict === payload.verdict;
           if (taskAlreadyRecorded) {
             try { await rename(verdictFile, processedOutputFile); } catch { /* best-effort */ }
@@ -4027,13 +4049,16 @@ export async function processCliWorkerVerdicts(
             verdict_findings: payload.findings,
             verdict_role: payload.role,
             verdict_source: 'cli_worker_output_contract',
+            ...(worker.launch_attempt_id
+              ? { verdict_worker_launch_attempt_id: worker.launch_attempt_id }
+              : {}),
           };
           if (terminalStatus === 'failed') {
             taskData.error = `cli_worker_verdict:${payload.verdict}:${payload.summary}`;
           }
           taskData.version = typeof taskData.version === 'number' && Number.isFinite(taskData.version)
             ? taskData.version + 1
-            : 1;
+            : 2;
           await writeAtomic(targetTaskPath!, JSON.stringify(taskData, null, 2));
           return true;
         });
