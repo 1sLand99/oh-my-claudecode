@@ -7,7 +7,7 @@
 
 import { z } from 'zod';
 import { createHash } from 'crypto';
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'fs';
+import { closeSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, unlinkSync, writeFileSync, constants as fsConstants } from 'fs';
 import { homedir } from 'os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'path';
 import {
@@ -182,6 +182,7 @@ function listSessionIdsUnderOmcRoot(omcRoot: string): string[] {
 
 function getConvergedOmcRoots(root: string): string[] {
   const canonicalRoot = getOmcRoot(root);
+  if (process.env.OMC_STATE_DIR) return [canonicalRoot];
   if (!getGitTopLevel(root)) return [canonicalRoot];
 
   const roots = new Set<string>([canonicalRoot]);
@@ -319,11 +320,12 @@ function hasActiveConvergedState(mode: StateToolMode, root: string, sessionId?: 
     .some((statePath) => isConvergedCandidateActiveForSession(statePath, sessionId));
 }
 
-function readTeamNamesFromStateFile(statePath: string): string[] {
+function readTeamNamesFromStateFile(statePath: string, sessionId?: string): string[] {
   if (!existsSync(statePath)) return [];
 
   try {
     const raw = JSON.parse(readFileSync(statePath, 'utf-8')) as Record<string, unknown>;
+    if (sessionId && !canClearStateForSession(raw, sessionId)) return [];
     const teamName = typeof raw.team_name === 'string'
       ? raw.team_name.trim()
       : typeof raw.teamName === 'string'
@@ -1350,7 +1352,7 @@ export const stateClearTool: ToolDefinition<{
 
       const collectTeamNamesForCleanup = (statePath: string): void => {
         if (mode !== 'team') return;
-        for (const teamName of readTeamNamesFromStateFile(statePath)) {
+        for (const teamName of readTeamNamesFromStateFile(statePath, sessionId)) {
           cleanedTeamNames.add(teamName);
         }
       };
@@ -2222,6 +2224,11 @@ const stateMigrateNonGitTool: ToolDefinition<any> = {
       if (gitProbe.status === 'ok') throw new Error('state_migrate_non_git only accepts a non-git source directory');
       if (gitProbe.status !== 'not_a_repository') throw new Error('state_migrate_non_git refused a failed Git probe');
       if (existsSync(join(sourceRoot, '.git'))) throw new Error('state_migrate_non_git refuses a directory with Git metadata');
+      const authorizedHome = realpathSync(homedir());
+      const sourceFromHome = relative(authorizedHome, sourceRoot);
+      if (sourceFromHome === '..' || sourceFromHome.startsWith(`..${sep}`) || isAbsolute(sourceFromHome)) {
+        throw new Error('state_migrate_non_git refuses a source outside the authorized home boundary');
+      }
       if (isSensitiveStateLocation(sourceRoot)) throw new Error('state_migrate_non_git refuses sensitive source directories');
 
       const canonicalRoot = resolveNonGitStateAnchor(sourceRoot);
@@ -2252,7 +2259,15 @@ const stateMigrateNonGitTool: ToolDefinition<any> = {
       for (const entry of readdirSync(sourceDir, { withFileTypes: true })) {
         if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
         const sourcePath = join(sourceDir, entry.name);
-        const sourceBytes = readFileSync(sourcePath);
+        const sourceFd = openSync(sourcePath, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
+        let sourceBytes: Buffer;
+        try {
+          sourceBytes = readFileSync(sourceFd);
+          const sourceStat = fstatSync(sourceFd);
+          if (!sourceStat.isFile()) throw new Error('state_migrate_non_git refuses a non-file source entry');
+        } finally {
+          closeSync(sourceFd);
+        }
         let state: Record<string, unknown> | null = null;
         try { state = JSON.parse(sourceBytes.toString('utf8')) as Record<string, unknown>; } catch { /* rejected below */ }
         if (!state || getStateSessionOwner(state) !== args.session_id) {

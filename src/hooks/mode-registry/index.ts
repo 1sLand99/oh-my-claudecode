@@ -385,11 +385,19 @@ export function getAllModeStatuses(
   cwd: string,
   sessionId?: string,
 ): ModeStatus[] {
-  return (Object.keys(MODE_CONFIGS) as ExecutionMode[]).map((mode) => ({
-    mode,
-    active: isModeActive(mode, cwd, sessionId),
-    stateFilePath: getStateFilePath(cwd, mode, sessionId),
-  }));
+  return (Object.keys(MODE_CONFIGS) as ExecutionMode[]).map((mode) => {
+    const stateFilePath = getStateFilePath(cwd, mode, sessionId);
+    const raw = (() => {
+      try { return JSON.parse(readFileSync(stateFilePath, 'utf8')) as Record<string, unknown>; }
+      catch { return null; }
+    })();
+    const owner = raw ? getStateSessionOwner(raw) : undefined;
+    return {
+      mode,
+      active: isModeActive(mode, cwd, sessionId) && (sessionId ? (!owner || owner === sessionId) : !owner),
+      stateFilePath,
+    };
+  });
 }
 
 function clearObservedJsonFile(

@@ -125,6 +125,25 @@ describe('#3873 real non-git state ownership', () => {
     expect(readFileSync(destination, 'utf8')).toBe(owned);
   });
 
+  it('rejects migration sources outside the authorized home boundary', async () => {
+    const sourceRoot = join(osPaths.tmp, 'attacker-sibling');
+    const sourceSession = join(sourceRoot, '.omc', 'state', 'sessions', 'boundary-owner');
+    mkdirSync(sourceSession, { recursive: true });
+    writeFileSync(join(sourceSession, 'ralph-state.json'), JSON.stringify({
+      active: true,
+      session_id: 'boundary-owner',
+      _meta: { sessionId: 'boundary-owner' },
+    }));
+
+    const result = await stateMigrateTool.handler({
+      mode: 'ralph',
+      workingDirectory: sourceRoot,
+      session_id: 'boundary-owner',
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('authorized home boundary');
+  });
+
   it('fails closed on a typed Git probe failure', async () => {
     setGitShowToplevelProbeForTests(() => {
       const error = new Error('git unavailable') as NodeJS.ErrnoException;
