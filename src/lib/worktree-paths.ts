@@ -442,7 +442,7 @@ function formatGitProbeDetail(error: unknown): string {
   return 'unknown git probe failure';
 }
 
-function findGitMetadataDir(start: string): string | null {
+export function findGitMetadataDir(start: string): string | null {
   let current = start;
   for (;;) {
     if (existsSync(join(current, '.git'))) {

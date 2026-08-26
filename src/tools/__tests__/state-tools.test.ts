@@ -1381,9 +1381,9 @@ describe('state-tools', () => {
           workingDirectory: TEST_DIR,
         });
 
-        expect(result.content[0].text).toContain('No state found to clear');
+        expect(result.content[0].text).toContain('Successfully cleared state');
         for (const orphanSessionId of orphanSessionIds) {
-          expect(existsSync(join(TEST_DIR, '.omc', 'state', 'sessions', orphanSessionId, `${mode}-state.json`))).toBe(true);
+          expect(existsSync(join(TEST_DIR, '.omc', 'state', 'sessions', orphanSessionId, `${mode}-state.json`))).toBe(false);
         }
         expect(existsSync(join(TEST_DIR, '.omc', 'state', 'sessions', liveSessionId, `${mode}-state.json`))).toBe(true);
       }
@@ -1402,7 +1402,7 @@ describe('state-tools', () => {
       process.env.OMC_TEST_CONDITIONAL_CLEAR_REPLACEMENT_BASE64 = Buffer.from(JSON.stringify(replacement)).toString('base64');
 
       await stateClearTool.handler({ mode: 'ultrawork', session_id: requester, workingDirectory: TEST_DIR });
-      expect(JSON.parse(readFileSync(statePath, 'utf8'))).toEqual({ active: true, session_id: endedSession, workflowRunId: 'old-run' });
+      expect(JSON.parse(readFileSync(statePath, 'utf8'))).toEqual(replacement);
     });
 
     it('reports completed-session orphan state on session-scoped read misses', async () => {

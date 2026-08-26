@@ -21,6 +21,7 @@ import { clearWorktreeCache, setGitShowToplevelProbeForTests } from '../../lib/w
 const stateReadTool = stateTools.find((tool) => tool.name === 'state_read')!;
 const stateWriteTool = stateTools.find((tool) => tool.name === 'state_write')!;
 const stateStatusTool = stateTools.find((tool) => tool.name === 'state_get_status')!;
+const stateListTool = stateTools.find((tool) => tool.name === 'state_list_active')!;
 const stateMigrateTool = stateTools.find((tool) => tool.name === 'state_migrate_non_git')!;
 
 let workingDirectory: string;
@@ -89,6 +90,15 @@ describe('#3873 real non-git state ownership', () => {
     expect(result.content[0].text).not.toContain('private');
   });
 
+  it('does not list a metadata-owned foreign extra mode as active', async () => {
+    const foreignPath = join(centralState, 'non-git', 'state', 'sessions', 'list-requester', 'autoresearch-state.json');
+    mkdirSync(join(foreignPath, '..'), { recursive: true });
+    writeFileSync(foreignPath, JSON.stringify({ active: true, _meta: { sessionId: 'list-owner' }, secret: 'private' }));
+    const result = await stateListTool.handler({ mode: 'autoresearch', session_id: 'list-requester', workingDirectory });
+    expect(result.content[0].text).not.toContain('autoresearch');
+    expect(result.content[0].text).not.toContain('private');
+  });
+
   it('does not let a requester overwrite a foreign ordinary autopilot record', async () => {
     const foreignPath = join(centralState, 'non-git', 'state', 'sessions', 'autopilot-requester', 'autopilot-state.json');
     mkdirSync(join(foreignPath, '..'), { recursive: true });
@@ -109,17 +119,33 @@ describe('#3873 real non-git state ownership', () => {
     const owned = JSON.stringify({ active: true, session_id: 'migrate-a', _meta: { sessionId: 'migrate-a' } });
     writeFileSync(ownedPath, owned);
     writeFileSync(foreignPath, JSON.stringify({ active: true, session_id: 'other-session' }));
+    writeFileSync(join(sourceRoot, '.omc', 'state', 'ralph-state.json'), JSON.stringify({ active: true, session_id: 'migrate-a' }));
 
-    const result = await stateMigrateTool.handler({ mode: 'ralph', workingDirectory: sourceRoot, session_id: 'migrate-a' });
+    const beforeMigrationCwd = process.cwd();
+    process.chdir(sourceRoot);
+    let result;
+    try {
+      result = await stateMigrateTool.handler({ mode: 'ralph', workingDirectory: sourceRoot, session_id: 'migrate-a' });
+    } finally {
+      process.chdir(beforeMigrationCwd);
+    }
     const destination = join(centralState, 'non-git', 'state', 'sessions', 'migrate-a', 'ralph-state.json');
     expect(result.isError).toBeUndefined();
     expect(existsSync(destination)).toBe(true);
     expect(readFileSync(destination, 'utf8')).toBe(owned);
     expect(existsSync(ownedPath)).toBe(true);
     expect(existsSync(join(centralState, 'non-git', 'state', 'sessions', 'migrate-a', 'ultrawork-state.json'))).toBe(false);
+    expect(existsSync(join(centralState, 'non-git', 'state', 'ralph-state.json'))).toBe(false);
 
     writeFileSync(ownedPath, JSON.stringify({ active: false, session_id: 'migrate-a' }));
-    const second = await stateMigrateTool.handler({ mode: 'ralph', workingDirectory: sourceRoot, session_id: 'migrate-a' });
+    const secondCwd = process.cwd();
+    process.chdir(sourceRoot);
+    let second;
+    try {
+      second = await stateMigrateTool.handler({ mode: 'ralph', workingDirectory: sourceRoot, session_id: 'migrate-a' });
+    } finally {
+      process.chdir(secondCwd);
+    }
     expect(second.isError).toBeUndefined();
     expect(second.content[0].text).toContain('ralph-state.json');
     expect(readFileSync(destination, 'utf8')).toBe(owned);
@@ -141,7 +167,78 @@ describe('#3873 real non-git state ownership', () => {
       session_id: 'boundary-owner',
     });
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toContain('authorized home boundary');
+    expect(result.content[0].text).toContain('trusted session working directory');
+  });
+
+  it('rejects an owner-matched source outside the trusted session working directory', async () => {
+    const sourceRoot = join(osPaths.home, 'untrusted-sibling');
+    const sourceSession = join(sourceRoot, '.omc', 'state', 'sessions', 'boundary-owner');
+    mkdirSync(sourceSession, { recursive: true });
+    writeFileSync(join(sourceSession, 'ralph-state.json'), JSON.stringify({
+      active: true,
+      session_id: 'boundary-owner',
+      _meta: { sessionId: 'boundary-owner' },
+    }));
+
+    const result = await stateMigrateTool.handler({
+      mode: 'ralph',
+      workingDirectory: sourceRoot,
+      session_id: 'boundary-owner',
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('trusted session working directory');
+  });
+
+  it('returns an empty migration report for a partial legacy root', async () => {
+    const sourceRoot = join(osPaths.home, 'partial-legacy');
+    mkdirSync(join(sourceRoot, '.omc'), { recursive: true });
+    const beforeCwd = process.cwd();
+    process.chdir(sourceRoot);
+    let result;
+    try {
+      result = await stateMigrateTool.handler({ mode: 'ralph', workingDirectory: sourceRoot, session_id: 'partial-owner' });
+    } finally {
+      process.chdir(beforeCwd);
+    }
+    expect(result.isError).toBeUndefined();
+    expect(JSON.parse(result.content[0].text)).toMatchObject({ copied: [], skipped: [], rejected: [] });
+  });
+
+  it('rejects oversized migration records without reading unbounded input', async () => {
+    const sourceRoot = join(osPaths.home, 'oversized-legacy');
+    const sourceSession = join(sourceRoot, '.omc', 'state', 'sessions', 'large-owner');
+    mkdirSync(sourceSession, { recursive: true });
+    const sourcePath = join(sourceSession, 'ralph-state.json');
+    const oversized = `{"active":true,"session_id":"large-owner","payload":"${'x'.repeat(1_100_000)}"}`;
+    writeFileSync(sourcePath, oversized);
+    const beforeCwd = process.cwd();
+    process.chdir(sourceRoot);
+    let result;
+    try {
+      result = await stateMigrateTool.handler({ mode: 'ralph', workingDirectory: sourceRoot, session_id: 'large-owner' });
+    } finally {
+      process.chdir(beforeCwd);
+    }
+    expect(result.isError).toBeUndefined();
+    expect(JSON.parse(result.content[0].text).rejected).toContain('ralph-state.json');
+    expect(readFileSync(sourcePath, 'utf8')).toBe(oversized);
+  });
+
+  it('rejects legacy sources beneath malformed Git metadata', async () => {
+    const parent = join(osPaths.home, 'malformed-git-parent');
+    const sourceRoot = join(parent, 'legacy-child');
+    mkdirSync(sourceRoot, { recursive: true });
+    writeFileSync(join(parent, '.git'), 'gitdir: /missing-omc-gitdir');
+    const beforeCwd = process.cwd();
+    process.chdir(sourceRoot);
+    let result;
+    try {
+      result = await stateMigrateTool.handler({ mode: 'ralph', workingDirectory: sourceRoot, session_id: 'malformed-owner' });
+    } finally {
+      process.chdir(beforeCwd);
+    }
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('Git metadata');
   });
 
   it('fails closed on a typed Git probe failure', async () => {
@@ -153,7 +250,14 @@ describe('#3873 real non-git state ownership', () => {
 
     const probePath = join(osPaths.home, 'probe-failure');
     mkdirSync(probePath, { recursive: true });
-    const result = await stateMigrateTool.handler({ mode: 'ralph', workingDirectory: probePath, session_id: 'probe-owner' });
+    const beforeProbeCwd = process.cwd();
+    process.chdir(probePath);
+    let result;
+    try {
+      result = await stateMigrateTool.handler({ mode: 'ralph', workingDirectory: probePath, session_id: 'probe-owner' });
+    } finally {
+      process.chdir(beforeProbeCwd);
+    }
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('failed Git probe');
   });
@@ -171,7 +275,14 @@ describe('#3873 real non-git state ownership', () => {
       return;
     }
 
-    const result = await stateMigrateTool.handler({ mode: 'ralph', workingDirectory: sourceRoot, session_id: 'symlink-owner' });
+    const beforeSymlinkCwd = process.cwd();
+    process.chdir(sourceRoot);
+    let result;
+    try {
+      result = await stateMigrateTool.handler({ mode: 'ralph', workingDirectory: sourceRoot, session_id: 'symlink-owner' });
+    } finally {
+      process.chdir(beforeSymlinkCwd);
+    }
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('symlinked legacy state paths');
   });
@@ -195,7 +306,14 @@ describe('#3873 real non-git state ownership', () => {
     }
 
     process.env.OMC_STATE_DIR = isolatedCentral;
-    const result = await stateMigrateTool.handler({ mode: 'ralph', workingDirectory: sourceRoot, session_id: 'destination-owner' });
+    const beforeDestinationCwd = process.cwd();
+    process.chdir(sourceRoot);
+    let result;
+    try {
+      result = await stateMigrateTool.handler({ mode: 'ralph', workingDirectory: sourceRoot, session_id: 'destination-owner' });
+    } finally {
+      process.chdir(beforeDestinationCwd);
+    }
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('symlinked migration roots');
     expect(existsSync(join(outsideState, 'sessions', 'destination-owner', 'ralph-state.json'))).toBe(false);

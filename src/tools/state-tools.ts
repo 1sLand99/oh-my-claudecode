@@ -7,7 +7,7 @@
 
 import { z } from 'zod';
 import { createHash } from 'crypto';
-import { closeSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, unlinkSync, writeFileSync, constants as fsConstants } from 'fs';
+import { closeSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, rmSync, unlinkSync, writeFileSync, constants as fsConstants } from 'fs';
 import { homedir } from 'os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'path';
 import {
@@ -24,6 +24,7 @@ import {
   listSessionIds,
   validateSessionId,
   getOmcRoot,
+  findGitMetadataDir,
   OmcPaths,
 } from '../lib/worktree-paths.js';
 import { resolveSessionId } from '../lib/session-id.js';
@@ -56,6 +57,33 @@ import {
 import { ToolDefinition } from './types.js';
 import { namedWorkflowRuntimeSupported, validateNamedWorkflowStateStructure } from '../hooks/autopilot/named-workflow-resume-validator.js';
 import { cancelMergeReadiness, createInitialMergeReadinessState, readMergeReadinessState, setMergeReadinessContent, recordMergeReadinessMCQAnswer } from '../hooks/merge-readiness/runtime.js';
+
+const MAX_MIGRATION_FILE_BYTES = 1_048_576;
+
+function ensureMigrationDirectoryTree(root: string, target: string): void {
+  const rootResolved = resolve(root);
+  const targetResolved = resolve(target);
+  const suffix = relative(rootResolved, targetResolved);
+  if (suffix.startsWith('..') || isAbsolute(suffix)) {
+    throw new Error('state_migrate_non_git refuses a destination outside the canonical root');
+  }
+  let cursor = rootResolved;
+  for (const segment of suffix.split(/[\\/]+/).filter(Boolean)) {
+    cursor = join(cursor, segment);
+    if (existsSync(cursor)) {
+      const stat = lstatSync(cursor);
+      if (stat.isSymbolicLink() || !stat.isDirectory()) {
+        throw new Error('state_migrate_non_git refuses symlinked migration roots');
+      }
+      continue;
+    }
+    mkdirSync(cursor);
+    const created = lstatSync(cursor);
+    if (created.isSymbolicLink() || !created.isDirectory()) {
+      throw new Error('state_migrate_non_git refuses symlinked migration roots');
+    }
+  }
+}
 import { formatMergeReadinessReport, redactMergeReadinessState } from '../hooks/merge-readiness/report.js';
 import type { AutopilotState } from '../hooks/autopilot/types.js';
 
@@ -591,7 +619,8 @@ function clearCompletedSessionStateCandidates(
   for (const candidate of discovered) {
     const result = clearDiscoveredStateCandidate(
       candidate,
-      (current) => current.active === true && Boolean(candidate.completionEvidencePath && existsSync(candidate.completionEvidencePath)) && (!requesterSessionId || canClearStateForSession(current, requesterSessionId)),
+      (current) => current.active === true
+        && Boolean(candidate.completionEvidencePath && existsSync(candidate.completionEvidencePath)),
       emergencyRecoveryOptionsForProject(mode, candidate.path, root),
     );
     if (result === 'cleared') cleared++;
@@ -1372,7 +1401,7 @@ export const stateClearTool: ToolDefinition<{
           }
         }
         const completedCandidates = findCompletedSessionStateCandidates(mode, root, sessionId)
-          .filter((candidate) => isStateCandidateForProject(mode, candidate.path, candidate.state, root) && canClearStateForSession(candidate.state, sessionId));
+          .filter((candidate) => isStateCandidateForProject(mode, candidate.path, candidate.state, root));
         const legacyCandidates = discoverStatePaths(getLegacyStateFileCandidates(mode, root)).filter((candidate) => isStateCandidateForProject(mode, candidate.path, candidate.state, root));
         const localCandidates = discoverStatePaths(getWorkingDirectoryLocalStateClearCandidates(mode, root, sessionId))
           .filter((candidate) => isStateCandidateForProject(mode, candidate.path, candidate.state, root));
@@ -2179,7 +2208,7 @@ export const stateGetStatusTool: ToolDefinition<{
           try {
             const content = readFileSync(statePath, 'utf-8');
             const state = JSON.parse(content);
-            active = state.active === true;
+            active = state.active === true && (!sessionId || canClearStateForSession(state, sessionId));
           } catch {
             // Ignore parse errors
           }
@@ -2220,10 +2249,14 @@ const stateMigrateNonGitTool: ToolDefinition<any> = {
       if (!args.session_id) throw new Error('session_id is required');
       validateSessionId(args.session_id);
       const sourceRoot = realpathSync(resolve(args.workingDirectory || process.cwd()));
+      const trustedWorkingDirectory = realpathSync(resolve(process.cwd()));
+      if (sourceRoot !== trustedWorkingDirectory) {
+        throw new Error('state_migrate_non_git refuses a source outside the trusted session working directory');
+      }
       const gitProbe = probeGitTopLevel(sourceRoot);
       if (gitProbe.status === 'ok') throw new Error('state_migrate_non_git only accepts a non-git source directory');
       if (gitProbe.status !== 'not_a_repository') throw new Error('state_migrate_non_git refused a failed Git probe');
-      if (existsSync(join(sourceRoot, '.git'))) throw new Error('state_migrate_non_git refuses a directory with Git metadata');
+      if (findGitMetadataDir(sourceRoot)) throw new Error('state_migrate_non_git refuses a directory with Git metadata');
       const authorizedHome = realpathSync(homedir());
       const sourceFromHome = relative(authorizedHome, sourceRoot);
       if (sourceFromHome === '..' || sourceFromHome.startsWith(`..${sep}`) || isAbsolute(sourceFromHome)) {
@@ -2244,6 +2277,9 @@ const stateMigrateNonGitTool: ToolDefinition<any> = {
       const sourceState = join(sourceOmc, 'state');
       const sourceSessions = join(sourceState, 'sessions');
       for (const path of [sourceOmc, sourceState, sourceSessions]) {
+        if (!existsSync(path)) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify(report, null, 2) }] };
+        }
         if (lstatSync(path).isSymbolicLink()) throw new Error('state_migrate_non_git refuses symlinked legacy state paths');
       }
       if (!existsSync(sourceDir)) {
@@ -2255,16 +2291,25 @@ const stateMigrateNonGitTool: ToolDefinition<any> = {
       if (lstatSync(sourceDir).isSymbolicLink() || migrationRoots.some((path) => existsSync(path) && lstatSync(path).isSymbolicLink())) {
         throw new Error('state_migrate_non_git refuses symlinked migration roots');
       }
-      mkdirSync(destinationDir, { recursive: true });
+      ensureMigrationDirectoryTree(canonicalOmc, destinationDir);
       for (const entry of readdirSync(sourceDir, { withFileTypes: true })) {
         if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
         const sourcePath = join(sourceDir, entry.name);
         const sourceFd = openSync(sourcePath, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
         let sourceBytes: Buffer;
         try {
-          sourceBytes = readFileSync(sourceFd);
           const sourceStat = fstatSync(sourceFd);
           if (!sourceStat.isFile()) throw new Error('state_migrate_non_git refuses a non-file source entry');
+          if (sourceStat.size > MAX_MIGRATION_FILE_BYTES) {
+            report.rejected.push(entry.name);
+            continue;
+          }
+          sourceBytes = Buffer.alloc(sourceStat.size);
+          const bytesRead = sourceStat.size === 0 ? 0 : readSync(sourceFd, sourceBytes, 0, sourceStat.size, 0);
+          if (bytesRead !== sourceStat.size) {
+            report.rejected.push(entry.name);
+            continue;
+          }
         } finally {
           closeSync(sourceFd);
         }
@@ -2275,6 +2320,7 @@ const stateMigrateNonGitTool: ToolDefinition<any> = {
           continue;
         }
         const destinationPath = join(destinationDir, entry.name);
+        ensureMigrationDirectoryTree(canonicalOmc, destinationDir);
         if (existsSync(destinationPath)) {
           report.skipped.push(entry.name);
           continue;

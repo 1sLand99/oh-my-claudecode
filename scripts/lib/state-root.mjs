@@ -18,9 +18,8 @@
  *     in production (CLAUDE_PLUGIN_ROOT is always set).
  */
 
-import { join, basename } from 'path';
+import { join } from 'path';
 import { existsSync } from 'fs';
-import { createHash } from 'crypto';
 import { pathToFileURL } from 'url';
 
 /**
@@ -42,12 +41,11 @@ export async function resolveOmcStateRoot(directory) {
     }
   }
 
-  // Inline fallback: respects OMC_STATE_DIR with simplified project identifier
+  // Inline fallback: preserve the canonical non-git identity used by the
+  // TypeScript resolver when the generated distribution is unavailable.
   const customDir = process.env.OMC_STATE_DIR;
   if (customDir) {
-    const hash = createHash('sha256').update(directory).digest('hex').slice(0, 16);
-    const dirName = basename(directory).replace(/[^a-zA-Z0-9_-]/g, '_');
-    return join(customDir, `${dirName}-${hash}`);
+    return join(customDir, 'non-git');
   }
   return join(directory, '.omc');
 }

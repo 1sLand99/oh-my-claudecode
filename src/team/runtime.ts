@@ -795,7 +795,11 @@ export async function spawnWorkerForTask(
     const instruction = buildInitialTaskInstruction(runtime.teamName, workerNameValue, task, taskId, root);
     await composeInitialInbox(runtime.teamName, workerNameValue, instruction, runtime.cwd);
 
-    const envVars = getModelWorkerEnv(runtime.teamName, workerNameValue, agentType);
+    const envVars = {
+      ...getModelWorkerEnv(runtime.teamName, workerNameValue, agentType),
+      OMC_TEAM_STATE_ROOT: root,
+      OMC_TEAM_LEADER_CWD: runtime.cwd,
+    };
     const resolvedBinaryPath = runtime.resolvedBinaryPaths?.[agentType] ?? resolveValidatedBinaryPath(agentType);
     if (!runtime.resolvedBinaryPaths) {
       runtime.resolvedBinaryPaths = {};

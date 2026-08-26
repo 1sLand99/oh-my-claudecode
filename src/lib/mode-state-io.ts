@@ -1163,7 +1163,9 @@ export function findSessionOwnedStateCandidates(
   const baseDir = resolveStateRoot(directory);
   const expectedPath = resolveSessionStatePath(mode, sessionId, baseDir);
   const expected = discoverStateFile(expectedPath);
-  if (expected) matches.set(expectedPath, expected);
+  if (expected && canClearStateForSession(expected.state, sessionId)) {
+    matches.set(expectedPath, expected);
+  }
 
   for (const sid of listSessionIds(baseDir)) {
     const candidatePath = resolveSessionStatePath(mode, sid, baseDir);
@@ -1333,7 +1335,11 @@ export function readModeStateWithMeta<T = Record<string, unknown>>(
   const filePath = resolveFile(mode, directory, sessionId);
   if (!existsSync(filePath)) return null;
   try {
-    return JSON.parse(readFileSync(filePath, 'utf-8')) as T;
+    const parsed = JSON.parse(readFileSync(filePath, 'utf-8')) as unknown;
+    if (sessionId && parsed && typeof parsed === 'object' && !canClearStateForSession(parsed as Record<string, unknown>, sessionId)) {
+      return null;
+    }
+    return parsed as T;
   } catch {
     return null;
   }

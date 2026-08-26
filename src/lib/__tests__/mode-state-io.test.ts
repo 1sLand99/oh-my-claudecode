@@ -5,7 +5,7 @@ import { mkdirSync, rmSync, existsSync, readFileSync, readdirSync, writeFileSync
 import { basename, dirname, join } from 'path';
 import { tmpdir } from 'os';
 
-import { emergencyMutateStateFileIf, recoverEmergencyStateFile, captureModeStateCleanup, writeModeState, readModeState, clearModeStateFile, withStateFileMutationLock } from '../mode-state-io.js';
+import { emergencyMutateStateFileIf, recoverEmergencyStateFile, captureModeStateCleanup, findSessionOwnedStateCandidates, writeModeState, readModeState, readModeStateWithMeta, clearModeStateFile, withStateFileMutationLock } from '../mode-state-io.js';
 import { atomicWriteJsonSync } from '../atomic-write.js';
 import { clearWorktreeCache, getProjectIdentifier } from '../worktree-paths.js';
 
@@ -337,6 +337,42 @@ describe('mode-state-io', () => {
 
       const result = readModeState('ralph', tempDir);
       expect(result).toBeNull();
+    });
+
+    it.each([
+      ['metadata owner', { _meta: { sessionId: 'session-other' } }],
+      ['top-level owner', { session_id: 'session-other' }],
+    ])('should reject a session-scoped state owned by another session (%s)', (_label, state) => {
+      const sessionDir = join(tempDir, '.omc', 'state', 'sessions', 'session-requester');
+      mkdirSync(sessionDir, { recursive: true });
+      writeFileSync(join(sessionDir, 'ralph-state.json'), JSON.stringify({ active: true, ...state }));
+
+      expect(readModeState('ralph', tempDir, 'session-requester')).toBeNull();
+      expect(readModeStateWithMeta('ralph', tempDir, 'session-requester')).toBeNull();
+    });
+
+    it.each([
+      ['same owner', { _meta: { sessionId: 'session-requester' } }],
+      ['unowned legacy', {}],
+    ])('should preserve session-scoped reads for %s state', (_label, state) => {
+      const sessionDir = join(tempDir, '.omc', 'state', 'sessions', 'session-requester');
+      mkdirSync(sessionDir, { recursive: true });
+      const persisted = { active: true, ...state };
+      writeFileSync(join(sessionDir, 'ralph-state.json'), JSON.stringify(persisted));
+
+      expect(readModeState('ralph', tempDir, 'session-requester')).toMatchObject({ active: true });
+      expect(readModeStateWithMeta('ralph', tempDir, 'session-requester')).toEqual(persisted);
+    });
+
+    it('should exclude a foreign owner from the expected session path discovery', () => {
+      const sessionDir = join(tempDir, '.omc', 'state', 'sessions', 'session-requester');
+      mkdirSync(sessionDir, { recursive: true });
+      writeFileSync(
+        join(sessionDir, 'ralph-state.json'),
+        JSON.stringify({ active: true, _meta: { sessionId: 'session-other' } }),
+      );
+
+      expect(findSessionOwnedStateCandidates('ralph', 'session-requester', tempDir)).toEqual([]);
     });
   });
 

@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { getOmcRoot, resolveSessionStatePath } from '../../lib/worktree-paths.js';
-import { readHudState } from '../../hud/state.js';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
+import { readModeState } from '../../lib/mode-state-io.js';
 import type { BackgroundTask } from '../../hud/types.js';
 import type { TeamTask, WorkerStatus } from '../../team/types.js';
 
@@ -67,9 +67,7 @@ function getTeamNamesForRuntimeInsight(directory: string, sessionId?: string): s
   }
 
   const scopedTeamNames = new Set<string>();
-  const teamState = readJsonSafe<Record<string, unknown>>(
-    resolveSessionStatePath('team', sessionId, directory),
-  );
+  const teamState = readModeState<Record<string, unknown>>('team', directory, sessionId);
   const activeTeamName = teamState?.team_name ?? teamState?.teamName;
   if (typeof activeTeamName === 'string' && activeTeamName.trim().length > 0) {
     scopedTeamNames.add(activeTeamName.trim());
@@ -88,10 +86,7 @@ function getTeamNamesForRuntimeInsight(directory: string, sessionId?: string): s
 }
 
 function getWorkflowProgress(directory: string, sessionId?: string): string | null {
-  const statePath = sessionId
-    ? resolveSessionStatePath('autopilot', sessionId, directory)
-    : join(getOmcRoot(directory), 'state', 'autopilot-state.json');
-  const state = readJsonSafe<Record<string, unknown>>(statePath);
+  const state = readModeState<Record<string, unknown>>('autopilot', directory, sessionId);
   const workflow = state?.workflow as Record<string, unknown> | undefined;
   const tracking = state?.pipelineTracking as Record<string, unknown> | undefined;
   const stages = Array.isArray(workflow?.stages) ? workflow.stages : null;
@@ -159,8 +154,16 @@ function collectRuntimeInsight(directory: string, sessionId?: string): RuntimeIn
     }
   }
 
-  const hudState = readHudState(directory, sessionId);
-  const backgroundTasks = hudState?.backgroundTasks ?? [];
+  const hudState = readModeState<{
+    backgroundTasks?: BackgroundTask[];
+    sessionId?: unknown;
+  }>('hud', directory, sessionId);
+  const ownedHudState = sessionId
+    && typeof hudState?.sessionId === 'string'
+    && hudState.sessionId !== sessionId
+    ? null
+    : hudState;
+  const backgroundTasks = ownedHudState?.backgroundTasks ?? [];
   const failedBackgroundTasks = backgroundTasks
     .filter((task) => task.status === 'failed')
     .sort((left, right) => {

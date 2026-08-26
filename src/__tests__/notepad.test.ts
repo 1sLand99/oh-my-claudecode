@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { getOmcRoot } from '../lib/worktree-paths.js';
 import {
   initNotepad,
   readNotepad,
@@ -34,7 +35,7 @@ describe('Notepad Module', () => {
     testDir = mkdtempSync(join(tmpdir(), 'notepad-test-'));
     process.env.HOME = testDir;
     process.env.USERPROFILE = testDir;
-    delete process.env.OMC_STATE_DIR;
+    process.env.OMC_STATE_DIR = join(testDir, 'centralized-state');
 
   });
 
@@ -67,7 +68,7 @@ describe('Notepad Module', () => {
     });
 
     it('should create .omc directory if not exists', () => {
-      const omcDir = join(testDir, '.omc');
+      const omcDir = getOmcRoot(testDir);
       expect(existsSync(omcDir)).toBe(false);
 
       initNotepad(testDir);
@@ -76,7 +77,7 @@ describe('Notepad Module', () => {
     });
 
     it('should not overwrite existing notepad', () => {
-      const omcDir = join(testDir, '.omc');
+      const omcDir = getOmcRoot(testDir);
       mkdirSync(omcDir, { recursive: true });
       const notepadPath = getNotepadPath(testDir);
       const existingContent = '# Existing content\nTest data';
