@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "8e5f1c6447f63ef671eabaab31b29ca74dd5b112",
-    "sourceSha256": "cc646c50e0e78f7ab308f3c6d7a9a83c3137d70c73724d4b8553dc442bbf2e93",
+    "head": "37ed33736a86b88495b9519a5c86033dde0b6706",
+    "sourceSha256": "f0e4ae66fd64473ce816ce8a58186d97197059f22c112dfffc6c71802f4e6e5b",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "8e5f1c6447f63ef671eabaab31b29ca74dd5b112",
-  "sourceSha256": "cc646c50e0e78f7ab308f3c6d7a9a83c3137d70c73724d4b8553dc442bbf2e93",
+  "head": "37ed33736a86b88495b9519a5c86033dde0b6706",
+  "sourceSha256": "f0e4ae66fd64473ce816ce8a58186d97197059f22c112dfffc6c71802f4e6e5b",
   "counts": {
     "public": {
       "skills": 32,
@@ -66665,6 +66665,11 @@
       },
       {
         "from": "src/team/__tests__/api-interop.cleanup.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/api-interop.cleanup.test.ts",
         "to": "src/team/api-interop.ts",
         "kind": "imports"
       },
@@ -66705,6 +66710,11 @@
       },
       {
         "from": "src/team/__tests__/api-interop.compatibility.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/api-interop.compatibility.test.ts",
         "to": "src/team/api-interop.ts",
         "kind": "imports"
       },
@@ -66726,6 +66736,11 @@
       {
         "from": "src/team/__tests__/api-interop.cwd-resolution.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/api-interop.cwd-resolution.test.ts",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -66761,6 +66776,11 @@
       {
         "from": "src/team/__tests__/api-interop.dispatch.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/api-interop.dispatch.test.ts",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -67410,6 +67430,11 @@
       },
       {
         "from": "src/team/__tests__/governance-enforcement.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/governance-enforcement.test.ts",
         "to": "src/team/runtime-v2.ts",
         "kind": "imports"
       },
@@ -67855,6 +67880,11 @@
       },
       {
         "from": "src/team/__tests__/merge-orchestrator.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/merge-orchestrator.test.ts",
         "to": "src/team/fs-utils.ts",
         "kind": "imports"
       },
@@ -68290,6 +68320,11 @@
       },
       {
         "from": "src/team/__tests__/recovery-public-api.test.ts",
+        "to": "src/team/state-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/recovery-public-api.test.ts",
         "to": "src/team/types.ts",
         "kind": "type-imports"
       },
@@ -68685,6 +68720,11 @@
       },
       {
         "from": "src/team/__tests__/runtime-v2-role-routing.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2-role-routing.test.ts",
         "to": "src/team/runtime-v2.ts",
         "kind": "imports"
       },
@@ -68876,6 +68916,11 @@
       {
         "from": "src/team/__tests__/runtime-v2.shutdown-pane-cleanup.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown-pane-cleanup.test.ts",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -69750,6 +69795,11 @@
       },
       {
         "from": "src/team/__tests__/tmux-session.startup.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.startup.test.ts",
         "to": "src/team/pane-readiness.ts",
         "kind": "imports"
       },
@@ -70061,6 +70111,11 @@
       {
         "from": "src/team/__tests__/worker-launch-ack.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/worker-launch-ack.test.ts",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -76141,11 +76196,11 @@
     ],
     "stats": {
       "nodeCount": 6831,
-      "edgeCount": 7141,
-      "importEdgeCount": 5857,
+      "edgeCount": 7152,
+      "importEdgeCount": 5868,
       "registerEdgeCount": 53
     }
   },
   "inventorySha256": "0fa1d8055ac3c243f65c169a83bda6d9c7fae7684b1d559bb464baf525cd54f2",
-  "manifestSha256": "6a58097e7865194eff7136134e09ffe4e420df01b0dbffa75c06fee0afb39a52"
+  "manifestSha256": "fe35edd73630a91bc0fafebfc52b6a9b74d0b07301aaa47d8f3242605119ecdf"
 }
