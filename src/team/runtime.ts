@@ -20,6 +20,7 @@ import {
   writeTaskFailure,
   DEFAULT_MAX_TASK_RETRIES,
 } from './task-file-ops.js';
+import { normalizeTaskFileStem, teamStateRoot } from './state-paths.js';
 
 export interface TeamConfig {
   teamName: string;
@@ -115,7 +116,7 @@ function workerName(index: number): string {
 
 function stateRoot(cwd: string, teamName: string): string {
   validateTeamName(teamName);
-  return join(cwd, `.omc/state/team/${teamName}`);
+  return teamStateRoot(cwd, teamName);
 }
 
 async function writeJson(filePath: string, data: unknown): Promise<void> {
@@ -168,7 +169,7 @@ function parseWorkerIndex(workerNameValue: string): number {
 }
 
 function taskPath(root: string, taskId: string): string {
-  return join(root, 'tasks', `${taskId}.json`);
+  return join(root, 'tasks', `${normalizeTaskFileStem(taskId)}.json`);
 }
 
 async function writePanesTrackingFileIfPresent(runtime: TeamRuntime): Promise<void> {
@@ -397,7 +398,7 @@ export async function startTeam(config: TeamConfig): Promise<TeamRuntime> {
   // Create task files
   for (let i = 0; i < tasks.length; i++) {
     const taskId = String(i + 1);
-    await writeJson(join(root, 'tasks', `${taskId}.json`), {
+    await writeJson(taskPath(root, taskId), {
       id: taskId,
       subject: tasks[i].subject,
       description: tasks[i].description,
@@ -955,7 +956,7 @@ export async function assignTask(
   cwd: string
 ): Promise<void> {
   const root = stateRoot(cwd, teamName);
-  const taskFilePath = join(root, 'tasks', `${taskId}.json`);
+  const taskFilePath = taskPath(root, taskId);
 
   // Update task ownership under an exclusive lock to prevent concurrent double-claims
   type TaskSnapshot = { status: string; owner: string | null; assignedAt: string | undefined };
@@ -978,7 +979,7 @@ export async function assignTask(
   // Write to worker inbox
   const inboxPath = join(root, 'workers', targetWorkerName, 'inbox.md');
   await mkdir(join(inboxPath, '..'), { recursive: true });
-  const msg = `\n\n---\n## New Task Assignment\nTask ID: ${taskId}\nClaim and execute task from: ${join(root, 'tasks', `task-${taskId}.json`)}\n`;
+  const msg = `\n\n---\n## New Task Assignment\nTask ID: ${taskId}\nClaim and execute task from: ${taskFilePath}\n`;
   const { appendFile } = await import('fs/promises');
   await appendFile(inboxPath, msg, 'utf-8');
 
