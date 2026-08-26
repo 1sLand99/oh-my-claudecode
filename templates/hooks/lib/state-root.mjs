@@ -22,6 +22,7 @@ import { join, basename, dirname, resolve } from 'path';
 import { existsSync } from 'fs';
 import { createHash } from 'crypto';
 import { execFileSync } from 'child_process';
+import { homedir } from 'os';
 import { pathToFileURL } from 'url';
 
 /**
@@ -61,7 +62,17 @@ export async function resolveOmcStateRoot(directory) {
     const dirName = basename(gitRoot).replace(/[^a-zA-Z0-9_-]/g, '_');
     return join(customDir, `${dirName}-${hash}`);
   }
-  return join(directory, '.omc');
+  let gitRoot = null;
+  try { gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: directory, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null; } catch {}
+  if (gitRoot) return join(gitRoot, '.omc');
+  let cursor = resolve(directory);
+  while (true) {
+    if (existsSync(join(cursor, '.omc-workspace'))) return join(cursor, '.omc');
+    const parent = dirname(cursor);
+    if (parent === cursor || cursor === resolve(homedir())) break;
+    cursor = parent;
+  }
+  return join(homedir(), '.omc');
 }
 
 /**

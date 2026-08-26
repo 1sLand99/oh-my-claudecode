@@ -71,7 +71,7 @@ describe('#3873 real non-git state ownership', () => {
     writeFileSync(foreignPath, original);
 
     const readResult = await stateReadTool.handler({ mode: 'ralph', session_id: 'requester', workingDirectory });
-    expect(readResult.content[0].text).not.toContain('owner-a');
+    expect(readResult.content[0].text).not.toContain('"session_id"');
     expect(readResult.content[0].text).toContain('No state found');
 
     const writeResult = await stateWriteTool.handler({ mode: 'ralph', session_id: 'requester', active: false, workingDirectory });

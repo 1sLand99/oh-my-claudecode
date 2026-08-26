@@ -374,6 +374,11 @@ function emergencyJournalPath(filePath: string): string {
   return `${filePath}.emergency-journal.json`;
 }
 
+function sessionOwnerFromStatePath(filePath: string): string | undefined {
+  const match = filePath.replaceAll('\\', '/').match(/\/state\/sessions\/([^/]+)(?:\/|$)/);
+  return match?.[1];
+}
+
 function emergencyOwner(): EmergencyJournalOwner | null {
   const processStart = processStartIdentity(process.pid);
   return typeof processStart === 'string' ? { pid: process.pid, processStart, nonce: randomUUID() } : null;
@@ -778,8 +783,15 @@ function emergencyReplaceAtRecoveryBoundary(filePath: string): void {
 
 /** A dead transaction is recovered under a state-scoped, generation-verified exclusive claim. */
 export function recoverEmergencyStateFile(filePath: string, options?: EmergencyRecoveryOptions): boolean {
-  const authorizeState = options?.authorizeState;
+  const pathSessionId = sessionOwnerFromStatePath(filePath);
+  const authorizeState = options?.authorizeState ?? (pathSessionId
+    ? (state: Record<string, unknown>) => {
+      const owner = getStateSessionOwner(state);
+      return owner === undefined || owner === pathSessionId;
+    }
+    : undefined);
   const journalPath = emergencyJournalPath(filePath);
+  if (!existsSync(filePath) && !existsSync(journalPath)) return true;
   // Prefilter before taking a claim so stale shared-home artifacts cannot be
   // reclaimed solely because their process owner is dead. Revalidate while
   // holding our own claim below.

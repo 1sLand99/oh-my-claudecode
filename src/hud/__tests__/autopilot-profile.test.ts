@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import { execFileSync } from 'child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
@@ -101,6 +102,7 @@ describe('autopilot workflow profile observability', () => {
 
   function makeFixture(prefix: string): string {
     const directory = mkdtempSync(join(tmpdir(), prefix));
+    execFileSync('git', ['init'], { cwd: directory, stdio: 'pipe' });
     const previousHome = process.env.HOME;
     const previousUserProfile = process.env.USERPROFILE;
     const previousStateDir = process.env.OMC_STATE_DIR;

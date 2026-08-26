@@ -99,10 +99,9 @@ describe('cleanupTransientState — session-scoped hud-stdin-cache', () => {
     expect(existsSync(other)).toBe(true);
   });
 
-  it('still purges cancel-signal/stop-breaker across all session dirs', () => {
-    // These patterns are intentionally cross-session-safe because they are
-    // short-lived markers, not live per-session state. Guard against a
-    // future refactor accidentally scoping them too narrowly.
+  it('preserves cancel-signal/stop-breaker in other session dirs', () => {
+    // Transient markers can still be live cancellation state for another
+    // session; SessionEnd must not erase them across ownership boundaries.
     const ending = join(tmpRoot, '.omc', 'state', 'sessions', 'session-ending');
     const other = join(tmpRoot, '.omc', 'state', 'sessions', 'session-other');
     mkdirSync(ending, { recursive: true });
@@ -113,7 +112,7 @@ describe('cleanupTransientState — session-scoped hud-stdin-cache', () => {
     cleanupTransientState(tmpRoot, 'session-ending');
 
     expect(existsSync(join(ending, 'cancel-signal-state.json'))).toBe(false);
-    expect(existsSync(join(other, 'autopilot-stop-breaker.json'))).toBe(false);
+    expect(existsSync(join(other, 'autopilot-stop-breaker.json'))).toBe(true);
   });
 
   it('is a no-op on other sessions\' HUD cache when no endingSessionId is provided (legacy compat)', () => {

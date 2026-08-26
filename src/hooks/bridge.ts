@@ -366,7 +366,7 @@ function cleanupMissionStateForSession(directory: string, sessionId: string): vo
           const missionId = typeof (mission as Record<string, unknown>).id === "string"
             ? (mission as Record<string, unknown>).id as string
             : "";
-          return missionId.includes(sessionId);
+          return missionId === `session:${sessionId}` || missionId.startsWith(`session:${sessionId}:`) || missionId.endsWith(`-${sessionId}`);
         });
       },
       (current) => ({
@@ -379,7 +379,7 @@ function cleanupMissionStateForSession(directory: string, sessionId: string): vo
           const missionId = typeof (mission as Record<string, unknown>).id === "string"
             ? (mission as Record<string, unknown>).id as string
             : "";
-          return !missionId.includes(sessionId);
+          return !(missionId === `session:${sessionId}` || missionId.startsWith(`session:${sessionId}:`) || missionId.endsWith(`-${sessionId}`));
         }),
       }),
     );

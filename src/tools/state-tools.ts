@@ -282,10 +282,19 @@ function clearDiscoveredStateCandidate(
   predicate: (state: Record<string, unknown>) => boolean,
   recoveryOptions?: { authorizeState: (state: Record<string, unknown>) => boolean },
 ): 'cleared' | 'skipped' | 'failed' {
+  const sessionPathMatch = candidate.path.replaceAll('\\', '/').match(/\/state\/sessions\/([^/]+)\/[^/]+$/);
+  const pathSessionId = sessionPathMatch?.[1];
+  const ownerSessionId = candidate.completedSessionId ?? candidate.ownerSessionId;
+  const ownerRecovery = ownerSessionId && ownerSessionId !== pathSessionId
+    ? { authorizeState: (state: Record<string, unknown>) => getStateSessionOwner(state) === ownerSessionId }
+    : undefined;
+  const effectiveRecovery = ownerRecovery && recoveryOptions
+    ? { authorizeState: (state: Record<string, unknown>) => ownerRecovery.authorizeState(state) && recoveryOptions.authorizeState(state) }
+    : ownerRecovery ?? recoveryOptions;
   return clearStateFileLockedIf(
     candidate.path,
     (current) => predicate(current) && JSON.stringify(current) === candidate.snapshot,
-    recoveryOptions,
+    effectiveRecovery,
   );
 }
 
@@ -296,20 +305,27 @@ function clearAutopilotMarkerCandidate(candidate: StateFileDiscovery, root: stri
   const predicate = (current: Record<string, unknown>) =>
     isStateCandidateForProject('autopilot', candidate.path, current, root) &&
     JSON.stringify(current) === candidate.snapshot;
+  const sessionPathMatch = candidate.path.replaceAll('\\', '/').match(/\/state\/sessions\/([^/]+)\/[^/]+$/);
+  const pathSessionId = sessionPathMatch?.[1];
+  const ownerSessionId = candidate.completedSessionId ?? candidate.ownerSessionId;
+  const projectRecovery = emergencyRecoveryOptionsForProject('autopilot', candidate.path, root);
+  const recoveryOptions = ownerSessionId && ownerSessionId !== pathSessionId
+    ? { authorizeState: (state: Record<string, unknown>) => isStateCandidateForProject('autopilot', candidate.path, state, root) && getStateSessionOwner(state) === ownerSessionId }
+    : projectRecovery;
 
   if (!namedWorkflowRuntimeSupported()) {
     return emergencyMutateStateFileIf(
       candidate.path,
       predicate,
       null,
-      emergencyRecoveryOptionsForProject('autopilot', candidate.path, root),
+      recoveryOptions,
     );
   }
 
   return clearStateFileLockedIf(
     candidate.path,
     predicate,
-    emergencyRecoveryOptionsForProject('autopilot', candidate.path, root),
+    recoveryOptions,
   ) === 'cleared';
 }
 
@@ -1306,13 +1322,21 @@ function recoverAutopilotEmergencyTransactions(root: string, sessionId?: string)
     for (const path of directSessionPaths) broadPaths.add(path);
   }
   for (const path of broadPaths) {
-    const recoveryOptions = emergencyRecoveryOptionsForProject('autopilot', path, root);
+    let recoveryOptions = emergencyRecoveryOptionsForProject('autopilot', path, root);
     if (!isAutopilotRecoveryCandidateForProject(path, root)) continue;
-    if (sessionId && !directSessionPaths.has(path)) {
+    if (!directSessionPaths.has(path)) {
       const visibleOwner = getStateSessionOwner(readJsonRecord(path) ?? {});
       const journal = readJsonRecord(`${path}.emergency-journal.json`);
       const journalOwner = typeof journal?.sessionOwner === 'string' ? journal.sessionOwner : undefined;
-      if (visibleOwner !== sessionId && journalOwner !== sessionId) continue;
+      const pathSessionId = path.replaceAll('\\', '/').match(/\/state\/sessions\/([^/]+)\/[^/]+$/)?.[1];
+      const ownerSessionId = sessionId ?? visibleOwner ?? journalOwner;
+      if (sessionId && visibleOwner !== sessionId && journalOwner !== sessionId) continue;
+      if (ownerSessionId && ownerSessionId !== pathSessionId) {
+        recoveryOptions = {
+          authorizeState: (state) => isStateCandidateForProject('autopilot', path, state, root)
+            && getStateSessionOwner(state) === ownerSessionId,
+        };
+      }
     }
     if (!recoverEmergencyStateFile(path, recoveryOptions)) throw new Error(`workflow_emergency_recovery_failed: ${path}`);
     if (recoveryOptions && !isAutopilotRecoveryCandidateForProject(path, root)) continue;

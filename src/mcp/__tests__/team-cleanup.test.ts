@@ -11,8 +11,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { mkdirSync, rmSync, existsSync, readFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, rmSync, existsSync, readFileSync } from 'fs';
 import { readFile } from 'fs/promises';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
 
 type ExecFileCallback = (error: Error | null, stdout: string, stderr: string) => void;
 
@@ -83,14 +84,14 @@ describe('killWorkerPanes', () => {
   });
 
   it('writes shutdown sentinel before force-killing', async () => {
-    const cwd = join(tmpdir(), `omc-cleanup-test-${process.pid}`);
+    const cwd = mkdtempSync(join(tmpdir(), 'omc-cleanup-test-'));
     const previousHome = process.env.HOME;
     const previousUserProfile = process.env.USERPROFILE;
     const previousStateDir = process.env.OMC_STATE_DIR;
     process.env.HOME = cwd;
     process.env.USERPROFILE = cwd;
-    delete process.env.OMC_STATE_DIR;
-    const stateDir = join(cwd, '.omc', 'state', 'team', 'myteam');
+    process.env.OMC_STATE_DIR = cwd;
+    const stateDir = join(getOmcRoot(cwd), 'state', 'team', 'myteam');
     mkdirSync(stateDir, { recursive: true });
 
     try {

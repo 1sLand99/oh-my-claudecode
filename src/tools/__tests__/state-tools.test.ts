@@ -1285,6 +1285,7 @@ describe('state-tools', () => {
       writeFileSync(strandedPath, JSON.stringify({ active: true, session_id: 'owner-session' }));
 
       const result = await stateClearTool.handler({ mode: 'autopilot', workingDirectory: TEST_DIR });
+
       expect(existsSync(strandedPath)).toBe(false);
       expect(result.content[0].text).toContain('Locations cleared: 1');
       expect(result.isError).not.toBe(true);

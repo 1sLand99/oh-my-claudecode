@@ -619,7 +619,7 @@ export function cleanupMissionState(directory: string, sessionId?: string): numb
       // If sessionId provided, only remove missions for this session
       if (sessionId) {
         const missionId = typeof mission.id === 'string' ? mission.id : '';
-        return !missionId.includes(sessionId);
+        return !(missionId === `session:${sessionId}` || missionId.startsWith(`session:${sessionId}:`) || missionId.endsWith(`-${sessionId}`));
       }
 
       // No sessionId: remove all session-sourced missions

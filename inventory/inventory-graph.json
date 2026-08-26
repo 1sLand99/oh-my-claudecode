@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "ef30208448e557681e3b7187bd8cc33a3d64e873",
-    "sourceSha256": "5854443315410c8985aad7d29035356397de1d8d4e5d341b48f4bd2d35a1b274",
+    "head": "f22b6ccf80216ff922387f2e6b20a49f1a5558be",
+    "sourceSha256": "7397d78ce6a03abcf5b089266a659b84ff536e6a7a9b2b1924baaff8fd4fe881",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "ef30208448e557681e3b7187bd8cc33a3d64e873",
-  "sourceSha256": "5854443315410c8985aad7d29035356397de1d8d4e5d341b48f4bd2d35a1b274",
+  "head": "f22b6ccf80216ff922387f2e6b20a49f1a5558be",
+  "sourceSha256": "7397d78ce6a03abcf5b089266a659b84ff536e6a7a9b2b1924baaff8fd4fe881",
   "counts": {
     "public": {
       "skills": 32,
@@ -50310,6 +50310,11 @@
       },
       {
         "from": "src/cli/__tests__/team.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/cli/__tests__/team.test.ts",
         "to": "external:fs",
         "kind": "imports"
       },
@@ -61550,6 +61555,11 @@
       },
       {
         "from": "src/hud/__tests__/autopilot-profile.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/__tests__/autopilot-profile.test.ts",
         "to": "external:crypto",
         "kind": "imports"
       },
@@ -63635,6 +63645,11 @@
       },
       {
         "from": "src/interop/__tests__/shared-state-artifacts.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/interop/__tests__/shared-state-artifacts.test.ts",
         "to": "external:fs",
         "kind": "imports"
       },
@@ -64516,6 +64531,11 @@
       {
         "from": "src/mcp/__tests__/team-cleanup.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/__tests__/team-cleanup.test.ts",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -75495,6 +75515,11 @@
       },
       {
         "from": "templates/hooks/lib/state-root.mjs",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "templates/hooks/lib/state-root.mjs",
         "to": "external:path",
         "kind": "imports"
       },
@@ -76261,11 +76286,11 @@
     ],
     "stats": {
       "nodeCount": 6831,
-      "edgeCount": 7165,
-      "importEdgeCount": 5881,
+      "edgeCount": 7170,
+      "importEdgeCount": 5886,
       "registerEdgeCount": 53
     }
   },
   "inventorySha256": "0fa1d8055ac3c243f65c169a83bda6d9c7fae7684b1d559bb464baf525cd54f2",
-  "manifestSha256": "7c03c4a48233b28d4a5f41c5def2e8b1c64307540dab235ccff0d8a4a87facd3"
+  "manifestSha256": "f2bdd733931d27c6e3fd6998cf621c4e80fdb0f11095d1f8157c2d0093294292"
 }
