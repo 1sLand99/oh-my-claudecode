@@ -21,6 +21,22 @@ describe('cli-worker-contract', () => {
       expect(shouldInjectContract('code-reviewer', 'gemini')).toBe(true);
     });
 
+    it('returns true for reviewer roles on cursor (issue #3880)', () => {
+      // The contract is a prompt instruction plus a leader-polled file, not an
+      // exit-on-complete handshake, so a persistent cursor pane satisfies it
+      // exactly as the persistent codex pane already does.
+      expect(shouldInjectContract('critic', 'cursor')).toBe(true);
+      expect(shouldInjectContract('code-reviewer', 'cursor')).toBe(true);
+      expect(shouldInjectContract('security-reviewer', 'cursor')).toBe(true);
+      expect(shouldInjectContract('test-engineer', 'cursor')).toBe(true);
+    });
+
+    it('treats cursor exactly like the other persistent-pane provider (issue #3880)', () => {
+      for (const role of CONTRACT_ROLES) {
+        expect(shouldInjectContract(role, 'cursor')).toBe(shouldInjectContract(role, 'codex'));
+      }
+    });
+
     it('returns false for claude workers regardless of role', () => {
       expect(shouldInjectContract('critic', 'claude')).toBe(false);
       expect(shouldInjectContract('code-reviewer', 'claude')).toBe(false);
@@ -30,6 +46,8 @@ describe('cli-worker-contract', () => {
       expect(shouldInjectContract('executor', 'codex')).toBe(false);
       expect(shouldInjectContract('architect', 'gemini')).toBe(false);
       expect(shouldInjectContract('planner', 'codex')).toBe(false);
+      expect(shouldInjectContract('executor', 'cursor')).toBe(false);
+      expect(shouldInjectContract('architect', 'cursor')).toBe(false);
     });
 
     it('returns false for null/undefined inputs', () => {

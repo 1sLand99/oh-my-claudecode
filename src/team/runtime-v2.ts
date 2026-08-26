@@ -812,8 +812,8 @@ interface SpawnV2WorkerOptions {
   autoMerge?: boolean;
   /**
    * Canonical role resolved from the task. When set to a reviewer role AND
-   * agentType is codex/gemini/grok, the CLI-worker output contract (AC-7) is
-   * injected into the task instruction + startup prompt, and `output_file`
+   * agentType is a non-Claude provider, the CLI-worker output contract (AC-7)
+   * is injected into the task instruction + startup prompt, and `output_file`
    * is populated for the completion handler.
    */
   role?: CanonicalTeamRole;

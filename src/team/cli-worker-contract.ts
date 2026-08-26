@@ -1,18 +1,22 @@
 /**
  * CLI-worker output contract (Option E, plan AC-7).
  *
- * When a /team critic/reviewer stage is routed to an external CLI worker
- * (codex or gemini), the worker may not call TaskUpdate directly. To surface
- * a structured verdict back to the team leader, the worker writes a JSON
- * payload to a pre-agreed file path. The leader's worker-completion handler
- * in runtime-v2 reads the file and calls TaskUpdate with verdict metadata.
+ * When a /team critic/reviewer stage is routed to an external CLI worker,
+ * the worker may not call TaskUpdate directly. To surface a structured
+ * verdict back to the team leader, the worker writes a JSON payload to a
+ * pre-agreed file path. The leader's worker-completion handler in
+ * runtime-v2 reads the file and calls TaskUpdate with verdict metadata.
  *
  * Applies to roles in CONTRACT_ROLES (critic, code-reviewer,
- * security-reviewer, test-engineer) when the resolved provider is
- * `codex` or `gemini`. Claude workers participate in team messaging
- * directly and do not use this contract. Codex team workers are launched as
- * persistent `codex` panes, not `codex exec`; they still receive this verdict
- * contract in their inbox when assigned reviewer-style roles.
+ * security-reviewer, test-engineer) on every non-Claude provider. Claude
+ * workers participate in team messaging directly and do not use this
+ * contract.
+ *
+ * The contract does not require a one-shot CLI. It is a prompt instruction
+ * plus a file the leader polls, so persistent interactive panes satisfy it:
+ * codex and cursor team workers are launched as long-lived panes (not
+ * `codex exec` / `cursor-agent -p`) and still receive this verdict contract
+ * in their inbox when assigned reviewer-style roles.
  */
 
 import type { CanonicalTeamRole } from '../shared/types.js';
@@ -50,8 +54,9 @@ const VALID_SEVERITIES: ReadonlySet<string> = new Set(['critical', 'major', 'min
 
 /**
  * Returns true when a role + provider pair requires the verdict-output contract.
- * External providers (codex/gemini/grok) on reviewer-style roles need it; Claude
- * teammates speak through the team messaging API directly.
+ * Every external provider (codex/gemini/grok/cursor/antigravity) on a
+ * reviewer-style role needs it; Claude teammates speak through the team
+ * messaging API directly.
  */
 export function shouldInjectContract(
   role: CanonicalTeamRole | null | undefined,
@@ -59,13 +64,7 @@ export function shouldInjectContract(
 ): boolean {
   if (!role || !provider) return false;
   // Claude workers speak through the team messaging API directly.
-  // Cursor workers run as interactive REPLs — they cannot perform the
-  // write-verdict-and-exit dance the contract requires, so reviewer
-  // roles must not be assigned to cursor in the first place. The
-  // role-router and worker-bootstrap guidance both flag this; here we
-  // simply skip contract injection if a cursor worker somehow lands on
-  // a CONTRACT_ROLES role rather than emit instructions it cannot follow.
-  if (provider === 'claude' || provider === 'cursor') return false;
+  if (provider === 'claude') return false;
   return CONTRACT_ROLES.has(role);
 }
 
