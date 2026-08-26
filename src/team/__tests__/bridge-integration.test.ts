@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, statSync, realpathSync } from 'fs';
 import { join } from 'path';
 import { homedir, tmpdir } from 'os';
@@ -16,7 +16,21 @@ const TEAMS_DIR = join(getClaudeConfigDir(), 'teams', TEST_TEAM);
 // Resolve symlinks (macOS /var -> /private/var) so validateResolvedPath matches
 const WORK_DIR = join(realpathSync(tmpdir()), '__test_bridge_work__');
 // Canonical tasks dir for this team
+const originalHome = process.env.HOME;
+const originalUserProfile = process.env.USERPROFILE;
 const TASKS_DIR = join(WORK_DIR, '.omc', 'state', 'team', TEST_TEAM, 'tasks');
+
+beforeAll(() => {
+  process.env.HOME = WORK_DIR;
+  process.env.USERPROFILE = WORK_DIR;
+});
+
+afterAll(() => {
+  if (originalHome === undefined) delete process.env.HOME;
+  else process.env.HOME = originalHome;
+  if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+  else process.env.USERPROFILE = originalUserProfile;
+});
 
 function writeTask(task: TaskFile): void {
   mkdirSync(TASKS_DIR, { recursive: true });

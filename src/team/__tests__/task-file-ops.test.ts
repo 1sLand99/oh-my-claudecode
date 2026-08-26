@@ -8,12 +8,15 @@ import {
   acquireTaskLock, releaseTaskLock, withTaskLock,
 } from '../task-file-ops.js';
 import type { TaskFile } from '../types.js';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
 
 const TEST_TEAM = 'test-team-ops';
 
 // Each test run uses its own isolated tmpdir to avoid cross-test interference.
 let TEST_CWD: string;
 let TASKS_DIR: string;
+let previousHome: string | undefined;
+let previousUserProfile: string | undefined;
 
 function writeTask(task: TaskFile): void {
   mkdirSync(TASKS_DIR, { recursive: true });
@@ -32,13 +35,21 @@ function cleanupLocks(): void {
 
 beforeEach(() => {
   TEST_CWD = join(tmpdir(), `omc-task-file-ops-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  TASKS_DIR = join(TEST_CWD, '.omc', 'state', 'team', TEST_TEAM, 'tasks');
+  previousHome = process.env.HOME;
+  previousUserProfile = process.env.USERPROFILE;
+  process.env.HOME = TEST_CWD;
+  process.env.USERPROFILE = TEST_CWD;
+  TASKS_DIR = join(getOmcRoot(TEST_CWD), 'state', 'team', TEST_TEAM, 'tasks');
   mkdirSync(TASKS_DIR, { recursive: true });
 });
 
 afterEach(() => {
   cleanupLocks();
   rmSync(TEST_CWD, { recursive: true, force: true });
+  if (previousHome === undefined) delete process.env.HOME;
+  else process.env.HOME = previousHome;
+  if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+  else process.env.USERPROFILE = previousUserProfile;
 });
 
 describe('readTask', () => {

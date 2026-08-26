@@ -285,6 +285,8 @@ function resolveNonGitFallbackRoot(): string {
 export function resolveNonGitStateAnchor(startDir?: string): string {
   try {
     const current = resolve(startDir || process.cwd());
+    const workspaceRoot = findWorkspaceRoot(current);
+    if (workspaceRoot) return workspaceRoot;
     if (isSensitiveStateLocation(current)) return resolveNonGitFallbackRoot();
     return resolveNonGitFallbackRoot();
   } catch {

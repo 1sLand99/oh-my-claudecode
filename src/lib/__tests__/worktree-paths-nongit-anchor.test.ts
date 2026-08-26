@@ -286,7 +286,7 @@ describe('#3873 non-git state-root anchoring', () => {
       expect(anchor).not.toBe(join(parent, 'repo-b', '.omc'));
       mkdirSync(join(parent, '.omc'), { recursive: true });
       clearWorktreeCache();
-      expect(resolveNonGitStateAnchor(inner)).toBe(fakeHome);
+      expect(resolveNonGitStateAnchor(inner)).toBe(parent);
     });
   });
 

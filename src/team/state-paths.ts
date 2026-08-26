@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { isAbsolute, join } from 'path';
+import { getOmcRoot } from '../lib/worktree-paths.js';
 
 /**
  * Typed path builders for all team state files.
@@ -242,10 +243,11 @@ export function teamStateRoot(cwd: string, teamName: string): string {
  * New writes always use this canonical path.
  */
 export function getTaskStoragePath(cwd: string, teamName: string, taskId?: string): string {
+  const tasksRoot = join(getOmcRoot(cwd), 'state', 'team', teamName, 'tasks');
   if (taskId !== undefined) {
-    return join(cwd, TeamPaths.taskFile(teamName, taskId));
+    return join(tasksRoot, normalizeTaskFileStem(taskId) + '.json');
   }
-  return join(cwd, TeamPaths.tasks(teamName));
+  return tasksRoot;
 }
 
 /**
