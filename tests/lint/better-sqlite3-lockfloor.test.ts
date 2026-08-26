@@ -24,10 +24,11 @@
  */
 
 import { readFileSync } from "fs";
-import { join } from "path";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 import { describe, it, expect } from "vitest";
 
-const REPO_ROOT = join(import.meta.dirname, "../..");
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
 /** First better-sqlite3 release whose engines include Node 26 and that ships node-v147 prebuilds. */
 const NODE_26_CAPABLE_FLOOR = "12.10.0";
@@ -118,5 +119,9 @@ describe("better-sqlite3 lockfile contract (issue #3872)", () => {
     const locked = readLocked();
     const major = process.versions.node.split(".")[0];
     expect(locked.engines).toContain(`${major}.x`);
+  });
+
+  it("manifest and lockfile expose the same supported Node majors", () => {
+    expect(readManifest().engines).toBe(readLocked().engines);
   });
 });
