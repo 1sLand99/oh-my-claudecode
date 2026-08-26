@@ -1,16 +1,19 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync, readdirSync } from 'fs';
+import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 
 
-const TEST_DIR = '/tmp/cancel-integration-test';
+const TEST_DIR = join(homedir(), 'cancel-integration-test');
 
 // Mock validateWorkingDirectory to allow test directory
 vi.mock('../../lib/worktree-paths.js', async () => {
-  const actual = await vi.importActual('../../lib/worktree-paths.js');
+  const actual = await vi.importActual<typeof import('../../lib/worktree-paths.js')>('../../lib/worktree-paths.js');
   return {
     ...actual,
+    getOmcRoot: vi.fn((workingDirectory?: string) => process.env.OMC_STATE_DIR
+      ? actual.getOmcRoot(workingDirectory)
+      : join(workingDirectory || process.cwd(), '.omc')),
     validateWorkingDirectory: vi.fn((workingDirectory?: string) => {
       return workingDirectory || process.cwd();
     }),
@@ -171,22 +174,10 @@ describe('cancel-integration', () => {
         JSON.stringify({ active: true, source: 'legacy' })
       );
 
-      // Broad ralph clear also sweeps the shared-home converged root
-      // (~/.omc/state/sessions/*) plus any stray shared-home global fallback.
-      // Snapshot what is already there, seed exactly one owned session file,
-      // and compute the expected count so the assertion stays truthful no
-      // matter what earlier suites in the same CI home directory left behind.
+      // Broad non-git clear is confined to the canonical root for this
+      // working directory; unrelated ~/.omc state is not implicitly swept.
       const homeStateRoot = join(homedir(), '.omc', 'state');
       const homeSessionsRoot = join(homeStateRoot, 'sessions');
-      const preExistingHomeRalphCount = (() => {
-        let count = existsSync(join(homeStateRoot, 'ralph-state.json')) ? 1 : 0;
-        try {
-          for (const sid of readdirSync(homeSessionsRoot, { withFileTypes: true })) {
-            if (sid.isDirectory() && existsSync(join(homeSessionsRoot, sid.name, 'ralph-state.json'))) count++;
-          }
-        } catch { /* sessions root may not exist */ }
-        return count;
-      })();
       const homeSessionDir = join(homeSessionsRoot, 'cancel-integration-home');
       mkdirSync(homeSessionDir, { recursive: true });
       writeFileSync(
@@ -209,14 +200,13 @@ describe('cancel-integration', () => {
       // Legacy file should also be deleted
       expect(existsSync(join(TEST_DIR, '.omc', 'state', 'ralph-state.json'))).toBe(false);
 
-      // Shared-home converged session file is cleared too
-      expect(existsSync(join(homeSessionDir, 'ralph-state.json'))).toBe(false);
+      // Unrelated shared-home session remains untouched.
+      expect(existsSync(join(homeSessionDir, 'ralph-state.json'))).toBe(true);
 
-      // 3 session files + legacy + seeded shared-home session + any
-      // pre-existing shared-home ralph state swept by the broad clear
+      // 3 session files + legacy local state only.
       const clearedMatch = result.content[0].text.match(/Locations cleared: (\d+)/);
       expect(clearedMatch).not.toBeNull();
-      expect(Number(clearedMatch![1])).toBe(5 + preExistingHomeRalphCount);
+      expect(Number(clearedMatch![1])).toBe(4);
       expect(result.content[0].text).toContain('WARNING: No session_id provided');
     });
   });

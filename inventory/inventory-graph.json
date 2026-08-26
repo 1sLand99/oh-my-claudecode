@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "06fc4a14a3ae62888c1b247584eee744ba435ebd",
-    "sourceSha256": "2ee35f9fcc21e3a720bbe8d3ac73607542b56ba64f8aab7b1bc861cd3476f70b",
+    "head": "38c21a94e30f4e200cef64349596160e4feb4b86",
+    "sourceSha256": "056652b00ab748517374d227e77a532b3f3f101afce34125546426734993b57a",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "06fc4a14a3ae62888c1b247584eee744ba435ebd",
-  "sourceSha256": "2ee35f9fcc21e3a720bbe8d3ac73607542b56ba64f8aab7b1bc861cd3476f70b",
+  "head": "38c21a94e30f4e200cef64349596160e4feb4b86",
+  "sourceSha256": "056652b00ab748517374d227e77a532b3f3f101afce34125546426734993b57a",
   "counts": {
     "public": {
       "skills": 32,
@@ -25,11 +25,11 @@
     "internal": {
       "hookFiles": 295,
       "featureFiles": 68,
-      "toolFiles": 59,
-      "libFiles": 36,
+      "toolFiles": 60,
+      "libFiles": 37,
       "templateHooks": 21,
-      "srcFiles": 1306,
-      "total": 1327
+      "srcFiles": 1308,
+      "total": 1329
     },
     "generated": {
       "distFiles": 4955,
@@ -511,6 +511,7 @@
       "src/tools/__tests__/deepinit-manifest.test.ts",
       "src/tools/__tests__/memory-tools.test.ts",
       "src/tools/__tests__/schema-conversion.test.ts",
+      "src/tools/__tests__/state-tools-nongit-ownership.test.ts",
       "src/tools/__tests__/state-tools.test.ts",
       "src/tools/__tests__/wiki-tools-direct-dist-failclosed.test.ts",
       "src/tools/__tests__/wiki-tools-foreign-root.test.ts",
@@ -579,6 +580,7 @@
       "src/lib/__tests__/worktree-cleanup-safety.test.ts",
       "src/lib/__tests__/worktree-paths-foreign-root.test.ts",
       "src/lib/__tests__/worktree-paths-git-probe-failclosed.test.ts",
+      "src/lib/__tests__/worktree-paths-nongit-anchor.test.ts",
       "src/lib/__tests__/worktree-paths-superproject-cache.test.ts",
       "src/lib/__tests__/worktree-paths.test.ts",
       "src/lib/atomic-write.ts",
@@ -6215,6 +6217,7 @@
       "src/tools/__tests__/deepinit-manifest.test.ts",
       "src/tools/__tests__/memory-tools.test.ts",
       "src/tools/__tests__/schema-conversion.test.ts",
+      "src/tools/__tests__/state-tools-nongit-ownership.test.ts",
       "src/tools/__tests__/state-tools.test.ts",
       "src/tools/__tests__/wiki-tools-direct-dist-failclosed.test.ts",
       "src/tools/__tests__/wiki-tools-foreign-root.test.ts",
@@ -38049,6 +38052,11 @@
         "path": "src/lib/__tests__/worktree-paths-git-probe-failclosed.test.ts"
       },
       {
+        "id": "src/lib/__tests__/worktree-paths-nongit-anchor.test.ts",
+        "kind": "lib",
+        "path": "src/lib/__tests__/worktree-paths-nongit-anchor.test.ts"
+      },
+      {
         "id": "src/lib/__tests__/worktree-paths-superproject-cache.test.ts",
         "kind": "lib",
         "path": "src/lib/__tests__/worktree-paths-superproject-cache.test.ts"
@@ -39677,6 +39685,11 @@
         "id": "src/tools/__tests__/schema-conversion.test.ts",
         "kind": "tool",
         "path": "src/tools/__tests__/schema-conversion.test.ts"
+      },
+      {
+        "id": "src/tools/__tests__/state-tools-nongit-ownership.test.ts",
+        "kind": "tool",
+        "path": "src/tools/__tests__/state-tools-nongit-ownership.test.ts"
       },
       {
         "id": "src/tools/__tests__/state-tools.test.ts",
@@ -64061,6 +64074,31 @@
         "kind": "imports"
       },
       {
+        "from": "src/lib/__tests__/worktree-paths-nongit-anchor.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-nongit-anchor.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-nongit-anchor.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-nongit-anchor.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-nongit-anchor.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/lib/__tests__/worktree-paths-superproject-cache.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -73166,6 +73204,31 @@
         "kind": "imports"
       },
       {
+        "from": "src/tools/__tests__/state-tools-nongit-ownership.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/state-tools-nongit-ownership.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/state-tools-nongit-ownership.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/state-tools-nongit-ownership.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/state-tools-nongit-ownership.test.ts",
+        "to": "src/tools/state-tools.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/tools/__tests__/state-tools.test.ts",
         "to": "external:crypto",
         "kind": "imports"
@@ -76062,12 +76125,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6829,
-      "edgeCount": 7128,
-      "importEdgeCount": 5844,
+      "nodeCount": 6831,
+      "edgeCount": 7138,
+      "importEdgeCount": 5854,
       "registerEdgeCount": 53
     }
   },
-  "inventorySha256": "126a502711b1cf018cbe88c4a8a08d8b4b6b876e8cea1c890ce1f8563417e9f7",
-  "manifestSha256": "227dca528414e8a30a9afa31fbf6e7f3789354f1ba0db85cfb9654afe2e6eece"
+  "inventorySha256": "0fa1d8055ac3c243f65c169a83bda6d9c7fae7684b1d559bb464baf525cd54f2",
+  "manifestSha256": "424077b1b5e84dd993b83a3aebcb29f453f3b6010013a14db3c21031b0ecc5ad"
 }

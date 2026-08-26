@@ -11,7 +11,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync, existsSync, readFileSync, linkSync, realpathSync, utimesSync } from 'node:fs';
 import * as nodeFs from 'fs';
 import { basename, join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { homedir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 vi.mock('fs', async () => {
@@ -173,7 +173,7 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
   let project: string;
 
   beforeEach(() => {
-    tempDir = mkdtempSync(join(tmpdir(), 'omc-precompact-session-start-'));
+    tempDir = mkdtempSync(join(homedir(), 'omc-precompact-session-start-'));
     home = join(tempDir, 'home');
     mkdirSync(home, { recursive: true });
     project = makeProject(tempDir);
@@ -988,7 +988,7 @@ describe('precompact-restore helper parity (issue #3730 security)', () => {
   let project: string;
 
   beforeEach(() => {
-    tempDir = mkdtempSync(join(tmpdir(), 'omc-precompact-template-parity-'));
+    tempDir = mkdtempSync(join(homedir(), 'omc-precompact-template-parity-'));
     project = join(tempDir, 'project');
     mkdirSync(join(project, '.omc', 'state', 'checkpoints'), { recursive: true });
     writeFileSync(

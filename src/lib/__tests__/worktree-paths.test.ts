@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdirSync, rmSync, existsSync, mkdtempSync, writeFileSync, symlinkSync, realpathSync } from 'fs';
 import { execSync } from 'child_process';
 import { join, basename, resolve } from 'path';
-import { tmpdir } from 'os';
+import { homedir, tmpdir } from 'os';
 import {
   validatePath,
   resolveOmcPath,
@@ -67,7 +67,7 @@ function canonicalTestPath(path: string): string {
 }
 
 
-const TEST_DIR = join(tmpdir(), 'worktree-paths-test');
+const TEST_DIR = join(homedir(), 'worktree-paths-test');
 
 describe('worktree-paths', () => {
   beforeEach(() => {
@@ -1048,7 +1048,7 @@ describe('worktree-paths', () => {
     let workDir: string;
 
     beforeEach(() => {
-      workDir = resolve(mkdtempSync(join(tmpdir(), 'omc-ssp-')));
+      workDir = resolve(mkdtempSync(join(homedir(), 'omc-ssp-')));
       clearWorktreeCache();
     });
 

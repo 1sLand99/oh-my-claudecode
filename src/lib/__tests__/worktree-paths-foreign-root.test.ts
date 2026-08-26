@@ -428,14 +428,14 @@ process.stdout.write(JSON.stringify({
     expect(() => validateWorkingDirectoryOrLinkedWorktree(nested)).toThrow(/git probe failed and was not used/);
     expect(() => resolveWorkingDirectoryOrLinkedWorktree(nested)).toThrow(/git probe failed and was not used/);
   });
-  it('same-repo subdirectory still resolves when git is missing from PATH', () => {
+  it('same-repo subdirectory fails closed when git is missing from PATH', () => {
     const sub = join(sessionRepo, 'docs');
     mkdirSync(sub, { recursive: true });
     const originalPath = process.env.PATH;
     process.env.PATH = '';
     clearWorktreeCache();
     try {
-      expect(validateWorkingDirectoryOrLinkedWorktree(sub)).toBe(sessionRepo);
+      expect(() => validateWorkingDirectoryOrLinkedWorktree(sub)).toThrow(/git probe failed and was not used/);
     } finally {
       process.env.PATH = originalPath;
       clearWorktreeCache();

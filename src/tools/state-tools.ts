@@ -7,13 +7,18 @@
 
 import { z } from 'zod';
 import { createHash } from 'crypto';
-import { existsSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from 'fs';
+import { constants as fsConstants, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'path';
 import {
   resolveStatePath,
   ensureOmcDir,
   resolveStateWorkingDirectory,
+  resolveNonGitStateAnchor,
+
+  isSensitiveStateLocation,
+  getGitTopLevel,
+  probeGitTopLevel,
   resolveSessionStatePath,
   ensureSessionStateDir,
   listSessionIds,
@@ -176,7 +181,10 @@ function listSessionIdsUnderOmcRoot(omcRoot: string): string[] {
 }
 
 function getConvergedOmcRoots(root: string): string[] {
-  const roots = new Set<string>([getOmcRoot(root)]);
+  const canonicalRoot = getOmcRoot(root);
+  if (!getGitTopLevel(root)) return [canonicalRoot];
+
+  const roots = new Set<string>([canonicalRoot]);
   roots.add(join(root, OmcPaths.ROOT));
   roots.add(join(homedir(), OmcPaths.ROOT));
   return [...roots];
@@ -466,6 +474,10 @@ function getWorkingDirectoryLocalOmcRoot(root: string): string {
 }
 
 function shouldCheckWorkingDirectoryLocalState(root: string): boolean {
+  // Non-git state uses a canonical user/central root. Do not probe or mutate
+  // `{workingDirectory}/.omc` implicitly; legacy recovery requires an explicit
+  // migration path so unrelated directories cannot be swept together.
+  if (!getGitTopLevel(root)) return false;
   return getWorkingDirectoryLocalOmcRoot(root) !== getOmcRoot(root);
 }
 
@@ -881,6 +893,15 @@ export const stateReadTool: ToolDefinition<{
 
         const content = readFileSync(statePath, 'utf-8');
         const state = JSON.parse(content);
+        const ownerSessionId = getStateSessionOwner(state);
+        if (ownerSessionId && ownerSessionId !== sessionId) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: `No state found for mode: ${mode} in session: ${sessionId}\nExpected path: ${statePath}`
+            }]
+          };
+        }
 
         return {
           content: [{
@@ -1047,6 +1068,14 @@ export const stateWriteTool: ToolDefinition<{
       } else {
         ensureOmcDir('state', root);
         statePath = getStatePath(mode, root);
+      }
+
+      if (sessionId && existsSync(statePath)) {
+        const existingState = readJsonRecord(statePath);
+        const ownerSessionId = existingState ? getStateSessionOwner(existingState) : undefined;
+        if (ownerSessionId && ownerSessionId !== sessionId) {
+          throw new Error(`state is owned by session '${ownerSessionId}' and cannot be modified by session '${sessionId}'`);
+        }
       }
 
       // Build state from explicit params + custom state
@@ -2153,6 +2182,75 @@ export const stateGetStatusTool: ToolDefinition<{
   }
 };
 
+const stateMigrateNonGitTool: ToolDefinition<any> = {
+  name: 'state_migrate_non_git',
+  description: 'Explicitly copy session-owned JSON state from a legacy non-git .omc root into the canonical non-git state root without overwriting or deleting source files.',
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  schema: {
+    workingDirectory: z.string().optional().describe('Legacy non-git working directory containing .omc/state/sessions/<session_id>'),
+    session_id: z.string().describe('Exact session owner to migrate'),
+  },
+  handler: async (args: { workingDirectory?: string; session_id?: string }) => {
+    try {
+      if (!args.session_id) throw new Error('session_id is required');
+      validateSessionId(args.session_id);
+      const sourceRoot = realpathSync(resolve(args.workingDirectory || process.cwd()));
+      const gitProbe = probeGitTopLevel(sourceRoot);
+      if (gitProbe.status === 'ok') throw new Error('state_migrate_non_git only accepts a non-git source directory');
+      if (gitProbe.status !== 'not_a_repository') throw new Error('state_migrate_non_git refused a failed Git probe');
+      if (existsSync(join(sourceRoot, '.git'))) throw new Error('state_migrate_non_git refuses a directory with Git metadata');
+      if (isSensitiveStateLocation(sourceRoot)) throw new Error('state_migrate_non_git refuses sensitive source directories');
+
+      const canonicalRoot = resolveNonGitStateAnchor(sourceRoot);
+      const canonicalOmc = getOmcRoot(canonicalRoot);
+      const sourceDir = join(sourceRoot, OmcPaths.ROOT, 'state', 'sessions', args.session_id);
+      const destinationDir = join(canonicalOmc, 'state', 'sessions', args.session_id);
+      const report = { source: sourceDir, destination: destinationDir, copied: [] as string[], skipped: [] as string[], rejected: [] as string[] };
+
+      const sourceOmc = join(sourceRoot, OmcPaths.ROOT);
+      if (!existsSync(sourceOmc)) {
+        return { content: [{ type: 'text' as const, text: JSON.stringify(report, null, 2) }] };
+      }
+      const sourceState = join(sourceOmc, 'state');
+      const sourceSessions = join(sourceState, 'sessions');
+      for (const path of [sourceOmc, sourceState, sourceSessions]) {
+        if (lstatSync(path).isSymbolicLink()) throw new Error('state_migrate_non_git refuses symlinked legacy state paths');
+      }
+      if (!existsSync(sourceDir)) {
+        return { content: [{ type: 'text' as const, text: JSON.stringify(report, null, 2) }] };
+      }
+      if (lstatSync(sourceDir).isSymbolicLink() || (existsSync(canonicalOmc) && lstatSync(canonicalOmc).isSymbolicLink()) || (existsSync(destinationDir) && lstatSync(destinationDir).isSymbolicLink())) {
+        throw new Error('state_migrate_non_git refuses symlinked migration roots');
+      }
+      mkdirSync(destinationDir, { recursive: true });
+      for (const entry of readdirSync(sourceDir, { withFileTypes: true })) {
+        if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
+        const sourcePath = join(sourceDir, entry.name);
+        const state = readJsonRecord(sourcePath);
+        if (!state || getStateSessionOwner(state) !== args.session_id) {
+          report.rejected.push(entry.name);
+          continue;
+        }
+        const destinationPath = join(destinationDir, entry.name);
+        if (existsSync(destinationPath)) {
+          report.skipped.push(entry.name);
+          continue;
+        }
+        try {
+          copyFileSync(sourcePath, destinationPath, fsConstants.COPYFILE_EXCL);
+          report.copied.push(entry.name);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'EEXIST') report.skipped.push(entry.name);
+          else throw error;
+        }
+      }
+      return { content: [{ type: 'text' as const, text: JSON.stringify(report, null, 2) }] };
+    } catch (error) {
+      return { content: [{ type: 'text' as const, text: `Error migrating non-git state: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
+    }
+  },
+};
+
 /**
  * All state tools for registration
  */
@@ -2162,6 +2260,7 @@ export const stateTools = [
   stateClearTool,
   stateListActiveTool,
   stateGetStatusTool,
+  stateMigrateNonGitTool,
   {
     name: 'merge_readiness_start',
     description: 'Initialize a merge-readiness gate session for the current change. Call this first, before merge_readiness_set_content. The depth profile is parsed from the summary (--quick or --deep; standard is the default when neither flag is present). Re-running it while an active attempt is still pending is rejected - cancel via merge_readiness_cancel or let the attempt pass/pause first, so the in-progress audit trail is never silently overwritten.',

@@ -29,7 +29,7 @@ import {
 } from 'fs';
 import * as nodeFs from 'fs';
 import { basename, dirname, join, sep } from 'path';
-import { tmpdir } from 'os';
+import { homedir } from 'os';
 import { pathToFileURL } from 'url';
 import { createHash } from 'crypto';
 
@@ -83,7 +83,7 @@ function withPublisherPreload<T>(
 // ============================================================================
 
 function createTempDir(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'precompact-restore-test-'));
+  const dir = mkdtempSync(join(homedir(), 'precompact-restore-test-'));
   mkdirSync(join(dir, '.omc', 'state'), { recursive: true });
   return dir;
 }

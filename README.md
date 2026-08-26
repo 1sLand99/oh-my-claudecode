@@ -367,7 +367,7 @@ OMC writes runtime state, session data, plans, logs, handoffs, research notes, a
 
 For linked git worktrees, the default `.omc/` directory lives inside that worktree, so deleting the worktree deletes its local OMC state. Set `OMC_STATE_DIR` if you want state to survive worktree deletion, or add a `.omc-workspace` marker when several independent repos should share one parent-level state root. See [OMC state, gitignore, worktree, and workspace contract](docs/REFERENCE.md#omc-state-gitignore-worktree-and-workspace-contract).
 
-Outside a git repository, OMC reuses the nearest safe existing `.omc/` ancestor and otherwise anchors state at `~/.omc/`; it does not create a new state root for every cwd or write state into sensitive directories such as `~/.ssh` or `~/Downloads`. State MCP tools honor an explicit `workingDirectory` while retaining repository-boundary checks for git-backed sessions.
+Outside a git repository, OMC uses one canonical safe state root at `~/.omc/` (or `$OMC_STATE_DIR/non-git` when centralized state is configured); it does not create a new state root for every cwd or write state into sensitive directories such as `~/.ssh`, `~/Downloads`, or descendants of the system temp root. Legacy cwd-local state is untouched until explicitly migrated with `state_migrate_non_git`. State MCP tools honor an explicit `workingDirectory` while retaining repository-boundary checks for git-backed sessions.
 
 [Full feature list →](docs/REFERENCE.md)
 

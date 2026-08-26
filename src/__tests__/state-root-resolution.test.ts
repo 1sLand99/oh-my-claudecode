@@ -609,7 +609,7 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
     }
   });
 
-  it('reuses a safe existing git-less state root for legacy visibility', () => {
+  it('does not implicitly adopt an existing git-less state root', () => {
     const fakeHome = join(tempDir, 'home');
     const project = join(fakeHome, 'workspace', 'project');
     const nestedCwd = join(project, 'deep', 'path');
@@ -624,7 +624,7 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
     try {
       clearWorktreeCache();
       process.chdir(nestedCwd);
-      expect(getOmcRoot()).toBe(join(project, '.omc'));
+      expect(getOmcRoot()).toBe(join(fakeHome, '.omc'));
     } finally {
       process.chdir(previousCwd);
       if (previousHome === undefined) delete process.env.HOME;
