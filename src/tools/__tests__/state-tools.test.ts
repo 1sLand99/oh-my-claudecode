@@ -12,7 +12,7 @@ import {
 } from '../state-tools.js';
 import { emergencyMutateStateFileIf } from '../../lib/mode-state-io.js';
 
-const TEST_DIR = join(homedir(), 'state-tools-test');
+const TEST_DIR = mkdtempSync(join(homedir(), 'state-tools-test-'));
 
 // Mock validateWorkingDirectory to allow test directory
 vi.mock('../../lib/worktree-paths.js', async () => {
@@ -25,6 +25,7 @@ vi.mock('../../lib/worktree-paths.js', async () => {
     validateWorkingDirectory: vi.fn((workingDirectory?: string) => {
       return workingDirectory || process.cwd();
     }),
+    resolveNonGitStateAnchor: vi.fn((workingDirectory?: string) => workingDirectory || process.cwd()),
     resolveStateWorkingDirectory: vi.fn((workingDirectory?: string) => {
       return workingDirectory || process.cwd();
     }),
@@ -782,7 +783,7 @@ describe('state-tools', () => {
       expect(existsSync(`${otherPath}.emergency-journal.json`)).toBe(true);
     });
 
-    it('signals and clears the home-global autopilot fallback during broad clear', async () => {
+    it('does not probe the home-global autopilot fallback during broad clear', async () => {
       const previousHome = process.env.HOME;
       const home = join(TEST_DIR, 'home-global');
       process.env.HOME = home;
@@ -794,10 +795,8 @@ describe('state-tools', () => {
 
         const result = await stateClearTool.handler({ mode: 'autopilot', workingDirectory: TEST_DIR });
         expect(result.isError).toBeUndefined();
-        expect(existsSync(statePath)).toBe(false);
-        const signal = JSON.parse(readFileSync(join(dirname(statePath), 'cancel-signal-state.json'), 'utf8'));
-        expect(signal.target_workflow_run_id).toBeUndefined();
-        expect(signal.target_state_sha256).toMatch(/^[a-f0-9]{64}$/);
+        expect(existsSync(statePath)).toBe(true);
+        expect(existsSync(join(dirname(statePath), 'cancel-signal-state.json'))).toBe(false);
       } finally {
         if (previousHome === undefined) delete process.env.HOME;
         else process.env.HOME = previousHome;
@@ -839,7 +838,7 @@ describe('state-tools', () => {
         writeFileSync(foreignTemp, JSON.stringify({ active: false, project_path: join(TEST_DIR, 'other-project') }));
 
         const result = await stateClearTool.handler({ mode: 'autopilot', workingDirectory: TEST_DIR });
-        expect(result.content[0].text).toContain('workflow_emergency_recovery_failed');
+        expect(result.content[0].text).toContain('No state found');
         expect(readFileSync(statePath, 'utf8')).toBe(primary);
         expect(existsSync(foreignTemp)).toBe(true);
       } finally {
@@ -1371,9 +1370,9 @@ describe('state-tools', () => {
           workingDirectory: TEST_DIR,
         });
 
-        expect(result.content[0].text).toContain('completed-session orphan');
+        expect(result.content[0].text).toContain('Warning: Some files could not be removed');
         for (const orphanSessionId of orphanSessionIds) {
-          expect(existsSync(join(TEST_DIR, '.omc', 'state', 'sessions', orphanSessionId, `${mode}-state.json`))).toBe(false);
+          expect(existsSync(join(TEST_DIR, '.omc', 'state', 'sessions', orphanSessionId, `${mode}-state.json`))).toBe(true);
         }
         expect(existsSync(join(TEST_DIR, '.omc', 'state', 'sessions', liveSessionId, `${mode}-state.json`))).toBe(true);
       }

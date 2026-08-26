@@ -89,6 +89,17 @@ describe('#3873 real non-git state ownership', () => {
     expect(result.content[0].text).not.toContain('private');
   });
 
+  it('does not let a requester overwrite a foreign ordinary autopilot record', async () => {
+    const foreignPath = join(centralState, 'non-git', 'state', 'sessions', 'autopilot-requester', 'autopilot-state.json');
+    mkdirSync(join(foreignPath, '..'), { recursive: true });
+    const original = JSON.stringify({ active: true, session_id: 'autopilot-owner', phase: 'execution' });
+    writeFileSync(foreignPath, original);
+
+    const result = await stateWriteTool.handler({ mode: 'autopilot', session_id: 'autopilot-requester', active: false, workingDirectory });
+    expect(result.isError).toBe(true);
+    expect(readFileSync(foreignPath, 'utf8')).toBe(original);
+  });
+
   it('explicitly migrates only matching session-owned JSON without overwriting or deleting source', async () => {
     const sourceRoot = join(osPaths.home, 'legacy-project');
     const sourceSession = join(sourceRoot, '.omc', 'state', 'sessions', 'migrate-a');

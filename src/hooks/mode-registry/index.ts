@@ -31,7 +31,8 @@ import {
   resolveSessionStatePath,
   getSessionStateDir,
   getOmcRoot,
-} from "../../lib/worktree-paths.js";
+} from '../../lib/worktree-paths.js';
+import { getStateSessionOwner } from '../../lib/mode-state-io.js';
 import { MODE_STATE_FILE_MAP, MODE_NAMES } from "../../lib/mode-names.js";
 
 export type {
@@ -231,7 +232,8 @@ function isJsonModeActive(
       const state = JSON.parse(content);
 
       // Validate session identity: state must belong to this session
-      if (state.session_id && state.session_id !== sessionId) {
+      const ownerSessionId = getStateSessionOwner(state);
+      if (ownerSessionId && ownerSessionId !== sessionId) {
         return false;
       }
 

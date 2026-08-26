@@ -13,6 +13,8 @@ import { spawnSync } from 'child_process';
 import {
   getGitTopLevel,
   getOmcRoot,
+  probeGitTopLevel,
+  resolveNonGitStateAnchor,
   resolveStatePath,
   resolveSessionStatePath,
   ensureSessionStateDir,
@@ -1044,7 +1046,10 @@ export function canClearStateForSession(
 
 function resolveStateRoot(directory?: string): string {
   const baseDir = directory || process.cwd();
-  return getGitTopLevel(baseDir) || baseDir;
+  const probe = probeGitTopLevel(baseDir);
+  if (probe.status === 'ok') return probe.root;
+  if (probe.status === 'not_a_repository') return resolveNonGitStateAnchor(baseDir);
+  throw new Error('Git probe failed while resolving runtime state root');
 }
 
 /**

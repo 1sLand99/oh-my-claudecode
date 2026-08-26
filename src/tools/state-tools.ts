@@ -425,7 +425,7 @@ function getLegacyStateFileCandidates(mode: StateToolMode, root: string): string
     getStatePath(mode, root),
     join(getOmcRoot(root), `${normalizedName}.json`),
   ];
-  if (mode === 'autopilot') candidates.push(join(homedir(), '.omc', 'state', 'autopilot-state.json'));
+  if (mode === 'autopilot' && getGitTopLevel(root)) candidates.push(join(homedir(), '.omc', 'state', 'autopilot-state.json'));
 
   return [...new Set(candidates)];
 }
@@ -586,7 +586,7 @@ function clearCompletedSessionStateCandidates(
   for (const candidate of discovered) {
     const result = clearDiscoveredStateCandidate(
       candidate,
-      (current) => current.active === true && Boolean(candidate.completionEvidencePath && existsSync(candidate.completionEvidencePath)),
+      (current) => current.active === true && Boolean(candidate.completionEvidencePath && existsSync(candidate.completionEvidencePath)) && (!requesterSessionId || canClearStateForSession(current, requesterSessionId)),
       emergencyRecoveryOptionsForProject(mode, candidate.path, root),
     );
     if (result === 'cleared') cleared++;
@@ -1158,7 +1158,7 @@ export const stateWriteTool: ToolDefinition<{
         } else {
           const result = writeStateFileLockedCreateIf(
             statePath,
-            (current) => !hasNamedWorkflowMarker(current),
+            (current) => (!sessionId || !current || canClearStateForSession(current, sessionId)) && !hasNamedWorkflowMarker(current),
             (current) => {
               writtenState = { ...(current ?? {}), ...stateWithMeta };
               return writtenState;
@@ -1171,6 +1171,7 @@ export const stateWriteTool: ToolDefinition<{
         const result = writeStateFileLockedCreateIf(
           statePath,
           (current) => {
+            if (sessionId && current && !canClearStateForSession(current, sessionId)) return false;
             if (!hasNamedWorkflowMarker(current)) return true;
             namedWorkflowExists = true;
             return false;
@@ -2261,7 +2262,7 @@ const stateMigrateNonGitTool: ToolDefinition<any> = {
           continue;
         }
         try {
-          writeFileSync(destinationPath, sourceBytes, { flag: 'wx' });
+          writeFileSync(destinationPath, sourceBytes, { flag: 'wx', mode: 0o600 });
           report.copied.push(entry.name);
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code === 'EEXIST') report.skipped.push(entry.name);

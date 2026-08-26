@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import { spawn } from 'child_process';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync, readFileSync, unlinkSync } from 'fs';
-import { tmpdir } from 'os';
+import { homedir } from 'os';
 import { join } from 'path';
 
 // Import functions to test
@@ -28,7 +28,7 @@ describe('Session-Scoped State Isolation', () => {
   let tempDir: string;
 
   beforeEach(() => {
-    tempDir = mkdtempSync(join(tmpdir(), 'session-isolation-test-'));
+    tempDir = mkdtempSync(join(homedir(), 'session-isolation-test-'));
   });
 
   afterEach(() => {
