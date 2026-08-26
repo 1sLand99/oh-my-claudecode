@@ -12,6 +12,9 @@ import { currentProcessStartIdentity } from '../team-owner-epoch.js';
 import { teamCreateTask, teamReadConfig, teamReadManifest, withTaskClaimLock } from '../team-ops.js';
 
 let cwd: string;
+let previousHome: string | undefined;
+let previousUserProfile: string | undefined;
+let previousStateDir: string | undefined;
 const teamName = 'config-lock-team';
 const deadProcessStart = process.platform === 'darwin' ? 'darwin:1:0' : process.platform === 'win32' ? 'win32:1' : 'linux:1';
 
@@ -46,8 +49,25 @@ function writeConfig(config: TeamConfig): void {
   writeFileSync(path, JSON.stringify(config));
 }
 
-beforeEach(() => { cwd = mkdtempSync(join(tmpdir(), 'team-config-lock-')); writeConfig(initialConfig()); });
-afterEach(() => rmSync(cwd, { recursive: true, force: true }));
+beforeEach(() => {
+  cwd = mkdtempSync(join(tmpdir(), 'team-config-lock-'));
+  previousHome = process.env.HOME;
+  previousUserProfile = process.env.USERPROFILE;
+  previousStateDir = process.env.OMC_STATE_DIR;
+  process.env.HOME = cwd;
+  process.env.USERPROFILE = cwd;
+  delete process.env.OMC_STATE_DIR;
+  writeConfig(initialConfig());
+});
+afterEach(() => {
+  if (previousHome === undefined) delete process.env.HOME;
+  else process.env.HOME = previousHome;
+  if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+  else process.env.USERPROFILE = previousUserProfile;
+  if (previousStateDir === undefined) delete process.env.OMC_STATE_DIR;
+  else process.env.OMC_STATE_DIR = previousStateDir;
+  rmSync(cwd, { recursive: true, force: true });
+});
 
 describe('team config revision transaction', () => {
   it('rejects recovery cleanup and publishes no final after a normal writer wins the revision', async () => {
