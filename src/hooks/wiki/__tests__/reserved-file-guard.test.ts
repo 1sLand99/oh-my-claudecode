@@ -21,14 +21,24 @@ function makePage(filename: string): WikiPage {
 
 describe('writePageUnsafe reserved file guard', () => {
   let tempDir: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
 
   beforeEach(async () => {
     tempDir = await fsp.mkdtemp(path.join(os.homedir(), 'wiki-guard-'));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = tempDir;
+    process.env.USERPROFILE = tempDir;
     ensureWikiDir(tempDir);
   });
 
   afterEach(async () => {
     await fsp.rm(tempDir, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
   });
 
   it('should throw when writing to index.md', () => {

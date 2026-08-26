@@ -119,14 +119,24 @@ describe('tokenize', () => {
 
 describe('queryWiki with CJK content', () => {
   let tempDir: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
 
   beforeEach(async () => {
     tempDir = await fsp.mkdtemp(path.join(os.homedir(), 'wiki-cjk-test-'));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = tempDir;
+    process.env.USERPROFILE = tempDir;
     ensureWikiDir(tempDir);
   });
 
   afterEach(async () => {
     await fsp.rm(tempDir, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
   });
 
   it('should find pages with Korean content', () => {
