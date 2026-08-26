@@ -67,6 +67,11 @@ function ensureMigrationDirectoryTree(root: string, target: string): void {
   if (suffix.startsWith('..') || isAbsolute(suffix)) {
     throw new Error('state_migrate_non_git refuses a destination outside the canonical root');
   }
+  if (!existsSync(rootResolved)) mkdirSync(rootResolved, { recursive: true });
+  const rootStat = lstatSync(rootResolved);
+  if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) {
+    throw new Error('state_migrate_non_git refuses symlinked migration roots');
+  }
   let cursor = rootResolved;
   for (const segment of suffix.split(/[\\/]+/).filter(Boolean)) {
     cursor = join(cursor, segment);
@@ -620,6 +625,8 @@ function clearCompletedSessionStateCandidates(
     const result = clearDiscoveredStateCandidate(
       candidate,
       (current) => current.active === true
+        && candidate.ownerSessionId === candidate.completedSessionId
+        && getStateSessionOwner(current) === candidate.completedSessionId
         && Boolean(candidate.completionEvidencePath && existsSync(candidate.completionEvidencePath)),
       emergencyRecoveryOptionsForProject(mode, candidate.path, root),
     );
@@ -2250,7 +2257,8 @@ const stateMigrateNonGitTool: ToolDefinition<any> = {
       validateSessionId(args.session_id);
       const sourceRoot = realpathSync(resolve(args.workingDirectory || process.cwd()));
       const trustedWorkingDirectory = realpathSync(resolve(process.cwd()));
-      if (sourceRoot !== trustedWorkingDirectory) {
+      const sourceFromTrustedCwd = relative(trustedWorkingDirectory, sourceRoot);
+      if (sourceFromTrustedCwd === '..' || sourceFromTrustedCwd.startsWith(`..${sep}`) || isAbsolute(sourceFromTrustedCwd)) {
         throw new Error('state_migrate_non_git refuses a source outside the trusted session working directory');
       }
       const gitProbe = probeGitTopLevel(sourceRoot);

@@ -41,6 +41,7 @@ import {
   canClearStateForSession,
   clearStateFileLockedIf,
   readModeStateWithMeta,
+  writeStateFileLocked,
   writeModeState,
   writeStateFileLockedCreateIf,
 } from '../../lib/mode-state-io.js';
@@ -233,6 +234,29 @@ export function emptySkillActiveStateV2(): SkillActiveStateV2 {
 
 function isEmptyV2(state: SkillActiveStateV2): boolean {
   return Object.keys(state.active_skills).length === 0 && !state.support_skill;
+}
+
+function mergeSharedSkillLedger(
+  current: Record<string, unknown> | null,
+  next: SkillActiveStateV2 | null,
+  sessionId: string,
+): SkillActiveStateV2 {
+  const existing = current ? normalizeToV2(current) : emptySkillActiveStateV2();
+  const mergedSlots = { ...existing.active_skills };
+  for (const [name, slot] of Object.entries(mergedSlots)) {
+    if (slot.session_id === sessionId) delete mergedSlots[name];
+  }
+  if (next) {
+    for (const [name, slot] of Object.entries(next.active_skills)) {
+      if (!slot.session_id || slot.session_id === sessionId) mergedSlots[name] = slot;
+    }
+  }
+  const existingSupport = existing.support_skill;
+  const nextSupport = next?.support_skill;
+  const support = nextSupport && (!nextSupport.session_id || nextSupport.session_id === sessionId)
+    ? nextSupport
+    : existingSupport && existingSupport.session_id !== sessionId ? existingSupport : null;
+  return { version: 2, active_skills: mergedSlots, ...(support ? { support_skill: support } : {}) };
 }
 
 /**
@@ -550,15 +574,6 @@ export function writeSkillActiveStateCopies(
   const rootState: SkillActiveStateV2 | null =
     options?.rootState === undefined ? nextState : options.rootState;
 
-  const writeEnvelope = (payload: SkillActiveStateV2): Record<string, unknown> => ({
-    ...payload,
-    version: 2,
-    _meta: {
-      written_at: new Date().toISOString(),
-      mode: SKILL_ACTIVE_STATE_MODE,
-      ...(sessionId ? { sessionId } : {}),
-    },
-  });
 
   const clearOwnedFile = (filePath: string): boolean => {
     const result = clearStateFileLockedIf(
@@ -582,11 +597,10 @@ export function writeSkillActiveStateCopies(
   };
 
   const writeRootState = (): boolean => {
-    if (rootState === null || isEmptyV2(rootState)) {
-      return clearOwnedFile(rootPath);
-    }
-
     if (!sessionId) {
+      if (rootState === null || isEmptyV2(rootState)) {
+        return clearOwnedFile(rootPath);
+      }
       return writeModeState(
         SKILL_ACTIVE_STATE_MODE,
         rootState as unknown as Record<string, unknown>,
@@ -596,10 +610,29 @@ export function writeSkillActiveStateCopies(
 
     const result = writeStateFileLockedCreateIf(
       rootPath,
-      current => current === null || canClearStateForSession(current, sessionId),
-      () => writeEnvelope(rootState),
+      () => true,
+      current => {
+        const merged = mergeSharedSkillLedger(current, rootState, sessionId);
+        return {
+          ...merged,
+          _meta: {
+            written_at: new Date().toISOString(),
+            mode: SKILL_ACTIVE_STATE_MODE,
+          },
+        };
+      },
     );
-    return result === 'written';
+    if (result !== 'written') return false;
+    const merged = mergeSharedSkillLedger(
+      readModeStateWithMeta<Record<string, unknown>>(SKILL_ACTIVE_STATE_MODE, directory),
+      rootState,
+      sessionId,
+    );
+    if (isEmptyV2(merged)) {
+      const cleared = clearStateFileLockedIf(rootPath, current => isEmptyV2(normalizeToV2(current)));
+      return cleared !== 'failed' && (cleared !== 'skipped' || !existsSync(rootPath));
+    }
+    return true;
   };
 
   // A session copy authenticates the mutation. Only mirror it to the root

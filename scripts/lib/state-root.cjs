@@ -11,8 +11,10 @@
 
 'use strict';
 
-const { join } = require('path');
+const { join, basename } = require('path');
 const { existsSync } = require('fs');
+const { createHash } = require('crypto');
+const { execFileSync } = require('child_process');
 
 /**
  * Resolve the .omc root directory, respecting OMC_STATE_DIR.
@@ -38,7 +40,13 @@ async function resolveOmcStateRoot(directory) {
   // TypeScript resolver when the generated distribution is unavailable.
   const customDir = process.env.OMC_STATE_DIR;
   if (customDir) {
-    return join(customDir, 'non-git');
+    let gitRoot = null;
+    try { gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: directory, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null; } catch {}
+    if (!gitRoot) return join(customDir, 'non-git');
+    let source = gitRoot;
+    try { source = execFileSync('git', ['remote', 'get-url', 'origin'], { cwd: gitRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || gitRoot; } catch {}
+    const hash = createHash('sha256').update(source).digest('hex').slice(0, 16);
+    return join(customDir, `${basename(gitRoot).replace(/[^a-zA-Z0-9_-]/g, '_')}-${hash}`);
   }
   return join(directory, '.omc');
 }

@@ -1203,7 +1203,7 @@ export function findCompletedSessionStateCandidates(
     if (!existsSync(completionEvidencePath)) continue;
     const candidatePath = resolveSessionStatePath(mode, sid, baseDir);
     const candidate = discoverStateFile(candidatePath, { completedSessionId: sid, completionEvidencePath });
-    if (candidate?.state.active === true) matches.push(candidate);
+    if (candidate?.state.active === true && candidate.ownerSessionId === sid) matches.push(candidate);
   }
   return matches;
 }

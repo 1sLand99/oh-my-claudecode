@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "8af88bd3d219b1b7d449d9eae79c1577e682b3fc",
-    "sourceSha256": "67d495a6a57eb0109667c8f0b31d64d21717f7c355a0e06a4fa42063f448bd64",
+    "head": "955077589e7a88d4f724ba886eeb3e03136e1270",
+    "sourceSha256": "5854443315410c8985aad7d29035356397de1d8d4e5d341b48f4bd2d35a1b274",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "8af88bd3d219b1b7d449d9eae79c1577e682b3fc",
-  "sourceSha256": "67d495a6a57eb0109667c8f0b31d64d21717f7c355a0e06a4fa42063f448bd64",
+  "head": "955077589e7a88d4f724ba886eeb3e03136e1270",
+  "sourceSha256": "5854443315410c8985aad7d29035356397de1d8d4e5d341b48f4bd2d35a1b274",
   "counts": {
     "public": {
       "skills": 32,
@@ -41525,6 +41525,16 @@
       },
       {
         "from": "scripts/lib/state-root.cjs",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/state-root.cjs",
+        "to": "external:crypto",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/state-root.cjs",
         "to": "external:fs",
         "kind": "imports"
       },
@@ -41536,6 +41546,16 @@
       {
         "from": "scripts/lib/state-root.cjs",
         "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/state-root.mjs",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/state-root.mjs",
+        "to": "external:crypto",
         "kind": "imports"
       },
       {
@@ -75460,6 +75480,11 @@
       },
       {
         "from": "templates/hooks/lib/state-root.mjs",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "templates/hooks/lib/state-root.mjs",
         "to": "external:crypto",
         "kind": "imports"
       },
@@ -76236,11 +76261,11 @@
     ],
     "stats": {
       "nodeCount": 6831,
-      "edgeCount": 7160,
-      "importEdgeCount": 5876,
+      "edgeCount": 7165,
+      "importEdgeCount": 5881,
       "registerEdgeCount": 53
     }
   },
   "inventorySha256": "0fa1d8055ac3c243f65c169a83bda6d9c7fae7684b1d559bb464baf525cd54f2",
-  "manifestSha256": "e6310ab75511c930f5a82681228767f4b59125feb2a4d2385e9a4b3e9107e3af"
+  "manifestSha256": "4c0be8c98fe75c393f3da25edcd6d10f396ea347d91170402ea2151b44d499c2"
 }

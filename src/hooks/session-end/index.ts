@@ -8,7 +8,7 @@ import type { NotificationPlatform } from '../../notifications/types.js';
 import { cleanupBridgeSessions } from '../../tools/python-repl/bridge-manager.js';
 import { resolveToWorktreeRoot, getOmcRoot, validateSessionId, isValidTranscriptPath, resolveSessionStatePath } from '../../lib/worktree-paths.js';
 import { SESSION_END_MODE_STATE_FILES, SESSION_METRICS_MODE_FILES } from '../../lib/mode-names.js';
-import { canClearStateForSession, clearModeStateFile, readModeStateWithMeta } from '../../lib/mode-state-io.js';
+import { canClearStateForSession, clearModeStateFile, clearStateFileLockedIf, readModeStateWithMeta } from '../../lib/mode-state-io.js';
 import { completeForegroundCleanup, completeForegroundCleanupAndSealCore, prepareCoreManifest, readSessionEndJob, sealWikiManifest } from './cleanup-manifest.js';
 import { spawnSessionEndWorker } from './worker.js';
 import { buildWikiSessionEndCaptureIntent } from '../wiki/session-hooks.js';
@@ -371,14 +371,13 @@ export function cleanupTransientState(directory: string, endingSessionId?: strin
       // Patterns that are safe to delete across every session dir:
       // these are short-lived markers/breakers that do not represent
       // live per-session state an active concurrent session is reading.
-      const crossSessionSafePatterns = [
-        /^cancel-signal/,
-        /stop-breaker/,
-      ];
+      const crossSessionSafePatterns: RegExp[] = [];
       // Patterns that must only be deleted from the session that is
       // actually ending — deleting them from a still-running session
       // would reintroduce cross-session interference.
       const endingSessionOnlyPatterns = [
+        /^cancel-signal/,
+        /stop-breaker/,
         // HUD's stdin cache is session-scoped (see `src/hud/stdin.ts`)
         // and consumed by `omc hud --watch` for the owning session.
         /^hud-stdin-cache\.json$/,
@@ -649,7 +648,7 @@ function cleanupSessionStartedMarker(directory: string, sessionId: string): void
   try {
     const markerPath = path.join(getOmcRoot(directory), 'state', 'sessions', sessionId, SESSION_STARTED_MARKER_FILE);
     if (fs.existsSync(markerPath)) {
-      fs.unlinkSync(markerPath);
+      clearStateFileLockedIf(markerPath, current => canClearStateForSession(current, sessionId));
     }
   } catch {
     // Best-effort marker cleanup only; SessionEnd cleanup must continue.

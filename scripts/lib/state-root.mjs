@@ -18,8 +18,10 @@
  *     in production (CLAUDE_PLUGIN_ROOT is always set).
  */
 
-import { join } from 'path';
+import { join, basename } from 'path';
 import { existsSync } from 'fs';
+import { createHash } from 'crypto';
+import { execFileSync } from 'child_process';
 import { pathToFileURL } from 'url';
 
 /**
@@ -45,7 +47,13 @@ export async function resolveOmcStateRoot(directory) {
   // TypeScript resolver when the generated distribution is unavailable.
   const customDir = process.env.OMC_STATE_DIR;
   if (customDir) {
-    return join(customDir, 'non-git');
+    let gitRoot = null;
+    try { gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: directory, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null; } catch {}
+    if (!gitRoot) return join(customDir, 'non-git');
+    let source = gitRoot;
+    try { source = execFileSync('git', ['remote', 'get-url', 'origin'], { cwd: gitRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || gitRoot; } catch {}
+    const hash = createHash('sha256').update(source).digest('hex').slice(0, 16);
+    return join(customDir, `${basename(gitRoot).replace(/[^a-zA-Z0-9_-]/g, '_')}-${hash}`);
   }
   return join(directory, '.omc');
 }

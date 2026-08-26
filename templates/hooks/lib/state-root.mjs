@@ -18,9 +18,10 @@
  *     in production (CLAUDE_PLUGIN_ROOT is always set).
  */
 
-import { join, basename } from 'path';
+import { join, basename, dirname, resolve } from 'path';
 import { existsSync } from 'fs';
 import { createHash } from 'crypto';
+import { execFileSync } from 'child_process';
 import { pathToFileURL } from 'url';
 
 /**
@@ -42,11 +43,22 @@ export async function resolveOmcStateRoot(directory) {
     }
   }
 
-  // Inline fallback: respects OMC_STATE_DIR with simplified project identifier
+  // Inline fallback: preserve the canonical non-git namespace when the
+  // generated distribution is unavailable, while retaining a stable
+  // project-specific identity for valid Git repositories.
   const customDir = process.env.OMC_STATE_DIR;
   if (customDir) {
-    const hash = createHash('sha256').update(directory).digest('hex').slice(0, 16);
-    const dirName = basename(directory).replace(/[^a-zA-Z0-9_-]/g, '_');
+    let gitRoot = null;
+    try {
+      gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: directory, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null;
+    } catch {}
+    if (!gitRoot) return join(customDir, 'non-git');
+    let source = gitRoot;
+    try {
+      source = execFileSync('git', ['remote', 'get-url', 'origin'], { cwd: gitRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || gitRoot;
+    } catch {}
+    const hash = createHash('sha256').update(source).digest('hex').slice(0, 16);
+    const dirName = basename(gitRoot).replace(/[^a-zA-Z0-9_-]/g, '_');
     return join(customDir, `${dirName}-${hash}`);
   }
   return join(directory, '.omc');
