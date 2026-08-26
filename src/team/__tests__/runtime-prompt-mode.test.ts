@@ -241,8 +241,8 @@ describe('spawnWorkerForTask – prompt mode and interactive worker launch', () 
     expect(launchCmd).toContain("'-p'");
     // Should contain the inbox path reference
     expect(launchCmd).toContain('.omc/state/team/test-team/workers/worker-1/inbox.md');
-    expect(launchCmd).toContain('execute now');
-    expect(launchCmd).toContain('concrete progress');
+    expect(launchCmd).toContain('work now');
+    expect(launchCmd).toContain('report progress');
 
     rmSync(cwd, { recursive: true, force: true });
   });
@@ -424,7 +424,7 @@ describe('spawnWorkerForTask – prompt mode and interactive worker launch', () 
       args => args[0] === 'send-keys' && args.includes('-l')
     );
     expect(sendKeysCalls.length).toBe(2);
-    const readInstructionCall = sendKeysCalls.find((args) => (args[args.length - 1] ?? '').includes('execute now'));
+    const readInstructionCall = sendKeysCalls.find((args) => (args[args.length - 1] ?? '').includes('work now'));
     expect(readInstructionCall).toBeDefined();
 
     rmSync(cwd, { recursive: true, force: true });
@@ -439,7 +439,7 @@ describe('spawnWorkerForTask – prompt mode and interactive worker launch', () 
     expect(captureCalls.length).toBeGreaterThan(0);
 
     const readInstructionCalls = tmuxCalls.args.filter(
-      args => args[0] === 'send-keys' && args.includes('-l') && (args[args.length - 1] ?? '').includes('execute now')
+      args => args[0] === 'send-keys' && args.includes('-l') && (args[args.length - 1] ?? '').includes('work now')
     );
     expect(readInstructionCalls.length).toBe(1);
     expect(tmuxCalls.args).toContainEqual(['set-window-option', '-t', 'test-session:0', 'main-pane-width', '80']);

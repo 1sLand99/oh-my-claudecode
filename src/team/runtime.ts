@@ -350,9 +350,10 @@ function buildInitialTaskInstruction(
   teamName: string,
   workerName: string,
   task: { subject: string; description: string },
-  taskId: string
+  taskId: string,
+  teamStateRoot: string,
 ): string {
-  const donePath = `.omc/state/team/${teamName}/workers/${workerName}/done.json`;
+  const donePath = join(teamStateRoot, 'workers', workerName, 'done.json');
   return [
     `## Initial Task Assignment`,
     `Task ID: ${taskId}`,
@@ -789,7 +790,7 @@ export async function spawnWorkerForTask(
     // Build the initial task instruction and write inbox before spawn.
     // For prompt-mode agents the instruction is passed via CLI flag;
     // for interactive agents it is sent via tmux send-keys after startup.
-    const instruction = buildInitialTaskInstruction(runtime.teamName, workerNameValue, task, taskId);
+    const instruction = buildInitialTaskInstruction(runtime.teamName, workerNameValue, task, taskId, root);
     await composeInitialInbox(runtime.teamName, workerNameValue, instruction, runtime.cwd);
 
     const envVars = getModelWorkerEnv(runtime.teamName, workerNameValue, agentType);
@@ -844,7 +845,7 @@ export async function spawnWorkerForTask(
     // Codex and Claude team workers are persistent interactive panes and are
     // nudged through the inbox transport instead of `codex exec`/print modes.
     if (usePromptMode) {
-      const promptArgs = getPromptModeArgs(agentType, generateTriggerMessage(runtime.teamName, workerNameValue));
+      const promptArgs = getPromptModeArgs(agentType, generateTriggerMessage(runtime.teamName, workerNameValue, root));
       launchArgs.push(...promptArgs);
     }
 
@@ -895,7 +896,7 @@ export async function spawnWorkerForTask(
       const notified = await notifyPaneWithRetry(
         runtime.sessionName,
         paneId,
-        generateTriggerMessage(runtime.teamName, workerNameValue),
+        generateTriggerMessage(runtime.teamName, workerNameValue, root),
         1
       );
       if (!notified) {
@@ -977,7 +978,7 @@ export async function assignTask(
   // Write to worker inbox
   const inboxPath = join(root, 'workers', targetWorkerName, 'inbox.md');
   await mkdir(join(inboxPath, '..'), { recursive: true });
-  const msg = `\n\n---\n## New Task Assignment\nTask ID: ${taskId}\nClaim and execute task from: .omc/state/team/${teamName}/tasks/${taskId}.json\n`;
+  const msg = `\n\n---\n## New Task Assignment\nTask ID: ${taskId}\nClaim and execute task from: ${join(root, 'tasks', `task-${taskId}.json`)}\n`;
   const { appendFile } = await import('fs/promises');
   await appendFile(inboxPath, msg, 'utf-8');
 
