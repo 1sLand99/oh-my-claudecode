@@ -104,13 +104,32 @@ async function runTick(): Promise<void> {
   await vi.advanceTimersByTimeAsync(20);
 }
 
+function isolateFixtureEnv(root: string): () => void {
+  const home = process.env.HOME;
+  const userProfile = process.env.USERPROFILE;
+  const stateDir = process.env.OMC_STATE_DIR;
+  process.env.HOME = root;
+  process.env.USERPROFILE = root;
+  delete process.env.OMC_STATE_DIR;
+  return () => {
+    if (home === undefined) delete process.env.HOME;
+    else process.env.HOME = home;
+    if (userProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = userProfile;
+    if (stateDir === undefined) delete process.env.OMC_STATE_DIR;
+    else process.env.OMC_STATE_DIR = stateDir;
+  };
+}
+
 describe('watchdogCliWorkers dead-pane retry behavior', () => {
   let cwd: string;
+  let restoreFixtureEnv: (() => void) | undefined;
   let warnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     vi.useRealTimers();
     cwd = mkdtempSync(join(tmpdir(), 'runtime-watchdog-retry-'));
+    restoreFixtureEnv = isolateFixtureEnv(cwd);
     tmuxMocks.isWorkerAlive.mockReset().mockResolvedValue(false);
     tmuxMocks.spawnWorkerInPane.mockReset().mockResolvedValue(undefined);
     tmuxMocks.sendToWorker.mockReset().mockResolvedValue(true);
@@ -127,6 +146,8 @@ describe('watchdogCliWorkers dead-pane retry behavior', () => {
   });
 
   afterEach(() => {
+    const restore = restoreFixtureEnv;
+    restoreFixtureEnv = undefined;
     fsPromisesControl.renameHook = undefined;
     fsPromisesControl.taskTargetPath = undefined;
     fsPromisesControl.taskTargetWriteFileCalls = 0;
@@ -136,7 +157,11 @@ describe('watchdogCliWorkers dead-pane retry behavior', () => {
     warnSpy.mockRestore();
     vi.useRealTimers();
     vi.doUnmock('../lib/atomic-write.js');
-    rmSync(cwd, { recursive: true, force: true });
+    try {
+      restore?.();
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
   });
 
   it('requeues once with the established five-retry budget', async () => {

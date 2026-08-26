@@ -3,15 +3,35 @@ import { mkdtemp, mkdir, rm, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
+import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { executeTeamApiOperation } from '../api-interop.js';
 import { reserveRecoveryRequest, writeRecoveryPhase } from '../recovery-request-store.js';
 
+function isolateFixtureRoot(root: string): () => void {
+  const previousHome = process.env.HOME;
+  const previousUserProfile = process.env.USERPROFILE;
+  const previousOmcStateDir = process.env.OMC_STATE_DIR;
+  process.env.HOME = root;
+  process.env.USERPROFILE = root;
+  delete process.env.OMC_STATE_DIR;
+
+  return () => {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
+    if (previousOmcStateDir === undefined) delete process.env.OMC_STATE_DIR;
+    else process.env.OMC_STATE_DIR = previousOmcStateDir;
+  };
+}
+
 describe('team api working-directory resolution', () => {
   let cwd: string;
+  let restoreFixtureEnv: (() => void) | undefined;
   const teamName = 'resolution-team';
 
   async function seedTeamState(): Promise<string> {
-    const base = join(cwd, '.omc', 'state', 'team', teamName);
+    const base = join(getOmcRoot(cwd), 'state', 'team', teamName);
     await mkdir(join(base, 'tasks'), { recursive: true });
     await mkdir(join(base, 'mailbox'), { recursive: true });
     await writeFile(join(base, 'config.json'), JSON.stringify({
@@ -63,9 +83,12 @@ describe('team api working-directory resolution', () => {
 
   beforeEach(async () => {
     cwd = await mkdtemp(join(tmpdir(), 'omc-team-api-resolution-'));
+    restoreFixtureEnv = isolateFixtureRoot(cwd);
   });
 
   afterEach(async () => {
+    restoreFixtureEnv?.();
+    restoreFixtureEnv = undefined;
     delete process.env.OMC_TEAM_STATE_ROOT;
     delete process.env.OMC_TEAM_WORKER;
     await rm(cwd, { recursive: true, force: true });
@@ -112,15 +135,20 @@ describe('team api working-directory resolution', () => {
   it('reads recovery results from canonical leader state rather than a colliding foreign worker cwd', async () => {
     const leaderStateRoot = await seedTeamState();
     const foreignCwd = join(cwd, 'worktrees', 'worker-1', 'nested');
-    const foreignTeamRoot = join(foreignCwd, '.omc', 'state', 'team', teamName);
-    await mkdir(foreignTeamRoot, { recursive: true });
-    await writeFile(join(foreignTeamRoot, 'config.json'), JSON.stringify({
-      name: teamName,
-      team_state_root: foreignTeamRoot,
-    }));
 
     seedRecoveryPhase(cwd, 'leader-recovery', 7);
-    seedRecoveryPhase(foreignCwd, 'foreign-recovery', 99);
+    const restoreForeignFixtureEnv = isolateFixtureRoot(foreignCwd);
+    try {
+      const foreignTeamRoot = join(getOmcRoot(foreignCwd), 'state', 'team', teamName);
+      await mkdir(foreignTeamRoot, { recursive: true });
+      await writeFile(join(foreignTeamRoot, 'config.json'), JSON.stringify({
+        name: teamName,
+        team_state_root: foreignTeamRoot,
+      }));
+      seedRecoveryPhase(foreignCwd, 'foreign-recovery', 99);
+    } finally {
+      restoreForeignFixtureEnv();
+    }
     process.env.OMC_TEAM_STATE_ROOT = leaderStateRoot;
     process.env.OMC_TEAM_WORKER = `${teamName}/worker-1`;
 

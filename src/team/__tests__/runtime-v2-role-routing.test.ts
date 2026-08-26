@@ -3,6 +3,8 @@ import { mkdtemp, mkdir, rm, writeFile, readFile, access } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
+import { getOmcRoot } from '../../lib/worktree-paths.js';
+
 const mocks = vi.hoisted(() => ({
   isWorkerAlive: vi.fn(async () => false),
   isWorkerPaneAlive: vi.fn(async () => false),
@@ -39,8 +41,14 @@ vi.mock('../tmux-session.js', async (importOriginal) => {
 
 describe('runtime-v2 role routing — processCliWorkerVerdicts (AC-7)', () => {
   let cwd: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
+  let previousOmcStateDir: string | undefined;
 
   beforeEach(() => {
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    previousOmcStateDir = process.env.OMC_STATE_DIR;
     vi.resetModules();
     mocks.isWorkerAlive.mockReset();
     mocks.isWorkerPaneAlive.mockReset();
@@ -60,7 +68,21 @@ describe('runtime-v2 role routing — processCliWorkerVerdicts (AC-7)', () => {
 
   afterEach(async () => {
     if (cwd) await rm(cwd, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
+    if (previousOmcStateDir === undefined) delete process.env.OMC_STATE_DIR;
+    else process.env.OMC_STATE_DIR = previousOmcStateDir;
   });
+
+  async function mkdtempFixture(prefix: string): Promise<string> {
+    const root = await mkdtemp(join(tmpdir(), prefix));
+    process.env.HOME = root;
+    process.env.USERPROFILE = root;
+    delete process.env.OMC_STATE_DIR;
+    return root;
+  }
 
   async function bootstrap(opts: {
     verdict: 'approve' | 'revise' | 'reject';
@@ -70,7 +92,7 @@ describe('runtime-v2 role routing — processCliWorkerVerdicts (AC-7)', () => {
     invalidVerdictJson?: boolean;
   }): Promise<{ teamRoot: string; outputFile: string; taskPath: string }> {
     const teamName = 'role-routing-team';
-    const teamRoot = join(cwd, '.omc', 'state', 'team', teamName);
+    const teamRoot = join(getOmcRoot(cwd), 'state', 'team', teamName);
     await mkdir(join(teamRoot, 'tasks'), { recursive: true });
     await mkdir(join(teamRoot, 'workers', 'worker-1'), { recursive: true });
     const outputFile = join(teamRoot, 'workers', 'worker-1', 'verdict.json');
@@ -157,7 +179,7 @@ describe('runtime-v2 role routing — processCliWorkerVerdicts (AC-7)', () => {
   }
 
   it('approve verdict transitions task to completed and renames verdict file', async () => {
-    cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-routing-approve-'));
+    cwd = await mkdtempFixture('omc-runtime-routing-approve-');
     const { outputFile, taskPath } = await bootstrap({ verdict: 'approve' });
 
     const { processCliWorkerVerdicts } = await import('../runtime-v2.js');
@@ -181,7 +203,7 @@ describe('runtime-v2 role routing — processCliWorkerVerdicts (AC-7)', () => {
   });
 
   it('revise verdict transitions task to failed with verdict metadata', async () => {
-    cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-routing-revise-'));
+    cwd = await mkdtempFixture('omc-runtime-routing-revise-');
     const { taskPath } = await bootstrap({ verdict: 'revise' });
 
     const { processCliWorkerVerdicts } = await import('../runtime-v2.js');
@@ -199,7 +221,7 @@ describe('runtime-v2 role routing — processCliWorkerVerdicts (AC-7)', () => {
   });
 
   it('reject verdict transitions task to failed', async () => {
-    cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-routing-reject-'));
+    cwd = await mkdtempFixture('omc-runtime-routing-reject-');
     const { taskPath } = await bootstrap({ verdict: 'reject' });
 
     const { processCliWorkerVerdicts } = await import('../runtime-v2.js');
@@ -214,7 +236,7 @@ describe('runtime-v2 role routing — processCliWorkerVerdicts (AC-7)', () => {
   });
 
   it('skips workers whose pane is still alive', async () => {
-    cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-routing-alive-'));
+    cwd = await mkdtempFixture('omc-runtime-routing-alive-');
     const { taskPath } = await bootstrap({ verdict: 'approve', paneAlive: true });
 
     const { processCliWorkerVerdicts } = await import('../runtime-v2.js');
@@ -226,7 +248,7 @@ describe('runtime-v2 role routing — processCliWorkerVerdicts (AC-7)', () => {
   });
 
   it('reports file_missing when verdict file does not exist', async () => {
-    cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-routing-missing-'));
+    cwd = await mkdtempFixture('omc-runtime-routing-missing-');
     await bootstrap({ verdict: 'approve', omitVerdictFile: true });
 
     const { processCliWorkerVerdicts } = await import('../runtime-v2.js');
@@ -237,7 +259,7 @@ describe('runtime-v2 role routing — processCliWorkerVerdicts (AC-7)', () => {
   });
 
   it('reports parse_failed and emits warning event for malformed verdict JSON', async () => {
-    cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-routing-parse-'));
+    cwd = await mkdtempFixture('omc-runtime-routing-parse-');
     await bootstrap({ verdict: 'approve', invalidVerdictJson: true });
 
     const { processCliWorkerVerdicts } = await import('../runtime-v2.js');
@@ -249,9 +271,9 @@ describe('runtime-v2 role routing — processCliWorkerVerdicts (AC-7)', () => {
   });
 
   it('returns empty when no workers have output_file (claude-only teams)', async () => {
-    cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-routing-claude-'));
+    cwd = await mkdtempFixture('omc-runtime-routing-claude-');
     const teamName = 'claude-only';
-    const teamRoot = join(cwd, '.omc', 'state', 'team', teamName);
+    const teamRoot = join(getOmcRoot(cwd), 'state', 'team', teamName);
     await mkdir(join(teamRoot, 'workers', 'worker-1'), { recursive: true });
     await mkdir(join(teamRoot, 'tasks'), { recursive: true });
     await writeFile(
@@ -295,7 +317,7 @@ describe('runtime-v2 role routing — processCliWorkerVerdicts (AC-7)', () => {
   });
 
   it('returns empty when team config is missing', async () => {
-    cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-routing-noconfig-'));
+    cwd = await mkdtempFixture('omc-runtime-routing-noconfig-');
     const { processCliWorkerVerdicts } = await import('../runtime-v2.js');
     const results = await processCliWorkerVerdicts('nonexistent-team', cwd);
     expect(results).toEqual([]);
