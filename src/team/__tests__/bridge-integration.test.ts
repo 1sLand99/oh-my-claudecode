@@ -15,6 +15,8 @@ const TEST_TEAM = 'test-bridge-int';
 const TEAMS_DIR = join(getClaudeConfigDir(), 'teams', TEST_TEAM);
 // Resolve symlinks (macOS /var -> /private/var) so validateResolvedPath matches
 const WORK_DIR = join(realpathSync(tmpdir()), '__test_bridge_work__');
+const originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+process.env.CLAUDE_CONFIG_DIR = join(WORK_DIR, '.claude');
 // Canonical tasks dir for this team
 const originalHome = process.env.HOME;
 const originalUserProfile = process.env.USERPROFILE;
@@ -26,6 +28,8 @@ beforeAll(() => {
 });
 
 afterAll(() => {
+  if (originalClaudeConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+  else process.env.CLAUDE_CONFIG_DIR = originalClaudeConfigDir;
   if (originalHome === undefined) delete process.env.HOME;
   else process.env.HOME = originalHome;
   if (originalUserProfile === undefined) delete process.env.USERPROFILE;

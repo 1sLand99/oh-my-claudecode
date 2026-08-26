@@ -442,8 +442,16 @@ describe('parseTeamArgs comma-separated multi-type specs', () => {
     expect(parsed.teamName.endsWith('-')).toBe(false);
 
     const slugWd = await mkdtemp(join(tmpdir(), 'omc-team-slug-'));
+    const originalHome = process.env.HOME;
+    const originalUserProfile = process.env.USERPROFILE;
+    process.env.HOME = slugWd;
+    process.env.USERPROFILE = slugWd;
     await mkdir(join(slugWd, '.omc', 'state', 'team', parsed.teamName), { recursive: true });
     expect(resolveAvailableTeamName(parsed.teamName, slugWd)).toBe(`${parsed.teamName.slice(0, 28).replace(/-$/g, '')}-2`);
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalUserProfile;
     await rm(slugWd, { recursive: true, force: true });
   });
 

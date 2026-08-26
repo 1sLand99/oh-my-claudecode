@@ -18,9 +18,21 @@ import {
 
 async function withTempRepo<T>(run: (cwd: string) => Promise<T>): Promise<T> {
   const cwd = await mkdtemp(join(tmpdir(), 'omc-ultragoal-'));
+  const originalHome = process.env.HOME;
+  const originalUserProfile = process.env.USERPROFILE;
+  const originalStateDir = process.env.OMC_STATE_DIR;
+  process.env.HOME = cwd;
+  process.env.USERPROFILE = cwd;
+  delete process.env.OMC_STATE_DIR;
   try {
     return await run(cwd);
   } finally {
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalUserProfile;
+    if (originalStateDir === undefined) delete process.env.OMC_STATE_DIR;
+    else process.env.OMC_STATE_DIR = originalStateDir;
     await rm(cwd, { recursive: true, force: true });
   }
 }

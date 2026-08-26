@@ -876,7 +876,7 @@ export function getOmcRoot(worktreeRoot?: string): string {
   // workspaces where the parent dir is not itself a git repo: all sub-repos
   // share the same .omc/ at the marker location.
   const workspaceAnchor = findWorkspaceRoot(worktreeRoot);
-  if (workspaceAnchor && !isSensitiveStateLocation(workspaceAnchor)) {
+  if (workspaceAnchor) {
     return join(workspaceAnchor, OmcPaths.ROOT);
   }
 
