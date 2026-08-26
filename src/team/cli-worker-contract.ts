@@ -70,8 +70,9 @@ export function shouldInjectContract(
 
 /**
  * Render the prompt fragment that instructs the CLI worker to emit a
- * structured verdict JSON to `output_file` before exiting. Appended to
- * the task instruction + startup prompt for reviewer roles.
+ * structured verdict JSON to `output_file` before exiting or yielding the
+ * reviewer turn. Appended to the task instruction + startup prompt for
+ * reviewer roles.
  */
 export function renderCliWorkerOutputContract(
   role: CanonicalTeamRole,
@@ -82,7 +83,7 @@ export function renderCliWorkerOutputContract(
     '---',
     '## REQUIRED: Structured Verdict Output',
     '',
-    `You are acting in the \`${role}\` role. Before you exit, write a JSON verdict to:`,
+    `You are acting in the \`${role}\` role. Before you exit or yield this reviewer turn, write a JSON verdict to:`,
     '',
     `    ${output_file}`,
     '',
@@ -111,6 +112,7 @@ export function renderCliWorkerOutputContract(
     '- Each finding MUST carry a `severity` from the enum above.',
     '- Use `approve` only when you have no blocking concerns.',
     '- If you cannot produce a verdict, write `{"verdict":"revise", ...}` with an explanatory finding rather than exiting silently.',
+    '- Writing the verdict does not itself authorize leaving a persistent interactive worker session; remain available for further mailbox instructions unless the leader explicitly shuts you down.',
     '- The team leader reads this file to mark the task complete; omitting it leaves the task stuck in_progress pending human review.',
     '',
   ].join('\n');

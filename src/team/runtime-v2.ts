@@ -103,6 +103,7 @@ import {
   generateTriggerMessage,
   generatePromptModeStartupPrompt,
   renderRecoveryContinuationInstruction,
+  renderCursorWorkerGuidance,
 } from './worker-bootstrap.js';
 import { queueInboxInstruction } from './mcp-comm.js';
 import {
@@ -122,6 +123,7 @@ import { buildResolvedRoutingSnapshot, getRoleRoutingSpec } from './stage-router
 import { inferLaneIntent, routeTaskToRole, type LaneIntent } from './role-router.js';
 import { normalizeDelegationRole } from '../features/delegation-routing/types.js';
 import {
+  CONTRACT_ROLES,
   cliWorkerOutputFilePath,
   parseCliWorkerVerdict,
   renderCliWorkerOutputContract,
@@ -750,6 +752,7 @@ function buildV2TaskInstruction(
   workerName: string,
   task: { subject: string; description: string },
   taskId: string,
+  agentType: CliAgentType,
   cliOutputContract?: string,
 ): string {
   const claimTaskCommand = formatOmcCliInvocation(
@@ -785,6 +788,7 @@ function buildV2TaskInstruction(
     task.description,
     ``,
     `REMINDER: You MUST run transition-task-status before exiting. Do NOT write done.json or edit task files directly.`,
+    ...(agentType === 'cursor' ? [renderCursorWorkerGuidance(Boolean(cliOutputContract))] : []),
     ...(cliOutputContract ? [cliOutputContract] : []),
   ].join('\n');
 }
@@ -1117,7 +1121,7 @@ async function spawnV2Worker(opts: SpawnV2WorkerOptions): Promise<SpawnV2WorkerR
     ? renderCliWorkerOutputContract(opts.role, outputFile)
     : undefined;
   const instruction = buildV2TaskInstruction(
-    opts.teamName, opts.workerName, opts.task, opts.taskId, cliOutputContract,
+    opts.teamName, opts.workerName, opts.task, opts.taskId, opts.agentType, cliOutputContract,
   );
   const instructionStateRoot = workerInstructionStateRoot(opts.cwd, opts.teamName);
   const startupBaseline = await captureWorkerStartupBaseline(
@@ -3361,6 +3365,9 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
         cwd: leaderCwd,
         ...(config.rolePrompt ? { bootstrapInstructions: config.rolePrompt } : {}),
         instructionStateRoot: workerInstructionStateRoot(leaderCwd, sanitized),
+        ...(preparedLaunches.get(wName)?.role && shouldInjectContract(
+          preparedLaunches.get(wName)!.role!, preparedLaunches.get(wName)!.agentType,
+        ) ? { reviewerRole: true } : {}),
       });
       const worktree = workerWorktrees.get(wName);
       if (worktree) {
@@ -3793,8 +3800,9 @@ export interface CliWorkerVerdictResult {
 }
 
 /**
- * Post-exit handler for CLI workers that emitted a structured verdict
- * (AC-7). Scans workers whose panes have exited and whose WorkerInfo
+ * Completion handler for CLI workers that emitted a structured verdict
+ * (AC-7). Scans workers whose panes have exited, plus live Cursor panes whose
+ * persistent reviewer session has published a verdict, and whose WorkerInfo
  * carries `output_file`. For each:
  *   - Reads + validates the JSON payload via `parseCliWorkerVerdict`.
  *   - Locates the worker's in_progress task and writes a terminal status
@@ -3821,7 +3829,7 @@ export async function processCliWorkerVerdicts(
   );
 
   const { rename } = await import('fs/promises');
-  const { readFileSync, writeFileSync, existsSync: fsExistsSync } = await import('fs');
+  const { renameSync, readFileSync, writeFileSync, existsSync: fsExistsSync } = await import('fs');
   const { withFileLockSync } = await import('../lib/file-lock.js');
 
   for (const worker of config.workers) {
@@ -3829,15 +3837,63 @@ export async function processCliWorkerVerdicts(
     if (!outputFile) continue;
 
     const liveness = await getWorkerPaneLiveness(worker.pane_id);
-    if (liveness !== 'dead') continue;
+    const workerRole = normalizeDelegationRole(worker.role);
+    const liveCursorReviewer = liveness === 'alive'
+      && worker.worker_cli === 'cursor'
+      && CONTRACT_ROLES.has(workerRole as CanonicalTeamRole);
+    // Cursor reviewers remain in their interactive pane after publishing a
+    // verdict. A valid output file is the explicit completion signal for that
+    // reviewer task; do not wait for the pane to exit. Other providers retain
+    // the post-exit contract so their live output cannot be consumed early.
+    if (liveness !== 'dead' && !liveCursorReviewer) continue;
+    const processedOutputFile = outputFile + '.processed';
+    const processingOutputFile = outputFile + '.processing';
+    if (liveCursorReviewer) {
+      const expectedOutputFile = cliWorkerOutputFilePath(teamStateRoot(cwd, sanitized), worker.name);
+      if (outputFile !== expectedOutputFile) {
+        results.push({
+          workerName: worker.name,
+          taskId: null,
+          status: 'skipped',
+          reason: 'cursor_verdict_output_path_unverified',
+        });
+        continue;
+      }
+    }
     if (!fsExistsSync(outputFile)) {
-      results.push({ workerName: worker.name, taskId: null, status: 'file_missing' });
-      continue;
+      if (liveCursorReviewer && fsExistsSync(processingOutputFile)) {
+        // A prior cycle claimed the file and may have crashed after the task
+        // transition. Reuse that durable in-flight artifact instead of waiting
+        // for a replacement verdict.
+      } else {
+        // A processed verdict is an intentional no-op on later monitor cycles,
+        // not a missing verdict. This keeps the handler idempotent for persistent
+        // Cursor panes and avoids repeated file_missing results/events.
+        if (fsExistsSync(processedOutputFile)) continue;
+        results.push({ workerName: worker.name, taskId: null, status: 'file_missing' });
+        continue;
+      }
     }
 
+    let verdictFile = fsExistsSync(processingOutputFile) ? processingOutputFile : outputFile;
     let payload: CliWorkerOutputPayload;
     try {
-      const raw = await readFile(outputFile, 'utf-8');
+      if (liveCursorReviewer && verdictFile === outputFile) {
+        // Claim a complete verdict before mutating task state. The per-output
+        // lock makes concurrent monitor cycles single-consumer and the
+        // `.processing` name lets a later cycle finish an interrupted commit.
+        withFileLockSync(outputFile + '.lock', () => {
+          if (fsExistsSync(processingOutputFile)) {
+            verdictFile = processingOutputFile;
+            return;
+          }
+          const raw = readFileSync(outputFile, 'utf-8');
+          parseCliWorkerVerdict(raw);
+          renameSync(outputFile, processingOutputFile);
+          verdictFile = processingOutputFile;
+        });
+      }
+      const raw = await readFile(verdictFile, 'utf-8');
       payload = parseCliWorkerVerdict(raw);
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
@@ -3850,9 +3906,30 @@ export async function processCliWorkerVerdicts(
       continue;
     }
 
+    if (liveCursorReviewer && payload.role !== workerRole) {
+      await appendTeamEvent(sanitized, {
+        type: 'team_leader_nudge',
+        worker: 'leader-fixed',
+        reason: `cli_worker_verdict_role_mismatch:${worker.name}:expected=${workerRole}:actual=${payload.role}`,
+      }, cwd).catch(logEventFailure);
+      if (verdictFile === processingOutputFile) {
+        try { await rename(verdictFile, processedOutputFile); } catch { /* best-effort quarantine */ }
+      }
+      results.push({
+        workerName: worker.name,
+        taskId: payload.task_id,
+        status: 'skipped',
+        verdict: payload.verdict,
+        reason: 'cursor_verdict_role_mismatch',
+      });
+      continue;
+    }
+
     const candidateTaskIds = new Set<string>();
     if (payload.task_id) candidateTaskIds.add(payload.task_id);
-    for (const id of worker.assigned_tasks ?? []) candidateTaskIds.add(id);
+    if (!liveCursorReviewer) {
+      for (const id of worker.assigned_tasks ?? []) candidateTaskIds.add(id);
+    }
 
     let targetTaskId: string | null = null;
     let targetTaskPath: string | null = null;
@@ -3873,6 +3950,31 @@ export async function processCliWorkerVerdicts(
     }
 
     if (!targetTaskId || !targetTaskPath) {
+      if (liveCursorReviewer && verdictFile === processingOutputFile) {
+        const processedTaskPath = absPath(cwd, TeamPaths.taskFile(sanitized, payload.task_id));
+        try {
+          const processedTask = JSON.parse(readFileSync(processedTaskPath, 'utf-8')) as Record<string, unknown>;
+          const metadata = processedTask.metadata && typeof processedTask.metadata === 'object'
+            ? processedTask.metadata as Record<string, unknown>
+            : undefined;
+          const taskAlreadyRecorded = processedTask.owner === worker.name
+            && (processedTask.status === 'completed' || processedTask.status === 'failed')
+            && metadata?.verdict_source === 'cli_worker_output_contract'
+            && metadata.verdict === payload.verdict;
+          if (taskAlreadyRecorded) {
+            try { await rename(verdictFile, processedOutputFile); } catch { /* best-effort */ }
+            results.push({
+              workerName: worker.name,
+              taskId: payload.task_id,
+              status: 'already_terminal',
+              verdict: payload.verdict,
+            });
+            continue;
+          }
+        } catch {
+          // Fall through to the existing no-in-progress warning.
+        }
+      }
       await appendTeamEvent(sanitized, {
         type: 'team_leader_nudge',
         worker: 'leader-fixed',
@@ -3938,7 +4040,7 @@ export async function processCliWorkerVerdicts(
     }, cwd).catch(logEventFailure);
 
     try {
-      await rename(outputFile, outputFile + '.processed');
+      await rename(verdictFile, processedOutputFile);
     } catch {
       // best-effort; reprocess is idempotent (already_terminal on rerun)
     }

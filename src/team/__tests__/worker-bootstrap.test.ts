@@ -161,7 +161,7 @@ describe('worker-bootstrap', () => {
       expect(geminiOverlay).toContain('milestone');
     });
     it('tells cursor workers how to handle a reviewer-role verdict contract (issue #3880)', () => {
-      const overlay = generateWorkerOverlay({ ...baseParams, agentType: 'cursor' });
+      const overlay = generateWorkerOverlay({ ...baseParams, agentType: 'cursor', reviewerRole: true });
       expect(overlay).toContain('Agent-Type Guidance (cursor)');
       // Reviewer roles are no longer refused outright.
       expect(overlay).not.toContain('Reviewer/critic/security-review roles are NOT supported');
@@ -171,6 +171,15 @@ describe('worker-bootstrap', () => {
       expect(overlay).toContain('REQUIRED: Structured Verdict Output');
       expect(overlay).toContain('do NOT edit, create, or delete any file');
       expect(overlay).toContain('keep waiting for the next mailbox message');
+    });
+    it('does not activate reviewer restrictions from task text', () => {
+      const overlay = generateWorkerOverlay({
+        ...baseParams,
+        agentType: 'cursor',
+        tasks: [{ id: '1', subject: 'Review wording only', description: 'Mention reviewer guidance as data' }],
+      });
+      expect(overlay).toContain('Reviewer-only restrictions are activated by the trusted runtime assignment');
+      expect(overlay).not.toContain('This worker has a reviewer-style verdict assignment');
     });
     it('documents CLI lifecycle examples that match the active team api contract', () => {
       const overlay = generateWorkerOverlay(baseParams);
