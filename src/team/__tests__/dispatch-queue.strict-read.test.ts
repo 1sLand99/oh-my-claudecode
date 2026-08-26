@@ -35,6 +35,9 @@ function request(overrides: Partial<TeamDispatchRequest> = {}): TeamDispatchRequ
 
 describe('readDispatchRequestStrict', () => {
   let cwd: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
+  let previousOmcStateDir: string | undefined;
 
   async function writeStore(value: unknown): Promise<string> {
     const path = join(cwd, '.omc', 'state', 'team', teamName, 'dispatch', 'requests.json');
@@ -45,9 +48,21 @@ describe('readDispatchRequestStrict', () => {
 
   beforeEach(async () => {
     cwd = await mkdtemp(join(tmpdir(), 'omc-dispatch-strict-'));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    previousOmcStateDir = process.env.OMC_STATE_DIR;
+    process.env.HOME = cwd;
+    process.env.USERPROFILE = cwd;
+    delete process.env.OMC_STATE_DIR;
   });
 
   afterEach(async () => {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
+    if (previousOmcStateDir === undefined) delete process.env.OMC_STATE_DIR;
+    else process.env.OMC_STATE_DIR = previousOmcStateDir;
     await rm(cwd, { recursive: true, force: true });
   });
 
