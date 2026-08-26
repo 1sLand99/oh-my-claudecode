@@ -118,7 +118,7 @@
     "vitest": "^4.0.17"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": "20.x || 22.x || 23.x || 24.x || 25.x || 26.x"
   },
   "repository": {
     "type": "git",
