@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "e28d06b6d42e9ae493025b9aac8d669635e9c85c",
-    "sourceSha256": "c88723efc977e5ea4013284ff4931ddec16a4277c6cd6cb08ed6a7152805751c",
+    "head": "cdff52f1b466ce35d2bebf546d3244952a6f09f4",
+    "sourceSha256": "c3d533f2fa3558355ab9d94ce5f28e29cbb0da06f4e5a5833c7f6329849b3b73",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "e28d06b6d42e9ae493025b9aac8d669635e9c85c",
-  "sourceSha256": "c88723efc977e5ea4013284ff4931ddec16a4277c6cd6cb08ed6a7152805751c",
+  "head": "cdff52f1b466ce35d2bebf546d3244952a6f09f4",
+  "sourceSha256": "c3d533f2fa3558355ab9d94ce5f28e29cbb0da06f4e5a5833c7f6329849b3b73",
   "counts": {
     "public": {
       "skills": 32,
@@ -69205,6 +69205,11 @@
       },
       {
         "from": "src/team/__tests__/task-file-ops.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/task-file-ops.test.ts",
         "to": "src/team/task-file-ops.ts",
         "kind": "imports"
       },
@@ -72321,6 +72326,11 @@
       {
         "from": "src/team/state-paths.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/state-paths.ts",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -76131,11 +76141,11 @@
     ],
     "stats": {
       "nodeCount": 6831,
-      "edgeCount": 7139,
-      "importEdgeCount": 5855,
+      "edgeCount": 7141,
+      "importEdgeCount": 5857,
       "registerEdgeCount": 53
     }
   },
   "inventorySha256": "0fa1d8055ac3c243f65c169a83bda6d9c7fae7684b1d559bb464baf525cd54f2",
-  "manifestSha256": "b2af1b1413f443a9dcee837d5488865d034555accf7d42248ced5b99724d647f"
+  "manifestSha256": "1a1e44e47d02e3b22646c6f53d98f7aa431fbb4222851824c80808e588536e3f"
 }
