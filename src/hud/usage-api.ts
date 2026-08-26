@@ -56,6 +56,12 @@ const TOKEN_REFRESH_URL_PATH = '/v1/oauth/token';
  */
 const DEFAULT_OAUTH_CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e';
 
+interface RateLimitBackoff {
+  timestamp: number;
+  rateLimitedCount: number;
+  rateLimitedUntil?: number;
+}
+
 interface UsageCache {
   timestamp: number;
   data: RateLimits | null;
@@ -72,6 +78,10 @@ interface UsageCache {
   rateLimitedUntil?: number;
   /** Timestamp of the last successful API fetch (drives stale data cutoff) */
   lastSuccessAt?: number;
+  /** User-Agent identity that received a rate-limit response (Anthropic only) */
+  rateLimitIdentity?: string;
+  /** Active Anthropic rate-limit backoffs keyed by User-Agent identity */
+  rateLimitBackoffs?: Record<string, RateLimitBackoff>;
 }
 
 interface OAuthCredentials {
@@ -400,6 +410,10 @@ interface WriteCacheOptions {
   rateLimitedUntil?: number;
   errorReason?: UsageErrorReason;
   lastSuccessAt?: number;
+  /** User-Agent identity associated with an Anthropic rate-limit response */
+  rateLimitIdentity?: string;
+  /** Active Anthropic rate-limit backoffs keyed by User-Agent identity */
+  rateLimitBackoffs?: Record<string, RateLimitBackoff>;
 }
 
 /**
@@ -424,6 +438,8 @@ function writeCache(opts: WriteCacheOptions): void {
       rateLimitedCount: opts.rateLimitedCount && opts.rateLimitedCount > 0 ? opts.rateLimitedCount : undefined,
       rateLimitedUntil: opts.rateLimitedUntil,
       lastSuccessAt: opts.lastSuccessAt,
+      rateLimitIdentity: opts.rateLimitIdentity,
+      rateLimitBackoffs: opts.rateLimitBackoffs,
     };
 
     writeFileSync(cachePath, JSON.stringify(cache, null, 2));
@@ -463,8 +479,67 @@ function getTransientNetworkBackoffMs(pollIntervalMs: number): number {
   return Math.max(CACHE_TTL_TRANSIENT_NETWORK_MS, sanitizePollIntervalMs(pollIntervalMs));
 }
 
-function isCacheValid(cache: UsageCache, pollIntervalMs: number): boolean {
-  if (cache.rateLimited) {
+function getRateLimitBackoff(
+  cache: UsageCache | null | undefined,
+  rateLimitIdentity?: string,
+): RateLimitBackoff | null {
+  const identity = rateLimitIdentity ?? 'anonymous';
+  const stored = cache?.rateLimitBackoffs?.[identity];
+  if (stored) return stored;
+
+  // Interpret caches written before per-identity backoffs existed as anonymous
+  // entries, preserving their protection without letting them suppress a
+  // versioned request.
+  if (
+    cache?.rateLimited &&
+    (cache.rateLimitIdentity ?? 'anonymous') === identity
+  ) {
+    return {
+      timestamp: cache.timestamp,
+      rateLimitedCount: cache.rateLimitedCount || 1,
+      rateLimitedUntil: cache.rateLimitedUntil,
+    };
+  }
+
+  return null;
+}
+
+function getRateLimitBackoffs(cache: UsageCache | null | undefined): Record<string, RateLimitBackoff> {
+  const backoffs = { ...(cache?.rateLimitBackoffs ?? {}) };
+  if (cache?.rateLimited) {
+    const identity = cache.rateLimitIdentity ?? 'anonymous';
+    backoffs[identity] ??= {
+      timestamp: cache.timestamp,
+      rateLimitedCount: cache.rateLimitedCount || 1,
+      rateLimitedUntil: cache.rateLimitedUntil,
+    };
+  }
+  return backoffs;
+}
+
+function clearRateLimitBackoff(
+  cache: UsageCache | null | undefined,
+  rateLimitIdentity?: string,
+): Record<string, RateLimitBackoff> | undefined {
+  const backoffs = getRateLimitBackoffs(cache);
+  delete backoffs[rateLimitIdentity ?? 'anonymous'];
+  return Object.keys(backoffs).length > 0 ? backoffs : undefined;
+}
+
+function isCacheValid(cache: UsageCache, pollIntervalMs: number, rateLimitIdentity?: string): boolean {
+  if (cache.source === 'anthropic') {
+    const backoff = getRateLimitBackoff(cache, rateLimitIdentity);
+    if (backoff) {
+      if (backoff.rateLimitedUntil != null) {
+        return Date.now() < backoff.rateLimitedUntil;
+      }
+      return Date.now() - backoff.timestamp < getRateLimitedBackoffMs(
+        pollIntervalMs,
+        backoff.rateLimitedCount,
+      );
+    }
+    if (cache.rateLimited) return false;
+  } else if (cache.rateLimited) {
     if (cache.rateLimitedUntil != null) {
       return Date.now() < cache.rateLimitedUntil;
     }
@@ -492,7 +567,14 @@ function hasUsableStaleData(cache: UsageCache | null | undefined): cache is Usag
   return true;
 }
 
-function getCachedUsageResult(cache: UsageCache): UsageResult {
+function getCachedUsageResult(cache: UsageCache, rateLimitIdentity?: string): UsageResult {
+  if (cache.source === 'anthropic' && getRateLimitBackoff(cache, rateLimitIdentity)) {
+    if (!hasUsableStaleData(cache) && cache.data) {
+      return { rateLimits: null, error: 'rate_limited' };
+    }
+    return { rateLimits: cache.data, error: 'rate_limited', stale: cache.data ? true : undefined };
+  }
+
   if (cache.rateLimited) {
     if (!hasUsableStaleData(cache) && cache.data) {
       return { rateLimits: null, error: 'rate_limited' };
@@ -517,9 +599,12 @@ function createRateLimitedCacheEntry(
   pollIntervalMs: number,
   previousCount: number,
   lastSuccessAt?: number,
+  rateLimitIdentity?: string,
+  previousBackoffs?: Record<string, RateLimitBackoff>,
 ): UsageCache {
   const timestamp = Date.now();
   const rateLimitedCount = previousCount + 1;
+  const identity = rateLimitIdentity ?? 'anonymous';
 
   return {
     timestamp,
@@ -531,6 +616,19 @@ function createRateLimitedCacheEntry(
     rateLimitedCount,
     rateLimitedUntil: timestamp + getRateLimitedBackoffMs(pollIntervalMs, rateLimitedCount),
     lastSuccessAt,
+    rateLimitIdentity,
+    ...(source === 'anthropic'
+      ? {
+        rateLimitBackoffs: {
+          ...(previousBackoffs ?? {}),
+          [identity]: {
+            timestamp,
+            rateLimitedCount,
+            rateLimitedUntil: timestamp + getRateLimitedBackoffMs(pollIntervalMs, rateLimitedCount),
+          },
+        },
+      }
+      : {}),
   };
 }
 
@@ -758,9 +856,44 @@ interface FetchResult<T> {
 }
 
 /**
+ * Build the User-Agent for the OAuth usage request.
+ *
+ * The endpoint buckets its rate limit by User-Agent, and a request that does not
+ * name a Claude Code *version* lands in a bucket that allows roughly one request
+ * per hour. Measured against api.anthropic.com with a single OAuth token,
+ * requests seconds apart, recording status and `retry-after` only:
+ *
+ *   User-Agent           | HTTP | retry-after
+ *   ---------------------|------|--------------------------------------------
+ *   (header omitted)     | 429  | 348s
+ *   claude-code          | 429  | 349s / 348s - same absolute deadline
+ *   claude-code/2.1.232  | 403  | none - the endpoint's real answer
+ *   claude-code/9.9.9    | 403  | none - the endpoint's real answer
+ *
+ * Node sends no User-Agent of its own, so this call has been landing in the
+ * throttled bucket and only the first request of each hour ever reached the API.
+ *
+ * The version is never invented. It comes from the Claude Code statusline
+ * payload's `version` field. When we do not have one we send no header at all:
+ * the bare product token was measured to share the throttled bucket, so it would
+ * buy nothing while looking like a fix, and a made-up version would put a false
+ * claim on the wire. The pattern is anchored because the value arrives as JSON
+ * and an unanchored match would let stray characters into an outgoing header.
+ */
+export function buildUserAgent(clientVersion?: string): string | undefined {
+  if (typeof clientVersion !== 'string') return undefined;
+  const version = clientVersion.trim();
+  if (version.length > 128) return undefined;
+  return /^\d+\.\d+\.\d+[A-Za-z0-9.+-]*$/.test(version)
+    ? `claude-code/${version}`
+    : undefined;
+}
+
+/**
  * Fetch usage from Anthropic API
  */
-function fetchUsageFromApi(accessToken: string): Promise<FetchResult<UsageApiResponse>> {
+function fetchUsageFromApi(accessToken: string, clientVersion?: string): Promise<FetchResult<UsageApiResponse>> {
+  const userAgent = buildUserAgent(clientVersion);
   return new Promise((resolve) => {
     const req = https.request(
       {
@@ -771,6 +904,7 @@ function fetchUsageFromApi(accessToken: string): Promise<FetchResult<UsageApiRes
           'Authorization': `Bearer ${accessToken}`,
           'anthropic-beta': 'oauth-2025-04-20',
           'Content-Type': 'application/json',
+          ...(userAgent ? { 'User-Agent': userAgent } : {}),
         },
         timeout: API_TIMEOUT_MS,
       },
@@ -1727,13 +1861,28 @@ async function fetchAndCacheUsage<T>(opts: {
   parseFn: (data: T) => RateLimits | null;
   cache: UsageCache | null;
   pollIntervalMs: number;
+  rateLimitIdentity?: string;
 }): Promise<UsageResult> {
-  const { source, fetchFn, parseFn, cache, pollIntervalMs } = opts;
+  const { source, fetchFn, parseFn, cache, pollIntervalMs, rateLimitIdentity } = opts;
   const result = await fetchFn();
 
   if (result.rateLimited) {
     const prevLastSuccess = cache?.lastSuccessAt;
-    const rateLimitedCache = createRateLimitedCacheEntry(source, cache?.data || null, pollIntervalMs, cache?.rateLimitedCount || 0, prevLastSuccess);
+    const previousBackoffs = source === 'anthropic' ? getRateLimitBackoffs(cache) : undefined;
+    const previousBackoff = source === 'anthropic'
+      ? getRateLimitBackoff(cache, rateLimitIdentity)
+      : null;
+    const rateLimitedCache = createRateLimitedCacheEntry(
+      source,
+      cache?.data || null,
+      pollIntervalMs,
+      source === 'anthropic'
+        ? previousBackoff?.rateLimitedCount || 0
+        : cache?.rateLimitedCount || 0,
+      prevLastSuccess,
+      rateLimitIdentity,
+      previousBackoffs,
+    );
     writeCache({
       data: rateLimitedCache.data,
       error: rateLimitedCache.error,
@@ -1743,6 +1892,8 @@ async function fetchAndCacheUsage<T>(opts: {
       rateLimitedUntil: rateLimitedCache.rateLimitedUntil,
       errorReason: 'rate_limited',
       lastSuccessAt: rateLimitedCache.lastSuccessAt,
+      rateLimitIdentity: rateLimitedCache.rateLimitIdentity,
+      rateLimitBackoffs: rateLimitedCache.rateLimitBackoffs,
     });
     if (rateLimitedCache.data) {
       if (prevLastSuccess && Date.now() - prevLastSuccess > MAX_STALE_DATA_MS) {
@@ -1761,6 +1912,7 @@ async function fetchAndCacheUsage<T>(opts: {
       source,
       errorReason: 'network',
       lastSuccessAt: cache?.lastSuccessAt,
+      rateLimitBackoffs: source === 'anthropic' ? getRateLimitBackoffs(cache) : undefined,
     });
     if (fallbackData) {
       return { rateLimits: fallbackData, error: 'network', stale: true };
@@ -1769,7 +1921,15 @@ async function fetchAndCacheUsage<T>(opts: {
   }
 
   const usage = parseFn(result.data);
-  writeCache({ data: usage, error: !usage, source, lastSuccessAt: Date.now() });
+  writeCache({
+    data: usage,
+    error: !usage,
+    source,
+    lastSuccessAt: Date.now(),
+    rateLimitBackoffs: source === 'anthropic'
+      ? clearRateLimitBackoff(cache, rateLimitIdentity)
+      : undefined,
+  });
   return { rateLimits: usage };
 }
 
@@ -1783,8 +1943,12 @@ async function fetchAndCacheUsage<T>(opts: {
  *   - 'auth': credentials expired and refresh failed
  *   - 'no_credentials': no OAuth credentials available (expected for API key users)
  *   - 'rate_limited': API returned 429; stale data served if available, with exponential backoff
+ *
+ * @param opts.clientVersion Claude Code version for the usage API User-Agent
+ *   (see buildUserAgent). Optional: callers without a statusline payload omit it
+ *   and the header is left off rather than guessed.
  */
-export async function getUsage(): Promise<UsageResult> {
+export async function getUsage(opts?: { clientVersion?: string }): Promise<UsageResult> {
   const baseUrl = process.env.ANTHROPIC_BASE_URL;
   const authToken = process.env.ANTHROPIC_AUTH_TOKEN;
   const isMinimax = baseUrl != null && isMinimaxHost(baseUrl);
@@ -1806,20 +1970,31 @@ export async function getUsage(): Promise<UsageResult> {
   const currentSource: UsageSource =
     isMinimax ? 'minimax' : isKimi ? 'kimi' : isZai && authToken ? 'zai' : 'anthropic';
   const pollIntervalMs = getUsagePollIntervalMs();
+  const rateLimitIdentity = currentSource === 'anthropic'
+    ? buildUserAgent(opts?.clientVersion) ?? 'anonymous'
+    : undefined;
 
   // Migrate legacy single-file cache to provider-specific file (one-shot, best-effort)
   migrateLegacyCache(currentSource);
 
   const initialCache = readCache(currentSource);
-  if (initialCache && isCacheValid(initialCache, pollIntervalMs) && initialCache.source === currentSource) {
-    return getCachedUsageResult(initialCache);
+  if (
+    initialCache &&
+    isCacheValid(initialCache, pollIntervalMs, rateLimitIdentity) &&
+    initialCache.source === currentSource
+  ) {
+    return getCachedUsageResult(initialCache, rateLimitIdentity);
   }
 
   try {
     return await withFileLock(lockPathFor(getCachePath(currentSource)), async () => {
       const cache = readCache(currentSource);
-      if (cache && isCacheValid(cache, pollIntervalMs) && cache.source === currentSource) {
-        return getCachedUsageResult(cache);
+      if (
+        cache &&
+        isCacheValid(cache, pollIntervalMs, rateLimitIdentity) &&
+        cache.source === currentSource
+      ) {
+        return getCachedUsageResult(cache, rateLimitIdentity);
       }
 
       // MiniMax path (must precede z.ai and OAuth checks)
@@ -1887,13 +2062,14 @@ export async function getUsage(): Promise<UsageResult> {
         const rateLimitTier = creds.rateLimitTier;
         return fetchAndCacheUsage({
           source: 'anthropic',
-          fetchFn: () => fetchUsageFromApi(accessToken),
+          fetchFn: () => fetchUsageFromApi(accessToken, opts?.clientVersion),
           parseFn: (data) => parseUsageResponse(data, {
             subscriptionType,
             rateLimitTier,
           }),
           cache,
           pollIntervalMs,
+          rateLimitIdentity,
         });
       }
 
