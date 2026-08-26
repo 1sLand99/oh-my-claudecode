@@ -1689,7 +1689,7 @@ export function validateWorkingDirectory(workingDirectory?: string): string {
  */
 export function resolveStateWorkingDirectory(workingDirectory?: string): string {
   const currentProbe = probeGitTopLevel(process.cwd());
-  if (currentProbe.status === 'probe_failed') {
+  if (currentProbe.status === 'probe_failed' || currentProbe.status === 'git_missing') {
     throw new Error(formatGitProbeFailedMessage(process.cwd()));
   }
 

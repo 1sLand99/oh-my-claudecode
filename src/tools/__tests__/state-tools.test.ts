@@ -1954,7 +1954,7 @@ describe('state-tools', () => {
       expect(existsSync(join(ownerDir, 'cancel-signal-state.json'))).toBe(false);
     });
 
-    it('should clear the owning session when the current session resumed ralph from a different conversation', async () => {
+    it('does not clear a Ralph state owned by a different session', async () => {
       const currentSessionId = 'resume-session-b';
       const ownerSessionId = 'resume-session-a';
       const ownerDir = join(TEST_DIR, '.omc', 'state', 'sessions', ownerSessionId);
@@ -1975,10 +1975,10 @@ describe('state-tools', () => {
         workingDirectory: TEST_DIR,
       });
 
-      expect(result.content[0].text).toContain(`cleared owning session: ${ownerSessionId}`);
-      expect(existsSync(join(ownerDir, 'ralph-state.json'))).toBe(false);
+      expect(result.content[0].text).toContain('No state found to clear for mode: ralph');
+      expect(existsSync(join(ownerDir, 'ralph-state.json'))).toBe(true);
       expect(existsSync(join(TEST_DIR, '.omc', 'state', 'sessions', currentSessionId, 'cancel-signal-state.json'))).toBe(true);
-      expect(existsSync(join(ownerDir, 'cancel-signal-state.json'))).toBe(true);
+      expect(existsSync(join(ownerDir, 'cancel-signal-state.json'))).toBe(false);
     });
 
     it('should clear ralph runtime artifacts during broad cancel cleanup', async () => {

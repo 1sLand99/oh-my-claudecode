@@ -20,6 +20,7 @@ import { clearWorktreeCache, setGitShowToplevelProbeForTests } from '../../lib/w
 
 const stateReadTool = stateTools.find((tool) => tool.name === 'state_read')!;
 const stateWriteTool = stateTools.find((tool) => tool.name === 'state_write')!;
+const stateStatusTool = stateTools.find((tool) => tool.name === 'state_get_status')!;
 const stateMigrateTool = stateTools.find((tool) => tool.name === 'state_migrate_non_git')!;
 
 let workingDirectory: string;
@@ -77,6 +78,17 @@ describe('#3873 real non-git state ownership', () => {
     expect(readFileSync(foreignPath, 'utf8')).toBe(original);
   });
 
+  it('does not disclose foreign state through session status', async () => {
+    const foreignPath = join(centralState, 'non-git', 'state', 'sessions', 'status-requester', 'ralph-state.json');
+    mkdirSync(join(foreignPath, '..'), { recursive: true });
+    writeFileSync(foreignPath, JSON.stringify({ active: true, session_id: 'status-owner', secret: 'private' }));
+
+    const result = await stateStatusTool.handler({ mode: 'ralph', session_id: 'status-requester', workingDirectory });
+    expect(result.content[0].text).toContain('**Active:** No');
+    expect(result.content[0].text).toContain('**Exists:** No');
+    expect(result.content[0].text).not.toContain('private');
+  });
+
   it('explicitly migrates only matching session-owned JSON without overwriting or deleting source', async () => {
     const sourceRoot = join(osPaths.home, 'legacy-project');
     const sourceSession = join(sourceRoot, '.omc', 'state', 'sessions', 'migrate-a');
@@ -132,5 +144,30 @@ describe('#3873 real non-git state ownership', () => {
     const result = await stateMigrateTool.handler({ mode: 'ralph', workingDirectory: sourceRoot, session_id: 'symlink-owner' });
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('symlinked legacy state paths');
+  });
+
+  it('rejects symlinked destination ancestors before copying', async () => {
+    const sourceRoot = join(osPaths.home, 'destination-symlink-project');
+    const sourceSession = join(sourceRoot, '.omc', 'state', 'sessions', 'destination-owner');
+    mkdirSync(sourceSession, { recursive: true });
+    writeFileSync(join(sourceSession, 'ralph-state.json'), JSON.stringify({ active: true, session_id: 'destination-owner' }));
+
+    const isolatedCentral = join(suiteRoot, 'central-destination-symlink');
+    const canonicalOmc = join(isolatedCentral, 'non-git');
+    const destinationState = join(canonicalOmc, 'state');
+    const outsideState = join(suiteRoot, 'outside-destination-state');
+    mkdirSync(outsideState, { recursive: true });
+    mkdirSync(canonicalOmc, { recursive: true });
+    try {
+      symlinkSync(outsideState, destinationState, 'dir');
+    } catch {
+      return;
+    }
+
+    process.env.OMC_STATE_DIR = isolatedCentral;
+    const result = await stateMigrateTool.handler({ mode: 'ralph', workingDirectory: sourceRoot, session_id: 'destination-owner' });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('symlinked migration roots');
+    expect(existsSync(join(outsideState, 'sessions', 'destination-owner', 'ralph-state.json'))).toBe(false);
   });
 });
