@@ -147,14 +147,29 @@ describe('Path Traversal Protection', () => {
 
 describe('State Poisoning Resilience', () => {
   let testDir: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
+  let previousStateDir: string | undefined;
 
   beforeEach(() => {
     testDir = mkdtempSync(join(tmpdir(), 'security-test-'));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    previousStateDir = process.env.OMC_STATE_DIR;
+    process.env.HOME = testDir;
+    process.env.USERPROFILE = testDir;
+    delete process.env.OMC_STATE_DIR;
     mkdirSync(join(testDir, '.omc', 'state'), { recursive: true });
   });
 
   afterEach(() => {
     rmSync(testDir, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
+    if (previousStateDir === undefined) delete process.env.OMC_STATE_DIR;
+    else process.env.OMC_STATE_DIR = previousStateDir;
   });
 
   it('should return null for completely invalid JSON state', () => {

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -21,14 +21,38 @@ const launchMetadata = { worker_cli: 'claude' as const,
     binary: '/usr/bin/claude', args: ['--dangerously-skip-permissions'] } };
 
 let cwd: string;
+let previousHome: string | undefined;
+let previousUserProfile: string | undefined;
+let previousOmcStateDir: string | undefined;
+
+beforeEach(() => {
+  previousHome = process.env.HOME;
+  previousUserProfile = process.env.USERPROFILE;
+  previousOmcStateDir = process.env.OMC_STATE_DIR;
+});
+
+function mkdtempFixture(prefix: string): string {
+  const root = mkdtempSync(join(tmpdir(), prefix));
+  process.env.HOME = root;
+  process.env.USERPROFILE = root;
+  delete process.env.OMC_STATE_DIR;
+  return root;
+}
+
 afterEach(() => {
   vi.clearAllMocks();
   if (cwd) rmSync(cwd, { recursive: true, force: true });
+  if (previousHome === undefined) delete process.env.HOME;
+  else process.env.HOME = previousHome;
+  if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+  else process.env.USERPROFILE = previousUserProfile;
+  if (previousOmcStateDir === undefined) delete process.env.OMC_STATE_DIR;
+  else process.env.OMC_STATE_DIR = previousOmcStateDir;
 });
 
 describe('runtime owner team mutation contention', () => {
   it('returns team_mutation_busy without publishing a terminal final for the waiting recovery', async () => {
-    cwd = mkdtempSync(join(tmpdir(), 'runtime-owner-busy-'));
+    cwd = mkdtempFixture('runtime-owner-busy-');
     const teamName = 'busy-team';
     const configPath = absPath(cwd, TeamPaths.config(teamName));
     mkdirSync(join(configPath, '..'), { recursive: true });
@@ -56,7 +80,7 @@ describe('runtime owner team mutation contention', () => {
   });
 
   it('keeps recovery transient while a durable scale-down reservation is active', async () => {
-    cwd = mkdtempSync(join(tmpdir(), 'runtime-owner-scale-down-busy-'));
+    cwd = mkdtempFixture('runtime-owner-scale-down-busy-');
     const teamName = 'scale-down-busy-team';
     const configPath = absPath(cwd, TeamPaths.config(teamName));
     mkdirSync(join(configPath, '..'), { recursive: true });
@@ -81,7 +105,7 @@ describe('runtime owner team mutation contention', () => {
   });
 
   it('terminally rejects a persisted attempt secret with a mismatched durable identity tuple', async () => {
-    cwd = mkdtempSync(join(tmpdir(), 'runtime-owner-attempt-secret-'));
+    cwd = mkdtempFixture('runtime-owner-attempt-secret-');
     const teamName = 'attempt-team';
     const configPath = absPath(cwd, TeamPaths.config(teamName));
     mkdirSync(join(configPath, '..'), { recursive: true });
@@ -107,7 +131,7 @@ describe('runtime owner team mutation contention', () => {
 
 
   it('rejects PID-reuse takeover when the active recovery belongs to a different attempt', async () => {
-    cwd = mkdtempSync(join(tmpdir(), 'runtime-owner-pid-reuse-'));
+    cwd = mkdtempFixture('runtime-owner-pid-reuse-');
     const teamName = 'pid-reuse-team';
     const configPath = absPath(cwd, TeamPaths.config(teamName));
     mkdirSync(join(configPath, '..'), { recursive: true });
@@ -132,7 +156,7 @@ describe('runtime owner team mutation contention', () => {
     });
   });
   it('retains a committed pane on unknown liveness without spawning a duplicate replacement', async () => {
-    cwd = mkdtempSync(join(tmpdir(), 'runtime-owner-unknown-committed-pane-'));
+    cwd = mkdtempFixture('runtime-owner-unknown-committed-pane-');
     const teamName = 'committed-team';
     const configPath = absPath(cwd, TeamPaths.config(teamName));
     mkdirSync(join(configPath, '..'), { recursive: true });
@@ -165,7 +189,7 @@ describe('runtime owner team mutation contention', () => {
   });
 
   it.each(['alive', 'unknown', 'missing'] as const)('rechecks %s original-pane liveness after election before replay effects', async liveness => {
-    cwd = mkdtempSync(join(tmpdir(), `runtime-owner-precommit-${liveness}-`));
+    cwd = mkdtempFixture(`runtime-owner-precommit-${liveness}-`);
     const teamName = `precommit-${liveness}-team`;
     const requestId = `request-${liveness}`;
     const recoveryId = `recovery-${liveness}`;
@@ -223,7 +247,7 @@ describe('runtime owner team mutation contention', () => {
     ['launch_metadata_incomplete', undefined],
     ['launch_descriptor_unresolvable', { schema_version: 1, provider: 'claude', model: null, binary: 'claude', args: [] }],
   ] as const)('rejects %s before recovery pane effects', async (expectedError, launchDescriptor) => {
-    cwd = mkdtempSync(join(tmpdir(), 'runtime-owner-launch-metadata-'));
+    cwd = mkdtempFixture('runtime-owner-launch-metadata-');
     const teamName = `launch-${expectedError}`;
     const configPath = absPath(cwd, TeamPaths.config(teamName));
     mkdirSync(join(configPath, '..'), { recursive: true });
@@ -244,7 +268,7 @@ describe('runtime owner team mutation contention', () => {
 
 
   it('allows recovery past a committed scale-up fence without team_mutation_busy', async () => {
-    cwd = mkdtempSync(join(tmpdir(), 'runtime-owner-committed-scale-up-'));
+    cwd = mkdtempFixture('runtime-owner-committed-scale-up-');
     const teamName = 'committed-scale-up-team';
     const configPath = absPath(cwd, TeamPaths.config(teamName));
     mkdirSync(join(configPath, '..'), { recursive: true });
@@ -277,7 +301,7 @@ describe('runtime owner team mutation contention', () => {
   it.each(['reserved', 'effects', 'failed'] as const)(
     'keeps recovery blocked while scale-up fence phase is %s',
     async (phase) => {
-      cwd = mkdtempSync(join(tmpdir(), `runtime-owner-scale-up-${phase}-`));
+      cwd = mkdtempFixture(`runtime-owner-scale-up-${phase}-`);
       const teamName = `scale-up-${phase}-team`;
       const configPath = absPath(cwd, TeamPaths.config(teamName));
       mkdirSync(join(configPath, '..'), { recursive: true });
@@ -304,7 +328,7 @@ describe('runtime owner team mutation contention', () => {
   );
 
   it('does not treat non-committed phase labels as committed even if other fields look durable', async () => {
-    cwd = mkdtempSync(join(tmpdir(), 'runtime-owner-stale-scale-up-label-'));
+    cwd = mkdtempFixture('runtime-owner-stale-scale-up-label-');
     const teamName = 'stale-scale-up-label-team';
     const configPath = absPath(cwd, TeamPaths.config(teamName));
     mkdirSync(join(configPath, '..'), { recursive: true });

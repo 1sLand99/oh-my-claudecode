@@ -3,11 +3,21 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { clearWorktreeCache, resolveSessionStatePaths } from '../lib/worktree-paths.js';
 
 const SCRIPT_PATH = join(process.cwd(), 'scripts', 'keyword-detector.mjs');
 const NODE = process.execPath;
 
 const tempDirs: string[] = [];
+const fixtureEnvironments = new Map<string, NodeJS.ProcessEnv>();
+const ROOT_ENV_KEYS = [
+  'HOME',
+  'USERPROFILE',
+  'OMC_STATE_DIR',
+  'CLAUDE_CONFIG_DIR',
+  'CLAUDE_PLUGIN_ROOT',
+  'OMC_DISABLE_MULTIREPO',
+] as const;
 
 function makeCwd(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
@@ -16,6 +26,7 @@ function makeCwd(prefix: string): string {
 }
 
 afterEach(() => {
+  fixtureEnvironments.clear();
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop();
     if (dir) {
@@ -25,7 +36,31 @@ afterEach(() => {
 });
 
 function runKeywordDetector(prompt: string, cwd: string, sessionId: string) {
+  // Hook subprocesses must not inherit the runner's state/config roots. A
+  // per-invocation OMC_STATE_DIR also exercises the same non-git canonical
+  // resolver path used in production without writing into the checkout or
+  // the host user's home directory.
+  const homeDir = mkdtempSync(join(tmpdir(), 'kd-echo-home-'));
+  tempDirs.push(homeDir);
+  const childEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    NODE_ENV: 'test',
+    DISABLE_OMC: '',
+    OMC_SKIP_HOOKS: '',
+    OMC_TEAM_WORKER: '',
+    OMC_DISABLE_MULTIREPO: '',
+    OMC_STATE_DIR: join(homeDir, 'omc-state'),
+    CLAUDE_PLUGIN_ROOT: '',
+    HOME: homeDir,
+    USERPROFILE: homeDir,
+    CLAUDE_CONFIG_DIR: join(homeDir, '.claude'),
+    XDG_CONFIG_HOME: join(homeDir, '.config'),
+    APPDATA: join(homeDir, 'AppData', 'Roaming'),
+  };
+  fixtureEnvironments.set(cwd, childEnv);
+
   const raw = execFileSync(NODE, [SCRIPT_PATH], {
+    cwd,
     input: JSON.stringify({
       hook_event_name: 'UserPromptSubmit',
       cwd,
@@ -33,11 +68,7 @@ function runKeywordDetector(prompt: string, cwd: string, sessionId: string) {
       prompt,
     }),
     encoding: 'utf-8',
-    env: {
-      ...process.env,
-      NODE_ENV: 'test',
-      OMC_SKIP_HOOKS: '',
-    },
+    env: childEnv,
     timeout: 15000,
   }).trim();
 
@@ -52,7 +83,33 @@ function runKeywordDetector(prompt: string, cwd: string, sessionId: string) {
 }
 
 function stateFile(cwd: string, sessionId: string, name: string) {
-  return join(cwd, '.omc', 'state', 'sessions', sessionId, `${name}-state.json`);
+  const fixtureEnv = fixtureEnvironments.get(cwd);
+  if (!fixtureEnv) throw new Error(`Missing fixture environment for ${cwd}`);
+
+  const previousValues = new Map<typeof ROOT_ENV_KEYS[number], string | undefined>();
+  try {
+    for (const key of ROOT_ENV_KEYS) {
+      previousValues.set(key, process.env[key]);
+      const value = fixtureEnv[key];
+      if (value === undefined || value === '') {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+    clearWorktreeCache();
+    return resolveSessionStatePaths(name, sessionId, cwd).effectiveWrite;
+  } finally {
+    for (const key of ROOT_ENV_KEYS) {
+      const value = previousValues.get(key);
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+    clearWorktreeCache();
+  }
 }
 
 describe('keyword-detector.mjs — pasted system-echo re-entry guard', () => {

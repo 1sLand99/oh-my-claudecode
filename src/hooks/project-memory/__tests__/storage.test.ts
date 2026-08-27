@@ -16,7 +16,7 @@ import {
 import { formatContextSummary, formatFullContext } from '../formatter.js';
 import { ProjectMemory } from '../types.js';
 import { SCHEMA_VERSION } from '../constants.js';
-import { getProjectIdentifier } from '../../../lib/worktree-paths.js';
+
 
 // Helper to create base memory with all required fields
 const createBaseMemory = (projectRoot: string, overrides: Partial<ProjectMemory> = {}): ProjectMemory => ({
@@ -37,11 +37,17 @@ const createBaseMemory = (projectRoot: string, overrides: Partial<ProjectMemory>
 describe('Project Memory Storage', () => {
   let tempDir: string;
   let projectRoot: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
 
   beforeEach(async () => {
     // Create temporary directory
     delete process.env.OMC_STATE_DIR;
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'project-memory-test-'));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = tempDir;
+    process.env.USERPROFILE = tempDir;
     projectRoot = tempDir;
   });
 
@@ -49,6 +55,10 @@ describe('Project Memory Storage', () => {
     // Clean up temporary directory
     delete process.env.OMC_STATE_DIR;
     await fs.rm(tempDir, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
   });
 
   describe('getMemoryPath', () => {
@@ -63,7 +73,7 @@ describe('Project Memory Storage', () => {
         process.env.OMC_STATE_DIR = stateDir;
 
         const memoryPath = getMemoryPath(projectRoot);
-        expect(memoryPath).toBe(path.join(stateDir, getProjectIdentifier(projectRoot), 'project-memory.json'));
+        expect(memoryPath).toBe(path.join(stateDir, 'non-git', 'project-memory.json'));
       } finally {
         delete process.env.OMC_STATE_DIR;
         await fs.rm(stateDir, { recursive: true, force: true });
@@ -136,7 +146,7 @@ describe('Project Memory Storage', () => {
 
         await saveProjectMemory(projectRoot, memory);
 
-        const centralizedPath = path.join(stateDir, getProjectIdentifier(projectRoot), 'project-memory.json');
+        const centralizedPath = path.join(stateDir, 'non-git', 'project-memory.json');
         const centralizedContent = await fs.readFile(centralizedPath, 'utf-8');
         expect(JSON.parse(centralizedContent).projectRoot).toBe(projectRoot);
         await expect(fs.access(path.join(projectRoot, '.omc', 'project-memory.json'))).rejects.toThrow();

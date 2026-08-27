@@ -15,6 +15,9 @@ import {
 import { absPath, TeamPaths } from '../state-paths.js';
 
 let cwd: string;
+let previousHome: string | undefined;
+let previousUserProfile: string | undefined;
+let previousOmcStateDir: string | undefined;
 const payload = { operation: 'recover-worker' as const, workspaceHash: 'a'.repeat(64), teamName: 'team-a', workerName: 'worker-a' };
 const pending = (phase: 'reserved' | 'active') => ({ schema_version: 1 as const, kind: 'phase' as const, request_id: 'request-a', recovery_id: 'recovery-a', team_name: 'team-a', worker_name: 'worker-a', phase, continuation: 'reserved' as const, adoption: 'pending' as const, services: 'pending' as const, manifest: 'repair_required' as const, updated_at: new Date().toISOString() });
 const successResult = (requestId: string, recoveryId: string) => ({ outcome: 'already_running' as const, committed: true as const,
@@ -40,8 +43,24 @@ const corruptNewestPhase = (from: string, to: string) => {
   writeFileSync(path, readFileSync(path, 'utf8').replace(from, to));
 };
 
-beforeEach(() => { cwd = mkdtempSync(join(tmpdir(), 'omc-recovery-request-')); });
-afterEach(() => { rmSync(cwd, { recursive: true, force: true }); });
+beforeEach(() => {
+  cwd = mkdtempSync(join(tmpdir(), 'omc-recovery-request-'));
+  previousHome = process.env.HOME;
+  previousUserProfile = process.env.USERPROFILE;
+  previousOmcStateDir = process.env.OMC_STATE_DIR;
+  process.env.HOME = cwd;
+  process.env.USERPROFILE = cwd;
+  delete process.env.OMC_STATE_DIR;
+});
+afterEach(() => {
+  if (previousHome === undefined) delete process.env.HOME;
+  else process.env.HOME = previousHome;
+  if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+  else process.env.USERPROFILE = previousUserProfile;
+  if (previousOmcStateDir === undefined) delete process.env.OMC_STATE_DIR;
+  else process.env.OMC_STATE_DIR = previousOmcStateDir;
+  rmSync(cwd, { recursive: true, force: true });
+});
 
 describe('global recovery request store', () => {
   it('joins a repeated request with the same canonical payload and rejects a reused ID before a new recovery is reserved', () => {

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -18,12 +18,26 @@ vi.mock('../tmux-session.js', async () => {
 import { watchdogCliWorkers, type TeamRuntime } from '../runtime.js';
 
 describe('watchdog done.json parsing recovery', () => {
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
+
   beforeEach(() => {
     mocks.isWorkerAlive.mockReset();
   });
 
+  afterEach(() => {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
+  });
+
   it('marks task completed when done.json is briefly malformed before pane-dead check', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'team-runtime-done-recovery-'));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = cwd;
+    process.env.USERPROFILE = cwd;
     const teamName = 'done-recovery-team';
     const root = join(cwd, '.omc', 'state', 'team', teamName);
     const tasksDir = join(root, 'tasks');
@@ -33,7 +47,7 @@ describe('watchdog done.json parsing recovery', () => {
     mkdirSync(tasksDir, { recursive: true });
     mkdirSync(workerDir, { recursive: true });
 
-    writeFileSync(join(tasksDir, '1.json'), JSON.stringify({
+    writeFileSync(join(tasksDir, 'task-1.json'), JSON.stringify({
       id: '1',
       subject: 'Task 1',
       description: 'desc',
@@ -82,7 +96,7 @@ describe('watchdog done.json parsing recovery', () => {
     await new Promise(resolve => setTimeout(resolve, 220));
     stop();
 
-    const task = JSON.parse(readFileSync(join(tasksDir, '1.json'), 'utf-8')) as {
+    const task = JSON.parse(readFileSync(join(tasksDir, 'task-1.json'), 'utf-8')) as {
       status: string;
       summary?: string;
     };

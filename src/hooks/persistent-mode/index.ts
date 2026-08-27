@@ -22,7 +22,10 @@ import {
   captureStateFileGeneration,
   clearModeStateFile,
   clearStateFileLockedIf,
+  canClearStateForSession,
   readModeState,
+  readModeStateWithMeta,
+  recoverEmergencyStateFile,
   writeModeState,
   withStateFileMutationLock,
   type ModeStateCleanupSnapshot,
@@ -43,7 +46,6 @@ import {
   consumeCompletionArchitectApproval,
   getPrdGoverningCriteriaRevision,
   readVerificationState,
-  writeVerificationState,
   startVerification,
   recordArchitectFeedback,
   getArchitectVerificationPrompt,
@@ -59,7 +61,6 @@ import { checkIncompleteTodos, getNextPendingTodo, StopContext, isUserAbort, isC
 import { TODO_CONTINUATION_PROMPT } from '../../installer/hooks.js';
 import {
   isAutopilotActive,
-  readAutopilotState,
 } from '../autopilot/index.js';
 import { checkAutopilot } from '../autopilot/enforcement.js';
 import { readTeamPipelineState } from '../team-pipeline/state.js';
@@ -210,15 +211,11 @@ function resolveAutopilotTargetPath(directory: string, sessionId?: string): stri
 
 function readAutopilotTarget(directory: string, sessionId?: string): LoadedAutopilotTarget | null {
   const path = resolveAutopilotTargetPath(directory, sessionId);
-  if (!readAutopilotState(directory, sessionId)) return null;
-  try {
-    const state = JSON.parse(readFileSync(path, 'utf-8'));
-    return state && typeof state === 'object' && !Array.isArray(state)
-      ? { path, state: state as Record<string, unknown> }
-      : null;
-  } catch {
-    return null;
-  }
+  if (!recoverEmergencyStateFile(path)) return null;
+  const state = readModeStateWithMeta<Record<string, unknown>>('autopilot', directory, sessionId);
+  return state && typeof state === 'object' && !Array.isArray(state)
+    ? { path, state }
+    : null;
 }
 
 function isCurrentAutopilotTarget(
@@ -279,9 +276,11 @@ function isAuthenticatedAutopilotCancelSignal(
 function isSessionCancelInProgress(directory: string, sessionId?: string): SessionCancelCheck {
   const autopilotPath = resolveAutopilotTargetPath(directory, sessionId);
   let cancelSignalPath: string | undefined;
+  let cancelSignalSessionId: string | undefined;
   if (sessionId) {
     try {
       cancelSignalPath = resolveSessionStatePath('cancel-signal', sessionId, directory);
+      cancelSignalSessionId = sessionId;
     } catch {
       // Fall through to the legacy path.
     }
@@ -292,14 +291,15 @@ function isSessionCancelInProgress(directory: string, sessionId?: string): Sessi
 
   const validateSignal = (target: LoadedAutopilotTarget | null): boolean => {
     const locked = withStateFileMutationLock(cancelSignalPath, () => {
-      let raw: Record<string, unknown>;
-      try {
-        const parsed = JSON.parse(readFileSync(cancelSignalPath!, 'utf-8'));
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
-        raw = parsed as Record<string, unknown>;
-      } catch {
-        return false;
-      }
+      const raw = readModeStateWithMeta<Record<string, unknown>>(
+        'cancel-signal',
+        directory,
+        cancelSignalSessionId,
+      );
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
+      // Legacy/shared signal paths are not session-scoped by location, so
+      // enforce their embedded owner before accepting or removing them.
+      if (sessionId && !canClearStateForSession(raw, sessionId)) return false;
       const now = Date.now();
       const requestedAt = typeof raw.requested_at === 'string' ? new Date(raw.requested_at).getTime() : NaN;
       const expiresAt = typeof raw.expires_at === 'string' ? new Date(raw.expires_at).getTime() : NaN;
@@ -408,18 +408,17 @@ function isFreshTimestamp(value: unknown, ttlMs = PENDING_ASYNC_STATE_STALE_MS):
 
 function hasPendingBackgroundTask(directory: string, sessionId?: string): boolean {
   try {
-    const stateRoot = join(getOmcRoot(directory), 'state');
-    const hudPath = sessionId
-      ? join(stateRoot, 'sessions', sessionId, 'hud-state.json')
-      : join(stateRoot, 'hud-state.json');
-    if (!existsSync(hudPath)) return false;
-    const hudState = JSON.parse(readFileSync(hudPath, 'utf-8')) as {
+    const hudState = readModeState<{
+      sessionId?: unknown;
       backgroundTasks?: Array<{
         status?: string;
         startedAt?: string;
         startTime?: string;
       }>;
-    };
+    }>('hud', directory, sessionId);
+    if (sessionId && typeof hudState?.sessionId === 'string' && hudState.sessionId !== sessionId) {
+      return false;
+    }
     return Boolean(hudState?.backgroundTasks?.some((task) => {
       if (task.status !== 'running') return false;
       return isFreshTimestamp(task.startedAt ?? task.startTime);
@@ -430,28 +429,19 @@ function hasPendingBackgroundTask(directory: string, sessionId?: string): boolea
 }
 
 function readPendingWakeupState(directory: string, sessionId?: string): Array<Record<string, unknown>> {
-  const stateRoot = join(getOmcRoot(directory), 'state');
-  const dirs = sessionId
-    ? [join(stateRoot, 'sessions', sessionId), stateRoot]
-    : [stateRoot];
-  const fileNames = [
-    'scheduled-wakeup-state.json',
-    'schedule-wakeup-state.json',
-    'wakeup-state.json',
-  ];
+  const modes = ['scheduled-wakeup', 'schedule-wakeup', 'wakeup'];
   const states: Array<Record<string, unknown>> = [];
 
-  for (const dir of dirs) {
-    for (const fileName of fileNames) {
-      const filePath = join(dir, fileName);
-      try {
-        if (!existsSync(filePath)) continue;
-        const parsed = JSON.parse(readFileSync(filePath, 'utf-8'));
-        if (parsed && typeof parsed === 'object') {
-          states.push(parsed as Record<string, unknown>);
-        }
-      } catch {
-        continue;
+  for (const mode of modes) {
+    const sessionState = readModeStateWithMeta<Record<string, unknown>>(mode, directory, sessionId);
+    if (sessionState && typeof sessionState === 'object') {
+      states.push(sessionState);
+    }
+
+    if (sessionId) {
+      const legacyState = readModeStateWithMeta<Record<string, unknown>>(mode, directory);
+      if (legacyState && typeof legacyState === 'object' && canClearStateForSession(legacyState, sessionId)) {
+        states.push(legacyState);
       }
     }
   }
@@ -1939,8 +1929,14 @@ async function checkAutoresearch(
   // Autoresearch predates session-scoped state files. Preserve strict sessioned reads
   // first, then allow a narrow legacy/shared bridge only for matching or unbound state.
   if (!state && sessionId) {
-    const legacyState = readModeState<AutoresearchStopState>('autoresearch', workingDir);
-    if (!legacyState?.session_id || legacyState.session_id === sessionId) {
+    const legacyEnvelope = readModeStateWithMeta<Record<string, unknown>>('autoresearch', workingDir);
+    const legacyState = legacyEnvelope && canClearStateForSession(legacyEnvelope, sessionId)
+      ? (() => {
+        const { _meta: _, ...payload } = legacyEnvelope;
+        return payload as unknown as AutoresearchStopState;
+      })()
+      : null;
+    if (legacyState && (!legacyState.session_id || legacyState.session_id === sessionId)) {
       state = legacyState;
       stateSourceSessionId = undefined;
     }

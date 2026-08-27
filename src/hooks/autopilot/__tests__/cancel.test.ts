@@ -38,9 +38,15 @@ import { readModeState } from '../../../lib/mode-state-io.js';
 
 describe('AutopilotCancel', () => {
   let testDir: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
 
   beforeEach(() => {
     testDir = mkdtempSync(join(tmpdir(), 'autopilot-cancel-test-'));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = testDir;
+    process.env.USERPROFILE = testDir;
     const fs = require('fs');
     fs.mkdirSync(join(testDir, '.omc', 'state'), { recursive: true });
     vi.clearAllMocks();
@@ -48,6 +54,10 @@ describe('AutopilotCancel', () => {
 
   afterEach(() => {
     rmSync(testDir, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
     delete process.env.OMC_TEST_CONDITIONAL_WRITE_REPLACEMENT_PATH;
     delete process.env.OMC_TEST_CONDITIONAL_WRITE_REPLACEMENT_BASE64;
     delete process.env.OMC_TEST_CONDITIONAL_CLEAR_REPLACEMENT_PATH;

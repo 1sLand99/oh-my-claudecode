@@ -6,6 +6,23 @@ import { tmpdir } from 'os';
 import type { TeamConfig, TeamManifestV2 } from '../types.js';
 import { executeTeamApiOperation } from '../api-interop.js';
 
+function isolateFixtureRoot(root: string): () => void {
+  const home = process.env.HOME;
+  const userProfile = process.env.USERPROFILE;
+  const stateDir = process.env.OMC_STATE_DIR;
+  process.env.HOME = root;
+  process.env.USERPROFILE = root;
+  delete process.env.OMC_STATE_DIR;
+  return () => {
+    if (home === undefined) delete process.env.HOME;
+    else process.env.HOME = home;
+    if (userProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = userProfile;
+    if (stateDir === undefined) delete process.env.OMC_STATE_DIR;
+    else process.env.OMC_STATE_DIR = stateDir;
+  };
+}
+
 // Step 1.1: lifecycle_profile type compilation tests
 describe('lifecycle_profile type field', () => {
   it('TeamConfig accepts lifecycle_profile as optional field', () => {
@@ -50,6 +67,7 @@ describe('lifecycle_profile type field', () => {
 // Step 1.2: state root resolution priority tests
 describe('state root resolution priority: config > manifest > cwd-walk', () => {
   let cwd: string;
+  let restoreFixtureEnv: (() => void) | undefined;
   const teamName = 'priority-test-team';
 
   async function seedBase(): Promise<string> {
@@ -70,11 +88,18 @@ describe('state root resolution priority: config > manifest > cwd-walk', () => {
 
   beforeEach(async () => {
     cwd = await mkdtemp(join(tmpdir(), 'omc-phase1-priority-'));
+    restoreFixtureEnv = isolateFixtureRoot(cwd);
   });
 
   afterEach(async () => {
-    delete process.env.OMC_TEAM_STATE_ROOT;
-    await rm(cwd, { recursive: true, force: true });
+    const restore = restoreFixtureEnv;
+    restoreFixtureEnv = undefined;
+    try {
+      restore?.();
+    } finally {
+      delete process.env.OMC_TEAM_STATE_ROOT;
+      await rm(cwd, { recursive: true, force: true });
+    }
   });
 
   it('uses config.team_state_root when only config is present', async () => {

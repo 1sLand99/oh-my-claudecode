@@ -2,30 +2,49 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
 import { tmpdir } from 'os';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
 
 import { shutdownTeamV2 } from '../runtime-v2.js';
 import { teamClaimTask } from '../team-ops.js';
 
 describe('team governance enforcement', () => {
   let cwd: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
+  let previousOmcStateDir: string | undefined;
+
+  function teamStatePath(teamName: string, ...segments: string[]): string {
+    return join(getOmcRoot(cwd), 'state', 'team', teamName, ...segments);
+  }
 
   beforeEach(async () => {
     cwd = await mkdtemp(join(tmpdir(), 'omc-governance-enforcement-'));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    previousOmcStateDir = process.env.OMC_STATE_DIR;
+    process.env.HOME = cwd;
+    process.env.USERPROFILE = cwd;
+    delete process.env.OMC_STATE_DIR;
   });
 
   afterEach(async () => {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
+    if (previousOmcStateDir === undefined) delete process.env.OMC_STATE_DIR;
+    else process.env.OMC_STATE_DIR = previousOmcStateDir;
     await rm(cwd, { recursive: true, force: true });
   });
 
-  async function writeJson(relativePath: string, value: unknown): Promise<void> {
-    const fullPath = join(cwd, relativePath);
-    await mkdir(dirname(fullPath), { recursive: true });
-    await writeFile(fullPath, JSON.stringify(value, null, 2), 'utf-8');
+  async function writeJson(filePath: string, value: unknown): Promise<void> {
+    await mkdir(dirname(filePath), { recursive: true });
+    await writeFile(filePath, JSON.stringify(value, null, 2), 'utf-8');
   }
 
   it('blocks claiming code-change tasks until approval is granted when governance requires it', async () => {
     const teamName = 'approval-team';
-    await writeJson(`.omc/state/team/${teamName}/config.json`, {
+    await writeJson(teamStatePath(teamName, 'config.json'), {
       name: teamName,
       state_revision: 2,
       task: 'test',
@@ -49,7 +68,7 @@ describe('team governance enforcement', () => {
       resize_hook_name: null,
       resize_hook_target: null,
     });
-    await writeJson(`.omc/state/team/${teamName}/manifest.json`, {
+    await writeJson(teamStatePath(teamName, 'manifest.json'), {
       schema_version: 2,
       name: teamName,
       state_revision: 1,
@@ -83,7 +102,7 @@ describe('team governance enforcement', () => {
       resize_hook_name: null,
       resize_hook_target: null,
     });
-    await writeJson(`.omc/state/team/${teamName}/tasks/task-1.json`, {
+    await writeJson(teamStatePath(teamName, 'tasks', 'task-1.json'), {
       id: '1',
       subject: 'approved work',
       description: 'requires approval',
@@ -99,7 +118,7 @@ describe('team governance enforcement', () => {
       dependencies: ['approval-required'],
     });
 
-    await writeJson(`.omc/state/team/${teamName}/approvals/1.json`, {
+    await writeJson(teamStatePath(teamName, 'approvals', '1.json'), {
       task_id: '1',
       required: true,
       status: 'approved',
@@ -113,7 +132,7 @@ describe('team governance enforcement', () => {
     try {
       const claimed = await teamClaimTask(teamName, '1', 'worker-1', null, cwd);
       expect(claimed.ok).toBe(true);
-      const task = JSON.parse(await readFile(join(cwd, `.omc/state/team/${teamName}/tasks/task-1.json`), 'utf-8'));
+      const task = JSON.parse(await readFile(teamStatePath(teamName, 'tasks', 'task-1.json'), 'utf-8'));
       expect(task.claim?.launch_attempt_id).toBe('attempt-current');
     } finally {
       if (previousAttemptId === undefined) delete process.env.OMC_WORKER_LAUNCH_ATTEMPT_ID;
@@ -123,7 +142,7 @@ describe('team governance enforcement', () => {
 
   it('allows shutdown cleanup override when governance disables inactive-worker requirement', async () => {
     const teamName = 'cleanup-team';
-    await writeJson(`.omc/state/team/${teamName}/config.json`, {
+    await writeJson(teamStatePath(teamName, 'config.json'), {
       name: teamName,
       task: 'test',
       agent_type: 'claude',
@@ -146,7 +165,7 @@ describe('team governance enforcement', () => {
       resize_hook_name: null,
       resize_hook_target: null,
     });
-    await writeJson(`.omc/state/team/${teamName}/tasks/task-1.json`, {
+    await writeJson(teamStatePath(teamName, 'tasks', 'task-1.json'), {
       id: '1',
       subject: 'still pending',
       description: 'pending',

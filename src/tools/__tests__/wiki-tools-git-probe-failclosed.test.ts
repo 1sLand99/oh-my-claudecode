@@ -265,28 +265,19 @@ describe('wiki tools fail closed on generic git probe failure (#3858 remaining P
     }
   });
 
-  it('git missing still allows same-root/subdir wiki IO and does not probe-fail', async () => {
+  it('git missing fails closed for same-root/subdir wiki IO', async () => {
     setGitShowToplevelProbeForTests(() => { throw spawnEnoent(); });
     clearWorktreeCache();
 
-    const query = await wikiQueryTool.handler({ query: 'session-secret', workingDirectory: srcDir });
-    expect(query.isError).toBeUndefined();
-    expect(query.content[0].text).toContain('session-secret');
-
-    const list = await wikiListTool.handler({ workingDirectory: sessionRepo });
-    expect(list.isError).toBeUndefined();
+    await assertAllToolsRejectWithoutIo(srcDir);
+    await assertAllToolsRejectWithoutIo(sessionRepo);
     expect(existsSync(secretPage)).toBe(true);
-    const defaultQuery = await wikiQueryTool.handler({ query: 'session-secret' });
-    expect(defaultQuery.isError).toBeUndefined();
-    expect(defaultQuery.content[0].text).toContain('session-secret');
   });
 
-  it('PATH without git still allows same-root/subdir wiki IO', async () => {
+  it('PATH without git fails closed for same-root/subdir wiki IO', async () => {
     process.env.PATH = '';
     clearWorktreeCache();
-    const read = await wikiReadTool.handler({ page: 'session-secret', workingDirectory: srcDir });
-    expect(read.isError).toBeUndefined();
-    expect(read.content[0].text).toContain('session-secret-body');
+    await assertAllToolsRejectWithoutIo(srcDir);
   });
   it('seven wiki tools reject omitted workingDirectory when trusted root has malformed .git and git returns 128', async () => {
     const broken = join(tempDir, 'broken-trusted');
@@ -317,7 +308,7 @@ describe('wiki tools fail closed on generic git probe failure (#3858 remaining P
     const secretBefore = readFileSync(secretPage, 'utf8');
     const result = await wikiQueryTool.handler({ query: 'session-secret', workingDirectory: plainDir });
     expect(result.isError).toBe(true);
-    expect(result.content[0].text).toMatch(/outside the trusted worktree root/);
+    expect(result.content[0].text).toMatch(/git probe failed and was not used/);
     expect(readFileSync(secretPage, 'utf8')).toBe(secretBefore);
   });
 

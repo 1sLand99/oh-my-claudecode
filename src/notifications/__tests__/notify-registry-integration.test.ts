@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 // Mock session-registry before importing notify
 const mockRegisterMessage = vi.fn();
@@ -85,7 +88,16 @@ const DEFAULT_CONFIG = {
 };
 
 describe("notify() -> session-registry integration", () => {
+  let fixtureHome: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
+
   beforeEach(() => {
+    fixtureHome = mkdtempSync(join(tmpdir(), "omc-notify-registry-"));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = fixtureHome;
+    process.env.USERPROFILE = fixtureHome;
     vi.clearAllMocks();
     // Reset forwarding mocks to defaults
     mockGetCurrentTmuxPaneId.mockReturnValue("%42");
@@ -100,6 +112,11 @@ describe("notify() -> session-registry integration", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
+    rmSync(fixtureHome, { recursive: true, force: true });
   });
 
   it("registers discord-bot messageId in session registry after dispatch", async () => {
@@ -235,7 +252,7 @@ describe("notify() -> session-registry integration", () => {
     });
 
     expect(result).not.toBeNull();
-    expect(mockGetNewPaneTail).toHaveBeenCalledWith("%42", "/test/project/.omc/state", 23);
+    expect(mockGetNewPaneTail).toHaveBeenCalledWith("%42", join(fixtureHome, ".omc/state"), 23);
     expect(mockCapturePaneContent).not.toHaveBeenCalled();
   });
 

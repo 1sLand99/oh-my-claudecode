@@ -12,7 +12,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { homedir } from 'node:os';
 import { withProjectMemoryLock } from '../../src/hooks/project-memory/storage.js';
 import { clearWorktreeCache, getOmcRoot } from '../../src/lib/worktree-paths.js';
 
@@ -62,7 +62,7 @@ describe('concurrent project-memory writes (E.4)', () => {
   }
 
   it('two concurrent writers preserve both notes (no lost updates)', async () => {
-    tempDir = mkdtempSync(join(tmpdir(), 'omc-pmem-concurrent-'));
+    tempDir = mkdtempSync(join(homedir(), 'omc-pmem-concurrent-'));
     mkdirSync(join(tempDir, '.omc'), { recursive: true });
 
     await Promise.all([
@@ -77,7 +77,7 @@ describe('concurrent project-memory writes (E.4)', () => {
   });
 
   it('three concurrent writers each preserve their note', async () => {
-    tempDir = mkdtempSync(join(tmpdir(), 'omc-pmem-three-'));
+    tempDir = mkdtempSync(join(homedir(), 'omc-pmem-three-'));
     mkdirSync(join(tempDir, '.omc'), { recursive: true });
 
     await Promise.all([
@@ -140,7 +140,7 @@ describe('concurrent project-memory writes — multi-repo workspace anchor (E.4 
   }
 
   it('concurrent writers from sibling sub-repos converge on workspace anchor project-memory.json', async () => {
-    workspaceRoot = mkdtempSync(join(tmpdir(), 'omc-pmem-workspace-'));
+    workspaceRoot = mkdtempSync(join(homedir(), 'omc-pmem-workspace-'));
 
     // Drop workspace marker so getOmcRoot() anchors here
     writeFileSync(join(workspaceRoot, '.omc-workspace'), '{}');
@@ -172,7 +172,7 @@ describe('concurrent project-memory writes — multi-repo workspace anchor (E.4 
   });
 
   it('three concurrent writers from different sub-repos each preserve their note at the workspace anchor', async () => {
-    workspaceRoot = mkdtempSync(join(tmpdir(), 'omc-pmem-workspace-three-'));
+    workspaceRoot = mkdtempSync(join(homedir(), 'omc-pmem-workspace-three-'));
     writeFileSync(join(workspaceRoot, '.omc-workspace'), '{}');
 
     const repoA = join(workspaceRoot, 'repo-a');

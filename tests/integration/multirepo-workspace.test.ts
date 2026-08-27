@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, basename } from 'node:path';
-import { tmpdir } from 'node:os';
+import { homedir } from 'node:os';
 import {
   getOmcRoot,
   getProjectIdentifier,
@@ -27,7 +27,7 @@ describe('multi-repo workspace anchor', () => {
   beforeEach(() => {
     clearWorktreeCache();
     // Fresh temp parent dir per test — no .git, no .omc-workspace yet
-    parent = mkdtempSync(join(tmpdir(), 'omc-multirepo-'));
+    parent = mkdtempSync(join(homedir(), 'omc-multirepo-'));
     repoA = join(parent, 'repoA');
     repoB = join(parent, 'repoB');
     mkdirSync(repoA, { recursive: true });
@@ -102,7 +102,7 @@ describe('multi-repo workspace anchor', () => {
     writeFileSync(join(parent, '.omc-workspace'), '{}');
     clearWorktreeCache();
 
-    const stateDir = mkdtempSync(join(tmpdir(), 'omc-statedir-'));
+    const stateDir = mkdtempSync(join(homedir(), 'omc-statedir-'));
     try {
       process.env.OMC_STATE_DIR = stateDir;
       clearWorktreeCache();

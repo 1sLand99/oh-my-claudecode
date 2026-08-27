@@ -155,13 +155,10 @@ describe('git probe fail-closed classification (#3858 remaining P1)', () => {
     expect(() => validateWorkingDirectoryOrLinkedWorktree()).toThrow(/git probe failed and was not used/);
   });
 
-  it('omitted workingDirectory still allows gitless cwd when git is missing', () => {
+  it('omitted workingDirectory fails closed when git is missing', () => {
     setGitShowToplevelProbeForTests(() => { throw spawnEnoent(); });
     clearWorktreeCache();
-    expect(resolveWorkingDirectoryOrLinkedWorktree()).toEqual({
-      status: 'ok',
-      root: sessionRepo,
-    });
+    expect(() => resolveWorkingDirectoryOrLinkedWorktree()).toThrow(/git probe failed and was not used/);
   });
 
   it('absolute existing non-worktree stdout is malformed and fail-closed', () => {
@@ -284,32 +281,27 @@ describe('git probe fail-closed classification (#3858 remaining P1)', () => {
     }
   });
 
-  it('confirmed executable-not-found ENOENT still allows gitless same-root and subdirectory', () => {
+  it('confirmed executable-not-found ENOENT fails closed for same-root and subdirectory', () => {
     setGitShowToplevelProbeForTests(() => { throw spawnEnoent(); });
     clearWorktreeCache();
 
-    expect(resolveWorkingDirectoryOrLinkedWorktree(sessionRepo)).toEqual({
-      status: 'ok',
-      root: sessionRepo,
-    });
-    expect(validateWorkingDirectoryOrLinkedWorktree(srcDir)).toBe(sessionRepo);
+    expect(() => resolveWorkingDirectoryOrLinkedWorktree(sessionRepo)).toThrow(/git probe failed and was not used/);
+    expect(() => validateWorkingDirectoryOrLinkedWorktree(srcDir)).toThrow(/git probe failed and was not used/);
   });
 
-  it('PATH without git still allows gitless same-root and subdirectory', () => {
+  it('PATH without git fails closed for same-root and subdirectory', () => {
     process.env.PATH = '';
     clearWorktreeCache();
 
-    expect(validateWorkingDirectoryOrLinkedWorktree(sessionRepo)).toBe(sessionRepo);
-    expect(validateWorkingDirectoryOrLinkedWorktree(srcDir)).toBe(sessionRepo);
+    expect(() => validateWorkingDirectoryOrLinkedWorktree(sessionRepo)).toThrow(/git probe failed and was not used/);
+    expect(() => validateWorkingDirectoryOrLinkedWorktree(srcDir)).toThrow(/git probe failed and was not used/);
   });
 
   it('git missing still rejects a non-git path outside the trusted root', () => {
     setGitShowToplevelProbeForTests(() => { throw spawnEnoent(); });
     clearWorktreeCache();
 
-    expect(() => validateWorkingDirectoryOrLinkedWorktree(plainDir)).toThrow(
-      /is outside the trusted worktree root/,
-    );
+    expect(() => validateWorkingDirectoryOrLinkedWorktree(plainDir)).toThrow(/git probe failed and was not used/);
   });
 
   it('rev-parse 128 not-a-repo still allows gitless subdirectory inside the trusted root', () => {

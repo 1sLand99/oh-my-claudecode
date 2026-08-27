@@ -35,9 +35,15 @@ import { processSessionEnd } from '../index.js';
 describe('processSessionEnd mode state cleanup (issue #1427)', () => {
   let tmpDir: string;
   let transcriptPath: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
 
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omc-session-end-mode-state-'));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = tmpDir;
+    process.env.USERPROFILE = tmpDir;
     transcriptPath = path.join(tmpDir, 'transcript.jsonl');
     fs.writeFileSync(
       transcriptPath,
@@ -51,6 +57,10 @@ describe('processSessionEnd mode state cleanup (issue #1427)', () => {
 
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
     vi.clearAllMocks();
   });
 

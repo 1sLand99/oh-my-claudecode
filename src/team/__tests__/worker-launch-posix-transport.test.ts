@@ -28,6 +28,7 @@ import {
 import { runWorkerLaunchFromEnvironment } from '../runtime-cli.js';
 
 let cwd = '';
+let restoreFixtureEnv: (() => void) | undefined;
 let originalPlatform: PropertyDescriptor | undefined;
 let exitSpy: ReturnType<typeof vi.spyOn> | undefined;
 
@@ -49,6 +50,7 @@ function applyEnvAssignments(command: string, keys: readonly string[]): void {
 
 async function makeAttempt(): Promise<WorkerLaunchAttempt> {
   cwd = await mkdtemp(join(tmpdir(), 'worker-launch-posix-transport-'));
+  restoreFixtureEnv = isolateFixtureEnv(cwd);
   return prepareWorkerLaunchAttempt({
     cwd,
     teamName: 'posix-team',
@@ -57,6 +59,23 @@ async function makeAttempt(): Promise<WorkerLaunchAttempt> {
     provider: 'codex',
     runtimeCliPath: '/runtime-cli.cjs',
   });
+}
+
+function isolateFixtureEnv(root: string): () => void {
+  const home = process.env.HOME;
+  const userProfile = process.env.USERPROFILE;
+  const stateDir = process.env.OMC_STATE_DIR;
+  process.env.HOME = root;
+  process.env.USERPROFILE = root;
+  delete process.env.OMC_STATE_DIR;
+  return () => {
+    if (home === undefined) delete process.env.HOME;
+    else process.env.HOME = home;
+    if (userProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = userProfile;
+    if (stateDir === undefined) delete process.env.OMC_STATE_DIR;
+    else process.env.OMC_STATE_DIR = stateDir;
+  };
 }
 
 afterEach(async () => {
@@ -68,8 +87,14 @@ afterEach(async () => {
     delete process.env[key];
   }
   vi.unstubAllEnvs();
-  if (cwd) await rm(cwd, { recursive: true, force: true });
-  cwd = '';
+  const restore = restoreFixtureEnv;
+  restoreFixtureEnv = undefined;
+  try {
+    restore?.();
+  } finally {
+    if (cwd) await rm(cwd, { recursive: true, force: true });
+    cwd = '';
+  }
 });
 
 describe('POSIX supervised worker-launch transport (issue #3655)', () => {
@@ -77,7 +102,6 @@ describe('POSIX supervised worker-launch transport (issue #3655)', () => {
     originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
     Object.defineProperty(process, 'platform', { value: 'linux' });
     vi.stubEnv('SHELL', '/bin/bash');
-    vi.stubEnv('HOME', '/home/tester');
 
     const attempt = await makeAttempt();
     const providerMarker = join(cwd, 'provider-ran.json');
@@ -179,7 +203,6 @@ describe('POSIX supervised worker-launch transport (issue #3655)', () => {
     originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
     Object.defineProperty(process, 'platform', { value: 'linux' });
     vi.stubEnv('SHELL', '/bin/bash');
-    vi.stubEnv('HOME', '/home/tester');
 
     const attempt = await makeAttempt();
     const longValue = `long-${'x'.repeat(12_000)}`;
