@@ -5,21 +5,26 @@
 ## Step 3.1: Verify Plugin Installation
 
 ```bash
-grep -q "oh-my-claudecode" "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json" && echo "Plugin verified" || echo "Plugin NOT found - run: claude /install-plugin oh-my-claudecode"
+CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+case "$CONFIG_DIR" in
+  "~") CONFIG_DIR="$HOME" ;;
+  "~/"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~/}" ;;
+  "~\\"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~\\}" ;;
+esac
+grep -q "oh-my-claudecode" "$CONFIG_DIR/settings.json" && echo "Plugin verified" || echo "Plugin NOT found - run: claude /install-plugin oh-my-claudecode"
 ```
 
-## Step 3.2: Offer MCP Server Configuration
+## Step 3.2: MCP Server Configuration (Pointer Only)
 
-MCP servers extend Claude Code with additional tools (web search, GitHub, etc.).
+MCP servers extend Claude Code with additional tools (web search, GitHub, etc.). OMC no longer ships an MCP setup skill; servers are registered through Claude Code's native MCP surfaces.
 
-Use AskUserQuestion: "Would you like to configure MCP servers for enhanced capabilities? (Context7, Exa search, GitHub, etc.)"
+If the user asks about MCP servers, point them at the native registration path:
 
-If yes, invoke the mcp-setup skill:
-```
-/oh-my-claudecode:mcp-setup
-```
+- Claude Code: `claude mcp add <name> ...` (see `claude mcp --help`), or the native MCP config selected by `CLAUDE_MCP_CONFIG_PATH` (by default, the sibling `.claude.json` next to `${CLAUDE_CONFIG_DIR:-$HOME/.claude}`)
+- OMC keeps its own bundled MCP server (`bridge/mcp-server.cjs`) registered via `.mcp.json`; it requires no user action
+- Company-context guidance, if used, is documented in `docs/company-context-interface.md`
 
-If no, skip to next step.
+Do **not** try to invoke an MCP setup skill — `mcp-setup` was removed in 5.0.0 and has no replacement skill; the native surfaces above are the whole story.
 
 ## Step 3.3: Configure Agent Teams (Optional)
 
@@ -44,7 +49,13 @@ Use AskUserQuestion:
 First, read the current settings.json:
 
 ```bash
-SETTINGS_FILE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
+CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+case "$CONFIG_DIR" in
+  "~") CONFIG_DIR="$HOME" ;;
+  "~/"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~/}" ;;
+  "~\\"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~\\}" ;;
+esac
+SETTINGS_FILE="$CONFIG_DIR/settings.json"
 
 if [ -f "$SETTINGS_FILE" ]; then
   echo "Current settings.json found"
@@ -59,7 +70,13 @@ Then use the Read tool to read `${CLAUDE_CONFIG_DIR:-~/.claude}/settings.json` (
 Use jq to safely merge without overwriting existing settings:
 
 ```bash
-SETTINGS_FILE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
+CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+case "$CONFIG_DIR" in
+  "~") CONFIG_DIR="$HOME" ;;
+  "~/"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~/}" ;;
+  "~\\"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~\\}" ;;
+esac
+SETTINGS_FILE="$CONFIG_DIR/settings.json"
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "ERROR: jq is required to update $SETTINGS_FILE safely."
@@ -107,7 +124,13 @@ Use AskUserQuestion:
 If user chooses anything other than "Auto", add `teammateMode` to settings.json:
 
 ```bash
-SETTINGS_FILE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
+CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+case "$CONFIG_DIR" in
+  "~") CONFIG_DIR="$HOME" ;;
+  "~/"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~/}" ;;
+  "~\\"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~\\}" ;;
+esac
+SETTINGS_FILE="$CONFIG_DIR/settings.json"
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "ERROR: jq is required to update $SETTINGS_FILE safely."
@@ -148,10 +171,16 @@ Use AskUserQuestion with multiple questions:
 3. **gemini** - Use Gemini CLI workers by default when installed (enterprise/API-key tier)
 4. **antigravity** - Use Antigravity CLI (`agy`) workers by default when installed; Google's successor to the Gemini CLI (install per the [official instructions](https://antigravity.google))
 
-Store the team configuration in `~/.claude/.omc-config.json`:
+Store the team configuration in the active Claude config directory's `.omc-config.json`:
 
 ```bash
-CONFIG_FILE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.omc-config.json"
+CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+case "$CONFIG_DIR" in
+  "~") CONFIG_DIR="$HOME" ;;
+  "~/"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~/}" ;;
+  "~\\"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~\\}" ;;
+esac
+CONFIG_FILE="$CONFIG_DIR/.omc-config.json"
 mkdir -p "$(dirname "$CONFIG_FILE")"
 
 if ! command -v jq >/dev/null 2>&1; then
@@ -193,7 +222,13 @@ echo "  Model: teammates inherit your session model"
 After all modifications, verify settings.json is valid JSON and contains the expected keys:
 
 ```bash
-SETTINGS_FILE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
+CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+case "$CONFIG_DIR" in
+  "~") CONFIG_DIR="$HOME" ;;
+  "~/"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~/}" ;;
+  "~\\"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~\\}" ;;
+esac
+SETTINGS_FILE="$CONFIG_DIR/settings.json"
 
 if jq empty "$SETTINGS_FILE" 2>/dev/null; then
   echo "settings.json: valid JSON"

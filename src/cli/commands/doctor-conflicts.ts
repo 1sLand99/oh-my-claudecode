@@ -549,7 +549,9 @@ export function checkConfigIssues(): ConflictReport['configIssues'] {
       'configVersion',
       'taskTool',
       'taskToolConfig',
-      'defaultExecutionMode',
+      // 'defaultExecutionMode' intentionally NOT known: ultrawork and the
+      // generic execution-mode routing were removed in 5.0.0 and no runtime
+      // reads this key. A persisted value is stale and should surface here.
       'bashHistory',
       'agentTiers',
       'setupCompleted',

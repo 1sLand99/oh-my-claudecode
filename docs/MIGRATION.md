@@ -70,7 +70,7 @@ names no longer resolve. Use the replacement in the table below.
 | `ccg`                  | `/oh-my-claudecode:ask` + `/team`        | Run `/ask codex` and `/ask antigravity`, then synthesize      |
 | `omc-teams`            | `/oh-my-claudecode:team` or `omc team`   |                                                               |
 | `setup`                | `/oh-my-claudecode:omc-setup`            |                                                               |
-| `mcp-setup`            | `/oh-my-claudecode:omc-setup`            |                                                               |
+| `mcp-setup`            | Claude Code native MCP configuration     | Use `claude mcp add <name> ...` or the path selected by `CLAUDE_MCP_CONFIG_PATH`. |
 | `omc-reference`        | `/oh-my-claudecode:wiki`                 | Model-routing reference moved into the wiki skill             |
 | `learner`              | `/oh-my-claudecode:remember`             |                                                               |
 | `writer-memory`        | `/oh-my-claudecode:remember`             |                                                               |
