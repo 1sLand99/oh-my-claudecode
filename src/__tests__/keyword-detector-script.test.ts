@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -15,13 +15,11 @@ function runKeywordDetector(
   env: NodeJS.ProcessEnv = {},
   detectorPath = SCRIPT_PATH,
 ) {
-  // Script hooks resolve non-git state through the workspace marker or HOME;
-  // keep both the marker-backed project state and hook-owned user files out of
-  // the checkout and the runner's real home directory.
   const homeDir = mkdtempSync(join(tmpdir(), 'keyword-detector-home-'));
-  const markerPath = cwd !== process.cwd() ? join(cwd, '.omc-workspace') : null;
-  const addedMarker = markerPath !== null && !existsSync(markerPath);
-  if (addedMarker) writeFileSync(markerPath, '');
+  const isFixtureCwd = cwd !== process.cwd();
+  if (isFixtureCwd && !existsSync(join(cwd, '.git'))) {
+    execFileSync('git', ['init', '--quiet'], { cwd, stdio: 'pipe' });
+  }
 
   const effectiveHome = env.HOME || homeDir;
   const childEnv = {
@@ -61,9 +59,6 @@ function runKeywordDetector(
       };
     };
   } finally {
-    if (addedMarker) {
-      try { unlinkSync(markerPath); } catch { /* best effort */ }
-    }
     rmSync(homeDir, { recursive: true, force: true });
   }
 }

@@ -4,9 +4,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { execSync } from 'child_process';
+import { execFileSync, execSync } from 'child_process';
 import { join } from 'path';
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import process from 'process';
 import { detectAnnouncedBackgroundLaunch, detectBashFailure, detectWriteFailure, isBackgroundToolInvocation, isClaudeCodeWriteSuccess, isNonZeroExitWithOutput, summarizeAgentResult } from '../../scripts/post-tool-verifier.mjs';
@@ -39,13 +39,10 @@ function runPostToolVerifier(input, env = {}) {
 }
 
 function scopedHookEnvironment(cwd, env) {
-  // Script hooks resolve non-git state through the workspace marker or HOME;
-  // keep both the marker-backed project state and hook-owned user files out of
-  // the checkout and the runner's real home directory.
   const homeDir = mkdtempSync(join(tmpdir(), 'post-tool-verifier-home-'));
-  const markerPath = cwd && cwd !== process.cwd() ? join(cwd, '.omc-workspace') : null;
-  const addedMarker = markerPath && !existsSync(markerPath);
-  if (addedMarker) writeFileSync(markerPath, '');
+  if (cwd && cwd !== process.cwd() && !existsSync(join(cwd, '.git'))) {
+    execFileSync('git', ['init', '--quiet'], { cwd, stdio: 'pipe' });
+  }
 
   const effectiveHome = env.HOME || homeDir;
   const childEnv = {
@@ -65,9 +62,6 @@ function scopedHookEnvironment(cwd, env) {
   return {
     childEnv,
     cleanup() {
-      if (addedMarker) {
-        try { unlinkSync(markerPath); } catch { /* best effort */ }
-      }
       rmSync(homeDir, { recursive: true, force: true });
     },
   };
