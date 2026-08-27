@@ -4,7 +4,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, renameSync
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { getOmcRoot } from '../lib/worktree-paths.js';
+import { clearWorktreeCache, getOmcRoot } from '../lib/worktree-paths.js';
 
 const ROOT = process.cwd();
 const NODE = process.execPath;
@@ -126,7 +126,13 @@ function abandonedLockOwner() {
 }
 
 function stateBytes(cwd: string) {
-  const path = statePathFor(cwd);
+  const stateDir = fixtureStateDir(cwd);
+  const previousStateDir = process.env.OMC_STATE_DIR;
+  process.env.OMC_STATE_DIR = stateDir;
+  clearWorktreeCache();
+  const path = join(getOmcRoot(cwd), 'state', 'sessions', SESSION_ID, 'autopilot-state.json');
+  if (previousStateDir === undefined) delete process.env.OMC_STATE_DIR;
+  else process.env.OMC_STATE_DIR = previousStateDir;
   return existsSync(path) ? readFileSync(path) : null;
 }
 

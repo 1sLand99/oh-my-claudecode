@@ -78,8 +78,8 @@ export async function resolveOmcStateRoot(directory) {
     let gitRoot = null;
     try { gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: directory, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: 5000 }).trim() || null; } catch {}
     if (!gitRoot) return join(customDir, 'non-git');
-    let source = gitRoot;
-    try { source = execFileSync('git', ['remote', 'get-url', 'origin'], { cwd: gitRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: 5000 }).trim() || gitRoot; } catch {}
+    let source = directory;
+    try { source = execFileSync('git', ['remote', 'get-url', 'origin'], { cwd: gitRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: 5000 }).trim() || directory; } catch {}
     const hash = createHash('sha256').update(source).digest('hex').slice(0, 16);
     return join(customDir, `${basename(gitRoot).replace(/[^a-zA-Z0-9_-]/g, '_')}-${hash}`);
   }
