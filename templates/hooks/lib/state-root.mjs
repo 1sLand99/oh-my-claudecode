@@ -59,8 +59,8 @@ function primaryGitRoot(gitRoot) {
 }
 
 function probeGitRoot(directory) {
-  try { return execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: directory, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: 5000 }).trim() || null; }
-  catch (error) { if (error?.status === 128) return null; throw error; }
+  try { return execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: directory, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, timeout: 5000 }).trim() || null; }
+  catch (error) { if (error?.code === 'ENOENT' || (error?.status === 128 && /not a git repository/i.test(String(error?.stderr ?? '')))) return null; throw error; }
 }
 
 function isSafeWorkspaceRoot(workspaceRoot) {
@@ -114,14 +114,7 @@ export async function resolveOmcStateRoot(directory) {
   const workspaceRoot = findWorkspaceRoot(directory);
   if (workspaceRoot && isSafeWorkspaceRoot(workspaceRoot)) return join(workspaceRoot, '.omc');
   const gitRoot = probeGitRoot(directory);
-  if (gitRoot) return join(primaryGitRoot(gitRoot), '.omc');
-  let cursor = resolve(directory);
-  while (true) {
-    if (existsSync(join(cursor, '.omc-workspace'))) return join(cursor, '.omc');
-    const parent = dirname(cursor);
-    if (parent === cursor || cursor === resolve(homedir())) break;
-    cursor = parent;
-  }
+  if (gitRoot) return join(gitRoot, '.omc');
   return join(homedir(), '.omc');
 }
 

@@ -270,6 +270,17 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
       ]);
       expect(new Set(workspaceRoots).size).toBe(1);
       expect(workspaceRoots[0]).toContain('fallback-parity-');
+
+      delete process.env.OMC_STATE_DIR;
+      clearWorktreeCache();
+      const defaultRoots = await Promise.all([
+        getOmcRoot(linked),
+        esm.resolveOmcStateRoot(linked),
+        cjs.resolveOmcStateRoot(linked),
+        template.resolveOmcStateRoot(linked),
+      ]);
+      expect(new Set(defaultRoots).size).toBe(1);
+      expect(defaultRoots[0]).toBe(join(linked, '.omc'));
     } finally {
       if (previousStateDir === undefined) delete process.env.OMC_STATE_DIR;
       else process.env.OMC_STATE_DIR = previousStateDir;
