@@ -291,15 +291,16 @@ const CONTRACTS: Record<CliAgentType, CliAgentContract> = {
     agentType: 'cursor',
     binary: 'cursor-agent',
     installInstructions: 'Install Cursor Agent CLI: see https://docs.cursor.com/cli',
-    // cursor-agent runs as an interactive REPL — no exit-on-complete prompt mode.
-    // Keep supportsPromptMode false so the verdict-file contract path
-    // (CONTRACT_ROLES + shouldInjectContract) skips this provider; cursor
-    // workers participate as executors only.
+    // Team workers must be persistent interactive panes, so the one-shot
+    // `-p/--print` path is deliberately unused here (same stance as codex).
     supportsPromptMode: false,
-    buildLaunchArgs(_model?: string, extraFlags: string[] = []): string[] {
-      // Minimal flags — cursor-agent owns its own session/auth state.
-      // The model is selected interactively inside cursor-agent itself.
-      return [...extraFlags];
+    buildLaunchArgs(model?: string, extraFlags: string[] = []): string[] {
+      // cursor-agent owns its own session/auth state, so no approval flags are
+      // needed. `--model <id>` is a documented global option; ids come from
+      // `cursor-agent --list-models` (e.g. cursor-grok-4.6-high, composer-2.5).
+      const args: string[] = [];
+      if (model) args.push('--model', model);
+      return [...args, ...extraFlags];
     },
     parseOutput(rawOutput: string): string {
       return rawOutput.trim();

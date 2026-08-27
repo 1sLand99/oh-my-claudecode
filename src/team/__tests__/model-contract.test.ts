@@ -372,6 +372,32 @@ describe('model-contract', () => {
       const withModel = buildLaunchArgs('grok', { teamName: 't', workerName: 'w', cwd: '/tmp', model: 'grok-4-fast' });
       expect(withModel).toEqual(['--always-approve', '--model', 'grok-4-fast']);
     });
+    it('cursor emits no flags without a model and appends --model <m> when given (issue #3880)', () => {
+      const noModel = buildLaunchArgs('cursor', { teamName: 't', workerName: 'w', cwd: '/tmp' });
+      expect(noModel).toEqual([]);
+      expect(noModel).not.toContain('--model');
+
+      const emptyModel = buildLaunchArgs('cursor', { teamName: 't', workerName: 'w', cwd: '/tmp', model: '' });
+      expect(emptyModel).toEqual([]);
+      expect(emptyModel).not.toContain('--model');
+
+      const withModel = buildLaunchArgs('cursor', { teamName: 't', workerName: 'w', cwd: '/tmp', model: 'cursor-grok-4.6-high' });
+      expect(withModel).toEqual(['--model', 'cursor-grok-4.6-high']);
+    });
+    it('cursor appends extraFlags after the model flag (issue #3880)', () => {
+      const args = buildLaunchArgs('cursor', { teamName: 't', workerName: 'w', cwd: '/tmp', model: 'composer-2.5', extraFlags: ['--foo'] });
+      expect(args).toEqual(['--model', 'composer-2.5', '--foo']);
+
+      const noModel = buildLaunchArgs('cursor', { teamName: 't', workerName: 'w', cwd: '/tmp', extraFlags: ['--foo'] });
+      expect(noModel).toEqual(['--foo']);
+    });
+    it('cursor worker argv leads with the cursor-agent binary then --model (issue #3880)', () => {
+      const argv = buildWorkerArgv('cursor', {
+        teamName: 'cursor-team', workerName: 'w', cwd: '/tmp',
+        model: 'cursor-grok-4.6-high', resolvedBinaryPath: '/usr/local/bin/cursor-agent',
+      });
+      expect(argv).toEqual(['/usr/local/bin/cursor-agent', '--model', 'cursor-grok-4.6-high']);
+    });
     it('passes model flag when specified', () => {
       const args = buildLaunchArgs('codex', { teamName: 't', workerName: 'w', cwd: '/tmp', model: 'gpt-4' });
       expect(args).toContain('--model');
