@@ -219,7 +219,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         expect(output).toEqual({ continue: true, suppressOutput: true });
     });
     it('uses legacy mode files when session_id is not provided', () => {
-        writeJson(join(tempDir, '.omc', 'state', 'ralph-state.json'), {
+        writeJson(join(tempDir, '.omc', 'state', 'ultrawork-state.json'), {
             active: true,
         });
         const output = runPreToolEnforcer({
@@ -919,7 +919,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         expect(output.continue).toBe(true);
         expect(output.hookSpecificOutput.additionalContext).toContain('The boulder never stops');
         expect(JSON.parse(readFileSync(join(sessionStateDir, 'ralph-state.json'), 'utf-8')).awaiting_confirmation).toBeUndefined();
-        expect(JSON.parse(readFileSync(join(sessionStateDir, 'ultrawork-state.json'), 'utf-8')).awaiting_confirmation).toBe(true);
+        expect(JSON.parse(readFileSync(join(sessionStateDir, 'ultrawork-state.json'), 'utf-8')).awaiting_confirmation).toBeUndefined();
     });
     // === Model routing / forceInherit tests (issue #1868 catch-22) ===
     it('allows tier alias "sonnet" through when OMC_SUBAGENT_MODEL is set and forceInherit is enabled', () => {

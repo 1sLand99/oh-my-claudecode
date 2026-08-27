@@ -5,7 +5,7 @@ import { promisify } from 'util';
 import { execFileSync } from 'child_process';
 import { tmpdir } from 'os';
 import { listDispatchRequests } from '../dispatch-queue.js';
-import { getWorkerStartupEvidencePolicy, settleStartupEvidence, promptModeRecoveryRequiresProgressEvidence, waitForStartupEvidenceBudget, } from '../runtime-v2.js';
+import { getWorkerStartupEvidencePolicy, promptModeRecoveryRequiresProgressEvidence, waitForStartupEvidenceBudget, } from '../runtime-v2.js';
 const mocks = vi.hoisted(() => ({
     createTeamSession: vi.fn(),
     spawnWorkerInPane: vi.fn(),
@@ -259,7 +259,7 @@ describe('runtime v2 startup inbox dispatch', () => {
             }
             return { ok: true, kind: 'attempted_unconfirmed' };
         });
-        mocks.retryStartupInboxSubmit.mockResolvedValue('unavailable');
+        mocks.retryStartupInboxSubmit.mockResolvedValue(false);
         mocks.waitForPaneReady.mockResolvedValue(true);
         mocks.sendToWorker.mockResolvedValue(true);
         mocks.applyMainVerticalLayout.mockResolvedValue(undefined);
@@ -308,7 +308,6 @@ describe('runtime v2 startup inbox dispatch', () => {
     });
     afterEach(async () => {
         vi.useRealTimers();
-        delete process.env.OMC_TEAM_ENGAGED_PANE_RECHECK_MS;
         process.chdir(originalCwd);
         if (cwd)
             await rm(cwd, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
@@ -1094,107 +1093,6 @@ describe('runtime v2 startup inbox dispatch', () => {
         expect(Date.now() - startedAt).toBe(30_250);
         expect(policy.resubmitAttempts).toBe(0);
     });
-    it('keeps an engaged Claude pane alive until evidence lands deep in the engaged recheck window', async () => {
-        vi.useFakeTimers();
-        const policy = getWorkerStartupEvidencePolicy('claude');
-        const startedAt = Date.now();
-        let hasEvidence = false;
-        setTimeout(() => { hasEvidence = true; }, 20_010);
-        const evidencePromise = settleStartupEvidence(policy, budgetMs => waitForStartupEvidenceBudget(async () => hasEvidence, budgetMs), async () => 'pane_busy');
-        let settled = false;
-        void evidencePromise.finally(() => { settled = true; });
-        await vi.advanceTimersByTimeAsync(20_249);
-        expect(settled).toBe(false);
-        await vi.advanceTimersByTimeAsync(1);
-        await expect(evidencePromise).resolves.toBe(true);
-        expect(Date.now() - startedAt).toBe(20_250);
-        expect(policy.engagedPaneRecheckBudgetMs).toBe(30_000);
-    });
-    it('times out engaged Claude evidence at exactly 31.25s (initial budget plus engaged recheck)', async () => {
-        vi.useFakeTimers();
-        const policy = getWorkerStartupEvidencePolicy('claude');
-        const startedAt = Date.now();
-        const evidencePromise = settleStartupEvidence(policy, budgetMs => waitForStartupEvidenceBudget(async () => false, budgetMs), async () => 'pane_busy');
-        let settled = false;
-        void evidencePromise.finally(() => { settled = true; });
-        await vi.advanceTimersByTimeAsync(31_249);
-        expect(settled).toBe(false);
-        await vi.advanceTimersByTimeAsync(1);
-        await expect(evidencePromise).resolves.toBe(false);
-        expect(Date.now() - startedAt).toBe(31_250);
-    });
-    it('still fails an unengaged Claude pane at the fast 1.25s boundary', async () => {
-        vi.useFakeTimers();
-        const policy = getWorkerStartupEvidencePolicy('claude');
-        const startedAt = Date.now();
-        const evidencePromise = settleStartupEvidence(policy, budgetMs => waitForStartupEvidenceBudget(async () => false, budgetMs), async () => 'unavailable');
-        let settled = false;
-        void evidencePromise.finally(() => { settled = true; });
-        await vi.advanceTimersByTimeAsync(1_249);
-        expect(settled).toBe(false);
-        await vi.advanceTimersByTimeAsync(1);
-        await expect(evidencePromise).resolves.toBe(false);
-        expect(Date.now() - startedAt).toBe(1_250);
-    });
-    it('honors OMC_TEAM_ENGAGED_PANE_RECHECK_MS when bounding the engaged recheck', async () => {
-        vi.useFakeTimers();
-        process.env.OMC_TEAM_ENGAGED_PANE_RECHECK_MS = '500';
-        const policy = getWorkerStartupEvidencePolicy('claude');
-        const startedAt = Date.now();
-        expect(policy.engagedPaneRecheckBudgetMs).toBe(500);
-        const evidencePromise = settleStartupEvidence(policy, budgetMs => waitForStartupEvidenceBudget(async () => false, budgetMs), async () => 'pane_busy');
-        await vi.advanceTimersByTimeAsync(1_750);
-        await expect(evidencePromise).resolves.toBe(false);
-        expect(Date.now() - startedAt).toBe(1_750);
-    });
-    it('accepts evidence published by the unavailable probe itself through the terminal budget-0 check', async () => {
-        vi.useFakeTimers();
-        const policy = getWorkerStartupEvidencePolicy('claude');
-        const startedAt = Date.now();
-        let hasEvidence = false;
-        const evidencePromise = settleStartupEvidence(policy, budgetMs => waitForStartupEvidenceBudget(async () => hasEvidence, budgetMs), async () => {
-            // The pane is not engaged, but the worker publishes status evidence at
-            // the exact moment the probe runs; the terminal read-only check must
-            // observe it instead of discarding a healthy launch.
-            hasEvidence = true;
-            return 'unavailable';
-        });
-        let settled = false;
-        void evidencePromise.finally(() => { settled = true; });
-        await vi.advanceTimersByTimeAsync(1_249);
-        expect(settled).toBe(false);
-        await vi.advanceTimersByTimeAsync(1);
-        await expect(evidencePromise).resolves.toBe(true);
-        expect(Date.now() - startedAt).toBe(1_250);
-    });
-    it('clamps OMC_TEAM_ENGAGED_PANE_RECHECK_MS and rejects non-numeric overrides', async () => {
-        vi.useFakeTimers();
-        process.env.OMC_TEAM_ENGAGED_PANE_RECHECK_MS = '9999999';
-        expect(getWorkerStartupEvidencePolicy('claude').engagedPaneRecheckBudgetMs).toBe(120_000);
-        process.env.OMC_TEAM_ENGAGED_PANE_RECHECK_MS = '500abc';
-        expect(getWorkerStartupEvidencePolicy('claude').engagedPaneRecheckBudgetMs).toBe(30_000);
-        process.env.OMC_TEAM_ENGAGED_PANE_RECHECK_MS = '0';
-        expect(getWorkerStartupEvidencePolicy('claude').engagedPaneRecheckBudgetMs).toBe(30_000);
-        process.env.OMC_TEAM_ENGAGED_PANE_RECHECK_MS = '0.9';
-        expect(getWorkerStartupEvidencePolicy('claude').engagedPaneRecheckBudgetMs).toBe(1);
-        delete process.env.OMC_TEAM_ENGAGED_PANE_RECHECK_MS;
-        expect(getWorkerStartupEvidencePolicy('claude').engagedPaneRecheckBudgetMs).toBe(30_000);
-        await vi.advanceTimersByTimeAsync(0);
-    });
-    it('keeps the Codex settle path at 31s with no engaged extension', async () => {
-        vi.useFakeTimers();
-        const policy = getWorkerStartupEvidencePolicy('codex');
-        const startedAt = Date.now();
-        expect(policy.engagedPaneRecheckBudgetMs).toBe(0);
-        const evidencePromise = settleStartupEvidence(policy, budgetMs => waitForStartupEvidenceBudget(async () => false, budgetMs), async () => 'pane_busy');
-        let settled = false;
-        void evidencePromise.finally(() => { settled = true; });
-        await vi.advanceTimersByTimeAsync(30_999);
-        expect(settled).toBe(false);
-        await vi.advanceTimersByTimeAsync(1);
-        await expect(evidencePromise).resolves.toBe(false);
-        expect(Date.now() - startedAt).toBe(31_000);
-    });
     it('rejects a stale worker status that predates the current startup trigger', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-stale-status-'));
         mocks.autoStartupEvidence = false;
@@ -1378,77 +1276,6 @@ describe('runtime v2 startup inbox dispatch', () => {
         });
         expect(runtime.config.workers[0]?.assigned_tasks).toEqual(['1']);
         expect(mocks.sendToWorker).toHaveBeenCalledTimes(1);
-    });
-    it('keeps a provider-started Claude worker alive when an engaged pane publishes evidence late (#3849)', async () => {
-        cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-claude-engaged-late-'));
-        mocks.autoStartupEvidence = false;
-        // Issue #3849 reproduction shape: the provider is started and healthy, the
-        // pane visibly consumed the startup trigger (spinner + esc-to-interrupt),
-        // and the first-turn status evidence lands only after the initial budget.
-        mocks.retryStartupInboxSubmit.mockImplementation(async () => {
-            const workerDir = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'workers', 'worker-1');
-            await mkdir(workerDir, { recursive: true });
-            await writeFile(join(workerDir, 'status.json'), JSON.stringify({
-                state: 'working',
-                current_task_id: '1',
-                updated_at: new Date().toISOString(),
-                launch_attempt_id: 'attempt-worker-1',
-            }, null, 2), 'utf8');
-            return 'pane_busy';
-        });
-        const { startTeamV2 } = await import('../runtime-v2.js');
-        const runtime = await startTeamV2({
-            teamName: 'dispatch-team',
-            workerCount: 1,
-            agentTypes: ['claude'],
-            tasks: [{ subject: 'Dispatch test', description: 'Verify engaged pane survives slow first-turn evidence' }],
-            cwd,
-        });
-        expect(runtime.config.workers[0]?.assigned_tasks).toEqual(['1']);
-        expect(mocks.retryStartupInboxSubmit).toHaveBeenCalledTimes(1);
-        expect(mocks.killOwnedWorkerPane).not.toHaveBeenCalled();
-        expect(launchMocks.retireAndCleanupCurrentWorkerLaunchAttempt).not.toHaveBeenCalledWith(expect.objectContaining({ attempt_id: 'attempt-worker-1' }), 'startup_dispatch_failed', expect.any(Function));
-        const requests = await listDispatchRequests('dispatch-team', cwd, { kind: 'inbox' });
-        expect(requests[0]).toMatchObject({ status: 'notified', last_reason: 'worker_startup_confirmed' });
-    });
-    it('fails closed with verified teardown when an engaged Claude pane never publishes evidence', async () => {
-        cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-claude-engaged-dead-'));
-        mocks.autoStartupEvidence = false;
-        process.env.OMC_TEAM_ENGAGED_PANE_RECHECK_MS = '250';
-        mocks.retryStartupInboxSubmit.mockImplementation(async () => 'pane_busy');
-        const { startTeamV2 } = await import('../runtime-v2.js');
-        const runtime = await startTeamV2({
-            teamName: 'dispatch-team',
-            workerCount: 1,
-            agentTypes: ['claude'],
-            tasks: [{ subject: 'Dispatch test', description: 'Verify engaged pane still fails closed without evidence' }],
-            cwd,
-        });
-        expect(runtime.config.workers[0]?.assigned_tasks).toEqual([]);
-        const requests = await listDispatchRequests('dispatch-team', cwd, { kind: 'inbox' });
-        expect(requests[0]).toMatchObject({ status: 'failed', last_reason: 'worker_startup_evidence_missing' });
-        expect(mocks.killOwnedWorkerPane).toHaveBeenCalledWith(expect.objectContaining({ paneId: '%2' }));
-        expect(launchMocks.retireAndCleanupCurrentWorkerLaunchAttempt).toHaveBeenCalledWith(expect.objectContaining({ attempt_id: 'attempt-worker-1' }), 'startup_dispatch_failed', expect.any(Function));
-    });
-    it('breaks the resubmit loop immediately and fails fast when the pane is not engaged', async () => {
-        cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-claude-unengaged-'));
-        mocks.autoStartupEvidence = false;
-        mocks.retryStartupInboxSubmit.mockImplementation(async () => 'unavailable');
-        const startedAt = Date.now();
-        const { startTeamV2 } = await import('../runtime-v2.js');
-        const runtime = await startTeamV2({
-            teamName: 'dispatch-team',
-            workerCount: 1,
-            agentTypes: ['claude'],
-            tasks: [{ subject: 'Dispatch test', description: 'Verify unengaged pane fails fast' }],
-            cwd,
-        });
-        expect(runtime.config.workers[0]?.assigned_tasks).toEqual([]);
-        expect(mocks.retryStartupInboxSubmit).toHaveBeenCalledTimes(1);
-        expect(Date.now() - startedAt).toBeLessThan(5_000);
-        const requests = await listDispatchRequests('dispatch-team', cwd, { kind: 'inbox' });
-        expect(requests[0]).toMatchObject({ status: 'failed', last_reason: 'worker_startup_evidence_missing' });
-        expect(mocks.killOwnedWorkerPane).toHaveBeenCalledWith(expect.objectContaining({ paneId: '%2' }));
     });
     it('direct grok launch resolves model from grok env vars and never calls resolveClaudeWorkerModel', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-grok-direct-'));

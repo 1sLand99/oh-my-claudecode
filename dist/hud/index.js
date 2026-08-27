@@ -277,7 +277,9 @@ async function main(watchMode = false, skipInit = false) {
         // Stdin owns fresher five-hour/seven-day values, while getUsage() may provide
         // Sonnet/Opus weekly, monthly, extra, stale, and error metadata.
         const stdinRateLimits = getRateLimitsFromStdin(stdin);
-        const usageResult = config.elements.rateLimits === false ? null : await getUsage();
+        const usageResult = config.elements.rateLimits === false
+            ? null
+            : await getUsage({ clientVersion: stdin.version });
         const rateLimitsResult = config.elements.rateLimits === false
             ? null
             : mergeStdinRateLimits(stdinRateLimits, usageResult);
