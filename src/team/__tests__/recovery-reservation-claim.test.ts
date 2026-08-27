@@ -46,8 +46,12 @@ describe('recovery reservation claim protocol', () => {
     expect(r1).toMatchObject({ ok: true, replayed: false });
     const adopted = await adoptRecoveryReservations(['1'], 'replacement', {
       recoveryId: 'recovery', requestId: 'request', replacementGeneration: 2, adoptionToken: 'adoption-token',
-    }, d);
-    expect(adopted[0]).toMatchObject({ ok: true, replayed: false });
+    }, { ...d, launchAttemptId: 'attempt-replacement' });
+    expect(adopted[0]).toMatchObject({
+      ok: true,
+      replayed: false,
+      task: { claim: { launch_attempt_id: 'attempt-replacement' } },
+    });
     const adoptedClaimToken = tasks['1'].claim!.token;
     expect(await releaseTaskClaim('1', adoptedClaimToken, 'replacement', d)).toMatchObject({ ok: true });
     expect(await claimTask('1', 'dead-worker', 6, d)).toMatchObject({ ok: true });

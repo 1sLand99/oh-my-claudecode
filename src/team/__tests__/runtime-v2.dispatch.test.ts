@@ -432,6 +432,41 @@ describe('runtime v2 startup inbox dispatch', () => {
     expect(config.service_descriptor).toMatchObject({ schema_version: 1, auto_merge_enabled: false, cadence_policy: 'disabled' });
   });
 
+  it('delivers trusted Cursor reviewer guidance in the default non-worktree inbox', async () => {
+    cwd = await mkdtempFixture('omc-runtime-v2-cursor-bootstrap-');
+    const { startTeamV2 } = await import('../runtime-v2.js');
+
+    await startTeamV2({
+      teamName: 'cursor-bootstrap-team',
+      workerCount: 1,
+      agentTypes: ['cursor'],
+      tasks: [{
+        subject: 'Review the implementation',
+        description: 'Inspect the change without editing files.',
+        role: 'critic',
+      }],
+      cwd,
+    });
+
+    const config = JSON.parse(await readFile(
+      join(cwd, '.omc', 'state', 'team', 'cursor-bootstrap-team', 'config.json'),
+      'utf-8',
+    ));
+    expect(config.workers[0].role).toBe('critic');
+    const inbox = await readFile(
+      join(cwd, '.omc', 'state', 'team', 'cursor-bootstrap-team', 'workers', 'worker-1', 'inbox.md'),
+      'utf-8',
+    );
+    expect(inbox).toContain('Agent-Type Guidance (cursor)');
+    expect(inbox).toContain('The trusted runtime has provided a "REQUIRED: Structured Verdict Output" section');
+    expect(inbox).toContain('do NOT edit, create, or delete any file');
+    expect(inbox).toContain('The leader consumes your structured verdict to transition the task');
+    expect(inbox).toContain('do NOT run `omc team api transition-task-status` for this reviewer assignment');
+    expect(inbox).toContain('do NOT type `/exit` unless the leader sends an explicit shutdown');
+    expect(inbox).toContain('REQUIRED: Structured Verdict Output');
+    expect(inbox).toContain('Review the implementation');
+  });
+
   it('settles every tmux worker between its split and provider spawn', async () => {
     cwd = await mkdtempFixture('omc-runtime-v2-layout-order-multi-');
     mocks.tmuxExecAsync.mockClear();

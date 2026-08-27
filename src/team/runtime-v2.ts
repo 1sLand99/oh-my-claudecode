@@ -63,7 +63,7 @@ import type {
 } from './types.js';
 import type { TeamPhase } from './phase-controller.js';
 import { validateTeamName } from './team-name.js';
-import { WORKER_NAME_SAFE_PATTERN } from './contracts.js';
+import { TASK_ID_SAFE_PATTERN, WORKER_NAME_SAFE_PATTERN } from './contracts.js';
 import type { CliAgentType } from './model-contract.js';
 import {
   buildValidatedWorkerLaunchDescriptor, clearResolvedPathCache, validateWorkerLaunchDescriptor, resolveValidatedBinaryPath,
@@ -103,6 +103,7 @@ import {
   generateTriggerMessage,
   generatePromptModeStartupPrompt,
   renderRecoveryContinuationInstruction,
+  renderCursorWorkerGuidance,
 } from './worker-bootstrap.js';
 import { queueInboxInstruction } from './mcp-comm.js';
 import {
@@ -122,6 +123,7 @@ import { buildResolvedRoutingSnapshot, getRoleRoutingSpec } from './stage-router
 import { inferLaneIntent, routeTaskToRole, type LaneIntent } from './role-router.js';
 import { normalizeDelegationRole } from '../features/delegation-routing/types.js';
 import {
+  CONTRACT_ROLES,
   cliWorkerOutputFilePath,
   parseCliWorkerVerdict,
   renderCliWorkerOutputContract,
@@ -750,6 +752,7 @@ function buildV2TaskInstruction(
   workerName: string,
   task: { subject: string; description: string },
   taskId: string,
+  agentType: CliAgentType,
   cliOutputContract?: string,
 ): string {
   const claimTaskCommand = formatOmcCliInvocation(
@@ -762,6 +765,20 @@ function buildV2TaskInstruction(
   const failTaskCommand = formatOmcCliInvocation(
     `team api transition-task-status --input '${JSON.stringify({ team_name: teamName, task_id: taskId, from: 'in_progress', to: 'failed', claim_token: '<claim_token>' })}' --json`,
   );
+  const cursorReviewer = agentType === 'cursor' && Boolean(cliOutputContract);
+  const lifecycleInstructions = cursorReviewer
+    ? [
+      `3. Write the structured verdict from the trusted reviewer contract below when the review is complete.`,
+      `4. ACK/progress replies are not a stop signal. Keep the Cursor session alive for further mailbox instructions; the leader transitions this task after consuming the verdict.`,
+    ]
+    : [
+      `3. On completion (use claim_token from step 1):`,
+      `   ${completeTaskCommand}`,
+      `   The result field is required for completion evidence. For broad delegated tasks, include either "Subagent skip reason: <why no nested worker was needed/allowed>" or, only when explicitly allowed by the leader, "Subagent spawn evidence: <child task names/thread ids and integrated findings>".`,
+      `4. On failure (use claim_token from step 1):`,
+      `   ${failTaskCommand}`,
+      `5. ACK/progress replies are not a stop signal. Keep executing your assigned or next feasible work until the task is actually complete or failed, then transition and exit.`,
+    ];
   return [
     `## REQUIRED: Task Lifecycle Commands`,
     `You MUST run these commands. Do NOT skip any step.`,
@@ -770,12 +787,7 @@ function buildV2TaskInstruction(
     `   ${claimTaskCommand}`,
     `   Save the claim_token from the response.`,
     `2. Do the work described below.`,
-    `3. On completion (use claim_token from step 1):`,
-    `   ${completeTaskCommand}`,
-    `   The result field is required for completion evidence. For broad delegated tasks, include either "Subagent skip reason: <why no nested worker was needed/allowed>" or, only when explicitly allowed by the leader, "Subagent spawn evidence: <child task names/thread ids and integrated findings>".`,
-    `4. On failure (use claim_token from step 1):`,
-    `   ${failTaskCommand}`,
-    `5. ACK/progress replies are not a stop signal. Keep executing your assigned or next feasible work until the task is actually complete or failed, then transition and exit.`,
+    ...lifecycleInstructions,
     ``,
     `## Task Assignment`,
     `Task ID: ${taskId}`,
@@ -784,7 +796,10 @@ function buildV2TaskInstruction(
     ``,
     task.description,
     ``,
-    `REMINDER: You MUST run transition-task-status before exiting. Do NOT write done.json or edit task files directly.`,
+    cursorReviewer
+      ? `REMINDER: Write the verdict before yielding the review turn. Do NOT run transition-task-status or write done.json; the leader owns the terminal transition.`
+      : `REMINDER: You MUST run transition-task-status before exiting. Do NOT write done.json or edit task files directly.`,
+    ...(agentType === 'cursor' ? [renderCursorWorkerGuidance(Boolean(cliOutputContract))] : []),
     ...(cliOutputContract ? [cliOutputContract] : []),
   ].join('\n');
 }
@@ -812,8 +827,8 @@ interface SpawnV2WorkerOptions {
   autoMerge?: boolean;
   /**
    * Canonical role resolved from the task. When set to a reviewer role AND
-   * agentType is codex/gemini/grok, the CLI-worker output contract (AC-7) is
-   * injected into the task instruction + startup prompt, and `output_file`
+   * agentType is a non-Claude provider, the CLI-worker output contract (AC-7)
+   * is injected into the task instruction + startup prompt, and `output_file`
    * is populated for the completion handler.
    */
   role?: CanonicalTeamRole;
@@ -1117,7 +1132,7 @@ async function spawnV2Worker(opts: SpawnV2WorkerOptions): Promise<SpawnV2WorkerR
     ? renderCliWorkerOutputContract(opts.role, outputFile)
     : undefined;
   const instruction = buildV2TaskInstruction(
-    opts.teamName, opts.workerName, opts.task, opts.taskId, cliOutputContract,
+    opts.teamName, opts.workerName, opts.task, opts.taskId, opts.agentType, cliOutputContract,
   );
   const instructionStateRoot = workerInstructionStateRoot(opts.cwd, opts.teamName);
   const startupBaseline = await captureWorkerStartupBaseline(
@@ -2751,6 +2766,10 @@ export async function executeRecoverDeadWorkerV2Owner(
               replacement_generation: sagaInput.replacementGeneration,
               operational_state: 'active' as const,
               ...(pending.startupContext ? { launch_attempt_id: pending.startupContext.attempt.attempt_id } : {}),
+              ...(pending.agentType === 'cursor'
+                && shouldInjectContract(normalizeDelegationRole(pending.worker.role) as CanonicalTeamRole, pending.agentType)
+                ? { output_file: cliWorkerOutputFilePath(teamStateRoot(input.cwd, input.teamName), sagaInput.workerName) }
+                : {}),
             }
           : candidate);
         const nextRevision = current.stateRevision + 1;
@@ -2796,9 +2815,17 @@ export async function executeRecoverDeadWorkerV2Owner(
       adoptAll: async (sagaInput, proof, taskIds) => {
         const pending = pendingRecoveryPanes.get(sagaInput.recoveryId);
         if (!pending?.startupContext) return { ok: false, error: 'worker_activation_failed' };
+        const startupAttemptId = pending.startupContext.attempt.attempt_id;
         const adoption = await withWorkerLaunchAttemptFence(pending.startupContext.attempt, async () => {
           await ensureFence();
-          return teamAdoptRecoveryReservations(input.teamName, input.cwd, taskIds, sagaInput.workerName, proof);
+          return teamAdoptRecoveryReservations(
+            input.teamName,
+            input.cwd,
+            taskIds,
+            sagaInput.workerName,
+            proof,
+            startupAttemptId,
+          );
         });
         if (!adoption.ok) return { ok: false, error: 'worker_activation_failed' };
         const results = adoption.value;
@@ -2855,15 +2882,32 @@ export async function executeRecoverDeadWorkerV2Owner(
         const waitForBoundedStartupEvidence = (resubmit?: () => Promise<StartupInboxResubmitOutcome>) =>
           settleStartupEvidence(evidencePolicy, waitForCurrentEvidence, resubmit);
         const instruction = continuations.length > 0
-          ? continuations.map(continuation => renderRecoveryContinuationInstruction({
-            teamName: input.teamName,
-            workerName: sagaInput.workerName,
-            taskId: continuation.taskId,
-            taskVersion: continuation.taskVersion,
-            claimToken: continuation.claimToken,
-            sequence: continuation.sequence,
-            resumePayload: continuation.payload,
-          })).join('\n\n')
+          ? continuations.map(continuation => {
+            const continuationInstruction = renderRecoveryContinuationInstruction({
+              teamName: input.teamName,
+              workerName: sagaInput.workerName,
+              taskId: continuation.taskId,
+              taskVersion: continuation.taskVersion,
+              claimToken: continuation.claimToken,
+              sequence: continuation.sequence,
+              resumePayload: continuation.payload,
+            });
+            const recoveryRole = normalizeDelegationRole(pending.worker.role) as CanonicalTeamRole;
+            const recoveryContract = pending.agentType === 'cursor'
+              && shouldInjectContract(recoveryRole, pending.agentType)
+              ? renderCliWorkerOutputContract(
+                recoveryRole,
+                cliWorkerOutputFilePath(teamStateRoot(input.cwd, input.teamName), sagaInput.workerName),
+                {
+                  taskId: continuation.taskId,
+                  claimToken: continuation.claimToken,
+                  taskVersion: continuation.taskVersion,
+                  launchAttemptId: startupAttemptId,
+                },
+              )
+              : '';
+            return `${continuationInstruction}${recoveryContract ? `\n${recoveryContract}` : ''}`;
+          }).join('\n\n')
           : 'Recovery completed for this idle worker. Wait for a real team task assignment and do not create or claim fake work.';
         const inboxPublished = await withWorkerLaunchAttemptFence(startupContext.attempt, async () => {
           await ensureFence();
@@ -3361,6 +3405,9 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
         cwd: leaderCwd,
         ...(config.rolePrompt ? { bootstrapInstructions: config.rolePrompt } : {}),
         instructionStateRoot: workerInstructionStateRoot(leaderCwd, sanitized),
+        ...(preparedLaunches.get(wName)?.role && shouldInjectContract(
+          preparedLaunches.get(wName)!.role!, preparedLaunches.get(wName)!.agentType,
+        ) ? { reviewerRole: true } : {}),
       });
       const worktree = workerWorktrees.get(wName);
       if (worktree) {
@@ -3394,7 +3441,8 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
     return {
       name: wName,
       index: i + 1,
-      role: config.workerRoles?.[i]
+      role: preparedLaunches.get(wName)?.role
+        ?? config.workerRoles?.[i]
         ?? (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? 'claude') as string,
       worker_cli: preparedLaunches.get(wName)!.descriptor.provider,
       launch_descriptor: preparedLaunches.get(wName)!.descriptor,
@@ -3793,8 +3841,9 @@ export interface CliWorkerVerdictResult {
 }
 
 /**
- * Post-exit handler for CLI workers that emitted a structured verdict
- * (AC-7). Scans workers whose panes have exited and whose WorkerInfo
+ * Completion handler for CLI workers that emitted a structured verdict
+ * (AC-7). Scans workers whose panes have exited, plus live Cursor panes whose
+ * persistent reviewer session has published a verdict, and whose WorkerInfo
  * carries `output_file`. For each:
  *   - Reads + validates the JSON payload via `parseCliWorkerVerdict`.
  *   - Locates the worker's in_progress task and writes a terminal status
@@ -3821,23 +3870,76 @@ export async function processCliWorkerVerdicts(
   );
 
   const { rename } = await import('fs/promises');
-  const { readFileSync, writeFileSync, existsSync: fsExistsSync } = await import('fs');
+  const { renameSync, readFileSync, writeFileSync, existsSync: fsExistsSync } = await import('fs');
   const { withFileLockSync } = await import('../lib/file-lock.js');
+  const { withTaskClaimLock, writeAtomic } = await import('./team-ops.js');
 
   for (const worker of config.workers) {
     const outputFile = worker.output_file;
     if (!outputFile) continue;
 
     const liveness = await getWorkerPaneLiveness(worker.pane_id);
-    if (liveness !== 'dead') continue;
+    const workerRole = normalizeDelegationRole(worker.role);
+    const cursorReviewer = worker.worker_cli === 'cursor'
+      && CONTRACT_ROLES.has(workerRole as CanonicalTeamRole);
+    const liveCursorReviewer = liveness === 'alive'
+      && worker.worker_cli === 'cursor'
+      && CONTRACT_ROLES.has(workerRole as CanonicalTeamRole);
+    // Cursor reviewers remain in their interactive pane after publishing a
+    // verdict. A valid output file is the explicit completion signal for that
+    // reviewer task; do not wait for the pane to exit. Other providers retain
+    // the post-exit contract so their live output cannot be consumed early.
+    if (liveness !== 'dead' && !liveCursorReviewer) continue;
+    const processedOutputFile = outputFile + '.processed';
+    const processingOutputFile = outputFile + '.processing';
+    if (cursorReviewer) {
+      const expectedOutputFile = cliWorkerOutputFilePath(teamStateRoot(cwd, sanitized), worker.name);
+      if (outputFile !== expectedOutputFile) {
+        results.push({
+          workerName: worker.name,
+          taskId: null,
+          status: 'skipped',
+          reason: 'cursor_verdict_output_path_unverified',
+        });
+        continue;
+      }
+    }
     if (!fsExistsSync(outputFile)) {
-      results.push({ workerName: worker.name, taskId: null, status: 'file_missing' });
-      continue;
+      if (cursorReviewer && fsExistsSync(processingOutputFile)) {
+        // A prior cycle claimed the file and may have crashed after the task
+        // transition. Reuse that durable in-flight artifact instead of waiting
+        // for a replacement verdict.
+      } else {
+        // A processed verdict is an intentional no-op on later monitor cycles,
+        // not a missing verdict. This keeps the handler idempotent for persistent
+        // Cursor panes and avoids repeated file_missing results/events.
+        if (liveCursorReviewer && fsExistsSync(processedOutputFile)) continue;
+        results.push({ workerName: worker.name, taskId: null, status: 'file_missing' });
+        continue;
+      }
     }
 
+    let verdictFile = cursorReviewer && fsExistsSync(processingOutputFile)
+      ? processingOutputFile
+      : outputFile;
     let payload: CliWorkerOutputPayload;
     try {
-      const raw = await readFile(outputFile, 'utf-8');
+      if (cursorReviewer && verdictFile === outputFile) {
+        // Claim a complete verdict before mutating task state. The per-output
+        // lock makes concurrent monitor cycles single-consumer and the
+        // `.processing` name lets a later cycle finish an interrupted commit.
+        withFileLockSync(outputFile + '.lock', () => {
+          if (fsExistsSync(processingOutputFile)) {
+            verdictFile = processingOutputFile;
+            return;
+          }
+          const raw = readFileSync(outputFile, 'utf-8');
+          parseCliWorkerVerdict(raw);
+          renameSync(outputFile, processingOutputFile);
+          verdictFile = processingOutputFile;
+        });
+      }
+      const raw = await readFile(verdictFile, 'utf-8');
       payload = parseCliWorkerVerdict(raw);
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
@@ -3850,19 +3952,57 @@ export async function processCliWorkerVerdicts(
       continue;
     }
 
+    if (cursorReviewer && payload.role !== workerRole) {
+      await appendTeamEvent(sanitized, {
+        type: 'team_leader_nudge',
+        worker: 'leader-fixed',
+        reason: `cli_worker_verdict_role_mismatch:${worker.name}:expected=${workerRole}:actual=${payload.role}`,
+      }, cwd).catch(logEventFailure);
+      if (verdictFile === processingOutputFile) {
+        try { await rename(verdictFile, processedOutputFile); } catch { /* best-effort quarantine */ }
+      }
+      results.push({
+        workerName: worker.name,
+        taskId: payload.task_id,
+        status: 'skipped',
+        verdict: payload.verdict,
+        reason: 'cursor_verdict_role_mismatch',
+      });
+      continue;
+    }
+
     const candidateTaskIds = new Set<string>();
     if (payload.task_id) candidateTaskIds.add(payload.task_id);
-    for (const id of worker.assigned_tasks ?? []) candidateTaskIds.add(id);
+    if (!cursorReviewer) {
+      for (const id of worker.assigned_tasks ?? []) candidateTaskIds.add(id);
+    }
 
     let targetTaskId: string | null = null;
     let targetTaskPath: string | null = null;
     for (const taskId of candidateTaskIds) {
+      if (!TASK_ID_SAFE_PATTERN.test(taskId)) continue;
       const taskPath = absPath(cwd, TeamPaths.taskFile(sanitized, taskId));
       if (!fsExistsSync(taskPath)) continue;
       try {
         const taskRaw = readFileSync(taskPath, 'utf-8');
         const taskData = JSON.parse(taskRaw) as TeamTask;
-        if (taskData.owner === worker.name && taskData.status === 'in_progress') {
+        const taskRole = typeof taskData.role === 'string'
+          ? normalizeDelegationRole(taskData.role)
+          : null;
+        const claim = taskData.claim && typeof taskData.claim === 'object'
+          ? taskData.claim as unknown as Record<string, unknown>
+          : null;
+        const claimMatchesCursorWorker = !cursorReviewer || (
+          claim?.owner === worker.name
+          && payload.claim_token === claim.token
+          && payload.task_version === taskData.version
+          && (worker.launch_attempt_id === undefined || claim.launch_attempt_id === worker.launch_attempt_id)
+          && (worker.launch_attempt_id === undefined || payload.launch_attempt_id === worker.launch_attempt_id)
+        );
+        if (taskData.owner === worker.name
+          && taskData.status === 'in_progress'
+          && (!cursorReviewer || taskRole === workerRole)
+          && claimMatchesCursorWorker) {
           targetTaskId = taskId;
           targetTaskPath = taskPath;
           break;
@@ -3873,6 +4013,58 @@ export async function processCliWorkerVerdicts(
     }
 
     if (!targetTaskId || !targetTaskPath) {
+      if (cursorReviewer && verdictFile === processingOutputFile) {
+        const processedTaskPath = absPath(cwd, TeamPaths.taskFile(sanitized, payload.task_id));
+        try {
+          const processedTask = JSON.parse(readFileSync(processedTaskPath, 'utf-8')) as Record<string, unknown>;
+          const metadata = processedTask.metadata && typeof processedTask.metadata === 'object'
+            ? processedTask.metadata as Record<string, unknown>
+            : undefined;
+          const processedTaskRole = typeof processedTask.role === 'string'
+            ? normalizeDelegationRole(processedTask.role)
+            : null;
+          const taskAlreadyRecorded = processedTask.owner === worker.name
+            && (processedTask.status === 'completed' || processedTask.status === 'failed')
+            && (!cursorReviewer || processedTaskRole === workerRole)
+            && metadata?.verdict_source === 'cli_worker_output_contract'
+            && (!cursorReviewer
+              || (metadata.verdict_claim_token === payload.claim_token
+                && metadata.verdict_task_version === payload.task_version))
+            && (worker.launch_attempt_id === undefined
+              || metadata.verdict_worker_launch_attempt_id === worker.launch_attempt_id)
+            && metadata.verdict === payload.verdict;
+          if (taskAlreadyRecorded) {
+            try { await rename(verdictFile, processedOutputFile); } catch { /* best-effort */ }
+            results.push({
+              workerName: worker.name,
+              taskId: payload.task_id,
+              status: 'already_terminal',
+              verdict: payload.verdict,
+            });
+            continue;
+          }
+          const currentClaim = processedTask.claim && typeof processedTask.claim === 'object'
+            ? processedTask.claim as Record<string, unknown>
+            : null;
+          const activeClaimMismatch = processedTask.owner === worker.name
+            && processedTask.status === 'in_progress'
+            && currentClaim?.owner === worker.name
+            && (!cursorReviewer || processedTaskRole === workerRole);
+          if (activeClaimMismatch) {
+            try { await rename(verdictFile, processedOutputFile); } catch { /* best-effort quarantine */ }
+            results.push({
+              workerName: worker.name,
+              taskId: payload.task_id,
+              status: 'skipped',
+              verdict: payload.verdict,
+              reason: 'cursor_verdict_claim_mismatch',
+            });
+            continue;
+          }
+        } catch {
+          // Fall through to the existing no-in-progress warning.
+        }
+      }
       await appendTeamEvent(sanitized, {
         type: 'team_leader_nudge',
         worker: 'leader-fixed',
@@ -3890,32 +4082,85 @@ export async function processCliWorkerVerdicts(
     const terminalStatus = payload.verdict === 'approve' ? 'completed' : 'failed';
     let transitionOk = false;
     try {
-      withFileLockSync(targetTaskPath + '.lock', () => {
-        const raw = readFileSync(targetTaskPath!, 'utf-8');
-        const taskData = JSON.parse(raw) as Record<string, unknown>;
-        if (taskData.status !== 'in_progress' || taskData.owner !== worker.name) {
-          return;
-        }
-        const prevMetadata = (taskData.metadata && typeof taskData.metadata === 'object')
-          ? taskData.metadata as Record<string, unknown>
-          : {};
-        taskData.status = terminalStatus;
-        taskData.completed_at = new Date().toISOString();
-        taskData.claim = undefined;
-        taskData.metadata = {
-          ...prevMetadata,
-          verdict: payload.verdict,
-          verdict_summary: payload.summary,
-          verdict_findings: payload.findings,
-          verdict_role: payload.role,
-          verdict_source: 'cli_worker_output_contract',
-        };
-        if (terminalStatus === 'failed') {
-          taskData.error = `cli_worker_verdict:${payload.verdict}:${payload.summary}`;
-        }
-        writeFileSync(targetTaskPath!, JSON.stringify(taskData, null, 2), 'utf-8');
-        transitionOk = true;
-      });
+      if (cursorReviewer) {
+        const transition = await withTaskClaimLock(sanitized, targetTaskId, cwd, async () => {
+          const raw = await readFile(targetTaskPath!, 'utf-8');
+          const taskData = JSON.parse(raw) as Record<string, unknown>;
+          if (taskData.status !== 'in_progress' || taskData.owner !== worker.name) {
+            return false;
+          }
+          const claim = taskData.claim && typeof taskData.claim === 'object'
+            ? taskData.claim as unknown as Record<string, unknown>
+            : null;
+          if (cursorReviewer && (
+            claim?.owner !== worker.name
+            || claim.token !== payload.claim_token
+            || taskData.version !== payload.task_version
+            || (worker.launch_attempt_id !== undefined && claim.launch_attempt_id !== worker.launch_attempt_id)
+            || (worker.launch_attempt_id !== undefined && payload.launch_attempt_id !== worker.launch_attempt_id)
+          )) {
+            return false;
+          }
+          const prevMetadata = (taskData.metadata && typeof taskData.metadata === 'object')
+            ? taskData.metadata as Record<string, unknown>
+            : {};
+          taskData.status = terminalStatus;
+          taskData.completed_at = new Date().toISOString();
+          taskData.claim = undefined;
+          taskData.metadata = {
+            ...prevMetadata,
+            verdict: payload.verdict,
+            verdict_summary: payload.summary,
+            verdict_findings: payload.findings,
+            verdict_role: payload.role,
+            verdict_source: 'cli_worker_output_contract',
+            ...(cursorReviewer ? {
+              verdict_claim_token: payload.claim_token,
+              verdict_task_version: payload.task_version,
+            } : {}),
+            ...(worker.launch_attempt_id
+              ? { verdict_worker_launch_attempt_id: worker.launch_attempt_id }
+              : {}),
+          };
+          if (terminalStatus === 'failed') {
+            taskData.error = `cli_worker_verdict:${payload.verdict}:${payload.summary}`;
+          }
+          taskData.version = typeof taskData.version === 'number' && Number.isFinite(taskData.version)
+            ? taskData.version + 1
+            : 2;
+          await writeAtomic(targetTaskPath!, JSON.stringify(taskData, null, 2));
+          return true;
+        });
+        transitionOk = transition.ok && transition.value;
+      } else {
+        // Preserve the existing post-exit path for non-Cursor providers.
+        withFileLockSync(targetTaskPath + '.lock', () => {
+          const raw = readFileSync(targetTaskPath!, 'utf-8');
+          const taskData = JSON.parse(raw) as Record<string, unknown>;
+          if (taskData.status !== 'in_progress' || taskData.owner !== worker.name) {
+            return;
+          }
+          const prevMetadata = (taskData.metadata && typeof taskData.metadata === 'object')
+            ? taskData.metadata as Record<string, unknown>
+            : {};
+          taskData.status = terminalStatus;
+          taskData.completed_at = new Date().toISOString();
+          taskData.claim = undefined;
+          taskData.metadata = {
+            ...prevMetadata,
+            verdict: payload.verdict,
+            verdict_summary: payload.summary,
+            verdict_findings: payload.findings,
+            verdict_role: payload.role,
+            verdict_source: 'cli_worker_output_contract',
+          };
+          if (terminalStatus === 'failed') {
+            taskData.error = `cli_worker_verdict:${payload.verdict}:${payload.summary}`;
+          }
+          writeFileSync(targetTaskPath!, JSON.stringify(taskData, null, 2), 'utf-8');
+          transitionOk = true;
+        });
+      }
     } catch {
       // lock or filesystem failure — leave task in_progress, do not rename verdict file
     }
@@ -3938,7 +4183,7 @@ export async function processCliWorkerVerdicts(
     }, cwd).catch(logEventFailure);
 
     try {
-      await rename(outputFile, outputFile + '.processed');
+      await rename(verdictFile, processedOutputFile);
     } catch {
       // best-effort; reprocess is idempotent (already_terminal on rerun)
     }
