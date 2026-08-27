@@ -51,7 +51,7 @@ function runHook(script: string, payload: Record<string, unknown>, env: Record<s
 function makeTempProject(prefix: string) {
   const cwd = mkdtempSync(join(tmpdir(), prefix));
   created.push(cwd);
-  writeFileSync(join(cwd, '.omc-workspace'), '');
+  execFileSync('git', ['init', '--quiet'], { cwd, stdio: 'pipe' });
   mkdirSync(join(cwd, '.omc', 'state', 'sessions', 'session-a'), { recursive: true });
   return cwd;
 }
