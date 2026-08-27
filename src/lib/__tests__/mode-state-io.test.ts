@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'crypto';
-import { execSync, spawn } from 'child_process';
+import { execFileSync, execSync, spawn } from 'child_process';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, rmSync, existsSync, readFileSync, readdirSync, writeFileSync, mkdtempSync, unlinkSync } from 'fs';
 import { basename, dirname, join } from 'path';
@@ -7,7 +7,7 @@ import { tmpdir } from 'os';
 
 import { emergencyMutateStateFileIf, recoverEmergencyStateFile, captureModeStateCleanup, findSessionOwnedStateCandidates, writeModeState, readModeState, readModeStateWithMeta, clearModeStateFile, withStateFileMutationLock } from '../mode-state-io.js';
 import { atomicWriteJsonSync } from '../atomic-write.js';
-import { clearWorktreeCache, getProjectIdentifier } from '../worktree-paths.js';
+import { clearWorktreeCache, getOmcRoot, getProjectIdentifier } from '../worktree-paths.js';
 
 let tempDir: string;
 const previousHome = process.env.HOME;
@@ -19,6 +19,24 @@ describe('mode-state-io', () => {
     process.env.HOME = tempDir;
     process.env.USERPROFILE = tempDir;
     clearWorktreeCache();
+  });
+
+  it('keeps a non-Git cwd in the non-git centralized namespace when HOME is Git-backed', () => {
+    const homeRepo = join(tempDir, 'home-repo');
+    const nonGitCwd = join(tempDir, 'non-git-cwd');
+    const centralized = join(tempDir, 'centralized-state');
+    mkdirSync(homeRepo, { recursive: true });
+    mkdirSync(nonGitCwd, { recursive: true });
+    execFileSync('git', ['init'], { cwd: homeRepo, stdio: 'pipe' });
+    process.env.HOME = homeRepo;
+    process.env.USERPROFILE = homeRepo;
+    process.env.OMC_STATE_DIR = centralized;
+    clearWorktreeCache();
+
+    expect(writeModeState('ralph', { active: true }, nonGitCwd, 'home-git-session')).toBe(true);
+    expect(readModeState('ralph', nonGitCwd, 'home-git-session')).toMatchObject({ active: true });
+    expect(getOmcRoot(nonGitCwd)).toBe(join(centralized, 'non-git'));
+    expect(existsSync(join(centralized, 'non-git', 'state', 'sessions', 'home-git-session', 'ralph-state.json'))).toBe(true);
   });
 
   afterEach(() => {

@@ -1697,13 +1697,13 @@ export function resolveStateWorkingDirectory(workingDirectory?: string): string 
     return validateWorkingDirectoryOrLinkedWorktree(workingDirectory);
   }
 
-  if (!workingDirectory) return resolveNonGitStateAnchor();
+  if (!workingDirectory) return process.cwd();
 
   // Run the strict resolver first so a mixed git/non-git or foreign-repository
   // request cannot be silently substituted with the startup cwd.
   validateWorkingDirectoryOrLinkedWorktree(workingDirectory);
   const validated = validateWorkingDirectory(workingDirectory);
-  return resolveNonGitStateAnchor(validated);
+  return validated;
 }
 
 function getGitCommonDir(cwd: string): string | null {

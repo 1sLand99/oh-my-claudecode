@@ -14,8 +14,6 @@ import {
   resolveStatePath,
   ensureOmcDir,
   resolveStateWorkingDirectory,
-  resolveNonGitStateAnchor,
-
   isSensitiveStateLocation,
   getGitTopLevel,
   probeGitTopLevel,
@@ -2296,8 +2294,10 @@ const stateMigrateNonGitTool: ToolDefinition<any> = {
       }
       if (isSensitiveStateLocation(sourceRoot)) throw new Error('state_migrate_non_git refuses sensitive source directories');
 
-      const canonicalRoot = resolveNonGitStateAnchor(sourceRoot);
-      const canonicalOmc = getOmcRoot(canonicalRoot);
+      // Keep the validated non-Git source as the identity input. Replacing it
+      // with HOME would let a Git checkout at HOME change the centralized
+      // namespace on the second root-resolution pass.
+      const canonicalOmc = getOmcRoot(sourceRoot);
       const sourceDir = join(sourceRoot, OmcPaths.ROOT, 'state', 'sessions', args.session_id);
       const destinationDir = join(canonicalOmc, 'state', 'sessions', args.session_id);
       const report = { source: sourceDir, destination: destinationDir, copied: [] as string[], skipped: [] as string[], rejected: [] as string[] };

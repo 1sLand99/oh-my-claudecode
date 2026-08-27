@@ -12,10 +12,35 @@
 'use strict';
 
 const { join, basename, dirname, resolve } = require('path');
-const { existsSync } = require('fs');
+const { existsSync, readFileSync } = require('fs');
 const { createHash } = require('crypto');
 const { execFileSync } = require('child_process');
 const { homedir } = require('os');
+
+function findWorkspaceRoot(directory) {
+  if (process.env.OMC_DISABLE_MULTIREPO === '1') return null;
+  const home = resolve(homedir());
+  let cursor = resolve(directory);
+  while (true) {
+    if (cursor === home) return null;
+    if (existsSync(join(cursor, '.omc-workspace'))) return cursor;
+    const parent = dirname(cursor);
+    if (parent === cursor) return null;
+    cursor = parent;
+  }
+}
+
+function workspaceIdentifier(workspaceRoot) {
+  try {
+    const config = JSON.parse(readFileSync(join(workspaceRoot, '.omc-workspace'), 'utf8'));
+    if (typeof config.id === 'string' && config.id.trim()) {
+      const safeId = config.id.trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+      return `${safeId}-${createHash('sha256').update(safeId).digest('hex').slice(0, 16)}`;
+    }
+  } catch {}
+  const hash = createHash('sha256').update(workspaceRoot).digest('hex').slice(0, 16);
+  return `${basename(workspaceRoot).replace(/[^a-zA-Z0-9_-]/g, '_')}-${hash}`;
+}
 
 /**
  * Resolve the .omc root directory, respecting OMC_STATE_DIR.
@@ -41,6 +66,8 @@ async function resolveOmcStateRoot(directory) {
   // TypeScript resolver when the generated distribution is unavailable.
   const customDir = process.env.OMC_STATE_DIR;
   if (customDir) {
+    const workspaceRoot = findWorkspaceRoot(directory);
+    if (workspaceRoot) return join(customDir, workspaceIdentifier(workspaceRoot));
     let gitRoot = null;
     try { gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: directory, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: 5000 }).trim() || null; } catch {}
     if (!gitRoot) return join(customDir, 'non-git');

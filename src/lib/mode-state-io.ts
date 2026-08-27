@@ -13,7 +13,6 @@ import { spawnSync } from 'child_process';
 import {
   getOmcRoot,
   probeGitTopLevel,
-  resolveNonGitStateAnchor,
   resolveStatePath,
   resolveSessionStatePath,
   ensureSessionStateDir,
@@ -1059,7 +1058,10 @@ function resolveStateRoot(directory?: string): string {
   const baseDir = directory || process.cwd();
   const probe = probeGitTopLevel(baseDir);
   if (probe.status === 'ok') return probe.root;
-  if (probe.status === 'not_a_repository') return resolveNonGitStateAnchor(baseDir);
+  // Keep the confirmed non-Git directory as the identity input. Converting it
+  // to HOME here is unsafe when HOME itself is a Git checkout: a later
+  // getOmcRoot() call would reclassify HOME as that repository.
+  if (probe.status === 'not_a_repository') return baseDir;
   throw new Error('Git probe failed while resolving runtime state root');
 }
 
