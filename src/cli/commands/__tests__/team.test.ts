@@ -563,13 +563,23 @@ describe('parseTeamArgs comma-separated multi-type specs', () => {
     expect(parsed.task).toBe('compare edits');
   });
 
-  it('rejects cursor with non-executor explicit roles', () => {
-    expect(() => parseTeamArgs(['1:cursor:architect', 'design auth'])).toThrow(
-      /Cursor workers are executor-style only/,
-    );
-    expect(() => parseTeamArgs(['1:cursor:security-reviewer', 'review auth'])).toThrow(
-      /Cursor workers are executor-style only/,
-    );
+  it('accepts cursor with non-executor explicit roles (issue #3880)', () => {
+    expect(parseTeamArgs(['1:cursor:architect', 'design auth']).workerSpecs).toEqual([
+      { agentType: 'cursor', role: 'architect' },
+    ]);
+    expect(parseTeamArgs(['1:cursor:security-reviewer', 'review auth']).workerSpecs).toEqual([
+      { agentType: 'cursor', role: 'security-reviewer' },
+    ]);
+  });
+
+  it('accepts a mixed cursor-reviewer / codex-critic spec (issue #3880)', () => {
+    const parsed = parseTeamArgs(['1:cursor:code-reviewer,1:codex:critic', 'review the change']);
+    expect(parsed.workerCount).toBe(2);
+    expect(parsed.agentTypes).toEqual(['cursor', 'codex']);
+    expect(parsed.workerSpecs).toEqual([
+      { agentType: 'cursor', role: 'code-reviewer' },
+      { agentType: 'codex', role: 'critic' },
+    ]);
   });
 
   it('parses single-type spec 2:antigravity into uniform agentTypes', () => {

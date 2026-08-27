@@ -940,7 +940,7 @@ User-friendly aliases normalize via `normalizeDelegationRole()` — e.g. `review
 
 `orchestrator` is pinned to `claude`; only `model` is user-configurable. Any other key on `orchestrator` is rejected by the validator.
 
-`cursor` launches `cursor-agent` as an interactive executor/refactor worker. Do not route reviewer/verdict roles (`critic`, `code-reviewer`, `security-reviewer`, `test-engineer`) to Cursor unless its CLI gains a compatible verdict-output mode; the runtime intentionally skips the structured verdict contract for Cursor panes.
+`cursor` launches `cursor-agent` as an interactive worker. Reviewer/verdict roles (`critic`, `code-reviewer`, `security-reviewer`, `test-engineer`) are supported and receive the same structured verdict-output contract as other non-Claude providers. The leader owns the terminal task transition after consuming the verdict; final approval remains a lead-session responsibility.
 
 ### Env override
 
