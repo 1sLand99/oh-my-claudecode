@@ -76402,6 +76402,10 @@
     }
   },
   "inventorySha256": "d34ebca442eea63fe880245c9973a6450b99ecf04856906bcd66c03d35ee5c5b",
+<<<<<<< HEAD
   "manifestSha256": "bb0ecdf94690d3ed227750c40b154be4edff9434c22710dd91dce75e1c04f716"
 >>>>>>> e490136a (fix(setup): remove retired workflow guidance)
+=======
+  "manifestSha256": "a79bfcf57ab9fb686f524e3853cf31056b50e124308f2e64e783131dde0262e2"
+>>>>>>> 2b532f65 (fix(setup): align backslash config paths)
 }

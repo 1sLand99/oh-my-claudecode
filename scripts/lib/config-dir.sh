@@ -11,6 +11,11 @@ resolve_claude_config_dir() {
       configured="${configured#\~/}"
       printf '%s/%s\n' "$HOME" "$configured"
       ;;
+    \~\\*)
+      configured="${configured#\~}"
+      configured="${configured#\\}"
+      printf '%s/%s\n' "$HOME" "$configured"
+      ;;
     *)
       printf '%s\n' "$configured"
       ;;

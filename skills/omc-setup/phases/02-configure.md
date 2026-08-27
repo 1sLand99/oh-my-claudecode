@@ -68,7 +68,7 @@ Notify user if a newer version is available:
 node -e "
 const p=require('path'),f=require('fs'),h=require('os').homedir();
 const raw=process.env.CLAUDE_CONFIG_DIR?.trim();
-const d=raw==null||raw===''? p.join(h,'.claude'):raw==='~'?h:raw.startsWith('~/')||raw.startsWith('~\\')?p.join(h,raw.slice(2)):raw;
+const d=raw==null||raw===''? p.join(h,'.claude'):raw==='~'?h:raw.startsWith('~/')||raw.startsWith('~\\\\')?p.join(h,raw.slice(2)):raw;
 let v='';
 // Try cache directory first
 const b=p.join(d,'plugins','cache','omc','oh-my-claudecode');
