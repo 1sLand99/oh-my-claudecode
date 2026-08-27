@@ -64,7 +64,7 @@ describe('self-improve session isolation (Wave B2)', () => {
     const claudeConfigDir = join(home, '.claude');
     mkdirSync(claudeConfigDir, { recursive: true });
     mkdirSync(join(home, '.config'), { recursive: true });
-    writeFileSync(join(root, '.omc-workspace'), '');
+    execFileSync('git', ['init', '--quiet'], { cwd: root, stdio: 'pipe' });
 
     process.env.HOME = home;
     process.env.USERPROFILE = home;

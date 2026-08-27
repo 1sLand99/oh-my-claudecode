@@ -115,7 +115,8 @@ export async function resolveOmcStateRoot(directory) {
   if (workspaceRoot && isSafeWorkspaceRoot(workspaceRoot)) return join(workspaceRoot, '.omc');
   const gitRoot = probeGitRoot(directory);
   if (gitRoot) return join(gitRoot, '.omc');
-  return join(homedir(), '.omc');
+  const home = resolve(homedir());
+  return join(home, '.omc');
 }
 
 /**
