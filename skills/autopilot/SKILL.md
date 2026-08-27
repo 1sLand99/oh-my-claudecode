@@ -212,8 +212,7 @@ or the Claude Code slash compatibility surface:
 ```
 
 Limitations:
-- Cursor workers are executor-style only: implementation, file edits, build/test fixes, and other plan execution tasks.
-- Keep reviewer, critic, security-review, validation verdict, and final approval roles on native Claude/OMC reviewer agents unless explicit safe support is added later.
+- Cursor workers support implementation and reviewer-style team roles. `critic`, `code-reviewer`, `security-reviewer`, and `test-engineer` workers must emit the structured verdict file consumed by the team leader; final approval remains a lead-session responsibility.
 - Cursor requires the `cursor-agent` CLI to be installed and authenticated. If `cursor-agent` is unavailable, report that setup requirement instead of silently falling back to Claude-only execution.
 
 ## Resume
