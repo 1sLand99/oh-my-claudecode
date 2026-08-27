@@ -128,8 +128,8 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
     fakeProject = join(tempDir, 'project');
     fakeStateDir = join(tempDir, 'centralized-state');
     mkdirSync(fakeProject, { recursive: true });
-    // session-start validateCwd requires a real workspace anchor (.git / .omc-workspace)
-    mkdirSync(join(fakeProject, '.git'), { recursive: true });
+    // Hook probes require valid Git metadata rather than an empty .git dir.
+    execFileSync('git', ['init'], { cwd: fakeProject, stdio: 'pipe' });
     mkdirSync(fakeStateDir, { recursive: true });
     process.env.HOME = tempDir;
     process.env.USERPROFILE = tempDir;

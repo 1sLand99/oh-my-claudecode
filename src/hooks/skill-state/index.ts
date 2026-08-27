@@ -37,13 +37,14 @@
  */
 
 import { existsSync } from 'fs';
+import { readFileSync, unlinkSync } from 'fs';
+import { atomicWriteJsonSync } from '../../lib/atomic-write.js';
 import {
   canClearStateForSession,
   clearStateFileLockedIf,
   readModeStateWithMeta,
-  writeStateFileLocked,
+  withStateFileMutationLock,
   writeModeState,
-  writeStateFileLockedCreateIf,
 } from '../../lib/mode-state-io.js';
 import {
   resolveStatePath,
@@ -608,37 +609,36 @@ export function writeSkillActiveStateCopies(
       );
     }
 
-    const result = writeStateFileLockedCreateIf(
-      rootPath,
-      () => true,
-      current => {
-        const merged = mergeSharedSkillLedger(current, rootState, sessionId);
-        return {
-          ...merged,
-          _meta: {
-            written_at: new Date().toISOString(),
-            mode: SKILL_ACTIVE_STATE_MODE,
-          },
-        };
-      },
-    );
-    if (result !== 'written') return false;
-    const merged = mergeSharedSkillLedger(
-      readModeStateWithMeta<Record<string, unknown>>(SKILL_ACTIVE_STATE_MODE, directory),
-      rootState,
-      sessionId,
-    );
-    if (isEmptyV2(merged)) {
-      const cleared = clearStateFileLockedIf(rootPath, current => isEmptyV2(normalizeToV2(current)));
-      return cleared !== 'failed' && (cleared !== 'skipped' || !existsSync(rootPath));
-    }
-    return true;
+    const transaction = withStateFileMutationLock(rootPath, () => {
+      let current: Record<string, unknown> | null = null;
+      if (existsSync(rootPath)) {
+        try { current = JSON.parse(readFileSync(rootPath, 'utf8')) as Record<string, unknown>; }
+        catch { return false; }
+      }
+      const merged = mergeSharedSkillLedger(current, rootState, sessionId);
+      if (isEmptyV2(merged)) {
+        if (existsSync(rootPath)) unlinkSync(rootPath);
+        return true;
+      }
+      atomicWriteJsonSync(rootPath, {
+        ...merged,
+        _meta: { written_at: new Date().toISOString(), mode: SKILL_ACTIVE_STATE_MODE },
+      });
+      return true;
+    });
+    return transaction.acquired && transaction.value === true;
   };
 
-  // A session copy authenticates the mutation. Only mirror it to the root
-  // copy after the session-owned write succeeds.
-  if (!writeSessionState()) {
-    return false;
+  // Serialize the paired session/root read-modify-write as one logical
+  // transaction. The per-file locks remain in place for callers that touch a
+  // single copy, while this transaction lock prevents two sessions using this
+  // helper from interleaving their session authentication and root merge.
+  if (sessionId) {
+    const transaction = withStateFileMutationLock(`${rootPath}.transaction`, () => {
+      if (!writeSessionState()) return false;
+      return writeRootState();
+    });
+    return transaction.acquired && transaction.value === true;
   }
   return writeRootState();
 }

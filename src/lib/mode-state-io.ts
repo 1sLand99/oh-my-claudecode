@@ -1166,6 +1166,18 @@ function discoverStateFile(path: string, extra: Partial<StateFileDiscovery> = {}
   }
 }
 
+function hasAuthenticatedCompletionEvidence(path: string, sessionId: string): boolean {
+  try {
+    const evidence = JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>;
+    return evidence.session_id === sessionId
+      && typeof evidence.ended_at === 'string'
+      && evidence.ended_at.trim().length > 0
+      && Number.isFinite(Date.parse(evidence.ended_at));
+  } catch {
+    return false;
+  }
+}
+
 export function findSessionOwnedStateCandidates(
   mode: string,
   sessionId: string,
@@ -1212,7 +1224,7 @@ export function findCompletedSessionStateCandidates(
   for (const sid of listSessionIds(baseDir)) {
     if (requesterSessionId && sid === requesterSessionId) continue;
     const completionEvidencePath = join(getOmcRoot(baseDir), 'sessions', `${sid}.json`);
-    if (!existsSync(completionEvidencePath)) continue;
+    if (!hasAuthenticatedCompletionEvidence(completionEvidencePath, sid)) continue;
     const candidatePath = resolveSessionStatePath(mode, sid, baseDir);
     const candidate = discoverStateFile(candidatePath, { completedSessionId: sid, completionEvidencePath });
     if (candidate?.state.active === true && candidate.ownerSessionId === sid) matches.push(candidate);

@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -15,31 +15,57 @@ function runKeywordDetector(
   env: NodeJS.ProcessEnv = {},
   detectorPath = SCRIPT_PATH,
 ) {
-  const raw = execFileSync(NODE, [detectorPath], {
-    input: JSON.stringify({
-      hook_event_name: 'UserPromptSubmit',
-      cwd,
-      session_id: sessionId,
-      prompt,
-    }),
-    encoding: 'utf-8',
-    env: {
-      ...process.env,
-      NODE_ENV: 'test',
-      OMC_SKIP_HOOKS: '',
-      ...env,
-    },
-    timeout: 15000,
-  }).trim();
+  // Script hooks resolve non-git state through the workspace marker or HOME;
+  // keep both the marker-backed project state and hook-owned user files out of
+  // the checkout and the runner's real home directory.
+  const homeDir = mkdtempSync(join(tmpdir(), 'keyword-detector-home-'));
+  const markerPath = cwd !== process.cwd() ? join(cwd, '.omc-workspace') : null;
+  const addedMarker = markerPath !== null && !existsSync(markerPath);
+  if (addedMarker) writeFileSync(markerPath, '');
 
-  return JSON.parse(raw) as {
-    continue: boolean;
-    suppressOutput?: boolean;
-    hookSpecificOutput?: {
-      hookEventName?: string;
-      additionalContext?: string;
-    };
+  const effectiveHome = env.HOME || homeDir;
+  const childEnv = {
+    ...process.env,
+    NODE_ENV: 'test',
+    DISABLE_OMC: '',
+    OMC_SKIP_HOOKS: '',
+    OMC_TEAM_WORKER: '',
+    OMC_STATE_DIR: cwd === process.cwd() ? join(homeDir, 'omc-state') : '',
+    CLAUDE_PLUGIN_ROOT: '',
+    HOME: effectiveHome,
+    USERPROFILE: env.USERPROFILE || effectiveHome,
+    CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR || join(effectiveHome, '.claude'),
+    ...env,
   };
+
+  try {
+    const raw = execFileSync(NODE, [detectorPath], {
+      cwd,
+      input: JSON.stringify({
+        hook_event_name: 'UserPromptSubmit',
+        cwd,
+        session_id: sessionId,
+        prompt,
+      }),
+      encoding: 'utf-8',
+      env: childEnv,
+      timeout: 15000,
+    }).trim();
+
+    return JSON.parse(raw) as {
+      continue: boolean;
+      suppressOutput?: boolean;
+      hookSpecificOutput?: {
+        hookEventName?: string;
+        additionalContext?: string;
+      };
+    };
+  } finally {
+    if (addedMarker) {
+      try { unlinkSync(markerPath); } catch { /* best effort */ }
+    }
+    rmSync(homeDir, { recursive: true, force: true });
+  }
 }
 
 function getRalplanStatePath(cwd: string, sessionId: string) {

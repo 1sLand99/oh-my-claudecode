@@ -51,19 +51,19 @@ export async function resolveOmcStateRoot(directory) {
   if (customDir) {
     let gitRoot = null;
     try {
-      gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: directory, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null;
+      gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: directory, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: 5000 }).trim() || null;
     } catch {}
     if (!gitRoot) return join(customDir, 'non-git');
     let source = gitRoot;
     try {
-      source = execFileSync('git', ['remote', 'get-url', 'origin'], { cwd: gitRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || gitRoot;
+      source = execFileSync('git', ['remote', 'get-url', 'origin'], { cwd: gitRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: 5000 }).trim() || gitRoot;
     } catch {}
     const hash = createHash('sha256').update(source).digest('hex').slice(0, 16);
     const dirName = basename(gitRoot).replace(/[^a-zA-Z0-9_-]/g, '_');
     return join(customDir, `${dirName}-${hash}`);
   }
   let gitRoot = null;
-  try { gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: directory, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null; } catch {}
+  try { gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: directory, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: 5000 }).trim() || null; } catch {}
   if (gitRoot) return join(gitRoot, '.omc');
   let cursor = resolve(directory);
   while (true) {

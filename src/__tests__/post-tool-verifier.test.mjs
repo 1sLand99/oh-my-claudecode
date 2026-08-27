@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { execSync } from 'child_process';
 import { join } from 'path';
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import process from 'process';
 import { detectAnnouncedBackgroundLaunch, detectBashFailure, detectWriteFailure, isBackgroundToolInvocation, isClaudeCodeWriteSuccess, isNonZeroExitWithOutput, summarizeAgentResult } from '../../scripts/post-tool-verifier.mjs';
@@ -38,14 +38,56 @@ function runPostToolVerifier(input, env = {}) {
   return runHookScript(SCRIPT_PATH, input, env);
 }
 
+function scopedHookEnvironment(cwd, env) {
+  // Script hooks resolve non-git state through the workspace marker or HOME;
+  // keep both the marker-backed project state and hook-owned user files out of
+  // the checkout and the runner's real home directory.
+  const homeDir = mkdtempSync(join(tmpdir(), 'post-tool-verifier-home-'));
+  const markerPath = cwd && cwd !== process.cwd() ? join(cwd, '.omc-workspace') : null;
+  const addedMarker = markerPath && !existsSync(markerPath);
+  if (addedMarker) writeFileSync(markerPath, '');
+
+  const effectiveHome = env.HOME || homeDir;
+  const childEnv = {
+    ...process.env,
+    NODE_ENV: 'test',
+    DISABLE_OMC: '',
+    OMC_SKIP_HOOKS: '',
+    OMC_QUIET: '0',
+    OMC_STATE_DIR: '',
+    CLAUDE_PLUGIN_ROOT: '',
+    HOME: effectiveHome,
+    USERPROFILE: env.USERPROFILE || effectiveHome,
+    CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR || join(effectiveHome, '.claude'),
+    ...env,
+  };
+
+  return {
+    childEnv,
+    cleanup() {
+      if (addedMarker) {
+        try { unlinkSync(markerPath); } catch { /* best effort */ }
+      }
+      rmSync(homeDir, { recursive: true, force: true });
+    },
+  };
+}
+
 function runHookScript(scriptPath, input, env = {}) {
-  const stdout = execSync(`node "${scriptPath}"`, {
-    input: JSON.stringify(input),
-    encoding: 'utf-8',
-    timeout: 5000,
-    env: { ...process.env, NODE_ENV: 'test', ...env },
-  });
-  return JSON.parse(stdout.trim());
+  const cwd = typeof input?.cwd === 'string' && input.cwd.length > 0 ? input.cwd : process.cwd();
+  const fixture = scopedHookEnvironment(cwd, env);
+  try {
+    const stdout = execSync(`node "${scriptPath}"`, {
+      cwd,
+      input: JSON.stringify(input),
+      encoding: 'utf-8',
+      timeout: 5000,
+      env: fixture.childEnv,
+    });
+    return JSON.parse(stdout.trim());
+  } finally {
+    fixture.cleanup();
+  }
 }
 
 function withTempDir(fn) {

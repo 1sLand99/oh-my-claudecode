@@ -11,9 +11,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { homedir } from 'os';
+import { tmpdir } from 'os';
 
 // ============================================================================
 // Module-level mock for worktree-paths (required before any state-tool imports)
@@ -516,12 +516,18 @@ import {
 describe('SMOKE: State Cancel Cleanup — session-scoped I/O (issue #1143)', () => {
   let testDir: string;
   let omcDir: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
+  let previousStateDir: string | undefined;
 
   beforeEach(() => {
-    testDir = join(
-      homedir(),
-      `smoke-state-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    );
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    previousStateDir = process.env.OMC_STATE_DIR;
+    testDir = mkdtempSync(join(tmpdir(), 'smoke-state-'));
+    process.env.HOME = testDir;
+    process.env.USERPROFILE = testDir;
+    delete process.env.OMC_STATE_DIR;
     omcDir = join(testDir, '.omc');
     mkdirSync(omcDir, { recursive: true });
     mockGetOmcRoot.mockReturnValue(omcDir);
@@ -529,6 +535,13 @@ describe('SMOKE: State Cancel Cleanup — session-scoped I/O (issue #1143)', () 
 
   afterEach(() => {
     if (existsSync(testDir)) rmSync(testDir, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
+    if (previousStateDir === undefined) delete process.env.OMC_STATE_DIR;
+    else process.env.OMC_STATE_DIR = previousStateDir;
+    mockGetOmcRoot.mockReset();
   });
 
   // Helper: call a tool handler with merged defaults

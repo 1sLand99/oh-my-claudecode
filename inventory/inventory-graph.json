@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "e31a814c2ee55de6a6540af54d62ced006261277",
-    "sourceSha256": "7397d78ce6a03abcf5b089266a659b84ff536e6a7a9b2b1924baaff8fd4fe881",
+    "head": "65ab56c446bef0ce4be13c99f67774e240e0e600",
+    "sourceSha256": "eb26480f8a2e2f4ecb721713473e9da46473fbcc2d863825e7a66dcbf0535aef",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "e31a814c2ee55de6a6540af54d62ced006261277",
-  "sourceSha256": "7397d78ce6a03abcf5b089266a659b84ff536e6a7a9b2b1924baaff8fd4fe881",
+  "head": "65ab56c446bef0ce4be13c99f67774e240e0e600",
+  "sourceSha256": "eb26480f8a2e2f4ecb721713473e9da46473fbcc2d863825e7a66dcbf0535aef",
   "counts": {
     "public": {
       "skills": 32,
@@ -41540,6 +41540,11 @@
       },
       {
         "from": "scripts/lib/state-root.cjs",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/state-root.cjs",
         "to": "external:path",
         "kind": "imports"
       },
@@ -41561,6 +41566,11 @@
       {
         "from": "scripts/lib/state-root.mjs",
         "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/state-root.mjs",
+        "to": "external:os",
         "kind": "imports"
       },
       {
@@ -46550,11 +46560,6 @@
       },
       {
         "from": "src/__tests__/pre-tool-enforcer.test.ts",
-        "to": "external:crypto",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/pre-tool-enforcer.test.ts",
         "to": "external:fs",
         "kind": "imports"
       },
@@ -46576,6 +46581,11 @@
       {
         "from": "src/__tests__/pre-tool-enforcer.test.ts",
         "to": "scripts/lib/pre-tool-enforcer-preflight.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/pre-tool-enforcer.test.ts",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -48526,6 +48536,11 @@
       {
         "from": "src/__tests__/team-ops-task-locking.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/team-ops-task-locking.test.ts",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -60426,6 +60441,11 @@
       {
         "from": "src/hooks/skill-state/index.ts",
         "to": "src/hooks/subagent-tracker/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/skill-state/index.ts",
+        "to": "src/lib/atomic-write.ts",
         "kind": "imports"
       },
       {
@@ -76286,11 +76306,11 @@
     ],
     "stats": {
       "nodeCount": 6831,
-      "edgeCount": 7170,
-      "importEdgeCount": 5886,
+      "edgeCount": 7174,
+      "importEdgeCount": 5890,
       "registerEdgeCount": 53
     }
   },
   "inventorySha256": "0fa1d8055ac3c243f65c169a83bda6d9c7fae7684b1d559bb464baf525cd54f2",
-  "manifestSha256": "5c76b2772b83aae1321649209f73e392a3041bce1550c2a67f13e454b16adca9"
+  "manifestSha256": "171d43b2091fdf48aab14c385d97613e24f458568097c98a967cc670c69c6a3c"
 }

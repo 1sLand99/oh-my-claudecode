@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
+import { clearWorktreeCache, getOmcRoot } from "../lib/worktree-paths.js";
 
 // ---------------------------------------------------------------------------
 // BUG 3: team-ops teamCreateTask must use locking for task ID generation
@@ -9,12 +10,22 @@ import { tmpdir } from "os";
 
 describe('team-ops teamCreateTask locking', () => {
   let tempDir: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
+  let previousStateDir: string | undefined;
   const teamName = 'lock-test-team';
 
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), 'team-ops-lock-test-'));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    previousStateDir = process.env.OMC_STATE_DIR;
+    process.env.HOME = tempDir;
+    process.env.USERPROFILE = tempDir;
+    delete process.env.OMC_STATE_DIR;
+    clearWorktreeCache();
     // Set up minimal team config
-    const root = join(tempDir, '.omc', 'state', 'team', teamName);
+    const root = join(getOmcRoot(tempDir), 'state', 'team', teamName);
     mkdirSync(join(root, 'tasks'), { recursive: true });
     writeFileSync(join(root, 'config.json'), JSON.stringify({
       name: teamName,
@@ -35,6 +46,13 @@ describe('team-ops teamCreateTask locking', () => {
 
   afterEach(() => {
     rmSync(tempDir, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
+    if (previousStateDir === undefined) delete process.env.OMC_STATE_DIR;
+    else process.env.OMC_STATE_DIR = previousStateDir;
+    clearWorktreeCache();
   });
 
   it('teamCreateTask source uses locking around task creation', () => {

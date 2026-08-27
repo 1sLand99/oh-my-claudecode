@@ -6,10 +6,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     testTimeout: 30000,
-    // State-root fixture tests intentionally scope HOME/OMC_STATE_DIR per test.
-    // Run files serially so those process-wide variables cannot race across
-    // concurrent Vitest workers and reintroduce shared-root contamination.
-    fileParallelism: false,
+
     include: [
       'src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}',
       'tests/**/*.bench.ts',

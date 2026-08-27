@@ -18,10 +18,11 @@
  *     in production (CLAUDE_PLUGIN_ROOT is always set).
  */
 
-import { join, basename } from 'path';
+import { join, basename, dirname, resolve } from 'path';
 import { existsSync } from 'fs';
 import { createHash } from 'crypto';
 import { execFileSync } from 'child_process';
+import { homedir } from 'os';
 import { pathToFileURL } from 'url';
 
 /**
@@ -48,14 +49,25 @@ export async function resolveOmcStateRoot(directory) {
   const customDir = process.env.OMC_STATE_DIR;
   if (customDir) {
     let gitRoot = null;
-    try { gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: directory, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null; } catch {}
+    try { gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: directory, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: 5000 }).trim() || null; } catch {}
     if (!gitRoot) return join(customDir, 'non-git');
     let source = gitRoot;
-    try { source = execFileSync('git', ['remote', 'get-url', 'origin'], { cwd: gitRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || gitRoot; } catch {}
+    try { source = execFileSync('git', ['remote', 'get-url', 'origin'], { cwd: gitRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: 5000 }).trim() || gitRoot; } catch {}
     const hash = createHash('sha256').update(source).digest('hex').slice(0, 16);
     return join(customDir, `${basename(gitRoot).replace(/[^a-zA-Z0-9_-]/g, '_')}-${hash}`);
   }
-  return join(directory, '.omc');
+  let gitRoot = null;
+  try { gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: directory, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: 5000 }).trim() || null; } catch {}
+  if (gitRoot) return join(gitRoot, '.omc');
+  let cursor = resolve(directory);
+  const home = resolve(homedir());
+  while (true) {
+    if (existsSync(join(cursor, '.omc-workspace'))) return join(cursor, '.omc');
+    const parent = dirname(cursor);
+    if (parent === cursor || cursor === home) break;
+    cursor = parent;
+  }
+  return join(home, '.omc');
 }
 
 /**
