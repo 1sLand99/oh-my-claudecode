@@ -12606,6 +12606,764 @@
           "previousFilename": null
         }
       ]
+    },
+    {
+      "pullNumber": 3887,
+      "targetRef": "main",
+      "mergeBaseSha": "781a99cb69683efede9002f9f71e04a219271975",
+      "headSha": "b2e3946a25de8e2b3438e2e38ab1b321deda14a8",
+      "owner": "Yeachan-Heo",
+      "expiresAt": "2026-09-10T00:00:00.000Z",
+      "generatedDelta": {
+        "count": 124,
+        "sha256": "898c9f56ab9e7eb501a6e29caace50924baff96002cd84928f432c34e5e10462"
+      },
+      "generatedFiles": [
+        {
+          "status": "modified",
+          "filename": "bridge/claude-md-coordinator.cjs",
+          "sha": "8250bc7e07176d56bd54ff9a040227b6fbfa4957",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "bridge/cli.cjs",
+          "sha": "356e844028244c7de1e9f672c0f6815a6023bb3a",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "bridge/mcp-server.cjs",
+          "sha": "bdfb4c2f1349b6cd21d767f2f1cc48b2b032fdaf",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "bridge/runtime-cli.cjs",
+          "sha": "efbccaedd4493b4e4b259d16f5479a9f86196e09",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "bridge/team-bridge.cjs",
+          "sha": "2fc9da2d3321614e4cc9c0accf037f2bc238f96f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "bridge/team-mcp.cjs",
+          "sha": "55fc8e5d2472da51ad054f15cc8794201e8368ae",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "bridge/team.js",
+          "sha": "6de529dd69fe90e6416151ed790eea94dbb24ff0",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/autoresearch/runtime.d.ts",
+          "sha": "914639838668951953dfb751ff4ca92929280568",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/autoresearch/runtime.js",
+          "sha": "834561da02ef53f76e8340a56283322ab1eea528",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/cli/commands/doctor-conflicts.js",
+          "sha": "7a11f758fbe3818385ef39373b22b7e90455f5f0",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/cli/commands/team.js",
+          "sha": "97e624f92ce3876ef013b440a0dfc9dc5429a40c",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/cli/graph.js",
+          "sha": "4e3189ebb2dfee9c658c8f593029c4979572158e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/cli/index.js",
+          "sha": "0cfdd6d76b20444910fba469fe25c011e4902c4a",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/commands/index.d.ts",
+          "sha": "d2a19c8a46114afbf97920165ae152ff21402d6d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/commands/index.js",
+          "sha": "717e0cb4a7508e84f49640cc82bea7b37959641b",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/config/loader.js",
+          "sha": "8563927d434fedf5087dc50b10404625fcc7e09e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/features/magic-keywords.js",
+          "sha": "9cd8ff9663b96168a7dc8f0a70b2f999d7781818",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/features/rate-limit-wait/daemon.js",
+          "sha": "d5a651e343f8070e08d1e69c93ef2664d331672f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/features/rate-limit-wait/rate-limit-monitor.js",
+          "sha": "e8fad9412d7930b681bd75a894a515ab27a62c1a",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/graph/runtime/approval.js",
+          "sha": "ea21fbed3a48446397139b43f3d4523e5733388e",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/graph/runtime/executors/agent.js",
+          "sha": "b1de5ba1e5b976528ea21ddeeae45a326396a5ba",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/graph/runtime/executors/authority.js",
+          "sha": "64a32561785c86e2350e1c1fdf6cef08b4d84ffb",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/graph/runtime/executors/command.js",
+          "sha": "468f73c623221bc40fc09cf1e1dafe8bc184948c",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/graph/runtime/fence.js",
+          "sha": "ae8fb867b7fd84149a8b9471bcf71ce51b49acff",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/graph/runtime/journal.js",
+          "sha": "2239bf7d0abdd1d7903bfd6fe277bdee35a1fa64",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/graph/runtime/progress.js",
+          "sha": "465eeb81033534195b87581084070d0153f3bea2",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/graph/runtime/run-dir.js",
+          "sha": "c88c93f013fff41333b12348587c79d91b1f1aac",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/graph/runtime/runner.js",
+          "sha": "c941288f588a0ea24d9223dfda2f82c52a815258",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/graph/runtime/safe-fs.js",
+          "sha": "7a76d6b0b049f3cec3d545254c38a97ca2fffcd0",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/graph/runtime/store.js",
+          "sha": "a564861af0201683a5e728a55df402f8e4562084",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/graph/runtime/types.js",
+          "sha": "e0425f1ddf153943977c6a02b99b8ab299ad91e4",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/graph/schema.d.ts",
+          "sha": "f59e8f40a444d6af298f89bac8d6e11a2f8b00ff",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/adapters/execution-adapter.js",
+          "sha": "4ecec1ceef2be1b37def0f7b2d08d5f01ab50ac8",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/cancel.js",
+          "sha": "e1514c11d75300d2d98d91330cdec978c87652e6",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/pipeline-types.d.ts",
+          "sha": "5656fdecbbdc98e3cb4789cc2a7e3d75d31e6e74",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/pipeline-types.js",
+          "sha": "4955a5797290cbf85ef8b89f1eca78f99928ac03",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/pipeline.d.ts",
+          "sha": "cab938e8867590c5b1d646e7cf3e50f922da23c1",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/pipeline.js",
+          "sha": "19e707a36a61d4eb1813ac40ed1c72d3f30e8d63",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/prompts.js",
+          "sha": "c2a478435ba61a644c9255069dd41858547fe0e2",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/runtime-insight.js",
+          "sha": "06f39e8aefc056fe9b6dbdf70950bb9be1f5e5ad",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/state.d.ts",
+          "sha": "2bf478043e7ed279ce638b32d8ac490be45e954e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/state.js",
+          "sha": "0b973fb0411df466cfa8f9c992e317d5483d1e6d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/types.d.ts",
+          "sha": "09b067ad1e803f56973fd83e15833869e51f804e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/types.js",
+          "sha": "ef94958e348088bcc34f693becb4c8f8adf359cb",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/bridge.js",
+          "sha": "92ecc265e2ba619b9ffbedda7408d0db192e31cd",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/index.d.ts",
+          "sha": "ead1543e8cc557e4475d6e6f32bcd37fd205dd18",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/index.js",
+          "sha": "1ea44e46b0136c7fc9e2c7007cf04eb71841bc17",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/keyword-detector/index.d.ts",
+          "sha": "5d7119552f67b69d238dc556bed28874bc5b92d9",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/keyword-detector/index.js",
+          "sha": "d49985d8338a8ad8097f7753f52f6c27c6ae6a03",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/merge-readiness/runtime.js",
+          "sha": "823dec3d676b433387c864f75271101a10b25363",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/mode-registry/index.js",
+          "sha": "d5b85f40077a09c633661f2c28b2eb3f52e1ed15",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/mode-registry/types.d.ts",
+          "sha": "456b863b986236a61446203e6f914810b3f4fe05",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/permission-handler/index.d.ts",
+          "sha": "23578e07794757c15d271c99fc1c50e8829c711f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/permission-handler/index.js",
+          "sha": "2535baa810e49225025a2eb89133a5bb43e0f355",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/persistent-mode/index.d.ts",
+          "sha": "ad8160257e2e8af5e353d37b5b4c583da9b0ab28",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/persistent-mode/index.js",
+          "sha": "e963029ca814fcd452ef39ac3d23130fd6158335",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/pre-compact/index.d.ts",
+          "sha": "c98f927c550cfaa592c9e88408aaa7ee4db29012",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/pre-compact/index.js",
+          "sha": "950c7296a5f08822328cd01885a2bf54f5cf3981",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/pre-compact/restore.js",
+          "sha": "1529aed25b64cca8c4d3beded05be3e615345493",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/index.d.ts",
+          "sha": "f6bce75d9b11d37cc01f5f0680a0ae4ed5fadd85",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/index.js",
+          "sha": "be6abfeca87fea8e9686c9e3e81860d276a5a950",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/loop.d.ts",
+          "sha": "f75a38852613875c49e9fd9c0a97e3e6c03b3c19",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/loop.js",
+          "sha": "9164cb530b8213fd43ff0d18a47b0fea751119c8",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/prd.d.ts",
+          "sha": "39d95340070d4d6183298e3074b5b5f95db12515",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/prd.js",
+          "sha": "1cd3935f64fd4630dbbbf4bb674bf22429a1de6f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/stale-prd.js",
+          "sha": "92c9c3229999bcd148805c9b7ad779ac4a81b6c4",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/verifier.d.ts",
+          "sha": "de05025ecd9b221ff30dc197a6b476a73db89c09",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/verifier.js",
+          "sha": "056a2aafc8be4d604108c5fb83ae221a5ff31692",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/session-end/index.js",
+          "sha": "9387e6f8b2466aa47232abcb6e01eb4a8a31f4a1",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/skill-bridge.cjs",
+          "sha": "6af107361e3119d24216010dd37a75f6066edd60",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/skill-state/index.d.ts",
+          "sha": "dfe4cf9f3a52227512ce5f8637e9f6d2fd662180",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/skill-state/index.js",
+          "sha": "b0e76de324dc5907a4711f761775c771102f5231",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/task-size-detector/index.js",
+          "sha": "3beaab2744633a516362be852e05128a9145a8b2",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/team-dispatch-hook.js",
+          "sha": "07e24bf7c563c85f49ba7bd84b754b8f04298fb5",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/team-pipeline/state.js",
+          "sha": "4e731f32f68f903f343521f720d653319064a9db",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hud/index.js",
+          "sha": "028904c491744c1ef724b3196461a16259d5ebdb",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hud/omc-state.d.ts",
+          "sha": "6b5a0866c57e025fc1a7fdf44b7b73410b4efc32",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hud/omc-state.js",
+          "sha": "dbbd2b30adcb33771d378fec8b4642b9a2416589",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hud/stdin.d.ts",
+          "sha": "2a9d7ab06af15200eeb7dc560c8814903bab54ec",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hud/stdin.js",
+          "sha": "ee3824b410009ea4e82cf6c474cd834f9fea6a77",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hud/types.d.ts",
+          "sha": "147b51bb815e380ffb8a66e8315e743c1097e156",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hud/usage-api.d.ts",
+          "sha": "c54d3015c1920a8c6a1f992f935eac29e7f97381",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hud/usage-api.js",
+          "sha": "6d6464a18d455aa175e7863ab2b7301548f33713",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/index.d.ts",
+          "sha": "abcbe19d5998873c64809399b2167b0fe74d13ff",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/index.js",
+          "sha": "d0a5739216ef9b1991705dec4c7aa32ad64ae1ea",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/installer/hooks.d.ts",
+          "sha": "2bd51f9ac4ed9ed1db66982ee82b20d8d0e1f93f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/installer/hooks.js",
+          "sha": "4c53debdaee0eb2282f47e2fcb00544fdf450377",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/mode-names.d.ts",
+          "sha": "de360f860ff132bb6b317cac116f494e7aeac0a3",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/mode-names.js",
+          "sha": "2c128793af221e28bb61acf092ac1abe31555d22",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/mode-state-io.d.ts",
+          "sha": "96e09a6508212f563305f2ba15ebd15dda93ec8a",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/mode-state-io.js",
+          "sha": "70aede2b1f34b35db01d3e4043028d7738d9c0bf",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/release-generation.js",
+          "sha": "c880ccd143c40b29285c3607e7217c3d9c5c8aee",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/worktree-paths.d.ts",
+          "sha": "d1f8187bfa9e1ddd6a34eafb0e6f2f684a4b4d0e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/worktree-paths.js",
+          "sha": "50757ff8f616bbf93cb75317f420d094cefcc8f9",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/shared/types.d.ts",
+          "sha": "d13fc2acd65a553e857bbfcd1ab347328f339e9e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/shared/types.js",
+          "sha": "920bc36c8a8c096965153053ba2fa5317aacf2e7",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/api-interop.js",
+          "sha": "6a1ed91aed256fc1d6a5525e562c27367d9f66c5",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/cli-worker-contract.d.ts",
+          "sha": "afed392316af38ad6c443d2c53cb46bf0113c80f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/cli-worker-contract.js",
+          "sha": "1241e8420edaea9a34677bec8fbcc119078b1439",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/leader-inbox.d.ts",
+          "sha": "9ab02b8d505730e427b62b86ded52e6c7a18a338",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/leader-inbox.js",
+          "sha": "bbf0fbe15c6cad5f6cb4dcf94d7b10efcc6e516e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/model-contract.js",
+          "sha": "907b01c127880f5fb3abae11b134058deb15e92c",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/runtime-cli.js",
+          "sha": "fc26cf34c6a1f97250596997777976a5774eedb1",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/runtime-v2.d.ts",
+          "sha": "a35fe691af32b537b75e31ac77073b3ab117885b",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/runtime-v2.js",
+          "sha": "02872150e8168cbe4f71059d46ecc0571ea76430",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/runtime.js",
+          "sha": "478c4885eb79818ec7e8b07c4e6527a40a8c5827",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/scaling.js",
+          "sha": "40dee90bb8de5881c62e75409179cb63d642c32f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/stage-router.js",
+          "sha": "736e5baa1a0982c524be2d9474c92461da0085b3",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/state-paths.js",
+          "sha": "5973cf7d2a8f579c4091bb9cc0c8212763c96c0b",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/state/tasks.d.ts",
+          "sha": "ca65ffbd4c6e470e14ae7bc4b6f727337ae81608",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/state/tasks.js",
+          "sha": "c14144f6a191265d8afde685dd3f7c2142ea3503",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/task-file-ops.js",
+          "sha": "f8795e597d74f65c14ee6a32b2de9d671fe3a2fc",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/team-ops.d.ts",
+          "sha": "be326c84e936f48cbc238f7bf03d8e43b3e27d83",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/team-ops.js",
+          "sha": "f760fd0442f1c4c5dbe55097342b009ac545660b",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/tmux-comm.js",
+          "sha": "bf38e2fcf23f6c3e8e6227dab2537e6658ccd633",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/tmux-session.d.ts",
+          "sha": "279504709113d442d554d053612742e9334215e0",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/tmux-session.js",
+          "sha": "5664570f1d0f794ce5ea6679499660d445de8820",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/types.d.ts",
+          "sha": "9c6c4a6973650639da5d12e7cbf458866a0d2550",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/worker-bootstrap.d.ts",
+          "sha": "f79a86e140afe21075ce3105f961548d88ad9e6a",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/worker-bootstrap.js",
+          "sha": "9aec88f1cc8aa17256df367520262fe74b4e53dd",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/state-tools.js",
+          "sha": "0d643f3dfe3de10a96162130ec73b071e740e8ab",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/wiki-tools.js",
+          "sha": "f0fcca466bf5310f1612d5576bee765644b7bcc1",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/utils/skill-resources.js",
+          "sha": "5a878ab7a2b4f19a22000a4d4ffef44161332ac5",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/workflow/registry.js",
+          "sha": "6d6e803c05f74e7463a1330372679e86eec08fcb",
+          "previousFilename": null
+        }
+      ]
     }
   ]
 }
