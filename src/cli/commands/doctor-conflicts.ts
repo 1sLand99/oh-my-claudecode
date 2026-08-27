@@ -346,7 +346,7 @@ export function checkEnvFlags(): ConflictReport['envFlags'] {
   return { disableOmc, skipHooks };
 }
 
-const SETUP_FALLBACK_SKILL_NAMES = new Set(['omc-reference']);
+const SETUP_FALLBACK_SKILL_NAMES = new Set(['omc-reference', 'wiki']);
 
 function parseSemverLikeVersion(version: string): number[] | null {
   if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) {
@@ -461,9 +461,10 @@ function isSupportedSetupFallbackSkill(legacySkillsDir: string, entry: string, b
   }
 
   // scripts/setup-claude-md.sh intentionally syncs the raw bundled
-  // skills/omc-reference/SKILL.md file into ~/.claude/skills/omc-reference/SKILL.md
+  // skills/wiki/SKILL.md file into ~/.claude/skills/wiki/SKILL.md. Keep the
+  // retired omc-reference fallback for already-installed 4.x upgrades.
   // as a Claude CLI fallback. Suppress only that exact, unmodified sync so real
-  // legacy collisions and user-edited omc-reference copies still surface.
+  // legacy collisions and user-edited fallback copies still surface.
   if (entry.toLowerCase() !== baseName) {
     return false;
   }

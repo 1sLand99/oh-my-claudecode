@@ -86,8 +86,8 @@ Use the replacement instead — see the migration table in docs/MIGRATION.md
 ```
 OMC Setup Complete! (Upgraded from 2.x)
 
-GOOD NEWS: Your existing commands still work!
-- /ralph, /omc-plan, etc. still function
+IMPORTANT: Some legacy 2.x and 3.x commands were retired in 5.0.0 and are
+not aliased. Use the replacement workflows listed in the migration table.
 
 WHAT'S NEW in 3.0:
 You no longer NEED those commands. Everything is automatic now:
@@ -118,7 +118,7 @@ OMC CLI HELPERS (if installed):
 - omc team status - Inspect a running team job
 - Session summaries are written to `.omc/sessions/*.json`
 
-Your workflow won't break - it just got easier!
+Your configuration is preserved; retired commands are not recreated.
 ```
 
 ## Optional Rule Templates

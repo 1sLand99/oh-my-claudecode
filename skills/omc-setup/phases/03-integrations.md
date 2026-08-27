@@ -87,10 +87,12 @@ fi
 if [ -f "$SETTINGS_FILE" ]; then
   TEMP_FILE=$(mktemp "${SETTINGS_FILE}.tmp.XXXXXX")
   trap 'rm -f "$TEMP_FILE"' EXIT
-  if jq '.env = (.env // {} | . + {"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"})' "$SETTINGS_FILE" > "$TEMP_FILE"; then
-    mv "$TEMP_FILE" "$SETTINGS_FILE"
+  if jq '.env = (.env // {} | . + {"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"})' "$SETTINGS_FILE" > "$TEMP_FILE" \
+    && mv "$TEMP_FILE" "$SETTINGS_FILE"; then
+    :
   else
     echo "ERROR: Failed to update $SETTINGS_FILE. Existing settings were not modified."
+    rm -f "$TEMP_FILE"
     exit 1
   fi
   trap - EXIT
@@ -142,10 +144,12 @@ fi
 # Skip this if user chose "Auto" (that's the default)
 TEMP_FILE=$(mktemp "${SETTINGS_FILE}.tmp.XXXXXX")
 trap 'rm -f "$TEMP_FILE"' EXIT
-if jq --arg mode "TEAMMATE_MODE" '. + {teammateMode: $mode}' "$SETTINGS_FILE" > "$TEMP_FILE"; then
-  mv "$TEMP_FILE" "$SETTINGS_FILE"
+if jq --arg mode "TEAMMATE_MODE" '. + {teammateMode: $mode}' "$SETTINGS_FILE" > "$TEMP_FILE" \
+  && mv "$TEMP_FILE" "$SETTINGS_FILE"; then
+  :
 else
   echo "ERROR: Failed to update $SETTINGS_FILE. Existing settings were not modified."
+  rm -f "$TEMP_FILE"
   exit 1
 fi
 trap - EXIT
@@ -201,10 +205,12 @@ trap 'rm -f "$TEMP_FILE"' EXIT
 if printf '%s\n' "$EXISTING" | jq \
   --argjson maxAgents MAX_AGENTS \
   --arg agentType "AGENT_TYPE" \
-  '. + {team: {ops: {maxAgents: $maxAgents, defaultAgentType: $agentType, monitorIntervalMs: 30000, shutdownTimeoutMs: 15000}}}' > "$TEMP_FILE"; then
-  mv "$TEMP_FILE" "$CONFIG_FILE"
+  '. + {team: {ops: {maxAgents: $maxAgents, defaultAgentType: $agentType, monitorIntervalMs: 30000, shutdownTimeoutMs: 15000}}}' > "$TEMP_FILE" \
+  && mv "$TEMP_FILE" "$CONFIG_FILE"; then
+  :
 else
   echo "ERROR: Failed to update $CONFIG_FILE. Existing config was not modified."
+  rm -f "$TEMP_FILE"
   exit 1
 fi
 trap - EXIT

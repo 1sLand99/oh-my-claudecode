@@ -61,8 +61,16 @@ cmd_resume() {
     return 0
   fi
 
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "ERROR: jq is required to resume setup safely. Existing setup state was not modified." >&2
+    return 1
+  fi
+
   # Check if state is stale (older than 24 hours)
-  TIMESTAMP_RAW=$(jq -r '.timestamp // empty' "$STATE_FILE" 2>/dev/null)
+  if ! TIMESTAMP_RAW=$(jq -r '.timestamp // empty' "$STATE_FILE" 2>/dev/null); then
+    echo "ERROR: Setup state is invalid JSON. Existing setup state was not modified." >&2
+    return 1
+  fi
   if [ -n "$TIMESTAMP_RAW" ]; then
     TIMESTAMP_EPOCH=$(iso_to_epoch "$TIMESTAMP_RAW")
     NOW_EPOCH=$(date +%s)
@@ -78,9 +86,12 @@ cmd_resume() {
     return 0
   fi
 
-  LAST_STEP=$(jq -r ".lastCompletedStep // 0" "$STATE_FILE" 2>/dev/null || echo "0")
-  TIMESTAMP=$(jq -r .timestamp "$STATE_FILE" 2>/dev/null || echo "unknown")
-  CONFIG_TYPE=$(jq -r '.configType // "unknown"' "$STATE_FILE" 2>/dev/null || echo "unknown")
+  if ! LAST_STEP=$(jq -r ".lastCompletedStep // 0" "$STATE_FILE" 2>/dev/null) \
+    || ! TIMESTAMP=$(jq -r .timestamp "$STATE_FILE" 2>/dev/null) \
+    || ! CONFIG_TYPE=$(jq -r '.configType // "unknown"' "$STATE_FILE" 2>/dev/null); then
+    echo "ERROR: Setup state is invalid JSON. Existing setup state was not modified." >&2
+    return 1
+  fi
   echo "Found previous setup session (Step $LAST_STEP completed at $TIMESTAMP, configType=$CONFIG_TYPE)"
   echo "$LAST_STEP"
 }

@@ -7,7 +7,14 @@
 Capture the original progress marker once when Phase 2 starts. A resumed run that enters at Step 2.4 must not repeat the completed Steps 2.5/2.6 prompts or overwrite a higher progress marker:
 
 ```bash
-RESUME_LAST_COMPLETED_STEP=$(jq -r '.lastCompletedStep // 0' ".omc/state/setup-state.json" 2>/dev/null || echo "0")
+if ! command -v jq >/dev/null 2>&1; then
+  echo "ERROR: jq is required to resume setup safely. Existing setup state was not modified."
+  exit 1
+fi
+if ! RESUME_LAST_COMPLETED_STEP=$(jq -r '.lastCompletedStep // 0' ".omc/state/setup-state.json" 2>/dev/null); then
+  echo "ERROR: Setup state is invalid JSON. Existing setup state was not modified."
+  exit 1
+fi
 if [ "$RESUME_LAST_COMPLETED_STEP" -ge 4 ] 2>/dev/null; then
   RESUMED_PHASE_TWO_BOUNDARY="true"
 else
@@ -252,10 +259,12 @@ fi
 # USER_CHOICE is "builtin", "beads", or "beads-rust" based on user selection
 TEMP_FILE=$(mktemp "${CONFIG_FILE}.tmp.XXXXXX")
 trap 'rm -f "$TEMP_FILE"' EXIT
-if printf '%s\n' "$EXISTING" | jq --arg tool "USER_CHOICE" '. + {taskTool: $tool, taskToolConfig: {injectInstructions: true, useMcp: false}}' > "$TEMP_FILE"; then
-  mv "$TEMP_FILE" "$CONFIG_FILE"
+if printf '%s\n' "$EXISTING" | jq --arg tool "USER_CHOICE" '. + {taskTool: $tool, taskToolConfig: {injectInstructions: true, useMcp: false}}' > "$TEMP_FILE" \
+  && mv "$TEMP_FILE" "$CONFIG_FILE"; then
+  :
 else
   echo "ERROR: Failed to update $CONFIG_FILE. Existing config was not modified."
+  rm -f "$TEMP_FILE"
   exit 1
 fi
 trap - EXIT

@@ -91,7 +91,7 @@ Do not independently scan plugin cache directories or select a plugin root in th
 bash "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-claude-md.sh" <local|global> [overwrite|preserve]
 ```
 
-The script is the sole cache resolver. It accepts only complete plugin roots (canonical `docs/CLAUDE.md`, coordinator artifact, and `omc-reference` skill), chooses a strict full-SemVer cache version, verifies the compiled-source handshake, and fails closed on coordinator protocol or status disagreement. Do not download configuration or mutate `CLAUDE.md` outside that coordinator.
+The script is the sole cache resolver. It accepts only complete plugin roots (canonical `docs/CLAUDE.md`, coordinator artifact, and `wiki` skill), chooses a strict full-SemVer cache version, verifies the compiled-source handshake, and fails closed on coordinator protocol or status disagreement. Do not download configuration or mutate `CLAUDE.md` outside that coordinator.
 
 ## Pre-Setup Check: Already Configured?
 
@@ -108,8 +108,15 @@ esac
 CONFIG_FILE="$CONFIG_DIR/.omc-config.json"
 
 if [ -f "$CONFIG_FILE" ]; then
-  SETUP_COMPLETED=$(jq -r '.setupCompleted // empty' "$CONFIG_FILE" 2>/dev/null)
-  SETUP_VERSION=$(jq -r '.setupVersion // empty' "$CONFIG_FILE" 2>/dev/null)
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "ERROR: jq is required to inspect existing OMC setup state. Existing config was not modified."
+    exit 1
+  fi
+  if ! SETUP_COMPLETED=$(jq -r '.setupCompleted // empty' "$CONFIG_FILE" 2>/dev/null) \
+    || ! SETUP_VERSION=$(jq -r '.setupVersion // empty' "$CONFIG_FILE" 2>/dev/null); then
+    echo "ERROR: Existing OMC config is invalid JSON. Existing config was not modified."
+    exit 1
+  fi
 
   if [ -n "$SETUP_COMPLETED" ] && [ "$SETUP_COMPLETED" != "null" ]; then
     echo "OMC setup was already completed on: $SETUP_COMPLETED"
