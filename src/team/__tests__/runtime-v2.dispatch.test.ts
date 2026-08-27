@@ -1062,6 +1062,61 @@ describe('runtime v2 startup inbox dispatch', () => {
     expect(modelContractMocks.buildWorkerArgv).toHaveBeenCalledWith('gemini', expect.any(Object));
   });
 
+  it('routes an inferred reviewer task to a cursor worker carrying the verdict contract (issue #3880)', async () => {
+    // This is the path the removed gates blocked end to end: `team.roleRouting`
+    // naming cursor for a reviewer role was rejected at config load (loader) and
+    // again at resolution (stage-router), and an inferred reviewer role threw in
+    // resolveTaskAssignment. Nothing here passes an explicit role, so it
+    // exercises inference rather than the explicit-role shortcut.
+    cwd = await mkdtempFixture('omc-runtime-v2-cursor-role-routing-');
+    await mkdir(join(cwd, '.claude'), { recursive: true });
+    await writeFile(
+      join(cwd, '.claude', 'omc.jsonc'),
+      JSON.stringify({
+        team: {
+          roleRouting: {
+            'code-reviewer': { provider: 'cursor', model: 'cursor-grok-4.6-high' },
+          },
+        },
+      }),
+      'utf-8',
+    );
+    process.chdir(cwd);
+
+    const { startTeamV2 } = await import('../runtime-v2.js');
+
+    const runtime = await startTeamV2({
+      teamName: 'cursor-routing-team',
+      workerCount: 1,
+      agentTypes: ['claude'],
+      tasks: [{ subject: 'Review component naming', description: 'code review pass for PR' }],
+      cwd,
+    });
+
+    // Routing snapshot honors cursor for a reviewer role.
+    expect(runtime.config.resolved_routing?.['code-reviewer']?.primary.provider).toBe('cursor');
+    expect(modelContractMocks.buildWorkerArgv).toHaveBeenCalledWith('cursor', expect.any(Object));
+
+    // The worker is a cursor reviewer and owns a verdict-output file, which is
+    // what lets the leader transition the task. Without it the task would
+    // strand in_progress — the failure mode that kept these gates closed.
+    const persisted = JSON.parse(await readFile(
+      join(cwd, '.omc', 'state', 'team', 'cursor-routing-team', 'config.json'),
+      'utf-8',
+    ));
+    expect(persisted.workers[0].worker_cli).toBe('cursor');
+    expect(persisted.workers[0].role).toBe('code-reviewer');
+    expect(persisted.workers[0].output_file).toBeTruthy();
+
+    // And the reviewer contract actually reached the worker.
+    const inbox = await readFile(
+      join(cwd, '.omc', 'state', 'team', 'cursor-routing-team', 'workers', 'worker-1', 'inbox.md'),
+      'utf-8',
+    );
+    expect(inbox).toContain('REQUIRED: Structured Verdict Output');
+    expect(inbox).toContain('do NOT edit, create, or delete any file');
+  });
+
   it('passes through dedicated-window startup requests', async () => {
     cwd = await mkdtempFixture('omc-runtime-v2-new-window-');
     const { startTeamV2 } = await import('../runtime-v2.js');

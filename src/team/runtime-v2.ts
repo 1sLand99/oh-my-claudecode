@@ -117,10 +117,10 @@ import {
 import { formatOmcCliInvocation } from '../utils/omc-cli-rendering.js';
 import { createSwallowedErrorLogger } from '../lib/swallowed-error.js';
 import type { CanonicalTeamRole, PluginConfig, RoleAssignment, TeamRoleAssignmentSpec } from '../shared/types.js';
-import { CANONICAL_TEAM_ROLES, CURSOR_EXECUTOR_TEAM_ROLES } from '../shared/types.js';
+import { CANONICAL_TEAM_ROLES } from '../shared/types.js';
 import { loadConfig } from '../config/loader.js';
 import { buildResolvedRoutingSnapshot, getRoleRoutingSpec } from './stage-router.js';
-import { inferLaneIntent, routeTaskToRole, type LaneIntent } from './role-router.js';
+import { routeTaskToRole } from './role-router.js';
 import { normalizeDelegationRole } from '../features/delegation-routing/types.js';
 import {
   CONTRACT_ROLES,
@@ -245,24 +245,7 @@ export function readRecoverDeadWorkerV2Outcome(cwd: string, requestId: string): 
 // ---------------------------------------------------------------------------
 
 const orchestratorByTeam = new Map<string, { handle: OrchestratorHandle; serviceGeneration?: number; serviceAttemptId?: string; registeredWorkers: Set<string> }>();
-const CURSOR_UNSUPPORTED_REVIEW_INTENT_RE =
-  /\b(?:review|audit|critic|critique|security|vulnerabilit|cve|owasp|xss|csrf|sqli|verdict|approval|approve|final\s+decision)\b/i;
-const CURSOR_EXECUTOR_CONTEXT_RE =
-  /\b(?:implement|implementation|apply|edit|patch|fix|build|ci|lint|compile|tsc|type.?check|test|tests|debug|troubleshoot|investigate|root.?cause|diagnos|refactor|clean\s*up|simplif)\b/i;
-const CURSOR_EXECUTOR_CONTEXT_INTENTS = new Set<LaneIntent>([
-  'implementation',
-  'build-fix',
-  'debug',
-  'cleanup',
-  'verification',
-]);
 
-function isCursorExecutorContextTask(task: { subject: string; description: string }): boolean {
-  const text = `${task.subject} ${task.description}`.trim();
-  if (!text || CURSOR_UNSUPPORTED_REVIEW_INTENT_RE.test(text)) return false;
-  if (!CURSOR_EXECUTOR_CONTEXT_RE.test(text)) return false;
-  return CURSOR_EXECUTOR_CONTEXT_INTENTS.has(inferLaneIntent(text));
-}
 interface TeamCadenceEntry {
   workerName: string;
   context?: WorkerCadenceContext;
@@ -605,20 +588,7 @@ export function resolveTaskAssignment(
     roleRoutingConfig as Record<string, TeamRoleAssignmentSpec | undefined> | undefined,
     canonical,
   );
-  if (fallbackAgent === 'cursor') {
-    if (CURSOR_EXECUTOR_TEAM_ROLES.includes(canonical as typeof CURSOR_EXECUTOR_TEAM_ROLES[number])) {
-      return { agentType: fallbackAgent, model: '', role: canonical };
-    }
-    if (!hasExplicitRole && !hasConfigForRole && isCursorExecutorContextTask(task)) {
-      return { agentType: fallbackAgent, model: '', role: 'executor' };
-    }
-  }
   if (!hasExplicitRole && !hasConfigForRole) {
-    if (fallbackAgent === 'cursor' && !CURSOR_EXECUTOR_TEAM_ROLES.includes(canonical as typeof CURSOR_EXECUTOR_TEAM_ROLES[number])) {
-      throw new Error(
-        `Cursor workers are executor-style only; inferred role "${canonical}" for task "${task.subject}" must run on a native Claude/OMC reviewer agent or another supported CLI worker.`,
-      );
-    }
     return { agentType: fallbackAgent, model: '', role: canonical };
   }
 

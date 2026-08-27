@@ -10,10 +10,17 @@ const binaries: Partial<Record<CliAgentType, string>> = {
   cursor: '/usr/bin/cursor-agent',
 };
 
-describe('runtime-v2 Cursor task assignment guard', () => {
+/**
+ * Cursor used to be pinned to the executor role: reviewer-style roles threw,
+ * and a keyword heuristic silently rewrote inferred roles to `executor` so the
+ * throw would not fire on ordinary implementation work. Both are gone (issue
+ * #3880) — cursor now resolves roles the same way every other CLI provider
+ * does.
+ */
+describe('runtime-v2 cursor task assignment', () => {
   it('keeps inferred executor-style implementation tasks on cursor', () => {
     const assignment = resolveTaskAssignment(
-      { subject: 'Implement plan', description: 'apply the implementation plan', },
+      { subject: 'Implement plan', description: 'apply the implementation plan' },
       resolvedRouting,
       undefined,
       binaries,
@@ -41,7 +48,7 @@ describe('runtime-v2 Cursor task assignment guard', () => {
         'cursor',
       );
 
-      expect(assignment).toEqual({ agentType: 'cursor', model: '', role: 'executor' });
+      expect(assignment.agentType).toBe('cursor');
     }
   });
 
@@ -57,7 +64,22 @@ describe('runtime-v2 Cursor task assignment guard', () => {
     expect(assignment).toEqual({ agentType: 'cursor', model: '', role: 'executor' });
   });
 
-  it('rejects inferred review/security/verdict-style roles for cursor workers', () => {
+  it('accepts explicit reviewer-style roles for cursor workers (issue #3880)', () => {
+    for (const role of ['code-reviewer', 'critic', 'security-reviewer', 'test-engineer'] as const) {
+      const assignment = resolveTaskAssignment(
+        { subject: 'Review the change', description: 'inspect without editing', role },
+        resolvedRouting,
+        undefined,
+        binaries,
+        'cursor',
+      );
+
+      expect(assignment.agentType).toBe('cursor');
+      expect(assignment.role).toBe(role);
+    }
+  });
+
+  it('no longer throws on inferred review/security/verdict-style tasks (issue #3880)', () => {
     const cases = [
       { subject: 'Review auth', description: 'review the auth module for maintainability' },
       { subject: 'Security review', description: 'review auth for vulnerabilities and injection issues' },
@@ -67,7 +89,24 @@ describe('runtime-v2 Cursor task assignment guard', () => {
     for (const task of cases) {
       expect(() =>
         resolveTaskAssignment(task, resolvedRouting, undefined, binaries, 'cursor'),
-      ).toThrow(/Cursor workers are executor-style only/);
+      ).not.toThrow();
     }
+  });
+
+  it('routes an inferred reviewer task to the role the router picked, not a coerced executor', () => {
+    // The removed heuristic forced `executor` here to dodge the guard. The role
+    // the router infers must now survive, or reviewer work would silently run
+    // with executor guidance and never emit a verdict.
+    const assignment = resolveTaskAssignment(
+      { subject: 'Review auth', description: 'review the auth module for maintainability' },
+      resolvedRouting,
+      undefined,
+      binaries,
+      'cursor',
+    );
+
+    expect(assignment.agentType).toBe('cursor');
+    expect(assignment.role).not.toBeNull();
+    expect(assignment.role).not.toBe('executor');
   });
 });
