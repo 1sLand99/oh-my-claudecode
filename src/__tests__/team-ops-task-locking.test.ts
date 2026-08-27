@@ -45,7 +45,6 @@ describe('team-ops teamCreateTask locking', () => {
   });
 
   afterEach(() => {
-    rmSync(tempDir, { recursive: true, force: true });
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;
     if (previousUserProfile === undefined) delete process.env.USERPROFILE;
@@ -53,6 +52,7 @@ describe('team-ops teamCreateTask locking', () => {
     if (previousStateDir === undefined) delete process.env.OMC_STATE_DIR;
     else process.env.OMC_STATE_DIR = previousStateDir;
     clearWorktreeCache();
+    rmSync(tempDir, { recursive: true, force: true });
   });
 
   it('teamCreateTask source uses locking around task creation', () => {
