@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "9b3ed7b401aa7f5e0ff02944b23d9a63c422a0f3",
-    "sourceSha256": "1e8ded40499f0186f205f657c90c9eab2ef8174b6fdbfd4ccaf2848f5f781e35",
+    "head": "ac0e3999771b6c801ecafd452d4f696b30d90fce",
+    "sourceSha256": "7abdac468d9ab48612aa02674f2de6d98fe2ebcca4e11ae319a2a5a40bcae00d",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "9b3ed7b401aa7f5e0ff02944b23d9a63c422a0f3",
-  "sourceSha256": "1e8ded40499f0186f205f657c90c9eab2ef8174b6fdbfd4ccaf2848f5f781e35",
+  "head": "ac0e3999771b6c801ecafd452d4f696b30d90fce",
+  "sourceSha256": "7abdac468d9ab48612aa02674f2de6d98fe2ebcca4e11ae319a2a5a40bcae00d",
   "counts": {
     "public": {
       "skills": 32,
@@ -40387,6 +40387,11 @@
         "path": "tests/lint/inventory-graph-drift.test.ts"
       },
       {
+        "id": "tests/lint/setup-phases-drift.test.ts",
+        "kind": "other",
+        "path": "tests/lint/setup-phases-drift.test.ts"
+      },
+      {
         "id": "tests/lint/skill-parallel-caveats.test.ts",
         "kind": "other",
         "path": "tests/lint/skill-parallel-caveats.test.ts"
@@ -76264,6 +76269,31 @@
         "kind": "imports"
       },
       {
+        "from": "tests/lint/setup-phases-drift.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/setup-phases-drift.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/setup-phases-drift.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/setup-phases-drift.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/setup-phases-drift.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "tests/lint/skill-parallel-caveats.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -76365,12 +76395,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6832,
-      "edgeCount": 7185,
-      "importEdgeCount": 5901,
+      "nodeCount": 6833,
+      "edgeCount": 7190,
+      "importEdgeCount": 5906,
       "registerEdgeCount": 53
     }
   },
-  "inventorySha256": "db481b228ec987748679677b625486401e0b8f99957b8c56b0cfee841eee737f",
-  "manifestSha256": "005212013533769c02f675ac2b10233a12770dd6d8c375efc57d5047c51f87b0"
+  "inventorySha256": "d34ebca442eea63fe880245c9973a6450b99ecf04856906bcd66c03d35ee5c5b",
+  "manifestSha256": "03f3480bbcd693936ddc3efad835dbc86f6c25a4b8eb7dd0b6e6cc3817dae335"
 }
