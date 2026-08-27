@@ -50,6 +50,33 @@ function workspaceIdentifier(workspaceRoot) {
   return `${basename(workspaceRoot).replace(/[^a-zA-Z0-9_-]/g, '_')}-${hash}`;
 }
 
+function primaryGitRoot(gitRoot) {
+  try {
+    const commonDir = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: gitRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: 5000 }).trim();
+    if (basename(commonDir) === '.git' && !commonDir.includes('/.git/modules/')) return dirname(commonDir);
+  } catch {}
+  return gitRoot;
+}
+
+function probeGitRoot(directory) {
+  try { return execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: directory, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: 5000 }).trim() || null; }
+  catch (error) { if (error?.status === 128) return null; throw error; }
+}
+
+function isSafeWorkspaceRoot(workspaceRoot) {
+  const home = resolve(homedir());
+  const normalized = workspaceRoot.replace(/\\/g, '/');
+  let cursor = workspaceRoot;
+  while (true) {
+    const name = basename(cursor).toLowerCase();
+    if (cursor === home || cursor === '/' || cursor === '/tmp' || name.startsWith('.') || ['.ssh', '.gnupg', '.aws', '.config', '.claude', '.codex', '.cache', '.npm', 'desktop', 'documents', 'downloads', 'pictures', 'music'].includes(name)) return false;
+    const parent = dirname(cursor);
+    if (parent === cursor) break;
+    cursor = parent;
+  }
+  return normalized !== '';
+}
+
 /**
  * Resolve the .omc root directory, respecting OMC_STATE_DIR.
  *
@@ -59,13 +86,10 @@ function workspaceIdentifier(workspaceRoot) {
 export async function resolveOmcStateRoot(directory) {
   const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
   if (pluginRoot) {
-    try {
-      const { getOmcRoot } = await import(
-        pathToFileURL(join(pluginRoot, 'dist', 'lib', 'worktree-paths.js')).href
-      );
+    const distPath = join(pluginRoot, 'dist', 'lib', 'worktree-paths.js');
+    if (existsSync(distPath)) {
+      const { getOmcRoot } = await import(pathToFileURL(distPath).href);
       return getOmcRoot(directory);
-    } catch {
-      // dist not built or unavailable — fall through to inline fallback
     }
   }
 
@@ -75,17 +99,18 @@ export async function resolveOmcStateRoot(directory) {
   if (customDir) {
     const workspaceRoot = findWorkspaceRoot(directory);
     if (workspaceRoot) return join(customDir, workspaceIdentifier(workspaceRoot));
-    let gitRoot = null;
-    try { gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: directory, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: 5000 }).trim() || null; } catch {}
+    const gitRoot = probeGitRoot(directory);
     if (!gitRoot) return join(customDir, 'non-git');
-    let source = directory;
-    try { source = execFileSync('git', ['remote', 'get-url', 'origin'], { cwd: gitRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: 5000 }).trim() || directory; } catch {}
+    const primaryRoot = primaryGitRoot(gitRoot);
+    let source = primaryRoot;
+    try { source = execFileSync('git', ['remote', 'get-url', 'origin'], { cwd: gitRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: 5000 }).trim() || primaryRoot; } catch {}
     const hash = createHash('sha256').update(source).digest('hex').slice(0, 16);
-    return join(customDir, `${basename(gitRoot).replace(/[^a-zA-Z0-9_-]/g, '_')}-${hash}`);
+    return join(customDir, `${basename(primaryRoot).replace(/[^a-zA-Z0-9_-]/g, '_')}-${hash}`);
   }
-  let gitRoot = null;
-  try { gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: directory, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true, timeout: 5000 }).trim() || null; } catch {}
-  if (gitRoot) return join(gitRoot, '.omc');
+  const workspaceRoot = findWorkspaceRoot(directory);
+  if (workspaceRoot && isSafeWorkspaceRoot(workspaceRoot)) return join(workspaceRoot, '.omc');
+  const gitRoot = probeGitRoot(directory);
+  if (gitRoot) return join(primaryGitRoot(gitRoot), '.omc');
   let cursor = resolve(directory);
   const home = resolve(homedir());
   while (true) {

@@ -3,6 +3,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { clearWorktreeCache, getOmcRoot } from '../lib/worktree-paths.js';
 
@@ -224,6 +225,61 @@ function createNestedGitFixture() {
 }
 
 describe('workflow profile activation hook fixtures (#3487)', () => {
+  it('keeps every inline resolver aligned for local, linked, and workspace Git identities', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'omc-fallback-parity-'));
+    const project = join(root, 'project');
+    const nested = join(project, 'nested', 'cwd');
+    const linked = join(root, 'linked-worktree');
+    const workspace = join(root, 'workspace');
+    const workspaceRepo = join(workspace, 'repo');
+    const central = join(root, 'central');
+    mkdirSync(nested, { recursive: true });
+    mkdirSync(workspaceRepo, { recursive: true });
+    writeFileSync(join(project, 'marker.txt'), 'marker');
+    writeFileSync(join(workspace, '.omc-workspace'), JSON.stringify({ id: 'fallback-parity' }));
+    execFileSync('git', ['init', '--quiet'], { cwd: project, stdio: 'pipe' });
+    execFileSync('git', ['add', 'marker.txt'], { cwd: project, stdio: 'pipe' });
+    execFileSync('git', ['-c', 'user.name=OMC Test', '-c', 'user.email=omc@example.test', 'commit', '--quiet', '-m', 'fixture'], { cwd: project, stdio: 'pipe' });
+    execFileSync('git', ['worktree', 'add', '--quiet', linked, '-b', 'fallback-parity-linked'], { cwd: project, stdio: 'pipe' });
+    execFileSync('git', ['init', '--quiet'], { cwd: workspaceRepo, stdio: 'pipe' });
+
+    const previousStateDir = process.env.OMC_STATE_DIR;
+    const previousPluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
+    process.env.OMC_STATE_DIR = central;
+    process.env.CLAUDE_PLUGIN_ROOT = '';
+    clearWorktreeCache();
+    try {
+      const [esm, cjs, template] = await Promise.all([
+        import(pathToFileURL(join(ROOT, 'scripts', 'lib', 'state-root.mjs')).href),
+        import(pathToFileURL(join(ROOT, 'scripts', 'lib', 'state-root.cjs')).href),
+        import(pathToFileURL(join(ROOT, 'templates', 'hooks', 'lib', 'state-root.mjs')).href),
+      ]);
+      for (const directory of [project, nested, linked]) {
+        const expected = getOmcRoot(directory);
+        const roots = await Promise.all([
+          esm.resolveOmcStateRoot(directory),
+          cjs.resolveOmcStateRoot(directory),
+          template.resolveOmcStateRoot(directory),
+        ]);
+        expect(new Set([expected, ...roots]).size).toBe(1);
+      }
+      const workspaceRoots = await Promise.all([
+        esm.resolveOmcStateRoot(workspaceRepo),
+        cjs.resolveOmcStateRoot(workspaceRepo),
+        template.resolveOmcStateRoot(workspaceRepo),
+      ]);
+      expect(new Set(workspaceRoots).size).toBe(1);
+      expect(workspaceRoots[0]).toContain('fallback-parity-');
+    } finally {
+      if (previousStateDir === undefined) delete process.env.OMC_STATE_DIR;
+      else process.env.OMC_STATE_DIR = previousStateDir;
+      if (previousPluginRoot === undefined) delete process.env.CLAUDE_PLUGIN_ROOT;
+      else process.env.CLAUDE_PLUGIN_ROOT = previousPluginRoot;
+      clearWorktreeCache();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it.each(HOOKS)('activates root project profiles from a nested git CWD through %s', (script) => {
     const { configHome, nested, parent } = createNestedGitFixture();
     try {

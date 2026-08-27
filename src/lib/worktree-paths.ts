@@ -784,18 +784,17 @@ export function getProjectIdentifier(worktreeRoot?: string): string {
     return `${dirName}-${hash}`;
   }
 
-  let source: string;
+  let remoteUrl = '';
   try {
-    const remoteUrl = execFileSync('git', ['remote', 'get-url', 'origin'], {
+    remoteUrl = execFileSync('git', ['remote', 'get-url', 'origin'], {
       cwd: root,
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
     }).trim();
-    source = remoteUrl || root;
   } catch {
-    // No git remote (local-only repo or not a git repo) — use path
-    source = root;
+    // No git remote (local-only repo or not a git repo) — use the normalized
+    // repository identity below.
   }
 
   // For linked worktrees (created via `git worktree add`), resolve to the
@@ -829,6 +828,7 @@ export function getProjectIdentifier(worktreeRoot?: string): string {
     // Not a git repo or command failed — fall back to worktree root
   }
 
+  const source = remoteUrl || primaryRoot;
   const hash = createHash('sha256').update(source).digest('hex').slice(0, 16);
   const dirName = basename(primaryRoot).replace(/[^a-zA-Z0-9_-]/g, '_');
   return `${dirName}-${hash}`;
