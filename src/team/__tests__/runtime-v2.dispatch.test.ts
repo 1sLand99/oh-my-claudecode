@@ -433,7 +433,7 @@ describe('runtime v2 startup inbox dispatch', () => {
   });
 
   it('delivers trusted Cursor reviewer guidance in the default non-worktree inbox', async () => {
-    cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-cursor-bootstrap-'));
+    cwd = await mkdtempFixture('omc-runtime-v2-cursor-bootstrap-');
     const { startTeamV2 } = await import('../runtime-v2.js');
 
     await startTeamV2({
