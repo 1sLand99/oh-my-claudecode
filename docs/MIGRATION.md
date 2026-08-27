@@ -23,15 +23,17 @@ This guide covers all migration paths for oh-my-claudecode. Find your current ve
 ### TL;DR
 
 Sessions launched outside a Git repository no longer create a separate `.omc/`
-directory for every cwd. OMC adopts the nearest safe existing state root and
-otherwise uses `~/.omc/`; protected locations such as `~/.ssh`, `~/.claude`,
-and user content directories are never used as anchors.
+directory for every cwd. OMC uses one canonical `~/.omc/` root, or
+`$OMC_STATE_DIR/non-git` when centralized state is configured. Protected
+locations and descendants of system temp/OS roots are never used as roots.
 
 ### Migration and compatibility
 
-- Existing safe non-git `.omc/` roots remain visible through ancestor adoption.
+- Existing non-git `.omc/` roots remain untouched and are not adopted implicitly.
+  Use `state_migrate_non_git` with the owning `session_id` to copy matching JSON
+  records into the canonical root without overwriting or deleting sources.
 - Existing state under protected locations is never moved or deleted
-  automatically. Copy only the state you intend to keep into the new safe root.
+  automatically, and cannot be used as a migration source.
 - `OMC_STATE_DIR` remains the explicit centralized option. In git-less sessions
   it uses one fixed `non-git` child rather than hashing each cwd.
 - `workingDirectory` on state tools is honored within the validated context;

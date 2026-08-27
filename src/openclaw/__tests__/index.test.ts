@@ -71,7 +71,16 @@ const mockResolvedGateway = {
 };
 
 describe("wakeOpenClaw", () => {
+  let fixtureHome: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
+
   beforeEach(() => {
+    fixtureHome = mkdtempSync(join(tmpdir(), "omc-openclaw-home-"));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = fixtureHome;
+    process.env.USERPROFILE = fixtureHome;
     vi.mocked(getOpenClawConfig).mockReturnValue(mockConfig);
     vi.mocked(resolveGateway).mockReturnValue(mockResolvedGateway);
     vi.mocked(wakeGateway).mockResolvedValue({
@@ -86,6 +95,11 @@ describe("wakeOpenClaw", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.clearAllMocks();
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
+    rmSync(fixtureHome, { recursive: true, force: true });
   });
 
   it("returns null when OMC_OPENCLAW is not set", async () => {
@@ -140,7 +154,7 @@ describe("wakeOpenClaw", () => {
 
     expect(mockGetNewPaneTail).toHaveBeenCalledWith(
       "%7",
-      join("/home/user/myproject", ".omc", "state"),
+      join(fixtureHome, ".omc", "state"),
       15,
     );
     const payload = vi.mocked(wakeGateway).mock.calls[0]?.[2];

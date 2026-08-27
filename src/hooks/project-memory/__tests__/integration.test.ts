@@ -16,10 +16,16 @@ import { learnFromToolOutput } from "../learner.js";
 
 describe("Project Memory Integration", () => {
   let tempDir: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
 
   beforeEach(async () => {
     delete process.env.OMC_STATE_DIR;
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "integration-test-"));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = tempDir;
+    process.env.USERPROFILE = tempDir;
   });
 
   afterEach(async () => {
@@ -35,6 +41,10 @@ describe("Project Memory Integration", () => {
     contextCollector.clear("test-session-8");
     contextCollector.clear("test-session-scope");
     await fs.rm(tempDir, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
   });
 
   describe("End-to-end SessionStart flow", () => {

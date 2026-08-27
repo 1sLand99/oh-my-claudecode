@@ -36,12 +36,20 @@
  *      copy is authoritative for cross-session aggregation.
  */
 
-import { existsSync, readFileSync, unlinkSync } from 'fs';
+import { existsSync } from 'fs';
+import { readFileSync, unlinkSync } from 'fs';
+import { atomicWriteJsonSync } from '../../lib/atomic-write.js';
+import {
+  canClearStateForSession,
+  clearStateFileLockedIf,
+  readModeStateWithMeta,
+  withStateFileMutationLock,
+  writeModeState,
+} from '../../lib/mode-state-io.js';
 import {
   resolveStatePath,
   resolveSessionStatePath,
 } from '../../lib/worktree-paths.js';
-import { atomicWriteJsonSync } from '../../lib/atomic-write.js';
 import { readTrackingState, getStaleAgents } from '../subagent-tracker/index.js';
 
 // ---------------------------------------------------------------------------
@@ -229,13 +237,27 @@ function isEmptyV2(state: SkillActiveStateV2): boolean {
   return Object.keys(state.active_skills).length === 0 && !state.support_skill;
 }
 
-function readRawFromPath(path: string): unknown {
-  if (!existsSync(path)) return null;
-  try {
-    return JSON.parse(readFileSync(path, 'utf-8'));
-  } catch {
-    return null;
+function mergeSharedSkillLedger(
+  current: Record<string, unknown> | null,
+  next: SkillActiveStateV2 | null,
+  sessionId: string,
+): SkillActiveStateV2 {
+  const existing = current ? normalizeToV2(current) : emptySkillActiveStateV2();
+  const mergedSlots = { ...existing.active_skills };
+  for (const [name, slot] of Object.entries(mergedSlots)) {
+    if (slot.session_id === sessionId) delete mergedSlots[name];
   }
+  if (next) {
+    for (const [name, slot] of Object.entries(next.active_skills)) {
+      if (!slot.session_id || slot.session_id === sessionId) mergedSlots[name] = slot;
+    }
+  }
+  const existingSupport = existing.support_skill;
+  const nextSupport = next?.support_skill;
+  const support = nextSupport && (!nextSupport.session_id || nextSupport.session_id === sessionId)
+    ? nextSupport
+    : existingSupport && existingSupport.session_id !== sessionId ? existingSupport : null;
+  return { version: 2, active_skills: mergedSlots, ...(support ? { support_skill: support } : {}) };
 }
 
 /**
@@ -489,16 +511,18 @@ export function readSkillActiveStateNormalized(
   directory: string,
   sessionId?: string,
 ): SkillActiveStateV2 {
-  const rootPath = resolveStatePath('skill-active', directory);
-  const sessionPath = sessionId
-    ? resolveSessionStatePath('skill-active', sessionId, directory)
+  const sessionV2 = sessionId
+    ? normalizeToV2(
+      readModeStateWithMeta<Record<string, unknown>>(
+        SKILL_ACTIVE_STATE_MODE,
+        directory,
+        sessionId,
+      ),
+    )
     : null;
-
-  const sessionExists = !!(sessionPath && existsSync(sessionPath));
-  const rootExists = existsSync(rootPath);
-
-  const sessionV2 = sessionExists ? normalizeToV2(readRawFromPath(sessionPath!)) : null;
-  const rootV2 = rootExists ? normalizeToV2(readRawFromPath(rootPath)) : null;
+  const rootV2 = normalizeToV2(
+    readModeStateWithMeta<Record<string, unknown>>(SKILL_ACTIVE_STATE_MODE, directory),
+  );
 
   // Divergence detection — best-effort; logged but non-fatal.
   if (sessionV2 && rootV2 && sessionId) {
@@ -546,47 +570,77 @@ export function writeSkillActiveStateCopies(
   options?: WriteSkillActiveStateCopiesOptions,
 ): boolean {
   const rootPath = resolveStatePath('skill-active', directory);
-  const sessionPath = sessionId
-    ? resolveSessionStatePath('skill-active', sessionId, directory)
-    : null;
 
   // Root defaults to the same payload as session. Explicit `null` deletes root.
   const rootState: SkillActiveStateV2 | null =
     options?.rootState === undefined ? nextState : options.rootState;
 
-  const writeOrRemove = (filePath: string, payload: SkillActiveStateV2 | null): boolean => {
-    const shouldRemove = payload === null || isEmptyV2(payload);
-    if (shouldRemove) {
-      if (!existsSync(filePath)) return true;
-      try {
-        unlinkSync(filePath);
-        return true;
-      } catch {
-        return false;
-      }
-    }
-    try {
-      const envelope: Record<string, unknown> = {
-        ...payload,
-        version: 2,
-        _meta: {
-          written_at: new Date().toISOString(),
-          mode: SKILL_ACTIVE_STATE_MODE,
-          ...(sessionId ? { sessionId } : {}),
-        },
-      };
-      atomicWriteJsonSync(filePath, envelope);
-      return true;
-    } catch {
-      return false;
-    }
+
+  const clearOwnedFile = (filePath: string): boolean => {
+    const result = clearStateFileLockedIf(
+      filePath,
+      current => !sessionId || canClearStateForSession(current, sessionId),
+    );
+    return result !== 'failed' && (result !== 'skipped' || !existsSync(filePath));
   };
 
-  let ok = writeOrRemove(rootPath, rootState);
-  if (sessionPath) {
-    ok = writeOrRemove(sessionPath, nextState) && ok;
+  const writeSessionState = (): boolean => {
+    if (!sessionId) return true;
+    if (isEmptyV2(nextState)) {
+      return clearOwnedFile(resolveSessionStatePath(SKILL_ACTIVE_STATE_MODE, sessionId, directory));
+    }
+    return writeModeState(
+      SKILL_ACTIVE_STATE_MODE,
+      nextState as unknown as Record<string, unknown>,
+      directory,
+      sessionId,
+    );
+  };
+
+  const writeRootState = (): boolean => {
+    if (!sessionId) {
+      if (rootState === null || isEmptyV2(rootState)) {
+        return clearOwnedFile(rootPath);
+      }
+      return writeModeState(
+        SKILL_ACTIVE_STATE_MODE,
+        rootState as unknown as Record<string, unknown>,
+        directory,
+      );
+    }
+
+    const transaction = withStateFileMutationLock(rootPath, () => {
+      let current: Record<string, unknown> | null = null;
+      if (existsSync(rootPath)) {
+        try { current = JSON.parse(readFileSync(rootPath, 'utf8')) as Record<string, unknown>; }
+        catch { return false; }
+      }
+      const merged = mergeSharedSkillLedger(current, rootState, sessionId);
+      if (isEmptyV2(merged)) {
+        if (existsSync(rootPath)) unlinkSync(rootPath);
+        return true;
+      }
+      atomicWriteJsonSync(rootPath, {
+        ...merged,
+        _meta: { written_at: new Date().toISOString(), mode: SKILL_ACTIVE_STATE_MODE },
+      });
+      return true;
+    });
+    return transaction.acquired && transaction.value === true;
+  };
+
+  // Serialize the paired session/root read-modify-write as one logical
+  // transaction. The per-file locks remain in place for callers that touch a
+  // single copy, while this transaction lock prevents two sessions using this
+  // helper from interleaving their session authentication and root merge.
+  if (sessionId) {
+    const transaction = withStateFileMutationLock(`${rootPath}.transaction`, () => {
+      if (!writeSessionState()) return false;
+      return writeRootState();
+    });
+    return transaction.acquired && transaction.value === true;
   }
-  return ok;
+  return writeRootState();
 }
 
 // ---------------------------------------------------------------------------

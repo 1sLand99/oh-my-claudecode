@@ -7,9 +7,27 @@ import { readTeamConfig, saveTeamConfig } from '../monitor.js';
 import { teamWriteWorkerIdentity } from '../team-ops.js';
 import type { TeamConfig, TeamManifestV2, WorkerInfo } from '../types.js';
 
+function isolateFixtureRoot(cwd: string): () => void {
+  const home = process.env.HOME;
+  const userProfile = process.env.USERPROFILE;
+  const stateDir = process.env.OMC_STATE_DIR;
+  process.env.HOME = cwd;
+  process.env.USERPROFILE = cwd;
+  delete process.env.OMC_STATE_DIR;
+  return () => {
+    if (home === undefined) delete process.env.HOME;
+    else process.env.HOME = home;
+    if (userProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = userProfile;
+    if (stateDir === undefined) delete process.env.OMC_STATE_DIR;
+    else process.env.OMC_STATE_DIR = stateDir;
+  };
+}
+
 describe('native worktree contract fields', () => {
   it('persists and reads the locked config/manifest worker worktree field set', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'omc-worktree-contract-'));
+    const restoreEnv = isolateFixtureRoot(cwd);
     const worker: WorkerInfo = {
       name: 'worker-1',
       index: 1,
@@ -63,12 +81,14 @@ describe('native worktree contract fields', () => {
         })],
       });
     } finally {
+      restoreEnv();
       await rm(cwd, { recursive: true, force: true });
     }
   });
 
   it('preserves worktree_mode when normalizing a manifest-only team', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'omc-worktree-manifest-'));
+    const restoreEnv = isolateFixtureRoot(cwd);
     const worker: WorkerInfo = {
       name: 'worker-1',
       index: 1,
@@ -129,12 +149,14 @@ describe('native worktree contract fields', () => {
         worktree_created: false,
       });
     } finally {
+      restoreEnv();
       await rm(cwd, { recursive: true, force: true });
     }
   });
 
   it('worker identity persistence accepts the full worktree metadata payload', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'omc-worktree-identity-'));
+    const restoreEnv = isolateFixtureRoot(cwd);
     try {
       await teamWriteWorkerIdentity('demo-team', 'worker-1', {
         name: 'worker-1',
@@ -157,6 +179,7 @@ describe('native worktree contract fields', () => {
         worktree_created: true,
       });
     } finally {
+      restoreEnv();
       await rm(cwd, { recursive: true, force: true });
     }
   });

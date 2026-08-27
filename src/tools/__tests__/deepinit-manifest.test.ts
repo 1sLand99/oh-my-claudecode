@@ -417,12 +417,23 @@ describe('ancestor cascading', () => {
 // =============================================================================
 
 describe('deepinitManifestTool handler', () => {
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
+
   beforeEach(() => {
     TEST_DIR = createTestDir();
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = TEST_DIR;
+    process.env.USERPROFILE = TEST_DIR;
     vi.mocked(worktreePaths.validateWorkingDirectory).mockReturnValue(TEST_DIR);
   });
 
   afterEach(() => {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
     rmSync(TEST_DIR, { recursive: true, force: true });
   });
 

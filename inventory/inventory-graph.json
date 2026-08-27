@@ -511,6 +511,7 @@
       "src/tools/__tests__/deepinit-manifest.test.ts",
       "src/tools/__tests__/memory-tools.test.ts",
       "src/tools/__tests__/schema-conversion.test.ts",
+      "src/tools/__tests__/state-tools-nongit-ownership.test.ts",
       "src/tools/__tests__/state-tools.test.ts",
       "src/tools/__tests__/wiki-tools-direct-dist-failclosed.test.ts",
       "src/tools/__tests__/wiki-tools-foreign-root.test.ts",
@@ -6216,6 +6217,7 @@
       "src/tools/__tests__/deepinit-manifest.test.ts",
       "src/tools/__tests__/memory-tools.test.ts",
       "src/tools/__tests__/schema-conversion.test.ts",
+      "src/tools/__tests__/state-tools-nongit-ownership.test.ts",
       "src/tools/__tests__/state-tools.test.ts",
       "src/tools/__tests__/wiki-tools-direct-dist-failclosed.test.ts",
       "src/tools/__tests__/wiki-tools-foreign-root.test.ts",
@@ -39685,6 +39687,11 @@
         "path": "src/tools/__tests__/schema-conversion.test.ts"
       },
       {
+        "id": "src/tools/__tests__/state-tools-nongit-ownership.test.ts",
+        "kind": "tool",
+        "path": "src/tools/__tests__/state-tools-nongit-ownership.test.ts"
+      },
+      {
         "id": "src/tools/__tests__/state-tools.test.ts",
         "kind": "tool",
         "path": "src/tools/__tests__/state-tools.test.ts"
@@ -41523,12 +41530,22 @@
       },
       {
         "from": "scripts/lib/state-root.cjs",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/state-root.cjs",
         "to": "external:crypto",
         "kind": "imports"
       },
       {
         "from": "scripts/lib/state-root.cjs",
         "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/state-root.cjs",
+        "to": "external:os",
         "kind": "imports"
       },
       {
@@ -41543,12 +41560,22 @@
       },
       {
         "from": "scripts/lib/state-root.mjs",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/state-root.mjs",
         "to": "external:crypto",
         "kind": "imports"
       },
       {
         "from": "scripts/lib/state-root.mjs",
         "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/lib/state-root.mjs",
+        "to": "external:os",
         "kind": "imports"
       },
       {
@@ -45532,6 +45559,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/keyword-detector-echo-guard.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/keyword-detector-script.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -45959,6 +45991,11 @@
       {
         "from": "src/__tests__/notepad.test.ts",
         "to": "src/hooks/notepad/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/notepad.test.ts",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -46533,11 +46570,6 @@
       },
       {
         "from": "src/__tests__/pre-tool-enforcer.test.ts",
-        "to": "external:crypto",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/pre-tool-enforcer.test.ts",
         "to": "external:fs",
         "kind": "imports"
       },
@@ -46559,6 +46591,11 @@
       {
         "from": "src/__tests__/pre-tool-enforcer.test.ts",
         "to": "scripts/lib/pre-tool-enforcer-preflight.mjs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/pre-tool-enforcer.test.ts",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -48513,6 +48550,11 @@
       },
       {
         "from": "src/__tests__/team-ops-task-locking.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/team-ops-task-locking.test.ts",
         "to": "src/team/team-ops.ts",
         "kind": "imports"
       },
@@ -48589,6 +48631,11 @@
       {
         "from": "src/__tests__/team-update-task-locking.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/team-update-task-locking.test.ts",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -48943,7 +48990,17 @@
       },
       {
         "from": "src/__tests__/workflow-profile-activation-script.test.ts",
+        "to": "external:node:url",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/workflow-profile-activation-script.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/workflow-profile-activation-script.test.ts",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -50290,6 +50347,11 @@
         "from": "src/cli/__tests__/team-status-worktree.test.ts",
         "to": "src/team/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/cli/__tests__/team.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
       },
       {
         "from": "src/cli/__tests__/team.test.ts",
@@ -53962,6 +54024,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/hooks/__tests__/bridge-routing.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hooks/__tests__/bridge-security.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -54119,6 +54186,11 @@
       {
         "from": "src/hooks/__tests__/pre-tool-use-template-source-ext.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/__tests__/precompact-restore.test.ts",
+        "to": "external:child_process",
         "kind": "imports"
       },
       {
@@ -55318,13 +55390,13 @@
       },
       {
         "from": "src/hooks/autopilot/runtime-insight.ts",
-        "to": "src/hud/state.ts",
-        "kind": "imports"
+        "to": "src/hud/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/hooks/autopilot/runtime-insight.ts",
-        "to": "src/hud/types.ts",
-        "kind": "type-imports"
+        "to": "src/lib/mode-state-io.ts",
+        "kind": "imports"
       },
       {
         "from": "src/hooks/autopilot/runtime-insight.ts",
@@ -58477,11 +58549,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/hooks/project-memory/__tests__/storage.test.ts",
-        "to": "src/lib/worktree-paths.ts",
-        "kind": "imports"
-      },
-      {
         "from": "src/hooks/project-memory/detector.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -60408,6 +60475,11 @@
       },
       {
         "from": "src/hooks/skill-state/index.ts",
+        "to": "src/lib/mode-state-io.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/skill-state/index.ts",
         "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
@@ -60863,11 +60935,6 @@
       },
       {
         "from": "src/hooks/team-pipeline/state.ts",
-        "to": "external:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/team-pipeline/state.ts",
         "to": "src/hooks/team-canonical-state.ts",
         "kind": "imports"
       },
@@ -60883,12 +60950,7 @@
       },
       {
         "from": "src/hooks/team-pipeline/state.ts",
-        "to": "src/lib/atomic-write.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/team-pipeline/state.ts",
-        "to": "src/lib/worktree-paths.ts",
+        "to": "src/lib/mode-state-io.ts",
         "kind": "imports"
       },
       {
@@ -61534,6 +61596,11 @@
       {
         "from": "src/hooks/wiki/storage.ts",
         "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/__tests__/autopilot-profile.test.ts",
+        "to": "external:child_process",
         "kind": "imports"
       },
       {
@@ -63623,6 +63690,11 @@
       },
       {
         "from": "src/interop/__tests__/shared-state-artifacts.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/interop/__tests__/shared-state-artifacts.test.ts",
         "to": "external:fs",
         "kind": "imports"
       },
@@ -64103,6 +64175,11 @@
       },
       {
         "from": "src/lib/__tests__/worktree-paths-superproject-cache.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-superproject-cache.test.ts",
         "to": "external:path",
         "kind": "imports"
       },
@@ -64503,6 +64580,11 @@
       },
       {
         "from": "src/mcp/__tests__/team-cleanup.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/__tests__/team-cleanup.test.ts",
         "to": "src/team/tmux-session.ts",
         "kind": "imports"
       },
@@ -64529,6 +64611,11 @@
       {
         "from": "src/mcp/__tests__/team-server-artifact-convergence.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/mcp/__tests__/team-server-artifact-convergence.test.ts",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -65154,6 +65241,21 @@
       {
         "from": "src/notifications/__tests__/notify-registry-integration.test.ts",
         "to": "external:events",
+        "kind": "imports"
+      },
+      {
+        "from": "src/notifications/__tests__/notify-registry-integration.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/notifications/__tests__/notify-registry-integration.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/notifications/__tests__/notify-registry-integration.test.ts",
+        "to": "external:node:path",
         "kind": "imports"
       },
       {
@@ -66658,6 +66760,11 @@
       },
       {
         "from": "src/team/__tests__/api-interop.cleanup.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/api-interop.cleanup.test.ts",
         "to": "src/team/api-interop.ts",
         "kind": "imports"
       },
@@ -66698,6 +66805,11 @@
       },
       {
         "from": "src/team/__tests__/api-interop.compatibility.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/api-interop.compatibility.test.ts",
         "to": "src/team/api-interop.ts",
         "kind": "imports"
       },
@@ -66719,6 +66831,11 @@
       {
         "from": "src/team/__tests__/api-interop.cwd-resolution.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/api-interop.cwd-resolution.test.ts",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -66754,6 +66871,11 @@
       {
         "from": "src/team/__tests__/api-interop.dispatch.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/api-interop.dispatch.test.ts",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -67403,6 +67525,11 @@
       },
       {
         "from": "src/team/__tests__/governance-enforcement.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/governance-enforcement.test.ts",
         "to": "src/team/runtime-v2.ts",
         "kind": "imports"
       },
@@ -67848,6 +67975,11 @@
       },
       {
         "from": "src/team/__tests__/merge-orchestrator.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/merge-orchestrator.test.ts",
         "to": "src/team/fs-utils.ts",
         "kind": "imports"
       },
@@ -68283,6 +68415,11 @@
       },
       {
         "from": "src/team/__tests__/recovery-public-api.test.ts",
+        "to": "src/team/state-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/recovery-public-api.test.ts",
         "to": "src/team/types.ts",
         "kind": "type-imports"
       },
@@ -68678,6 +68815,11 @@
       },
       {
         "from": "src/team/__tests__/runtime-v2-role-routing.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2-role-routing.test.ts",
         "to": "src/team/runtime-v2.ts",
         "kind": "imports"
       },
@@ -68869,6 +69011,11 @@
       {
         "from": "src/team/__tests__/runtime-v2.shutdown-pane-cleanup.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/runtime-v2.shutdown-pane-cleanup.test.ts",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -69194,6 +69341,11 @@
       {
         "from": "src/team/__tests__/task-file-ops.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/task-file-ops.test.ts",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -69648,6 +69800,21 @@
       },
       {
         "from": "src/team/__tests__/tmux-comm.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-comm.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-comm.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-comm.test.ts",
         "to": "external:vitest",
         "kind": "imports"
       },
@@ -69734,6 +69901,11 @@
       {
         "from": "src/team/__tests__/tmux-session.startup.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/tmux-session.startup.test.ts",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -70053,6 +70225,11 @@
       },
       {
         "from": "src/team/__tests__/worker-launch-ack.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/worker-launch-ack.test.ts",
         "to": "src/platform/process-utils.ts",
         "kind": "imports"
       },
@@ -70289,6 +70466,11 @@
       {
         "from": "src/team/api-interop.ts",
         "to": "src/team/runtime.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/api-interop.ts",
+        "to": "src/team/state-paths.ts",
         "kind": "imports"
       },
       {
@@ -71034,6 +71216,11 @@
       {
         "from": "src/team/leader-inbox.ts",
         "to": "src/team/fs-utils.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/leader-inbox.ts",
+        "to": "src/team/state-paths.ts",
         "kind": "imports"
       },
       {
@@ -72108,6 +72295,11 @@
       },
       {
         "from": "src/team/runtime.ts",
+        "to": "src/team/state-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/runtime.ts",
         "to": "src/team/task-file-ops.ts",
         "kind": "imports"
       },
@@ -72314,6 +72506,11 @@
       {
         "from": "src/team/state-paths.ts",
         "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/state-paths.ts",
+        "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
       {
@@ -72953,6 +73150,11 @@
       },
       {
         "from": "src/team/worker-bootstrap.ts",
+        "to": "src/team/state-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/worker-bootstrap.ts",
         "to": "src/team/tmux-session.ts",
         "kind": "imports"
       },
@@ -73178,11 +73380,6 @@
       },
       {
         "from": "src/tools/__tests__/memory-tools.test.ts",
-        "to": "src/lib/worktree-paths.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/tools/__tests__/memory-tools.test.ts",
         "to": "src/tools/memory-tools.ts",
         "kind": "imports"
       },
@@ -73199,6 +73396,31 @@
       {
         "from": "src/tools/__tests__/schema-conversion.test.ts",
         "to": "src/tools/index.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/state-tools-nongit-ownership.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/state-tools-nongit-ownership.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/state-tools-nongit-ownership.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/state-tools-nongit-ownership.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/__tests__/state-tools-nongit-ownership.test.ts",
+        "to": "src/tools/state-tools.ts",
         "kind": "imports"
       },
       {
@@ -75323,12 +75545,22 @@
       },
       {
         "from": "templates/hooks/lib/state-root.mjs",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "templates/hooks/lib/state-root.mjs",
         "to": "external:crypto",
         "kind": "imports"
       },
       {
         "from": "templates/hooks/lib/state-root.mjs",
         "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "templates/hooks/lib/state-root.mjs",
+        "to": "external:os",
         "kind": "imports"
       },
       {

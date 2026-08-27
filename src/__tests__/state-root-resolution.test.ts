@@ -31,7 +31,8 @@ function buildHookEnv(extraEnv: Record<string, string> = {}): Record<string, str
   }
   // Remove OMC_STATE_DIR from parent env so only extraEnv controls it.
   delete env.OMC_STATE_DIR;
-  return { ...env, CLAUDE_PLUGIN_ROOT: REPO_ROOT, ...extraEnv };
+  delete env.CLAUDE_PLUGIN_ROOT;
+  return { ...env, ...extraEnv };
 }
 
 /** Run a hook script synchronously and return the parsed JSON output. */
@@ -115,21 +116,34 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
   let tempDir: string;
   let fakeProject: string;
   let fakeStateDir: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
+  let previousStateDir: string | undefined;
 
   beforeEach(() => {
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    previousStateDir = process.env.OMC_STATE_DIR;
     tempDir = mkdtempSync(join(tmpdir(), 'omc-state-root-'));
     fakeProject = join(tempDir, 'project');
     fakeStateDir = join(tempDir, 'centralized-state');
     mkdirSync(fakeProject, { recursive: true });
-    // session-start validateCwd requires a real workspace anchor (.git / .omc-workspace)
-    mkdirSync(join(fakeProject, '.git'), { recursive: true });
+    // Hook probes require valid Git metadata rather than an empty .git dir.
+    execFileSync('git', ['init'], { cwd: fakeProject, stdio: 'pipe' });
     mkdirSync(fakeStateDir, { recursive: true });
+    process.env.HOME = tempDir;
+    process.env.USERPROFILE = tempDir;
     delete process.env.OMC_STATE_DIR;
     clearWorktreeCache();
   });
 
   afterEach(() => {
-    delete process.env.OMC_STATE_DIR;
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
+    if (previousStateDir === undefined) delete process.env.OMC_STATE_DIR;
+    else process.env.OMC_STATE_DIR = previousStateDir;
     clearWorktreeCache();
     rmSync(tempDir, { recursive: true, force: true });
   });
@@ -609,7 +623,7 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
     }
   });
 
-  it('reuses a safe existing git-less state root for legacy visibility', () => {
+  it('does not implicitly adopt an existing git-less state root', () => {
     const fakeHome = join(tempDir, 'home');
     const project = join(fakeHome, 'workspace', 'project');
     const nestedCwd = join(project, 'deep', 'path');
@@ -624,7 +638,7 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
     try {
       clearWorktreeCache();
       process.chdir(nestedCwd);
-      expect(getOmcRoot()).toBe(join(project, '.omc'));
+      expect(getOmcRoot()).toBe(join(fakeHome, '.omc'));
     } finally {
       process.chdir(previousCwd);
       if (previousHome === undefined) delete process.env.HOME;

@@ -7,11 +7,19 @@ import { ultragoalCommand } from '../ultragoal.js';
 async function withTempCwd<T>(run: (cwd: string) => Promise<T>): Promise<T> {
   const cwd = await mkdtemp(join(tmpdir(), 'omc-ultragoal-cli-'));
   const original = process.cwd();
+  const originalHome = process.env.HOME;
+  const originalUserProfile = process.env.USERPROFILE;
   process.chdir(cwd);
+  process.env.HOME = cwd;
+  process.env.USERPROFILE = cwd;
   try {
     return await run(cwd);
   } finally {
     process.chdir(original);
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalUserProfile;
     await rm(cwd, { recursive: true, force: true });
   }
 }

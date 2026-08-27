@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, rmSync, realpathSync } from 'fs';
+import { mkdirSync, mkdtempSync, rmSync, realpathSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { getTeamStatus } from '../team-status.js';
@@ -13,9 +13,20 @@ const TEST_TEAM = 'test-team-status';
 let WORK_DIR: string;
 // Canonical tasks dir: {WORK_DIR}/.omc/state/team/{TEST_TEAM}/tasks/
 let TASKS_DIR: string;
+let previousHome: string | undefined;
+let previousUserProfile: string | undefined;
+let previousOmcStateDir: string | undefined;
 
 beforeEach(() => {
-  WORK_DIR = join(realpathSync(tmpdir()), `omc-team-status-test-${Date.now()}`);
+  previousHome = process.env.HOME;
+  previousUserProfile = process.env.USERPROFILE;
+  previousOmcStateDir = process.env.OMC_STATE_DIR;
+
+  WORK_DIR = mkdtempSync(join(realpathSync(tmpdir()), 'omc-team-status-test-'));
+  process.env.HOME = WORK_DIR;
+  process.env.USERPROFILE = WORK_DIR;
+  delete process.env.OMC_STATE_DIR;
+
   TASKS_DIR = join(WORK_DIR, '.omc', 'state', 'team', TEST_TEAM, 'tasks');
   mkdirSync(TASKS_DIR, { recursive: true });
   mkdirSync(join(WORK_DIR, '.omc', 'state', 'team-bridge', TEST_TEAM), { recursive: true });
@@ -23,9 +34,18 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  const outboxDir = join(getClaudeConfigDir(), 'teams', TEST_TEAM);
+
+  if (previousHome === undefined) delete process.env.HOME;
+  else process.env.HOME = previousHome;
+  if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+  else process.env.USERPROFILE = previousUserProfile;
+  if (previousOmcStateDir === undefined) delete process.env.OMC_STATE_DIR;
+  else process.env.OMC_STATE_DIR = previousOmcStateDir;
+
   rmSync(WORK_DIR, { recursive: true, force: true });
   // Clean up outbox files written to ~/.claude/teams/ by appendOutbox
-  rmSync(join(getClaudeConfigDir(), 'teams', TEST_TEAM), { recursive: true, force: true });
+  rmSync(outboxDir, { recursive: true, force: true });
 });
 
 function writeWorkerRegistry(workers: McpWorkerMember[]): void {

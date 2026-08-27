@@ -15,31 +15,52 @@ function runKeywordDetector(
   env: NodeJS.ProcessEnv = {},
   detectorPath = SCRIPT_PATH,
 ) {
-  const raw = execFileSync(NODE, [detectorPath], {
-    input: JSON.stringify({
-      hook_event_name: 'UserPromptSubmit',
-      cwd,
-      session_id: sessionId,
-      prompt,
-    }),
-    encoding: 'utf-8',
-    env: {
-      ...process.env,
-      NODE_ENV: 'test',
-      OMC_SKIP_HOOKS: '',
-      ...env,
-    },
-    timeout: 15000,
-  }).trim();
+  const homeDir = mkdtempSync(join(tmpdir(), 'keyword-detector-home-'));
+  const isFixtureCwd = cwd !== process.cwd();
+  if (isFixtureCwd && !existsSync(join(cwd, '.git'))) {
+    execFileSync('git', ['init', '--quiet'], { cwd, stdio: 'pipe' });
+  }
 
-  return JSON.parse(raw) as {
-    continue: boolean;
-    suppressOutput?: boolean;
-    hookSpecificOutput?: {
-      hookEventName?: string;
-      additionalContext?: string;
-    };
+  const effectiveHome = env.HOME || homeDir;
+  const childEnv = {
+    ...process.env,
+    NODE_ENV: 'test',
+    DISABLE_OMC: '',
+    OMC_SKIP_HOOKS: '',
+    OMC_TEAM_WORKER: '',
+    OMC_STATE_DIR: cwd === process.cwd() ? join(homeDir, 'omc-state') : '',
+    CLAUDE_PLUGIN_ROOT: '',
+    HOME: effectiveHome,
+    USERPROFILE: env.USERPROFILE || effectiveHome,
+    CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR || join(effectiveHome, '.claude'),
+    ...env,
   };
+
+  try {
+    const raw = execFileSync(NODE, [detectorPath], {
+      cwd,
+      input: JSON.stringify({
+        hook_event_name: 'UserPromptSubmit',
+        cwd,
+        session_id: sessionId,
+        prompt,
+      }),
+      encoding: 'utf-8',
+      env: childEnv,
+      timeout: 15000,
+    }).trim();
+
+    return JSON.parse(raw) as {
+      continue: boolean;
+      suppressOutput?: boolean;
+      hookSpecificOutput?: {
+        hookEventName?: string;
+        additionalContext?: string;
+      };
+    };
+  } finally {
+    rmSync(homeDir, { recursive: true, force: true });
+  }
 }
 
 function getRalplanStatePath(cwd: string, sessionId: string) {

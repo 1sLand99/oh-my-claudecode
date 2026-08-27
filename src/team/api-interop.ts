@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve as resolvePath } from 'node:path';
 import { getOmcRoot } from '../lib/worktree-paths.js';
+import { teamStateRoot } from './state-paths.js';
 import {
   TEAM_NAME_SAFE_PATTERN,
   WORKER_NAME_SAFE_PATTERN,
@@ -480,8 +481,9 @@ export function buildLegacyTeamDeprecationHint(
 
 const WORKTREE_TRIGGER_STATE_ROOT = '$OMC_TEAM_STATE_ROOT';
 
-function resolveInstructionStateRoot(worktreePath?: string | null): string | undefined {
-  return worktreePath ? WORKTREE_TRIGGER_STATE_ROOT : undefined;
+function resolveInstructionStateRoot(_worktreePath: string | null | undefined, cwd?: string, teamName?: string): string {
+  if (process.platform === 'win32' && cwd && teamName) return teamStateRoot(cwd, teamName);
+  return WORKTREE_TRIGGER_STATE_ROOT;
 }
 
 function hasExactText(value: unknown): value is string {
@@ -560,7 +562,7 @@ function findWorkerDispatchTarget(
     return {
       paneId: recipient?.pane_id,
       workerIndex: recipient?.index,
-      instructionStateRoot: resolveInstructionStateRoot(recipient?.worktree_path),
+      instructionStateRoot: resolveInstructionStateRoot(recipient?.worktree_path, cwd, teamName),
     };
   });
 }
@@ -813,7 +815,7 @@ export async function executeTeamApiOperation(
             workerName: worker.name,
             workerIndex: worker.index,
             paneId: worker.pane_id,
-            instructionStateRoot: resolveInstructionStateRoot(worker.worktree_path),
+            instructionStateRoot: resolveInstructionStateRoot(worker.worktree_path, cwd, teamName),
           }));
 
         const notificationOutcomes = await queueBroadcastMailboxMessage({

@@ -21,7 +21,7 @@ import type { TeamSnapshotV2 } from './runtime-v2.js';
 import { createSwallowedErrorLogger } from '../lib/swallowed-error.js';
 import { parseRecoveryIntent, setRuntimeOwnerDispatch, type RecoverDeadWorkerOwnerInput } from './runtime-owner-client.js';
 import type { RecoverDeadWorkerV2Result } from './types.js';
-import { absPath, TeamPaths } from './state-paths.js';
+import { absPath, TeamPaths, teamStateRoot } from './state-paths.js';
 import { canonicalRecoveryPayloadHash, isSafeRecoveryRequestId, readRecoveryFinalState, readRecoveryOutcome, readRecoveryRequestReservation } from './recovery-request-store.js';
 import { runWorkerActivationGate, type RecoveryActivationGate } from './worker-activation-gate.js';
 import { readAndConsumeWorkerLaunchDescriptor, runWorkerLaunchBootstrap } from './worker-launch-ack.js';
@@ -854,7 +854,7 @@ async function main(): Promise<void> {
   } = input;
 
   const workerCount = input.workerCount ?? agentTypes.length;
-  const stateRoot = join(cwd, `.omc/state/team/${teamName}`);
+  const stateRoot = teamStateRoot(cwd, teamName);
 
   const config: RuntimeCliConfig = {
     teamName,

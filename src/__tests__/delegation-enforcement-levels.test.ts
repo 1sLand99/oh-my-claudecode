@@ -51,6 +51,29 @@ vi.mock('../hooks/notepad/index.js', () => ({
   setPriorityContext: vi.fn(),
 }));
 
+// Keep bridge integration focused on delegation and task tracking. The bridge's
+// prompt-prerequisite reader resolves runtime state roots through git, which is
+// intentionally unavailable in this suite's mocked filesystem. Stub that
+// unrelated stateful surface so each integration case observes only its own
+// enforcement/task inputs.
+vi.mock('../hooks/prompt-prerequisites/index.js', () => ({
+  activatePromptPrerequisiteState: vi.fn(),
+  buildPromptPrerequisiteDenyReason: vi.fn(() => ''),
+  buildPromptPrerequisiteReminder: vi.fn(() => ''),
+  clearPromptPrerequisiteState: vi.fn(),
+  getPromptPrerequisiteConfig: vi.fn(() => ({
+    enabled: false,
+    blockingTools: [],
+    executionKeywords: [],
+    sectionNames: {},
+  })),
+  isPromptPrerequisiteBlockingTool: vi.fn(() => false),
+  parsePromptPrerequisiteSections: vi.fn(),
+  readPromptPrerequisiteState: vi.fn(() => null),
+  recordPromptPrerequisiteProgress: vi.fn(() => null),
+  shouldEnforcePromptPrerequisites: vi.fn(() => false),
+}));
+
 import { existsSync, readFileSync } from 'fs';
 const mockExistsSync = vi.mocked(existsSync);
 const mockReadFileSync = vi.mocked(readFileSync);
@@ -139,7 +162,7 @@ describe('delegation-enforcement-levels', () => {
     const sourceFileInput: ToolExecuteInput = {
       toolName: 'Write',
       toolInput: { filePath: 'src/app.ts' },
-      directory: '/tmp/test-project',
+      directory: '/home/test-project',
     };
 
     it('defaults to warn when no config file exists', () => {
@@ -155,13 +178,13 @@ describe('delegation-enforcement-levels', () => {
       // Local config exists with 'off', global has 'strict'
       mockExistsSync.mockImplementation((p: unknown) => {
         const s = String(p);
-        if (/[\\/]tmp[\\/]test-project[\\/]\.omc[\\/]config\.json$/.test(s)) return true;
+        if (s.endsWith('/.omc/config.json')) return true;
         if (/[\\/]mock[\\/]home[\\/]\.claude[\\/]\.omc-config\.json$/.test(s)) return true;
         return false;
       });
       mockReadFileSync.mockImplementation((p: unknown) => {
         const s = String(p);
-        if (/[\\/]tmp[\\/]test-project[\\/]\.omc[\\/]config\.json$/.test(s)) {
+        if (s.endsWith('/.omc/config.json')) {
           return JSON.stringify({ delegationEnforcementLevel: 'off' });
         }
         if (/[\\/]mock[\\/]home[\\/]\.claude[\\/]\.omc-config\.json$/.test(s)) {
@@ -231,7 +254,7 @@ describe('delegation-enforcement-levels', () => {
     it('supports enforcementLevel key as alternative', () => {
       mockExistsSync.mockImplementation((p: unknown) => {
         const s = String(p);
-        if (/[\\/]tmp[\\/]test-project[\\/]\.omc[\\/]config\.json$/.test(s)) return true;
+        if (s.endsWith('/.omc/config.json')) return true;
         return false;
       });
       mockReadFileSync.mockImplementation(() => {

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -35,7 +35,7 @@ function runUntilClose(
     const startedAt = Date.now();
     const child = spawn(process.execPath, [RUN_CJS, script], {
       cwd,
-      env: { ...process.env, ...extraEnv, CLAUDE_PLUGIN_ROOT: REPO_ROOT, CLAUDE_CONFIG_DIR: join(cwd, '.claude') },
+      env: { ...process.env, HOME: cwd, USERPROFILE: cwd, ...extraEnv, CLAUDE_PLUGIN_ROOT: REPO_ROOT, CLAUDE_CONFIG_DIR: join(cwd, '.claude') },
       stdio: ['pipe', 'ignore', 'ignore'],
       windowsHide: true,
     });
@@ -112,7 +112,7 @@ describe('SessionEnd run.cjs process exit regressions (#3477)', () => {
   });
 
   function createProject(): string {
-    const cwd = mkdtempSync(join(tmpdir(), 'omc-session-end-process-exit-'));
+    const cwd = mkdtempSync(join(homedir(), 'omc-session-end-process-exit-'));
     tempDirs.push(cwd);
     writeFileSync(join(cwd, 'transcript.jsonl'), '');
     return cwd;

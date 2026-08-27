@@ -31,9 +31,15 @@ import { isManifestTerminal, mutateSessionEndJob, prepareCoreManifest, readSessi
 import { processSessionEndWorker, reconcileSessionEndJobs, workerEnvironment } from '../worker.js';
 
 const directories: string[] = [];
+let previousHome: string | undefined;
+let previousUserProfile: string | undefined;
 
 function project(): string {
   const directory = mkdtempSync(join(tmpdir(), 'omc-session-end-worker-'));
+  previousHome = process.env.HOME;
+  previousUserProfile = process.env.USERPROFILE;
+  process.env.HOME = directory;
+  process.env.USERPROFILE = directory;
   directories.push(directory);
   return directory;
 }
@@ -44,6 +50,10 @@ afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
   vi.useRealTimers();
   vi.unstubAllEnvs();
+  if (previousHome === undefined) delete process.env.HOME;
+  else process.env.HOME = previousHome;
+  if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+  else process.env.USERPROFILE = previousUserProfile;
 });
 
 describe('SessionEnd durable worker', () => {

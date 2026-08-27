@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 
 import {
   awaitWorkerLaunchAcknowledgement,
@@ -29,16 +29,54 @@ import {
   quoteWindowsCreateProcessArgument,
 } from '../worker-launch-ack.js';
 import { getProcessStartIdentity, isProcessAlive, terminateOwnedProcessTree } from '../../platform/process-utils.js';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
 
 let cwd = '';
+let fixtureEnvCaptured = false;
+let originalHome: string | undefined;
+let originalUserProfile: string | undefined;
+let originalStateDir: string | undefined;
+
+function isolateFixtureRoot(root: string): void {
+  if (!fixtureEnvCaptured) {
+    originalHome = process.env.HOME;
+    originalUserProfile = process.env.USERPROFILE;
+    originalStateDir = process.env.OMC_STATE_DIR;
+    fixtureEnvCaptured = true;
+  }
+  process.env.HOME = root;
+  process.env.USERPROFILE = root;
+  delete process.env.OMC_STATE_DIR;
+}
+
+async function createFixture(prefix: string): Promise<string> {
+  const root = await mkdtemp(join(tmpdir(), prefix));
+  isolateFixtureRoot(root);
+  return root;
+}
+
+function restoreFixtureEnv(): void {
+  if (!fixtureEnvCaptured) return;
+  if (originalHome === undefined) delete process.env.HOME;
+  else process.env.HOME = originalHome;
+  if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+  else process.env.USERPROFILE = originalUserProfile;
+  if (originalStateDir === undefined) delete process.env.OMC_STATE_DIR;
+  else process.env.OMC_STATE_DIR = originalStateDir;
+  fixtureEnvCaptured = false;
+  originalHome = undefined;
+  originalUserProfile = undefined;
+  originalStateDir = undefined;
+}
 
 afterEach(async () => {
+  restoreFixtureEnv();
   if (cwd) await rm(cwd, { recursive: true, force: true });
   cwd = '';
 });
 
 async function attempt() {
-  cwd = await mkdtemp(join(tmpdir(), 'worker-launch-ack-'));
+  cwd = await createFixture('worker-launch-ack-');
   return prepareWorkerLaunchAttempt({
     cwd,
     teamName: 'launch-team',
@@ -572,7 +610,7 @@ describe('worker launch acknowledgement', () => {
   });
 
   it('prevents an older acknowledged attempt from releasing a provider after supersession', async () => {
-    cwd = await mkdtemp(join(tmpdir(), 'omc-worker-launch-recovery-generation-'));
+    cwd = await createFixture('omc-worker-launch-recovery-generation-');
     const olderAttempt = await prepareWorkerLaunchAttempt({
       cwd,
       teamName: 'launch-team',
@@ -629,7 +667,7 @@ describe('worker launch acknowledgement', () => {
   });
 
   it('reloads the accepted current recovery launch with its durable context', async () => {
-    cwd = await mkdtemp(join(tmpdir(), 'omc-worker-launch-current-'));
+    cwd = await createFixture('omc-worker-launch-current-');
     const launchAttempt = await prepareWorkerLaunchAttempt({
       cwd,
       teamName: 'launch-team',
@@ -706,7 +744,12 @@ describe('worker launch acknowledgement', () => {
       cwd,
     });
 
-    expect(materialized.wrapperRelativePath).toMatch(/^\.omc\\state\\team\\launch-team\\workers\\worker-1\\launch-attempts\\[0-9a-f-]+\\launch\.cmd$/);
+    const canonicalWrapperPath = join(
+      getOmcRoot(cwd), 'state', 'team', 'launch-team', 'workers', 'worker-1',
+      'launch-attempts', launchAttempt.attempt_id, 'launch.cmd',
+    );
+    expect(materialized.wrapperPath).toBe(canonicalWrapperPath);
+    expect(materialized.wrapperRelativePath).toBe(relative(cwd, canonicalWrapperPath).replace(/\//g, '\\'));
     expect(Buffer.byteLength(materialized.wrapperRelativePath, 'utf8')).toBeLessThan(256);
     const wrapper = await readFile(materialized.wrapperPath, 'utf8');
     expect(wrapper).toContain('setlocal DisableDelayedExpansion');
@@ -749,7 +792,7 @@ describe('worker launch acknowledgement', () => {
 
   it('uses a safe relative wrapper command when worker cwd is nested below the leader state root', async () => {
     const launchAttempt = await attempt();
-    const workerCwd = join(cwd, '.omc', 'team', 'launch-team', 'worktrees', 'worker-1');
+    const workerCwd = join(getOmcRoot(cwd), 'team', 'launch-team', 'worktrees', 'worker-1');
     await mkdir(workerCwd, { recursive: true });
     const materialized = await materializeWorkerLaunchTransport({
       attempt: launchAttempt,
@@ -758,6 +801,7 @@ describe('worker launch acknowledgement', () => {
       cwd: workerCwd,
     });
 
+    expect(materialized.wrapperRelativePath).toBe(relative(workerCwd, launchAttempt.wrapperPath).replace(/\//g, '\\'));
     expect(materialized.wrapperRelativePath).toMatch(/^(?:\.\.\\)+state\\team\\launch-team\\workers\\worker-1\\launch-attempts\\[0-9a-f-]+\\launch\.cmd$/);
     expect(materialized.wrapperRelativePath).not.toMatch(/[\s"%!^&|()]/);
     await expect(cleanupWorkerLaunchTransport(launchAttempt, 'nested_worktree_cleanup')).resolves.toBe(true);
@@ -964,7 +1008,7 @@ describe('worker launch acknowledgement', () => {
   });
 
   it('materializes POSIX supervision without changing direct provider argv', async () => {
-    cwd = await mkdtemp(join(tmpdir(), 'worker-launch-posix-supervisor-'));
+    cwd = await createFixture('worker-launch-posix-supervisor-');
     const invocation = await materializeProviderSpawnInvocation(
       buildProviderSpawnInvocation(['/usr/bin/codex', '--prompt', 'literal & value'], 'linux'),
       { superviseProcessTree: true },
@@ -997,7 +1041,7 @@ describe('worker launch acknowledgement', () => {
   });
 
   it.runIf(process.platform === 'win32').each(['cmd', 'bat'])('round-trips native .%s arguments through a real batch shim', async (extension) => {
-    cwd = await mkdtemp(join(tmpdir(), `worker-launch-native-${extension}-`));
+    cwd = await createFixture(`worker-launch-native-${extension}-`);
     const providerPath = join(cwd, `provider.${extension}`);
     const outputPath = join(cwd, 'argv.json');
     await writeFile(providerPath, `@echo off\r\n"${process.execPath}" -e "require('fs').writeFileSync(process.argv[1],JSON.stringify(process.argv.slice(2)))" %*\r\n`, 'utf8');
@@ -1020,7 +1064,7 @@ describe('worker launch acknowledgement', () => {
   });
 
   it.runIf(process.platform === 'win32')('keeps a supervisor root alive until an early-exit provider tree is terminated', async () => {
-    cwd = await mkdtemp(join(tmpdir(), 'worker-launch-native-supervisor-'));
+    cwd = await createFixture('worker-launch-native-supervisor-');
     const providerPath = join(cwd, 'early-provider.cmd');
     const childPidPath = join(cwd, 'early-provider-child.pid');
     await writeFile(providerPath, `@echo off\r\n"${process.execPath}" -e "const fs=require('fs'),cp=require('child_process');const c=cp.spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});fs.writeFileSync(process.argv[1],String(c.pid));c.unref()" "${childPidPath}"\r\n`, 'utf8');

@@ -20,6 +20,7 @@ import {
   writeTaskFailure,
   DEFAULT_MAX_TASK_RETRIES,
 } from './task-file-ops.js';
+import { normalizeTaskFileStem, teamStateRoot } from './state-paths.js';
 
 export interface TeamConfig {
   teamName: string;
@@ -115,7 +116,7 @@ function workerName(index: number): string {
 
 function stateRoot(cwd: string, teamName: string): string {
   validateTeamName(teamName);
-  return join(cwd, `.omc/state/team/${teamName}`);
+  return teamStateRoot(cwd, teamName);
 }
 
 async function writeJson(filePath: string, data: unknown): Promise<void> {
@@ -168,7 +169,7 @@ function parseWorkerIndex(workerNameValue: string): number {
 }
 
 function taskPath(root: string, taskId: string): string {
-  return join(root, 'tasks', `${taskId}.json`);
+  return join(root, 'tasks', `${normalizeTaskFileStem(taskId)}.json`);
 }
 
 async function writePanesTrackingFileIfPresent(runtime: TeamRuntime): Promise<void> {
@@ -350,9 +351,10 @@ function buildInitialTaskInstruction(
   teamName: string,
   workerName: string,
   task: { subject: string; description: string },
-  taskId: string
+  taskId: string,
+  teamStateRoot: string,
 ): string {
-  const donePath = `.omc/state/team/${teamName}/workers/${workerName}/done.json`;
+  const donePath = join(teamStateRoot, 'workers', workerName, 'done.json');
   return [
     `## Initial Task Assignment`,
     `Task ID: ${taskId}`,
@@ -396,7 +398,7 @@ export async function startTeam(config: TeamConfig): Promise<TeamRuntime> {
   // Create task files
   for (let i = 0; i < tasks.length; i++) {
     const taskId = String(i + 1);
-    await writeJson(join(root, 'tasks', `${taskId}.json`), {
+    await writeJson(taskPath(root, taskId), {
       id: taskId,
       subject: tasks[i].subject,
       description: tasks[i].description,
@@ -419,6 +421,7 @@ export async function startTeam(config: TeamConfig): Promise<TeamRuntime> {
       teamName, workerName: wName, agentType,
       tasks: tasks.map((t, idx) => ({ id: String(idx + 1), subject: t.subject, description: t.description })),
       cwd,
+      instructionStateRoot: root,
     });
   }
 
@@ -789,10 +792,14 @@ export async function spawnWorkerForTask(
     // Build the initial task instruction and write inbox before spawn.
     // For prompt-mode agents the instruction is passed via CLI flag;
     // for interactive agents it is sent via tmux send-keys after startup.
-    const instruction = buildInitialTaskInstruction(runtime.teamName, workerNameValue, task, taskId);
+    const instruction = buildInitialTaskInstruction(runtime.teamName, workerNameValue, task, taskId, root);
     await composeInitialInbox(runtime.teamName, workerNameValue, instruction, runtime.cwd);
 
-    const envVars = getModelWorkerEnv(runtime.teamName, workerNameValue, agentType);
+    const envVars = {
+      ...getModelWorkerEnv(runtime.teamName, workerNameValue, agentType),
+      OMC_TEAM_STATE_ROOT: root,
+      OMC_TEAM_LEADER_CWD: runtime.cwd,
+    };
     const resolvedBinaryPath = runtime.resolvedBinaryPaths?.[agentType] ?? resolveValidatedBinaryPath(agentType);
     if (!runtime.resolvedBinaryPaths) {
       runtime.resolvedBinaryPaths = {};
@@ -844,7 +851,7 @@ export async function spawnWorkerForTask(
     // Codex and Claude team workers are persistent interactive panes and are
     // nudged through the inbox transport instead of `codex exec`/print modes.
     if (usePromptMode) {
-      const promptArgs = getPromptModeArgs(agentType, generateTriggerMessage(runtime.teamName, workerNameValue));
+      const promptArgs = getPromptModeArgs(agentType, generateTriggerMessage(runtime.teamName, workerNameValue, root));
       launchArgs.push(...promptArgs);
     }
 
@@ -895,7 +902,7 @@ export async function spawnWorkerForTask(
       const notified = await notifyPaneWithRetry(
         runtime.sessionName,
         paneId,
-        generateTriggerMessage(runtime.teamName, workerNameValue),
+        generateTriggerMessage(runtime.teamName, workerNameValue, root),
         1
       );
       if (!notified) {
@@ -954,7 +961,7 @@ export async function assignTask(
   cwd: string
 ): Promise<void> {
   const root = stateRoot(cwd, teamName);
-  const taskFilePath = join(root, 'tasks', `${taskId}.json`);
+  const taskFilePath = taskPath(root, taskId);
 
   // Update task ownership under an exclusive lock to prevent concurrent double-claims
   type TaskSnapshot = { status: string; owner: string | null; assignedAt: string | undefined };
@@ -977,7 +984,7 @@ export async function assignTask(
   // Write to worker inbox
   const inboxPath = join(root, 'workers', targetWorkerName, 'inbox.md');
   await mkdir(join(inboxPath, '..'), { recursive: true });
-  const msg = `\n\n---\n## New Task Assignment\nTask ID: ${taskId}\nClaim and execute task from: .omc/state/team/${teamName}/tasks/${taskId}.json\n`;
+  const msg = `\n\n---\n## New Task Assignment\nTask ID: ${taskId}\nClaim and execute task from: ${taskFilePath}\n`;
   const { appendFile } = await import('fs/promises');
   await appendFile(inboxPath, msg, 'utf-8');
 

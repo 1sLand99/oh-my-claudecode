@@ -14,8 +14,38 @@ function write(path: string, value: unknown): void { mkdirSync(join(path, '..'),
 function config(revision?: number) { return { name: teamName, tmux_session: 'config-session', workers: [{ name: 'config-worker' }], ...(revision === undefined ? {} : { state_revision: revision }) }; }
 function manifest(revision?: number) { return { name: teamName, tmux_session: 'manifest-session', leader: { worker_id: 'leader', role: 'leader', session_id: 'leader-session' }, workers: [{ name: 'manifest-worker' }], ...(revision === undefined ? {} : { state_revision: revision }) }; }
 
-beforeEach(() => { cwd = mkdtempSync(join(tmpdir(), 'omc-team-state-reader-')); });
-afterEach(() => { rmSync(cwd, { recursive: true, force: true }); });
+function isolateFixtureRoot(root: string): () => void {
+  const home = process.env.HOME;
+  const userProfile = process.env.USERPROFILE;
+  const stateDir = process.env.OMC_STATE_DIR;
+  process.env.HOME = root;
+  process.env.USERPROFILE = root;
+  delete process.env.OMC_STATE_DIR;
+  return () => {
+    if (home === undefined) delete process.env.HOME;
+    else process.env.HOME = home;
+    if (userProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = userProfile;
+    if (stateDir === undefined) delete process.env.OMC_STATE_DIR;
+    else process.env.OMC_STATE_DIR = stateDir;
+  };
+}
+
+let restoreFixtureEnv: (() => void) | undefined;
+
+beforeEach(() => {
+  cwd = mkdtempSync(join(tmpdir(), 'omc-team-state-reader-'));
+  restoreFixtureEnv = isolateFixtureRoot(cwd);
+});
+afterEach(() => {
+  const restore = restoreFixtureEnv;
+  restoreFixtureEnv = undefined;
+  try {
+    restore?.();
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
+});
 
 describe('team state reader authority table', () => {
   it('returns absent when both records are absent, and preserves legacy merge behavior only for two legacy records', () => {

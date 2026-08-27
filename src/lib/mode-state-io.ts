@@ -11,8 +11,8 @@ import { basename, dirname, join } from 'path';
 import { createHash, randomUUID } from 'crypto';
 import { spawnSync } from 'child_process';
 import {
-  getGitTopLevel,
   getOmcRoot,
+  probeGitTopLevel,
   resolveStatePath,
   resolveSessionStatePath,
   ensureSessionStateDir,
@@ -371,6 +371,11 @@ function stateDigest(raw: string): string {
 
 function emergencyJournalPath(filePath: string): string {
   return `${filePath}.emergency-journal.json`;
+}
+
+function sessionOwnerFromStatePath(filePath: string): string | undefined {
+  const match = filePath.replaceAll('\\', '/').match(/\/state\/sessions\/([^/]+)(?:\/|$)/);
+  return match?.[1];
 }
 
 function emergencyOwner(): EmergencyJournalOwner | null {
@@ -777,8 +782,15 @@ function emergencyReplaceAtRecoveryBoundary(filePath: string): void {
 
 /** A dead transaction is recovered under a state-scoped, generation-verified exclusive claim. */
 export function recoverEmergencyStateFile(filePath: string, options?: EmergencyRecoveryOptions): boolean {
-  const authorizeState = options?.authorizeState;
+  const pathSessionId = sessionOwnerFromStatePath(filePath);
+  const authorizeState = options?.authorizeState ?? (pathSessionId
+    ? (state: Record<string, unknown>) => {
+      const owner = getStateSessionOwner(state);
+      return owner === undefined || owner === pathSessionId;
+    }
+    : undefined);
   const journalPath = emergencyJournalPath(filePath);
+  if (!existsSync(filePath) && !existsSync(journalPath)) return true;
   // Prefilter before taking a claim so stale shared-home artifacts cannot be
   // reclaimed solely because their process owner is dead. Revalidate while
   // holding our own claim below.
@@ -1044,7 +1056,13 @@ export function canClearStateForSession(
 
 function resolveStateRoot(directory?: string): string {
   const baseDir = directory || process.cwd();
-  return getGitTopLevel(baseDir) || baseDir;
+  const probe = probeGitTopLevel(baseDir);
+  if (probe.status === 'ok') return probe.root;
+  // Keep the confirmed non-Git directory as the identity input. Converting it
+  // to HOME here is unsafe when HOME itself is a Git checkout: a later
+  // getOmcRoot() call would reclassify HOME as that repository.
+  if (probe.status === 'not_a_repository') return baseDir;
+  throw new Error('Git probe failed while resolving runtime state root');
 }
 
 /**
@@ -1150,6 +1168,18 @@ function discoverStateFile(path: string, extra: Partial<StateFileDiscovery> = {}
   }
 }
 
+function hasAuthenticatedCompletionEvidence(path: string, sessionId: string): boolean {
+  try {
+    const evidence = JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>;
+    return evidence.session_id === sessionId
+      && typeof evidence.ended_at === 'string'
+      && evidence.ended_at.trim().length > 0
+      && Number.isFinite(Date.parse(evidence.ended_at));
+  } catch {
+    return false;
+  }
+}
+
 export function findSessionOwnedStateCandidates(
   mode: string,
   sessionId: string,
@@ -1159,7 +1189,9 @@ export function findSessionOwnedStateCandidates(
   const baseDir = resolveStateRoot(directory);
   const expectedPath = resolveSessionStatePath(mode, sessionId, baseDir);
   const expected = discoverStateFile(expectedPath);
-  if (expected) matches.set(expectedPath, expected);
+  if (expected && canClearStateForSession(expected.state, sessionId)) {
+    matches.set(expectedPath, expected);
+  }
 
   for (const sid of listSessionIds(baseDir)) {
     const candidatePath = resolveSessionStatePath(mode, sid, baseDir);
@@ -1194,10 +1226,10 @@ export function findCompletedSessionStateCandidates(
   for (const sid of listSessionIds(baseDir)) {
     if (requesterSessionId && sid === requesterSessionId) continue;
     const completionEvidencePath = join(getOmcRoot(baseDir), 'sessions', `${sid}.json`);
-    if (!existsSync(completionEvidencePath)) continue;
+    if (!hasAuthenticatedCompletionEvidence(completionEvidencePath, sid)) continue;
     const candidatePath = resolveSessionStatePath(mode, sid, baseDir);
     const candidate = discoverStateFile(candidatePath, { completedSessionId: sid, completionEvidencePath });
-    if (candidate?.state.active === true) matches.push(candidate);
+    if (candidate?.state.active === true && candidate.ownerSessionId === sid) matches.push(candidate);
   }
   return matches;
 }
@@ -1248,6 +1280,13 @@ export function writeModeState(
         ...(ownerPid !== undefined ? { ownerPid } : {}),
       },
     };
+    if (sessionId) {
+      return writeStateFileLockedCreateIf(
+        filePath,
+        current => current === null || canClearStateForSession(current, sessionId),
+        () => envelope,
+      ) === 'written';
+    }
     return writeStateFileLocked(filePath, envelope);
   } catch {
     return false;
@@ -1299,10 +1338,32 @@ export function readModeState<T = Record<string, unknown>>(
   try {
     const content = readFileSync(filePath, 'utf-8');
     const parsed = JSON.parse(content);
+    if (sessionId && parsed && typeof parsed === 'object' && !canClearStateForSession(parsed as Record<string, unknown>, sessionId)) {
+      return null;
+    }
     // Strip _meta envelope if present
     if (parsed && typeof parsed === 'object' && '_meta' in parsed) {
       const { _meta: _, ...rest } = parsed;
       return rest as T;
+    }
+    return parsed as T;
+  } catch {
+    return null;
+  }
+}
+
+/** Read the persisted state envelope, retaining `_meta` for authorization checks. */
+export function readModeStateWithMeta<T = Record<string, unknown>>(
+  mode: string,
+  directory?: string,
+  sessionId?: string,
+): T | null {
+  const filePath = resolveFile(mode, directory, sessionId);
+  if (!existsSync(filePath)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(filePath, 'utf-8')) as unknown;
+    if (sessionId && parsed && typeof parsed === 'object' && !canClearStateForSession(parsed as Record<string, unknown>, sessionId)) {
+      return null;
     }
     return parsed as T;
   } catch {
@@ -1353,7 +1414,8 @@ export function clearModeStateFile(
       const expectedSnapshot = JSON.stringify(Object.fromEntries(Object.entries(expectedState).filter(([key]) => key !== '_meta')));
       const result = clearStateFileLockedIf(
         directPath,
-        (current) => JSON.stringify(Object.fromEntries(Object.entries(current).filter(([key]) => key !== '_meta'))) === expectedSnapshot,
+        (current) => canClearStateForSession(current, sessionId)
+          && JSON.stringify(Object.fromEntries(Object.entries(current).filter(([key]) => key !== '_meta'))) === expectedSnapshot,
         undefined,
         captured.direct.generation,
       );
@@ -1400,7 +1462,11 @@ export function clearModeStateFile(
         }
       }
     } else {
-      unlinkIfPresent(directPath);
+      const directResult = clearStateFileLockedIf(
+        directPath,
+        current => canClearStateForSession(current, sessionId),
+      );
+      if (directResult === 'failed' || (directResult === 'skipped' && existsSync(directPath))) success = false;
       for (const artifactPath of getRuntimeArtifactCandidates(mode, baseDir, sessionId)) {
         unlinkIfPresent(artifactPath);
       }

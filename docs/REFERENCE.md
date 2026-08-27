@@ -151,12 +151,20 @@ Git handling is intentionally conservative. The repository `.gitignore` keeps `.
 Worktree behavior follows the resolved state root:
 
 - **Default single repo / monorepo**: `getOmcRoot()` uses the git toplevel, so every package below one git root shares `{repo}/.omc/`.
-- **Git-less directories**: OMC reuses the nearest existing safe `.omc/` ancestor so legacy state remains visible. When none exists, all git-less cwd variants anchor at `$HOME/.omc/` instead of creating state in the current directory. Protected home directories such as `~/.ssh`, `~/.claude`, `~/.config`, `~/Downloads`, and `~/Desktop` are never selected as anchors; existing state there is left untouched. This is an anchor change only: session ownership still comes from `session_id`, and no time-based cleanup is performed.
+- **Git-less directories**: all cwd variants use the canonical `$HOME/.omc/` root; with `OMC_STATE_DIR`, they use `$OMC_STATE_DIR/non-git`. Existing cwd-local `.omc/` trees are never adopted or mutated implicitly. Protected locations such as `~/.ssh`, `~/.claude`, `~/.config`, user content directories, and descendants of system temp/OS roots are rejected as migration sources. Use the explicit `state_migrate_non_git` tool for owner-checked, non-overwriting migration. Session ownership still comes from `session_id`, and no time-based cleanup is performed.
 - **Linked git worktrees**: without `OMC_STATE_DIR`, each linked worktree has its own `{worktree}/.omc/`; removing that worktree removes its local OMC state. Re-run setup from the worktree you are actively using so installed hooks and generated instructions match that checkout.
 - **Persistent state across worktree deletion**: set `OMC_STATE_DIR`; OMC writes to `$OMC_STATE_DIR/{project-id}/`, where the project id is stable across linked worktrees when a remote or primary git dir is available.
 - **Multi-repo workspace**: add `.omc-workspace` to a non-git parent when independent sibling repos should share `{parent}/.omc/`. This is for multi-repo workspaces, not ordinary monorepos.
 
-State MCP tools honor an explicit `workingDirectory`. In a git-less session, the requested existing directory is used for resolution while state storage still follows the safe non-git anchor above; in a git-backed session, repository and linked-worktree boundary checks remain enforced. A path from another repository is rejected rather than silently substituted with the session cwd.
+State MCP tools honor an explicit `workingDirectory`. In a git-less session, it identifies the legacy source for explicit migration while state storage follows the canonical non-git root; in a git-backed session, repository and linked-worktree boundary checks remain enforced. A path from another repository or a failed Git probe is rejected rather than silently substituted with the session cwd.
+
+The `state_migrate_non_git` tool is the only supported non-git legacy migration
+path. It requires the exact owning `session_id`, reads only
+`.omc/state/sessions/<session_id>/*.json`, copies records whose embedded owner
+matches that ID into the canonical root, never overwrites an existing
+destination, preserves source bytes, and reports copied/skipped/rejected
+filenames. It never deletes or mutates the legacy source and refuses Git,
+sensitive, system-temp, and symlinked legacy roots.
 
 #### Session-scoped state cannot capture another session (#3873)
 
