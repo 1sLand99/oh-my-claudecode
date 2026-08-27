@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "fee1641f93309c0980a37d6a00340cafbd56b721",
-    "sourceSha256": "8f88461b7f76f3b29b7ff498132110157a3178d0bf60689f718c69237870fe63",
+    "head": "33fb4d9441b1fb7a620ca8d6fa1f7f94540822b0",
+    "sourceSha256": "27fd77817aeb62a7a053e46fa48e37eb85d7cdf0a2af0870f7287c0ce5e0765f",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "fee1641f93309c0980a37d6a00340cafbd56b721",
-  "sourceSha256": "8f88461b7f76f3b29b7ff498132110157a3178d0bf60689f718c69237870fe63",
+  "head": "33fb4d9441b1fb7a620ca8d6fa1f7f94540822b0",
+  "sourceSha256": "27fd77817aeb62a7a053e46fa48e37eb85d7cdf0a2af0870f7287c0ce5e0765f",
   "counts": {
     "public": {
       "skills": 32,
@@ -40362,6 +40362,11 @@
         "path": "tests/integration/workflow-profile-stop-transition.test.ts"
       },
       {
+        "id": "tests/lint/better-sqlite3-lockfloor.test.ts",
+        "kind": "other",
+        "path": "tests/lint/better-sqlite3-lockfloor.test.ts"
+      },
+      {
         "id": "tests/lint/cancel-signal-fixture-ttl.test.ts",
         "kind": "other",
         "path": "tests/lint/cancel-signal-fixture-ttl.test.ts"
@@ -76154,6 +76159,26 @@
         "kind": "imports"
       },
       {
+        "from": "tests/lint/better-sqlite3-lockfloor.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/better-sqlite3-lockfloor.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/better-sqlite3-lockfloor.test.ts",
+        "to": "external:url",
+        "kind": "imports"
+      },
+      {
+        "from": "tests/lint/better-sqlite3-lockfloor.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "tests/lint/cancel-signal-fixture-ttl.test.ts",
         "to": "external:node:fs",
         "kind": "imports"
@@ -76325,12 +76350,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6831,
-      "edgeCount": 7178,
-      "importEdgeCount": 5894,
+      "nodeCount": 6832,
+      "edgeCount": 7182,
+      "importEdgeCount": 5898,
       "registerEdgeCount": 53
     }
   },
-  "inventorySha256": "0fa1d8055ac3c243f65c169a83bda6d9c7fae7684b1d559bb464baf525cd54f2",
-  "manifestSha256": "5b518aacb0aae9fe375c365e83de2bb5d73a70d95051bf0f36b4f1dc9a1963cf"
+  "inventorySha256": "db481b228ec987748679677b625486401e0b8f99957b8c56b0cfee841eee737f",
+  "manifestSha256": "2ce1b253635639171a6149ae5a3971dce2d401425614224a7b843ac6bf00f87c"
 }
