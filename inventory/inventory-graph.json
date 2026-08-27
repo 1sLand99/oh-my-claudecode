@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "2972c31047acec5181a16d7824879231de479621",
-    "sourceSha256": "056d1324b951cba3d6aca551236bc78e464503cdd03e6063c9c7af4924a95cab",
+    "head": "4d24cf3d9b8e65e9a8aec0925f3e6dac5b55317f",
+    "sourceSha256": "86faf90fb1c4f3ade00ead74d1ac038db67fafb0b69915bbf21b116e1758dd18",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "2972c31047acec5181a16d7824879231de479621",
-  "sourceSha256": "056d1324b951cba3d6aca551236bc78e464503cdd03e6063c9c7af4924a95cab",
+  "head": "4d24cf3d9b8e65e9a8aec0925f3e6dac5b55317f",
+  "sourceSha256": "86faf90fb1c4f3ade00ead74d1ac038db67fafb0b69915bbf21b116e1758dd18",
   "counts": {
     "public": {
       "skills": 32,
@@ -76385,31 +76385,12 @@
       }
     ],
     "stats": {
-<<<<<<< HEAD
-      "nodeCount": 6832,
-      "edgeCount": 7183,
-      "importEdgeCount": 5900,
-      "registerEdgeCount": 53
-    }
-  },
-  "inventorySha256": "db481b228ec987748679677b625486401e0b8f99957b8c56b0cfee841eee737f",
-  "manifestSha256": "c807502026fb6be08424b3d761ab12ab8b71c3fdf712a499f3b6cb6dae4d8b5e"
-=======
       "nodeCount": 6833,
-      "edgeCount": 7189,
+      "edgeCount": 7188,
       "importEdgeCount": 5905,
       "registerEdgeCount": 53
     }
   },
   "inventorySha256": "d34ebca442eea63fe880245c9973a6450b99ecf04856906bcd66c03d35ee5c5b",
-<<<<<<< HEAD
-<<<<<<< HEAD
-  "manifestSha256": "bb0ecdf94690d3ed227750c40b154be4edff9434c22710dd91dce75e1c04f716"
->>>>>>> e490136a (fix(setup): remove retired workflow guidance)
-=======
-  "manifestSha256": "a79bfcf57ab9fb686f524e3853cf31056b50e124308f2e64e783131dde0262e2"
->>>>>>> 2b532f65 (fix(setup): align backslash config paths)
-=======
-  "manifestSha256": "3bd70ebdae1fae0b53066f75fa52ba7d0139cc70b800c64e7b5189b4ba55d1d9"
->>>>>>> d86defee (chore(inventory): refresh setup patch provenance)
+  "manifestSha256": "9b7c5a5fe48de3aca786152e4ee98ff6044f3a7902722dd268f3262bdd96b694"
 }
