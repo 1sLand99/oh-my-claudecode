@@ -295,12 +295,19 @@ const CONTRACTS: Record<CliAgentType, CliAgentContract> = {
     // `-p/--print` path is deliberately unused here (same stance as codex).
     supportsPromptMode: false,
     buildLaunchArgs(model?: string, extraFlags: string[] = []): string[] {
-      // cursor-agent owns its own session/auth state, so no approval flags are
-      // needed. `--model <id>` is a documented global option; ids come from
+      // `--force` suppresses per-command approval prompts and `--trust` accepts
+      // the workspace, which together are cursor-agent's equivalent of the
+      // approval bypass every other provider already passes. Without them a
+      // worker pane opened on a directory cursor has not seen before stops at
+      // "Workspace Trust Required" and exits; team worktrees are freshly
+      // created per worker, so they always hit that path. `omc ask cursor`
+      // already launches with `--force --trust` for the same reason.
+      const args = ['--force', '--trust'];
+      const extra = extraFlags.filter(flag => !['--force', '-f', '--yolo', '--trust'].includes(flag));
+      // `--model <id>` is a documented global option; ids come from
       // `cursor-agent --list-models` (e.g. cursor-grok-4.6-high, composer-2.5).
-      const args: string[] = [];
       if (model) args.push('--model', model);
-      return [...args, ...extraFlags];
+      return [...args, ...extra];
     },
     parseOutput(rawOutput: string): string {
       return rawOutput.trim();
@@ -417,12 +424,19 @@ export function validateWorkerLaunchDescriptor(value: unknown): WorkerLaunchDesc
     throw new Error('Invalid worker launch descriptor');
   }
   getContract(descriptor.provider as CliAgentType);
+  const args = descriptor.provider === 'cursor'
+    ? [
+        '--force',
+        '--trust',
+        ...descriptor.args.filter(flag => !['--force', '-f', '--yolo', '--trust'].includes(flag)),
+      ]
+    : [...descriptor.args];
   return {
     schema_version: 1,
     provider: descriptor.provider as CliAgentType,
     model: descriptor.model,
     binary: descriptor.binary,
-    args: [...descriptor.args],
+    args,
   };
 }
 
