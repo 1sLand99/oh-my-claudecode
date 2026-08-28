@@ -122,10 +122,7 @@ export async function resolveHudCacheContextPercent(data, directory) {
       return null;
     }
 
-    // An explicit directory is already the caller's state anchor. Resolve a
-    // worktree root only for the process-wide fallback; otherwise temporary
-    // or non-git callers would read a different .omc tree than they supplied.
-    const root = directory || getWorktreeRoot() || process.cwd();
+    const root = getWorktreeRoot(directory || undefined) || directory || process.cwd();
     // Mirror the HUD's own session-identity resolution exactly
     // (src/hud/stdin.ts getStdinCachePath): walk the candidates — payload
     // session id first, then the env-var candidates in priority order —

@@ -881,12 +881,9 @@ export function getOmcRoot(worktreeRoot?: string): string {
     return join(workspaceAnchor, OmcPaths.ROOT);
   }
 
-  // An explicit root is an authoritative state anchor, including for
-  // non-git callers and isolated test/fixture directories. Only implicit
-  // resolution adopts the stable non-git fallback.
-  const root = worktreeRoot ? resolve(worktreeRoot) : resolveStateAnchorRoot();
+  const root = resolveStateAnchorRoot(worktreeRoot);
   if (!getGitTopLevel(root)) {
-    return join(worktreeRoot ? root : resolveNonGitStateAnchor(root), OmcPaths.ROOT);
+    return join(resolveNonGitStateAnchor(root), OmcPaths.ROOT);
   }
   return join(root, OmcPaths.ROOT);
 }
