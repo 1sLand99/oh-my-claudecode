@@ -21,7 +21,7 @@ import { routeTaskToRole } from './role-router.js';
 import { teamReadConfig, teamWriteWorkerIdentity, teamReadWorkerStatus, teamAppendEvent, writeAtomic, } from './team-ops.js';
 import { withScalingLock, migrateTeamConfigRevision, readRevisionedTeamConfig, saveTeamConfigAtRevision } from './monitor.js';
 import { adoptWorkerPaneOwnership, sanitizeName, getWorkerLiveness, killOwnedWorkerPane, spawnOwnedWorkerInPane, waitForPaneReady, } from './tmux-session.js';
-import { TeamPaths, absPath, teamStateRoot as resolveTeamStateRoot } from './state-paths.js';
+import { TeamPaths, absPath } from './state-paths.js';
 import { writeWorkerOverlay } from './worker-bootstrap.js';
 import { ensureWorkerWorktree, installWorktreeRootAgents, prepareWorkerWorktreeForRemoval, removeWorkerWorktree, restoreWorktreeRootAgents, } from './git-worktree.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
@@ -231,7 +231,7 @@ export async function scaleUpOwned(teamName, count, agentType, tasks, cwd, env =
             const released = await releaseScaleUpReservation().catch(() => false);
             return { ok: false, error: released ? 'team_mutation_busy' : 'scale_up_fence_release_failed' };
         }
-        const teamStateRoot = config.team_state_root ?? resolveTeamStateRoot(leaderCwd, sanitized);
+        const teamStateRoot = config.team_state_root ?? `${leaderCwd}/.omc/state/team/${sanitized}`;
         const worktreeMode = config.worktree_mode ?? 'disabled';
         // Resolve the monotonic worker index counter
         let nextIndex = config.next_worker_index ?? (currentCount + 1);

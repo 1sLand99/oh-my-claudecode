@@ -277,7 +277,7 @@ export function checkEnvFlags() {
     }
     return { disableOmc, skipHooks };
 }
-const SETUP_FALLBACK_SKILL_NAMES = new Set(['omc-reference', 'wiki']);
+const SETUP_FALLBACK_SKILL_NAMES = new Set(['omc-reference']);
 function parseSemverLikeVersion(version) {
     if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) {
         return null;
@@ -377,10 +377,9 @@ function isSupportedSetupFallbackSkill(legacySkillsDir, entry, baseName) {
         return false;
     }
     // scripts/setup-claude-md.sh intentionally syncs the raw bundled
-    // skills/wiki/SKILL.md file into ~/.claude/skills/wiki/SKILL.md. Keep the
-    // retired omc-reference fallback for already-installed 4.x upgrades.
+    // skills/omc-reference/SKILL.md file into ~/.claude/skills/omc-reference/SKILL.md
     // as a Claude CLI fallback. Suppress only that exact, unmodified sync so real
-    // legacy collisions and user-edited fallback copies still surface.
+    // legacy collisions and user-edited omc-reference copies still surface.
     if (entry.toLowerCase() !== baseName) {
         return false;
     }
@@ -457,9 +456,7 @@ export function checkConfigIssues() {
             'configVersion',
             'taskTool',
             'taskToolConfig',
-            // 'defaultExecutionMode' intentionally NOT known: ultrawork and the
-            // generic execution-mode routing were removed in 5.0.0 and no runtime
-            // reads this key. A persisted value is stale and should surface here.
+            'defaultExecutionMode',
             'bashHistory',
             'agentTiers',
             'setupCompleted',

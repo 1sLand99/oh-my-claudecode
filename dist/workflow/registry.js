@@ -120,7 +120,6 @@ const SKILL_ENTRIES = [
     entry({ name: 'ai-slop-cleaner', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Opt-in review tool; never a default gate.' }),
     entry({ name: 'visual-verdict', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Opt-in for visual surfaces.' }),
     entry({ name: 'external-context', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Opt-in external evidence tool.' }),
-    entry({ name: 'graph', kind: 'skill', decision: 'keep', riskClass: 'security-boundary', owner: REGISTRY_OWNER, notes: 'Declarative graph runtime with command execution and bounded read-only Agent SDK execution; CLI + skill entrypoints.' }),
     entry({ name: 'debug', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER }),
     entry({ name: 'deepinit', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER }),
     entry({ name: 'hud', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER }),

@@ -235,24 +235,15 @@ const CONTRACTS = {
         agentType: 'cursor',
         binary: 'cursor-agent',
         installInstructions: 'Install Cursor Agent CLI: see https://docs.cursor.com/cli',
-        // Team workers must be persistent interactive panes, so the one-shot
-        // `-p/--print` path is deliberately unused here (same stance as codex).
+        // cursor-agent runs as an interactive REPL — no exit-on-complete prompt mode.
+        // Keep supportsPromptMode false so the verdict-file contract path
+        // (CONTRACT_ROLES + shouldInjectContract) skips this provider; cursor
+        // workers participate as executors only.
         supportsPromptMode: false,
-        buildLaunchArgs(model, extraFlags = []) {
-            // `--force` suppresses per-command approval prompts and `--trust` accepts
-            // the workspace, which together are cursor-agent's equivalent of the
-            // approval bypass every other provider already passes. Without them a
-            // worker pane opened on a directory cursor has not seen before stops at
-            // "Workspace Trust Required" and exits; team worktrees are freshly
-            // created per worker, so they always hit that path. `omc ask cursor`
-            // already launches with `--force --trust` for the same reason.
-            const args = ['--force', '--trust'];
-            const extra = extraFlags.filter(flag => !['--force', '-f', '--yolo', '--trust'].includes(flag));
-            // `--model <id>` is a documented global option; ids come from
-            // `cursor-agent --list-models` (e.g. cursor-grok-4.6-high, composer-2.5).
-            if (model)
-                args.push('--model', model);
-            return [...args, ...extra];
+        buildLaunchArgs(_model, extraFlags = []) {
+            // Minimal flags — cursor-agent owns its own session/auth state.
+            // The model is selected interactively inside cursor-agent itself.
+            return [...extraFlags];
         },
         parseOutput(rawOutput) {
             return rawOutput.trim();
@@ -358,19 +349,12 @@ export function validateWorkerLaunchDescriptor(value) {
         throw new Error('Invalid worker launch descriptor');
     }
     getContract(descriptor.provider);
-    const args = descriptor.provider === 'cursor'
-        ? [
-            '--force',
-            '--trust',
-            ...descriptor.args.filter(flag => !['--force', '-f', '--yolo', '--trust'].includes(flag)),
-        ]
-        : [...descriptor.args];
     return {
         schema_version: 1,
         provider: descriptor.provider,
         model: descriptor.model,
         binary: descriptor.binary,
-        args,
+        args: [...descriptor.args],
     };
 }
 export function buildValidatedWorkerLaunchDescriptor(agentType, config, appendedArgs = []) {

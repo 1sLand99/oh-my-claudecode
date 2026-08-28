@@ -5,14 +5,14 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "8fd938e98e019c90502a80cb1f785820d876c382",
+    "head": "6803fceeb01d5e58a50258dfbfb72ec2e56620f9",
     "sourceSha256": "20ac9072884ef297dd0c550ad9f7f74ac1f17c3f0cb1cbc68ef0e7275a4f222f",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "8fd938e98e019c90502a80cb1f785820d876c382",
+  "head": "6803fceeb01d5e58a50258dfbfb72ec2e56620f9",
   "sourceSha256": "20ac9072884ef297dd0c550ad9f7f74ac1f17c3f0cb1cbc68ef0e7275a4f222f",
   "counts": {
     "public": {
@@ -32,9 +32,9 @@
       "total": 1330
     },
     "generated": {
-      "distFiles": 4953,
+      "distFiles": 4955,
       "bridgeFiles": 9,
-      "total": 4962
+      "total": 4964
     },
     "prompt": {
       "promptLikeFiles": 62
@@ -2209,7 +2209,6 @@
       "dist/cli/commands/wait.d.ts.map",
       "dist/cli/commands/wait.js",
       "dist/cli/commands/wait.js.map",
-      "dist/cli/graph.js",
       "dist/cli/hud-watch.d.ts",
       "dist/cli/hud-watch.d.ts.map",
       "dist/cli/hud-watch.js",
@@ -2575,22 +2574,11 @@
       "dist/graph/index.d.ts.map",
       "dist/graph/index.js",
       "dist/graph/index.js.map",
-      "dist/graph/runtime/approval.js",
-      "dist/graph/runtime/executors/agent.js",
-      "dist/graph/runtime/executors/authority.js",
-      "dist/graph/runtime/executors/command.js",
-      "dist/graph/runtime/fence.js",
-      "dist/graph/runtime/journal.js",
-      "dist/graph/runtime/progress.js",
-      "dist/graph/runtime/run-dir.js",
-      "dist/graph/runtime/runner.js",
-      "dist/graph/runtime/safe-fs.js",
-      "dist/graph/runtime/store.js",
-      "dist/graph/runtime/types.js",
       "dist/graph/scheduler.d.ts",
       "dist/graph/scheduler.d.ts.map",
       "dist/graph/scheduler.js",
       "dist/graph/scheduler.js.map",
+      "dist/graph/schema.d.ts",
       "dist/graph/schema.d.ts.map",
       "dist/graph/schema.js",
       "dist/graph/schema.js.map",
@@ -3951,6 +3939,7 @@
       "dist/hud/state.d.ts.map",
       "dist/hud/state.js",
       "dist/hud/state.js.map",
+      "dist/hud/stdin.d.ts",
       "dist/hud/stdin.d.ts.map",
       "dist/hud/stdin.js",
       "dist/hud/stdin.js.map",
@@ -3958,9 +3947,11 @@
       "dist/hud/transcript.d.ts.map",
       "dist/hud/transcript.js",
       "dist/hud/transcript.js.map",
+      "dist/hud/types.d.ts",
       "dist/hud/types.d.ts.map",
       "dist/hud/types.js",
       "dist/hud/types.js.map",
+      "dist/hud/usage-api.d.ts",
       "dist/hud/usage-api.d.ts.map",
       "dist/hud/usage-api.js",
       "dist/hud/usage-api.js.map",
@@ -4173,6 +4164,7 @@
       "dist/lib/mode-names.d.ts.map",
       "dist/lib/mode-names.js",
       "dist/lib/mode-names.js.map",
+      "dist/lib/mode-state-io.d.ts",
       "dist/lib/mode-state-io.d.ts.map",
       "dist/lib/mode-state-io.js",
       "dist/lib/mode-state-io.js.map",
@@ -4228,6 +4220,7 @@
       "dist/lib/worktree-cleanup-safety.d.ts.map",
       "dist/lib/worktree-cleanup-safety.js",
       "dist/lib/worktree-cleanup-safety.js.map",
+      "dist/lib/worktree-paths.d.ts",
       "dist/lib/worktree-paths.d.ts.map",
       "dist/lib/worktree-paths.js",
       "dist/lib/worktree-paths.js.map",
@@ -4599,6 +4592,7 @@
       "dist/shared/index.d.ts.map",
       "dist/shared/index.js",
       "dist/shared/index.js.map",
+      "dist/shared/types.d.ts",
       "dist/shared/types.d.ts.map",
       "dist/shared/types.js",
       "dist/shared/types.js.map",
@@ -5150,6 +5144,7 @@
       "dist/team/cli-detection.d.ts.map",
       "dist/team/cli-detection.js",
       "dist/team/cli-detection.js.map",
+      "dist/team/cli-worker-contract.d.ts",
       "dist/team/cli-worker-contract.d.ts.map",
       "dist/team/cli-worker-contract.js",
       "dist/team/cli-worker-contract.js.map",
@@ -5209,6 +5204,7 @@
       "dist/team/layout-stabilizer.d.ts.map",
       "dist/team/layout-stabilizer.js",
       "dist/team/layout-stabilizer.js.map",
+      "dist/team/leader-inbox.d.ts",
       "dist/team/leader-inbox.d.ts.map",
       "dist/team/leader-inbox.js",
       "dist/team/leader-inbox.js.map",
@@ -5296,6 +5292,7 @@
       "dist/team/runtime-owner-client.d.ts.map",
       "dist/team/runtime-owner-client.js",
       "dist/team/runtime-owner-client.js.map",
+      "dist/team/runtime-v2.d.ts",
       "dist/team/runtime-v2.d.ts.map",
       "dist/team/runtime-v2.js",
       "dist/team/runtime-v2.js.map",
@@ -5319,6 +5316,7 @@
       "dist/team/state-paths.d.ts.map",
       "dist/team/state-paths.js",
       "dist/team/state-paths.js.map",
+      "dist/team/state/tasks.d.ts",
       "dist/team/state/tasks.d.ts.map",
       "dist/team/state/tasks.js",
       "dist/team/state/tasks.js.map",
@@ -5342,6 +5340,7 @@
       "dist/team/team-name.d.ts.map",
       "dist/team/team-name.js",
       "dist/team/team-name.js.map",
+      "dist/team/team-ops.d.ts",
       "dist/team/team-ops.d.ts.map",
       "dist/team/team-ops.js",
       "dist/team/team-ops.js.map",
@@ -5369,9 +5368,11 @@
       "dist/team/tmux-comm.d.ts.map",
       "dist/team/tmux-comm.js",
       "dist/team/tmux-comm.js.map",
+      "dist/team/tmux-session.d.ts",
       "dist/team/tmux-session.d.ts.map",
       "dist/team/tmux-session.js",
       "dist/team/tmux-session.js.map",
+      "dist/team/types.d.ts",
       "dist/team/types.d.ts.map",
       "dist/team/types.js",
       "dist/team/types.js.map",
@@ -5387,6 +5388,7 @@
       "dist/team/worker-activation-gate.d.ts.map",
       "dist/team/worker-activation-gate.js",
       "dist/team/worker-activation-gate.js.map",
+      "dist/team/worker-bootstrap.d.ts",
       "dist/team/worker-bootstrap.d.ts.map",
       "dist/team/worker-bootstrap.js",
       "dist/team/worker-bootstrap.js.map",
@@ -14195,11 +14197,6 @@
         "path": "dist/cli/commands/wait.js.map"
       },
       {
-        "id": "dist/cli/graph.js",
-        "kind": "generated-dist",
-        "path": "dist/cli/graph.js"
-      },
-      {
         "id": "dist/cli/hud-watch.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/hud-watch.d.ts"
@@ -16025,66 +16022,6 @@
         "path": "dist/graph/index.js.map"
       },
       {
-        "id": "dist/graph/runtime/approval.js",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/approval.js"
-      },
-      {
-        "id": "dist/graph/runtime/executors/agent.js",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/executors/agent.js"
-      },
-      {
-        "id": "dist/graph/runtime/executors/authority.js",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/executors/authority.js"
-      },
-      {
-        "id": "dist/graph/runtime/executors/command.js",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/executors/command.js"
-      },
-      {
-        "id": "dist/graph/runtime/fence.js",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/fence.js"
-      },
-      {
-        "id": "dist/graph/runtime/journal.js",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/journal.js"
-      },
-      {
-        "id": "dist/graph/runtime/progress.js",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/progress.js"
-      },
-      {
-        "id": "dist/graph/runtime/run-dir.js",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/run-dir.js"
-      },
-      {
-        "id": "dist/graph/runtime/runner.js",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/runner.js"
-      },
-      {
-        "id": "dist/graph/runtime/safe-fs.js",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/safe-fs.js"
-      },
-      {
-        "id": "dist/graph/runtime/store.js",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/store.js"
-      },
-      {
-        "id": "dist/graph/runtime/types.js",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/types.js"
-      },
-      {
         "id": "dist/graph/scheduler.d.ts",
         "kind": "generated-dist",
         "path": "dist/graph/scheduler.d.ts"
@@ -16103,6 +16040,11 @@
         "id": "dist/graph/scheduler.js.map",
         "kind": "generated-dist",
         "path": "dist/graph/scheduler.js.map"
+      },
+      {
+        "id": "dist/graph/schema.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/schema.d.ts"
       },
       {
         "id": "dist/graph/schema.d.ts.map",
@@ -22905,6 +22847,11 @@
         "path": "dist/hud/state.js.map"
       },
       {
+        "id": "dist/hud/stdin.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hud/stdin.d.ts"
+      },
+      {
         "id": "dist/hud/stdin.d.ts.map",
         "kind": "generated-dist",
         "path": "dist/hud/stdin.d.ts.map"
@@ -22940,6 +22887,11 @@
         "path": "dist/hud/transcript.js.map"
       },
       {
+        "id": "dist/hud/types.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hud/types.d.ts"
+      },
+      {
         "id": "dist/hud/types.d.ts.map",
         "kind": "generated-dist",
         "path": "dist/hud/types.d.ts.map"
@@ -22953,6 +22905,11 @@
         "id": "dist/hud/types.js.map",
         "kind": "generated-dist",
         "path": "dist/hud/types.js.map"
+      },
+      {
+        "id": "dist/hud/usage-api.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/hud/usage-api.d.ts"
       },
       {
         "id": "dist/hud/usage-api.d.ts.map",
@@ -24015,6 +23972,11 @@
         "path": "dist/lib/mode-names.js.map"
       },
       {
+        "id": "dist/lib/mode-state-io.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/lib/mode-state-io.d.ts"
+      },
+      {
         "id": "dist/lib/mode-state-io.d.ts.map",
         "kind": "generated-dist",
         "path": "dist/lib/mode-state-io.d.ts.map"
@@ -24288,6 +24250,11 @@
         "id": "dist/lib/worktree-cleanup-safety.js.map",
         "kind": "generated-dist",
         "path": "dist/lib/worktree-cleanup-safety.js.map"
+      },
+      {
+        "id": "dist/lib/worktree-paths.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/lib/worktree-paths.d.ts"
       },
       {
         "id": "dist/lib/worktree-paths.d.ts.map",
@@ -26143,6 +26110,11 @@
         "id": "dist/shared/index.js.map",
         "kind": "generated-dist",
         "path": "dist/shared/index.js.map"
+      },
+      {
+        "id": "dist/shared/types.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/shared/types.d.ts"
       },
       {
         "id": "dist/shared/types.d.ts.map",
@@ -28900,6 +28872,11 @@
         "path": "dist/team/cli-detection.js.map"
       },
       {
+        "id": "dist/team/cli-worker-contract.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/cli-worker-contract.d.ts"
+      },
+      {
         "id": "dist/team/cli-worker-contract.d.ts.map",
         "kind": "generated-dist",
         "path": "dist/team/cli-worker-contract.d.ts.map"
@@ -29193,6 +29170,11 @@
         "id": "dist/team/layout-stabilizer.js.map",
         "kind": "generated-dist",
         "path": "dist/team/layout-stabilizer.js.map"
+      },
+      {
+        "id": "dist/team/leader-inbox.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/leader-inbox.d.ts"
       },
       {
         "id": "dist/team/leader-inbox.d.ts.map",
@@ -29630,6 +29612,11 @@
         "path": "dist/team/runtime-owner-client.js.map"
       },
       {
+        "id": "dist/team/runtime-v2.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/runtime-v2.d.ts"
+      },
+      {
         "id": "dist/team/runtime-v2.d.ts.map",
         "kind": "generated-dist",
         "path": "dist/team/runtime-v2.d.ts.map"
@@ -29745,6 +29732,11 @@
         "path": "dist/team/state-paths.js.map"
       },
       {
+        "id": "dist/team/state/tasks.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/state/tasks.d.ts"
+      },
+      {
         "id": "dist/team/state/tasks.d.ts.map",
         "kind": "generated-dist",
         "path": "dist/team/state/tasks.d.ts.map"
@@ -29858,6 +29850,11 @@
         "id": "dist/team/team-name.js.map",
         "kind": "generated-dist",
         "path": "dist/team/team-name.js.map"
+      },
+      {
+        "id": "dist/team/team-ops.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/team-ops.d.ts"
       },
       {
         "id": "dist/team/team-ops.d.ts.map",
@@ -29995,6 +29992,11 @@
         "path": "dist/team/tmux-comm.js.map"
       },
       {
+        "id": "dist/team/tmux-session.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/tmux-session.d.ts"
+      },
+      {
         "id": "dist/team/tmux-session.d.ts.map",
         "kind": "generated-dist",
         "path": "dist/team/tmux-session.d.ts.map"
@@ -30008,6 +30010,11 @@
         "id": "dist/team/tmux-session.js.map",
         "kind": "generated-dist",
         "path": "dist/team/tmux-session.js.map"
+      },
+      {
+        "id": "dist/team/types.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/types.d.ts"
       },
       {
         "id": "dist/team/types.d.ts.map",
@@ -30083,6 +30090,11 @@
         "id": "dist/team/worker-activation-gate.js.map",
         "kind": "generated-dist",
         "path": "dist/team/worker-activation-gate.js.map"
+      },
+      {
+        "id": "dist/team/worker-bootstrap.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/team/worker-bootstrap.d.ts"
       },
       {
         "id": "dist/team/worker-bootstrap.d.ts.map",
@@ -76418,12 +76430,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6832,
+      "nodeCount": 6834,
       "edgeCount": 7196,
       "importEdgeCount": 5912,
       "registerEdgeCount": 53
     }
   },
   "inventorySha256": "105c63a2ed379d8c3bf6b66c30853f3dce437799afe24b2c22ca6a8d79503eb8",
-  "manifestSha256": "8beb43d94403c2ad7e9052a0f0237106008ae0b3c0f90b379e8de2a3f5ac3bf5"
+  "manifestSha256": "eb93bf7a50e730779a1291777abb98a9ddbae64d47b1462bd370d798b70fcbdc"
 }

@@ -7,7 +7,7 @@ import { buildConfigFromEnv, getEnabledPlatforms, getNotificationConfig } from '
 import { cleanupBridgeSessions } from '../../tools/python-repl/bridge-manager.js';
 import { resolveToWorktreeRoot, getOmcRoot, validateSessionId, isValidTranscriptPath, resolveSessionStatePath } from '../../lib/worktree-paths.js';
 import { SESSION_END_MODE_STATE_FILES, SESSION_METRICS_MODE_FILES } from '../../lib/mode-names.js';
-import { canClearStateForSession, clearModeStateFile, clearStateFileLockedIf, readModeStateWithMeta } from '../../lib/mode-state-io.js';
+import { clearModeStateFile, readModeState } from '../../lib/mode-state-io.js';
 import { completeForegroundCleanup, completeForegroundCleanupAndSealCore, prepareCoreManifest, readSessionEndJob, sealWikiManifest } from './cleanup-manifest.js';
 import { spawnSessionEndWorker } from './worker.js';
 import { buildWikiSessionEndCaptureIntent } from '../wiki/session-hooks.js';
@@ -288,13 +288,14 @@ export function cleanupTransientState(directory, endingSessionId) {
             // Patterns that are safe to delete across every session dir:
             // these are short-lived markers/breakers that do not represent
             // live per-session state an active concurrent session is reading.
-            const crossSessionSafePatterns = [];
+            const crossSessionSafePatterns = [
+                /^cancel-signal/,
+                /stop-breaker/,
+            ];
             // Patterns that must only be deleted from the session that is
             // actually ending — deleting them from a still-running session
             // would reintroduce cross-session interference.
             const endingSessionOnlyPatterns = [
-                /^cancel-signal/,
-                /stop-breaker/,
                 // HUD's stdin cache is session-scoped (see `src/hud/stdin.ts`)
                 // and consumed by `omc hud --watch` for the owning session.
                 /^hud-stdin-cache\.json$/,
@@ -431,9 +432,9 @@ export function cleanupModeStates(directory, sessionId) {
             // For JSON files, check if active before removing
             if (file.endsWith('.json')) {
                 const sessionState = sessionId
-                    ? readModeStateWithMeta(mode, directory, sessionId)
+                    ? readModeState(mode, directory, sessionId)
                     : null;
-                let shouldCleanup = sessionState?.active === true && (!sessionId || canClearStateForSession(sessionState, sessionId));
+                let shouldCleanup = sessionState?.active === true;
                 if (!shouldCleanup && fs.existsSync(localPath)) {
                     const content = fs.readFileSync(localPath, 'utf-8');
                     const state = JSON.parse(content);
@@ -443,7 +444,8 @@ export function cleanupModeStates(directory, sessionId) {
                         // If sessionId is provided, only clean matching states
                         // If state has no session_id, it's legacy - clean it
                         // If state.session_id matches our sessionId, clean it
-                        if (!sessionId || canClearStateForSession(state, sessionId)) {
+                        const stateSessionId = state.session_id;
+                        if (!sessionId || !stateSessionId || stateSessionId === sessionId) {
                             shouldCleanup = true;
                         }
                     }
@@ -506,7 +508,7 @@ export function cleanupMissionState(directory, sessionId) {
             // If sessionId provided, only remove missions for this session
             if (sessionId) {
                 const missionId = typeof mission.id === 'string' ? mission.id : '';
-                return !(missionId === `session:${sessionId}` || missionId.startsWith(`session:${sessionId}:`) || missionId.endsWith(`-${sessionId}`));
+                return !missionId.includes(sessionId);
             }
             // No sessionId: remove all session-sourced missions
             return false;
@@ -532,7 +534,7 @@ function cleanupSessionStartedMarker(directory, sessionId) {
     try {
         const markerPath = path.join(getOmcRoot(directory), 'state', 'sessions', sessionId, SESSION_STARTED_MARKER_FILE);
         if (fs.existsSync(markerPath)) {
-            clearStateFileLockedIf(markerPath, current => canClearStateForSession(current, sessionId));
+            fs.unlinkSync(markerPath);
         }
     }
     catch {
@@ -546,10 +548,8 @@ function extractTeamNameFromState(state) {
 }
 async function findSessionOwnedTeams(directory, sessionId) {
     const teamNames = new Set();
-    const teamState = readModeStateWithMeta('team', directory, sessionId);
-    const stateTeamName = canClearStateForSession(teamState, sessionId)
-        ? extractTeamNameFromState(teamState)
-        : null;
+    const teamState = readModeState('team', directory, sessionId);
+    const stateTeamName = extractTeamNameFromState(teamState);
     if (stateTeamName) {
         teamNames.add(stateTeamName);
     }
@@ -749,10 +749,8 @@ export async function runForegroundSessionEndCleanup(directory, sessionId, persi
 }
 /** Foreground path: only durable local state and worker launch; deferred adapters are worker-owned. */
 function buildDurableSessionEndPayload(directory, input, metrics) {
-    const teamState = readModeStateWithMeta('team', directory, input.session_id);
-    const teamName = teamState && canClearStateForSession(teamState, input.session_id)
-        ? extractTeamNameFromState(teamState)
-        : undefined;
+    const teamState = readModeState('team', directory, input.session_id);
+    const teamName = extractTeamNameFromState(teamState);
     // Keep only routing identifiers and booleans: credentials remain in the inherited worker environment.
     return {
         transcriptPath: input.transcript_path,

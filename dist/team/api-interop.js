@@ -1,7 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve as resolvePath } from 'node:path';
 import { getOmcRoot } from '../lib/worktree-paths.js';
-import { teamStateRoot } from './state-paths.js';
 import { TEAM_NAME_SAFE_PATTERN, WORKER_NAME_SAFE_PATTERN, TASK_ID_SAFE_PATTERN, TEAM_TASK_STATUSES, TEAM_EVENT_TYPES, TEAM_TASK_APPROVAL_STATUSES, } from './contracts.js';
 import { teamSendMessage as sendDirectMessage, teamBroadcast as broadcastMessage, teamListMailbox as listMailboxMessages, teamMarkMessageDelivered as markMessageDelivered, teamMarkMessageNotified as markMessageNotified, teamCreateTask, teamReadTask, teamListTasks, teamUpdateTask, teamClaimTask, teamTransitionTaskStatus, teamReleaseTaskClaim, teamReadConfig, teamReadManifest, teamReadWorkerStatus, teamReadWorkerHeartbeat, teamUpdateWorkerHeartbeat, teamWriteWorkerInbox, teamWriteWorkerIdentity, teamAppendEvent, teamGetSummary, teamCleanup, teamWriteShutdownRequest, teamReadShutdownAck, teamReadMonitorSnapshot, teamWriteMonitorSnapshot, teamReadTaskApproval, teamWriteTaskApproval, teamPublishTaskRecoveryCheckpoint, teamReadCanonicalMailboxMessageStrict, } from './team-ops.js';
 import { queueBroadcastMailboxMessage, queueDirectMailboxMessage, runMailboxNotificationAttempt, } from './mcp-comm.js';
@@ -392,10 +391,8 @@ export function buildLegacyTeamDeprecationHint(legacyName, originalArgs, env = p
     return `Use CLI interop: ${teamApiCli} ${operation} --input '${payload}' --json`;
 }
 const WORKTREE_TRIGGER_STATE_ROOT = '$OMC_TEAM_STATE_ROOT';
-function resolveInstructionStateRoot(_worktreePath, cwd, teamName) {
-    if (process.platform === 'win32' && cwd && teamName)
-        return teamStateRoot(cwd, teamName);
-    return WORKTREE_TRIGGER_STATE_ROOT;
+function resolveInstructionStateRoot(worktreePath) {
+    return worktreePath ? WORKTREE_TRIGGER_STATE_ROOT : undefined;
 }
 function hasExactText(value) {
     return typeof value === 'string' && value.length > 0 && value === value.trim();
@@ -453,7 +450,7 @@ function findWorkerDispatchTarget(teamName, toWorker, cwd) {
         return {
             paneId: recipient?.pane_id,
             workerIndex: recipient?.index,
-            instructionStateRoot: resolveInstructionStateRoot(recipient?.worktree_path, cwd, teamName),
+            instructionStateRoot: resolveInstructionStateRoot(recipient?.worktree_path),
         };
     });
 }
@@ -653,7 +650,7 @@ export async function executeTeamApiOperation(operation, args, fallbackCwd) {
                     workerName: worker.name,
                     workerIndex: worker.index,
                     paneId: worker.pane_id,
-                    instructionStateRoot: resolveInstructionStateRoot(worker.worktree_path, cwd, teamName),
+                    instructionStateRoot: resolveInstructionStateRoot(worker.worktree_path),
                 }));
                 const notificationOutcomes = await queueBroadcastMailboxMessage({
                     teamName,

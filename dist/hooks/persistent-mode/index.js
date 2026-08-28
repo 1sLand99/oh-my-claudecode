@@ -16,11 +16,11 @@ import { getHardMaxIterations } from '../../lib/security-config.js';
 import { getClaudeConfigDir } from '../../utils/config-dir.js';
 import { getGlobalOmcConfigCandidates } from '../../utils/paths.js';
 import { resolveToWorktreeRoot, resolveSessionStatePath, resolveStatePath, getOmcRoot } from '../../lib/worktree-paths.js';
-import { captureModeStateCleanup, captureStateFileGeneration, clearModeStateFile, clearStateFileLockedIf, canClearStateForSession, readModeState, readModeStateWithMeta, recoverEmergencyStateFile, writeModeState, withStateFileMutationLock, } from '../../lib/mode-state-io.js';
+import { captureModeStateCleanup, captureStateFileGeneration, clearModeStateFile, clearStateFileLockedIf, readModeState, writeModeState, withStateFileMutationLock, } from '../../lib/mode-state-io.js';
 import { readRalphState, writeRalphState, restoreRalphStateIfAbsent, incrementRalphIteration, clearRalphState, findPrdPath, getPrdCompletionStatus, getRalphContext, readPrd, getStory, markStoryIncomplete, consumeStoryArchitectApproval, consumeCompletionArchitectApproval, getPrdGoverningCriteriaRevision, readVerificationState, startVerification, recordArchitectFeedback, getArchitectVerificationPrompt, getArchitectRejectionContinuationPrompt, detectArchitectApproval, detectArchitectRejection, clearVerificationState, consumeVerificationRequest, restoreVerificationRequestIfAbsent, } from '../ralph/index.js';
 import { checkIncompleteTodos, getNextPendingTodo, isUserAbort, isContextLimitStop, isRateLimitStop, isExplicitCancelCommand, isAuthenticationError, isScheduledWakeupStop, isOversizeToolResultRedirectStop } from '../todo-continuation/index.js';
 import { TODO_CONTINUATION_PROMPT } from '../../installer/hooks.js';
-import { isAutopilotActive, } from '../autopilot/index.js';
+import { isAutopilotActive, readAutopilotState, } from '../autopilot/index.js';
 import { checkAutopilot } from '../autopilot/enforcement.js';
 import { readTeamPipelineState } from '../team-pipeline/state.js';
 import { getActiveAgentSnapshot } from '../subagent-tracker/index.js';
@@ -105,12 +105,17 @@ function resolveAutopilotTargetPath(directory, sessionId) {
 }
 function readAutopilotTarget(directory, sessionId) {
     const path = resolveAutopilotTargetPath(directory, sessionId);
-    if (!recoverEmergencyStateFile(path))
+    if (!readAutopilotState(directory, sessionId))
         return null;
-    const state = readModeStateWithMeta('autopilot', directory, sessionId);
-    return state && typeof state === 'object' && !Array.isArray(state)
-        ? { path, state }
-        : null;
+    try {
+        const state = JSON.parse(readFileSync(path, 'utf-8'));
+        return state && typeof state === 'object' && !Array.isArray(state)
+            ? { path, state: state }
+            : null;
+    }
+    catch {
+        return null;
+    }
 }
 function isCurrentAutopilotTarget(state, directory, sessionId) {
     if (state.active !== true ||
@@ -156,11 +161,9 @@ function isAuthenticatedAutopilotCancelSignal(signal, target) {
 function isSessionCancelInProgress(directory, sessionId) {
     const autopilotPath = resolveAutopilotTargetPath(directory, sessionId);
     let cancelSignalPath;
-    let cancelSignalSessionId;
     if (sessionId) {
         try {
             cancelSignalPath = resolveSessionStatePath('cancel-signal', sessionId, directory);
-            cancelSignalSessionId = sessionId;
         }
         catch {
             // Fall through to the legacy path.
@@ -171,13 +174,16 @@ function isSessionCancelInProgress(directory, sessionId) {
     }
     const validateSignal = (target) => {
         const locked = withStateFileMutationLock(cancelSignalPath, () => {
-            const raw = readModeStateWithMeta('cancel-signal', directory, cancelSignalSessionId);
-            if (!raw || typeof raw !== 'object' || Array.isArray(raw))
+            let raw;
+            try {
+                const parsed = JSON.parse(readFileSync(cancelSignalPath, 'utf-8'));
+                if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+                    return false;
+                raw = parsed;
+            }
+            catch {
                 return false;
-            // Legacy/shared signal paths are not session-scoped by location, so
-            // enforce their embedded owner before accepting or removing them.
-            if (sessionId && !canClearStateForSession(raw, sessionId))
-                return false;
+            }
             const now = Date.now();
             const requestedAt = typeof raw.requested_at === 'string' ? new Date(raw.requested_at).getTime() : NaN;
             const expiresAt = typeof raw.expires_at === 'string' ? new Date(raw.expires_at).getTime() : NaN;
@@ -275,10 +281,13 @@ function isFreshTimestamp(value, ttlMs = PENDING_ASYNC_STATE_STALE_MS) {
 }
 function hasPendingBackgroundTask(directory, sessionId) {
     try {
-        const hudState = readModeState('hud', directory, sessionId);
-        if (sessionId && typeof hudState?.sessionId === 'string' && hudState.sessionId !== sessionId) {
+        const stateRoot = join(getOmcRoot(directory), 'state');
+        const hudPath = sessionId
+            ? join(stateRoot, 'sessions', sessionId, 'hud-state.json')
+            : join(stateRoot, 'hud-state.json');
+        if (!existsSync(hudPath))
             return false;
-        }
+        const hudState = JSON.parse(readFileSync(hudPath, 'utf-8'));
         return Boolean(hudState?.backgroundTasks?.some((task) => {
             if (task.status !== 'running')
                 return false;
@@ -290,17 +299,29 @@ function hasPendingBackgroundTask(directory, sessionId) {
     }
 }
 function readPendingWakeupState(directory, sessionId) {
-    const modes = ['scheduled-wakeup', 'schedule-wakeup', 'wakeup'];
+    const stateRoot = join(getOmcRoot(directory), 'state');
+    const dirs = sessionId
+        ? [join(stateRoot, 'sessions', sessionId), stateRoot]
+        : [stateRoot];
+    const fileNames = [
+        'scheduled-wakeup-state.json',
+        'schedule-wakeup-state.json',
+        'wakeup-state.json',
+    ];
     const states = [];
-    for (const mode of modes) {
-        const sessionState = readModeStateWithMeta(mode, directory, sessionId);
-        if (sessionState && typeof sessionState === 'object') {
-            states.push(sessionState);
-        }
-        if (sessionId) {
-            const legacyState = readModeStateWithMeta(mode, directory);
-            if (legacyState && typeof legacyState === 'object' && canClearStateForSession(legacyState, sessionId)) {
-                states.push(legacyState);
+    for (const dir of dirs) {
+        for (const fileName of fileNames) {
+            const filePath = join(dir, fileName);
+            try {
+                if (!existsSync(filePath))
+                    continue;
+                const parsed = JSON.parse(readFileSync(filePath, 'utf-8'));
+                if (parsed && typeof parsed === 'object') {
+                    states.push(parsed);
+                }
+            }
+            catch {
+                continue;
             }
         }
     }
@@ -1497,14 +1518,8 @@ async function checkAutoresearch(sessionId, directory, cancelInProgress) {
     // Autoresearch predates session-scoped state files. Preserve strict sessioned reads
     // first, then allow a narrow legacy/shared bridge only for matching or unbound state.
     if (!state && sessionId) {
-        const legacyEnvelope = readModeStateWithMeta('autoresearch', workingDir);
-        const legacyState = legacyEnvelope && canClearStateForSession(legacyEnvelope, sessionId)
-            ? (() => {
-                const { _meta: _, ...payload } = legacyEnvelope;
-                return payload;
-            })()
-            : null;
-        if (legacyState && (!legacyState.session_id || legacyState.session_id === sessionId)) {
+        const legacyState = readModeState('autoresearch', workingDir);
+        if (!legacyState?.session_id || legacyState.session_id === sessionId) {
             state = legacyState;
             stateSourceSessionId = undefined;
         }
