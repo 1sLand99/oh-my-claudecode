@@ -7,7 +7,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { sealGraphDescriptor } from '../../descriptor.js';
@@ -178,5 +178,25 @@ describe('graphCommand run subcommand', () => {
       missingPath,
     );
     expect(mocks.runGraph).not.toHaveBeenCalled();
+  });
+
+  it('fails closed on unsupported POSIX before creating run state', async () => {
+    const runsRoot = join(workDir, '.omc', 'graph-runs');
+    const fixturePath = join(workDir, 'descriptor.json');
+    writeFileSync(fixturePath, JSON.stringify(descriptorInput('run-darwin', 'unsupported')));
+    const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+
+    try {
+      await parseCli(['run', fixturePath, '--runs-root', runsRoot]);
+    } finally {
+      platform.mockRestore();
+    }
+
+    expect(process.exitCode).toBe(1);
+    expect(mocks.runGraph).not.toHaveBeenCalled();
+    expect(existsSync(runsRoot)).toBe(false);
+    expect(errorSpy.mock.calls.map((args) => args.join(' ')).join('\n')).toContain(
+      'graph runtime is unavailable on darwin',
+    );
   });
 });
