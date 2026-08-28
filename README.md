@@ -218,7 +218,7 @@ For mixed Codex + Antigravity work in one command, run `/ask codex` and `/ask an
 | `omc team N:gemini "..."`       | N Gemini CLI panes            | UI/UX design, docs, large-context tasks (enterprise/API-key) |
 | `omc team N:antigravity "..."`  | N Antigravity (`agy`) panes   | UI/UX design, docs, large-context tasks                      |
 | `omc team N:grok "..."`         | N Grok Build CLI panes        | Code review, analysis cross-check            |
-| `omc team N:cursor "..."`       | N Cursor agent panes          | Executor-style implementation tasks          |
+| `omc team N:cursor "..."`       | N Cursor agent panes          | Implementation and reviewer-style tasks      |
 | `omc team N:claude "..."`       | N Claude CLI panes            | General tasks via Claude CLI in tmux         |
 | `/ask codex` + `/ask antigravity` | Tri-model advisor synthesis | Mixed Codex + Antigravity review in one pass |
 
@@ -235,7 +235,9 @@ Autopilot can prefer Cursor executor workers during team execution via `.claude/
 }
 ```
 
-This config makes the autopilot execution stage use `omc team 1:cursor "..."` or `/team 1:cursor "..."` for executor-style implementation work. Reviewer, critic, security-review, validation verdict, and final approval roles remain native Claude/OMC reviewer roles; Cursor requires an installed/authenticated `cursor-agent`.
+This config makes the autopilot execution stage use `omc team 1:cursor "..."` or `/team 1:cursor "..."` for implementation work. Cursor also supports reviewer-style roles (`critic`, `code-reviewer`, `security-reviewer`, `test-engineer`): those workers emit the structured verdict file the team leader consumes to transition the task, and final approval stays a lead-session responsibility. Cursor requires an installed/authenticated `cursor-agent`.
+
+Pin a Cursor model with the `OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL` environment variable, or per role with `team.roleRouting.<role>.model`. `externalModels.defaults.cursorModel` applies to workers routed through `team.roleRouting`. Ids come from `cursor-agent --list-models`, for example `cursor-grok-4.6-high` or `composer-2.5`. Left unset, `cursor-agent` chooses its own model.
 
 Native team worker worktrees are being added behind an opt-in/config gate. See [Native Team Worktree Mode](docs/TEAM-WORKTREE-MODE.md) for the workspace contract, canonical state-root rules, dirty-worktree preservation policy, and verification checklist.
 

@@ -533,6 +533,26 @@ describe("team.roleRouting (Option E)", () => {
 
 
 
+  it("loads externalModels.defaults.cursorModel from config", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "omc-external-cursor-model-"));
+    try {
+      const claudeDir = join(tempDir, ".claude");
+      require("node:fs").mkdirSync(claudeDir, { recursive: true });
+      writeFileSync(
+        join(claudeDir, "omc.jsonc"),
+        JSON.stringify({
+          externalModels: { defaults: { cursorModel: "cursor-grok-4.6-high" } },
+        }),
+      );
+      process.chdir(tempDir);
+      expect(loadConfig().externalModels?.defaults?.cursorModel).toBe(
+        "cursor-grok-4.6-high",
+      );
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("accepts cursor for reviewer team roleRouting providers (issue #3880)", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "omc-team-routing-cursor-reviewer-"));
     try {

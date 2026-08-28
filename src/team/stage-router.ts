@@ -147,7 +147,11 @@ function resolveExternalModel(
     return defaults?.grokModel ?? '';
   }
   if (provider === 'cursor') {
-    return '';
+    // No builtin default: cursor-agent picks its own model when `--model` is
+    // omitted, and pinning one here would override that for every user. The
+    // config hook still has to exist, or `externalModels.defaults.cursorModel`
+    // and a tier name both resolve to nothing with no diagnostic.
+    return defaults?.cursorModel ?? '';
   }
   if (provider === 'antigravity') {
     return defaults?.antigravityModel ?? BUILTIN_EXTERNAL_MODEL_DEFAULTS.antigravityModel;
