@@ -677,9 +677,9 @@ function getOmcRoot(worktreeRoot) {
   if (workspaceAnchor && !isSensitiveStateLocation(workspaceAnchor)) {
     return (0, import_path3.join)(workspaceAnchor, OmcPaths.ROOT);
   }
-  const root = resolveStateAnchorRoot(worktreeRoot);
+  const root = worktreeRoot ? (0, import_path3.resolve)(worktreeRoot) : resolveStateAnchorRoot();
   if (!getGitTopLevel(root)) {
-    return (0, import_path3.join)(resolveNonGitStateAnchor(root), OmcPaths.ROOT);
+    return (0, import_path3.join)(worktreeRoot ? root : resolveNonGitStateAnchor(root), OmcPaths.ROOT);
   }
   return (0, import_path3.join)(root, OmcPaths.ROOT);
 }
