@@ -324,7 +324,7 @@ For `/goal` behavior, rely on Claude Code/Anthropic sources: the [Claude Code `/
 
 ### Developer Experience
 
-- **Magic keywords** - `ralph`, `ulw`, `ralplan` (prompt triggers, not slash commands); Team stays explicit via `/team`
+- **Prompt triggers** - `ralph`, `ralplan`; Team stays explicit via `/team`
 - **HUD statusline** - Real-time orchestration metrics in your status bar
   - If you launch Claude Code directly with `claude --plugin-dir <path>` (bypassing the `omc` shim), export `OMC_PLUGIN_ROOT=<path>` in your shell so the HUD bundle resolves to the same checkout as the plugin loader. See the [Plugin directory flags section in REFERENCE.md](./docs/REFERENCE.md#plugin-directory-flags) for details.
 - **Skill learning** - Extract reusable patterns from your sessions
@@ -367,6 +367,8 @@ OMC writes runtime state, session data, plans, logs, handoffs, research notes, a
 
 For linked git worktrees, the default `.omc/` directory lives inside that worktree, so deleting the worktree deletes its local OMC state. Set `OMC_STATE_DIR` if you want state to survive worktree deletion, or add a `.omc-workspace` marker when several independent repos should share one parent-level state root. See [OMC state, gitignore, worktree, and workspace contract](docs/REFERENCE.md#omc-state-gitignore-worktree-and-workspace-contract).
 
+Outside a git repository, OMC uses one canonical safe state root at `~/.omc/` (or `$OMC_STATE_DIR/non-git` when centralized state is configured); it does not create a new state root for every cwd or write state into sensitive directories such as `~/.ssh`, `~/Downloads`, or descendants of the system temp root. Legacy cwd-local state is untouched until explicitly migrated with `state_migrate_non_git`. State MCP tools honor an explicit `workingDirectory` while retaining repository-boundary checks for git-backed sessions.
+
 [Full feature list →](docs/REFERENCE.md)
 
 ### Multi-repo workspaces
@@ -396,7 +398,6 @@ These shortcuts run **inside a Claude Code / OMC session**, not as terminal CLI 
 | `/autopilot` / `autopilot` | Skill / prompt trigger | Full autonomous execution              | `/autopilot "build a todo app"`                |
 | `/execute`                 | Slash skill            | Carry an approved task through to verified code | `/execute "refactor auth"`           |
 | `/ralph` / `ralph`         | Skill / prompt trigger | Persistence mode                       | `/ralph "refactor auth"`                       |
-| `ulw`                      | Prompt trigger         | Maximum-parallelism keyword mode       | `ulw fix all lint errors`                      |
 | `/ralplan` / `ralplan`     | Skill / prompt trigger | Iterative planning consensus           | `/ralplan "plan this feature"`                 |
 | `/deep-interview`          | Slash skill            | Socratic requirements clarification    | `/deep-interview "vague idea"`                 |
 | `deepsearch`               | Prompt trigger         | Codebase-focused search routing        | `deepsearch for auth middleware`               |
@@ -405,7 +406,7 @@ These shortcuts run **inside a Claude Code / OMC session**, not as terminal CLI 
 
 **Notes:**
 
-- **ralph includes ultrawork behavior**: when you activate ralph mode, it automatically includes maximum-parallelism execution.
+- **Parallel work uses Team or executor delegation**: choose `/team` for coordinated lanes or delegate implementation tasks to executors; use Ralph when persistence until verified completion is the priority.
 - `swarm` compatibility alias has been removed; migrate existing prompts to `/team` syntax.
 - `plan this` / `plan the` keyword triggers were removed; use `ralplan` or explicit `/oh-my-claudecode:plan`.
 

@@ -532,7 +532,7 @@ export async function teamTransitionTaskStatus(
   to: TeamTaskStatus,
   claimToken: string,
   cwd: string,
-  terminalData?: { result?: string; error?: string },
+  terminalData?: { result?: string; error?: string; metadata?: Record<string, unknown> },
 ): Promise<TransitionTaskResult> {
   return transitionTaskStatusImpl(taskId, from, to, claimToken, terminalData, {
     teamName,
@@ -571,12 +571,13 @@ export async function teamReleaseTaskClaim(
   });
 }
 
-function recoveryTransitionDeps(teamName: string, cwd: string) {
+function recoveryTransitionDeps(teamName: string, cwd: string, launchAttemptId?: string) {
   return {
     teamName, cwd, readTask: teamReadTask,
     readTeamConfig: teamReadConfig as (tn: string, c: string) => Promise<{ workers: Array<{ name: string }> } | null>,
     withTaskClaimLock, normalizeTask, isTerminalTaskStatus: isTerminalTeamTaskStatus,
     taskFilePath: (tn: string, tid: string, c: string) => canonicalTaskFilePath(tn, tid, c), writeAtomic,
+    ...(launchAttemptId ? { launchAttemptId } : {}),
     readRecoverySidecar: async (tn: string, recoveryId: string, tid: string, c: string): Promise<TaskRecoveryRequeueSidecar | null | 'malformed'> => {
       const path = absPath(c, TeamPaths.taskRecoverySidecar(tn, recoveryId, tid));
       if (!existsSync(path)) return null;
@@ -599,8 +600,8 @@ export async function teamRequeueRecoveredTask(teamName: string, cwd: string, in
 }
 
 /** Runtime-owner-only continuation adoption; call before provider launch. */
-export async function teamAdoptRecoveryReservations(teamName: string, cwd: string, taskIds: string[], workerName: string, proof: TaskRecoveryAdoptionProof): Promise<TaskRecoveryAdoptionResult[]> {
-  return adoptRecoveryReservationsImpl(taskIds, workerName, proof, recoveryTransitionDeps(teamName, cwd));
+export async function teamAdoptRecoveryReservations(teamName: string, cwd: string, taskIds: string[], workerName: string, proof: TaskRecoveryAdoptionProof, launchAttemptId?: string): Promise<TaskRecoveryAdoptionResult[]> {
+  return adoptRecoveryReservationsImpl(taskIds, workerName, proof, recoveryTransitionDeps(teamName, cwd, launchAttemptId));
 }
 
 // ---------------------------------------------------------------------------

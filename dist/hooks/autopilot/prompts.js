@@ -172,11 +172,11 @@ When Critic approves: PLANNING_COMPLETE
 export function getExecutionPrompt(planPath) {
     return `## AUTOPILOT PHASE 2: EXECUTION
 
-Execute the plan at ${planPath} using Ralph+Ultrawork mode.
+Execute the plan at ${planPath} using executor agents with Ralph persistence.
 
 ### Activation
 
-Ralph and Ultrawork are now active. Execute tasks in parallel where possible.
+Ralph persistence is active. Delegate independent tasks to executor agents or a coordinated Team where appropriate.
 
 ### Execution Rules
 

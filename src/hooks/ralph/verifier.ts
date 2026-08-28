@@ -16,9 +16,9 @@ import { randomUUID } from 'crypto';
 import { existsSync, readFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { resolveSessionStatePath, ensureSessionStateDir, getOmcRoot } from '../../lib/worktree-paths.js';
-import { clearStateFileLocked, writeStateFileLocked } from '../../lib/mode-state-io.js';
+import { clearStateFileLocked, clearStateFileLockedIf, writeStateFileLocked, writeStateFileLockedCreateIf, writeStateFileLockedIf } from '../../lib/mode-state-io.js';
 import { formatOmcCliInvocation } from '../../utils/omc-cli-rendering.js';
-import type { UserStory } from './prd.js';
+import { getPrdGoverningCriteriaRevision, readPrd, type UserStory } from './prd.js';
 import type { RalphCriticMode } from './loop.js';
 
 export interface VerificationState {
@@ -46,6 +46,8 @@ export interface VerificationState {
   critic_mode?: RalphCriticMode;
   /** Unique request id used to correlate approvals to the current verification attempt */
   request_id?: string;
+  /** Canonical criteria revision submitted to the reviewer for a story. */
+  criteria_revision?: string;
 }
 
 const DEFAULT_MAX_VERIFICATION_ATTEMPTS = 3;
@@ -114,8 +116,15 @@ export function readVerificationState(directory: string, sessionId?: string): Ve
   try {
     const state = JSON.parse(readFileSync(statePath, 'utf-8')) as VerificationState;
     if (!state.request_id) {
-      state.request_id = createVerificationRequestId();
-      writeVerificationState(directory, state, sessionId);
+      const requestId = createVerificationRequestId();
+      const result = writeStateFileLockedIf(
+        statePath,
+        current => !current.request_id,
+        current => ({ ...current, request_id: requestId }),
+      );
+      if (result === 'written') state.request_id = requestId;
+      else if (result === 'skipped') return readVerificationState(directory, sessionId);
+      else return null;
     }
     return state;
   } catch {
@@ -154,6 +163,33 @@ export function clearVerificationState(directory: string, sessionId?: string): b
   return clearStateFileLocked(statePath);
 }
 
+/** Clear only the verification request whose approval was consumed. */
+export function consumeVerificationRequest(
+  directory: string,
+  requestId: string | undefined,
+  sessionId?: string,
+): boolean {
+  if (!requestId) return false;
+  return clearStateFileLockedIf(
+    getVerificationStatePath(directory, sessionId),
+    current => current.request_id === requestId,
+  ) === 'cleared';
+}
+
+/** Restore a consumed verification request only when no newer request exists. */
+export function restoreVerificationRequestIfAbsent(
+  directory: string,
+  state: VerificationState,
+  sessionId?: string,
+): boolean {
+  const result = writeStateFileLockedCreateIf(
+    getVerificationStatePath(directory, sessionId),
+    current => current === null,
+    () => state as unknown as Record<string, unknown>,
+  );
+  return result === 'written';
+}
+
 /**
  * Start verification process
  */
@@ -175,10 +211,26 @@ export function startVerification(
     verification_scope: currentStory ? 'story' : 'completion',
     story_id: currentStory?.id,
     critic_mode: getCriticMode(criticMode),
-    request_id: createVerificationRequestId()
+    request_id: createVerificationRequestId(),
+    criteria_revision: currentStory?.governingCriteriaRevision
+      ?? (() => {
+        const prd = readPrd(directory, sessionId);
+        return prd ? getPrdGoverningCriteriaRevision(prd) : undefined;
+      })(),
   };
 
-  writeVerificationState(directory, state, sessionId);
+  if (sessionId) {
+    ensureSessionStateDir(sessionId, directory);
+  } else {
+    mkdirSync(getOmcRoot(directory), { recursive: true });
+  }
+  const statePath = getVerificationStatePath(directory, sessionId);
+  const result = writeStateFileLockedCreateIf(
+    statePath,
+    current => current === null,
+    () => state as unknown as Record<string, unknown>,
+  );
+  if (result === 'skipped') return readVerificationState(directory, sessionId) ?? state;
   return state;
 }
 

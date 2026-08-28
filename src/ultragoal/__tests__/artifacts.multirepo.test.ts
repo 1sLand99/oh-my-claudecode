@@ -11,7 +11,7 @@ import { execSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { homedir } from 'node:os';
 import { clearWorktreeCache } from '../../lib/worktree-paths.js';
 import {
   createUltragoalPlan,
@@ -30,7 +30,7 @@ function cleanQualityGate(): object {
 
 describe('ultragoal artifacts — multi-repo workspace anchor', () => {
   it('writes artifacts to workspace anchor .omc/ when .omc-workspace marker is in a parent dir', async () => {
-    const workspaceRoot = await mkdtemp(join(tmpdir(), 'omc-multirepo-anchor-'));
+    const workspaceRoot = await mkdtemp(join(homedir(), 'omc-multirepo-anchor-'));
     try {
       // Drop workspace marker so getOmcRoot() anchors to workspaceRoot
       writeFileSync(join(workspaceRoot, '.omc-workspace'), '{}');
@@ -54,7 +54,7 @@ describe('ultragoal artifacts — multi-repo workspace anchor', () => {
   });
 
   it('sibling sub-repos share one workspace .omc/ when rooted at the same .omc-workspace', async () => {
-    const workspaceRoot = await mkdtemp(join(tmpdir(), 'omc-multirepo-sibling-'));
+    const workspaceRoot = await mkdtemp(join(homedir(), 'omc-multirepo-sibling-'));
     try {
       writeFileSync(join(workspaceRoot, '.omc-workspace'), '{}');
 
@@ -91,7 +91,7 @@ describe('ultragoal artifacts — multi-repo workspace anchor', () => {
   });
 
   it('full lifecycle (start → checkpoint) resolves through workspace anchor', async () => {
-    const workspaceRoot = await mkdtemp(join(tmpdir(), 'omc-multirepo-lifecycle-'));
+    const workspaceRoot = await mkdtemp(join(homedir(), 'omc-multirepo-lifecycle-'));
     try {
       writeFileSync(join(workspaceRoot, '.omc-workspace'), '{}');
 

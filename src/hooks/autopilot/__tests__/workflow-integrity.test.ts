@@ -26,9 +26,15 @@ import {
 
 describe("workflow descriptor integrity enforcement (#3487)", () => {
   let testDir: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
 
   beforeEach(() => {
     testDir = mkdtempSync(join(tmpdir(), "workflow-integrity-"));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = testDir;
+    process.env.USERPROFILE = testDir;
     process.env.CLAUDE_CONFIG_DIR = join(testDir, "claude-config");
     mkdirSync(join(process.env.CLAUDE_CONFIG_DIR, "projects"), {
       recursive: true,
@@ -37,6 +43,10 @@ describe("workflow descriptor integrity enforcement (#3487)", () => {
 
   afterEach(() => {
     rmSync(testDir, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
     delete process.env.CLAUDE_CONFIG_DIR;
     delete process.env.OMC_TEST_FLOCK_AVAILABLE;
 

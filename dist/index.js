@@ -69,7 +69,7 @@ export { install, isInstalled, getInstallInfo, isClaudeInstalled, CLAUDE_CONFIG_
  *
  * // Use with Claude Agent SDK
  * for await (const message of query({
- *   prompt: session.processPrompt("ultrawork refactor the authentication module"),
+ *   prompt: session.processPrompt("analyze the authentication module"),
  *   ...session.queryOptions
  * })) {
  *   console.log(message);

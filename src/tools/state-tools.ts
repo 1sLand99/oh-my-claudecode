@@ -7,18 +7,22 @@
 
 import { z } from 'zod';
 import { createHash } from 'crypto';
-import { existsSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from 'fs';
+import { closeSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, rmSync, unlinkSync, writeFileSync, constants as fsConstants } from 'fs';
 import { homedir } from 'os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'path';
 import {
   resolveStatePath,
   ensureOmcDir,
-  validateWorkingDirectory,
+  resolveStateWorkingDirectory,
+  isSensitiveStateLocation,
+  getGitTopLevel,
+  probeGitTopLevel,
   resolveSessionStatePath,
   ensureSessionStateDir,
   listSessionIds,
   validateSessionId,
   getOmcRoot,
+  findGitMetadataDir,
   OmcPaths,
 } from '../lib/worktree-paths.js';
 import { resolveSessionId } from '../lib/session-id.js';
@@ -51,6 +55,38 @@ import {
 import { ToolDefinition } from './types.js';
 import { namedWorkflowRuntimeSupported, validateNamedWorkflowStateStructure } from '../hooks/autopilot/named-workflow-resume-validator.js';
 import { cancelMergeReadiness, createInitialMergeReadinessState, readMergeReadinessState, setMergeReadinessContent, recordMergeReadinessMCQAnswer } from '../hooks/merge-readiness/runtime.js';
+
+const MAX_MIGRATION_FILE_BYTES = 1_048_576;
+
+function ensureMigrationDirectoryTree(root: string, target: string): void {
+  const rootResolved = resolve(root);
+  const targetResolved = resolve(target);
+  const suffix = relative(rootResolved, targetResolved);
+  if (suffix.startsWith('..') || isAbsolute(suffix)) {
+    throw new Error('state_migrate_non_git refuses a destination outside the canonical root');
+  }
+  if (!existsSync(rootResolved)) mkdirSync(rootResolved, { recursive: true });
+  const rootStat = lstatSync(rootResolved);
+  if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) {
+    throw new Error('state_migrate_non_git refuses symlinked migration roots');
+  }
+  let cursor = rootResolved;
+  for (const segment of suffix.split(/[\\/]+/).filter(Boolean)) {
+    cursor = join(cursor, segment);
+    if (existsSync(cursor)) {
+      const stat = lstatSync(cursor);
+      if (stat.isSymbolicLink() || !stat.isDirectory()) {
+        throw new Error('state_migrate_non_git refuses symlinked migration roots');
+      }
+      continue;
+    }
+    mkdirSync(cursor);
+    const created = lstatSync(cursor);
+    if (created.isSymbolicLink() || !created.isDirectory()) {
+      throw new Error('state_migrate_non_git refuses symlinked migration roots');
+    }
+  }
+}
 import { formatMergeReadinessReport, redactMergeReadinessState } from '../hooks/merge-readiness/report.js';
 import type { AutopilotState } from '../hooks/autopilot/types.js';
 
@@ -58,17 +94,17 @@ import type { AutopilotState } from '../hooks/autopilot/types.js';
 // are first-class modes with dedicated MODE_CONFIGS entries; ralplan remains an
 // extra state-only mode handled via the registry-fallback path).
 const EXECUTION_MODES: [string, ...string[]] = [
-  'autopilot', 'autoresearch', 'team', 'ralph', 'ultrawork', 'deep-interview', 'self-improve'
+  'autopilot', 'autoresearch', 'team', 'ralph', 'deep-interview', 'self-improve'
 ];
 
-// ultraqa was retired in 5.0.0; its state stays read/clear-eligible for
+// ultrawork and ultraqa were retired; their state stays read/clear-eligible for
 // bounded cleanup of pre-existing retired state, but is not write-eligible.
-const RETIRED_READ_CLEAR_MODES = ['ultraqa'] as const;
+const RETIRED_STATE_MODES: [string, ...string[]] = ['ultrawork', 'ultraqa'];
 
 // merge-readiness is read/clear-eligible (state_read/status/clear + /cancel work) but NOT write-eligible.
 const STATE_TOOL_MODES: [string, ...string[]] = [
   ...EXECUTION_MODES,
-  ...RETIRED_READ_CLEAR_MODES,
+  ...RETIRED_STATE_MODES,
   'ralplan',
   'omc-teams',
   'skill-active',
@@ -88,6 +124,11 @@ type StateToolMode = typeof STATE_TOOL_MODES[number];
 const CANCEL_SIGNAL_TTL_MS = 30_000;
 const OWNER_SESSION_FALLBACK_MODES = new Set<StateToolMode>(['ralph']);
 const CONVERGED_STATE_PATH_MODES = new Set<StateToolMode>(['ralph', 'ultrawork']);
+const RETIRED_WORKFLOW_MODES = new Set<StateToolMode>(['ultrawork']);
+
+function isRetiredWorkflowMode(mode: string): boolean {
+  return RETIRED_WORKFLOW_MODES.has(mode as StateToolMode);
+}
 
 function getStateFileName(mode: StateToolMode): string {
   const normalizedName = mode.endsWith('-state') ? mode : `${mode}-state`;
@@ -171,7 +212,11 @@ function listSessionIdsUnderOmcRoot(omcRoot: string): string[] {
 }
 
 function getConvergedOmcRoots(root: string): string[] {
-  const roots = new Set<string>([getOmcRoot(root)]);
+  const canonicalRoot = getOmcRoot(root);
+  if (process.env.OMC_STATE_DIR) return [canonicalRoot];
+  if (!getGitTopLevel(root)) return [canonicalRoot];
+
+  const roots = new Set<string>([canonicalRoot]);
   roots.add(join(root, OmcPaths.ROOT));
   roots.add(join(homedir(), OmcPaths.ROOT));
   return [...roots];
@@ -235,10 +280,19 @@ function clearDiscoveredStateCandidate(
   predicate: (state: Record<string, unknown>) => boolean,
   recoveryOptions?: { authorizeState: (state: Record<string, unknown>) => boolean },
 ): 'cleared' | 'skipped' | 'failed' {
+  const sessionPathMatch = candidate.path.replaceAll('\\', '/').match(/\/state\/sessions\/([^/]+)\/[^/]+$/);
+  const pathSessionId = sessionPathMatch?.[1];
+  const ownerSessionId = candidate.completedSessionId ?? candidate.ownerSessionId;
+  const ownerRecovery = ownerSessionId && ownerSessionId !== pathSessionId
+    ? { authorizeState: (state: Record<string, unknown>) => getStateSessionOwner(state) === ownerSessionId }
+    : undefined;
+  const effectiveRecovery = ownerRecovery && recoveryOptions
+    ? { authorizeState: (state: Record<string, unknown>) => ownerRecovery.authorizeState(state) && recoveryOptions.authorizeState(state) }
+    : ownerRecovery ?? recoveryOptions;
   return clearStateFileLockedIf(
     candidate.path,
     (current) => predicate(current) && JSON.stringify(current) === candidate.snapshot,
-    recoveryOptions,
+    effectiveRecovery,
   );
 }
 
@@ -249,20 +303,27 @@ function clearAutopilotMarkerCandidate(candidate: StateFileDiscovery, root: stri
   const predicate = (current: Record<string, unknown>) =>
     isStateCandidateForProject('autopilot', candidate.path, current, root) &&
     JSON.stringify(current) === candidate.snapshot;
+  const sessionPathMatch = candidate.path.replaceAll('\\', '/').match(/\/state\/sessions\/([^/]+)\/[^/]+$/);
+  const pathSessionId = sessionPathMatch?.[1];
+  const ownerSessionId = candidate.completedSessionId ?? candidate.ownerSessionId;
+  const projectRecovery = emergencyRecoveryOptionsForProject('autopilot', candidate.path, root);
+  const recoveryOptions = ownerSessionId && ownerSessionId !== pathSessionId
+    ? { authorizeState: (state: Record<string, unknown>) => isStateCandidateForProject('autopilot', candidate.path, state, root) && getStateSessionOwner(state) === ownerSessionId }
+    : projectRecovery;
 
   if (!namedWorkflowRuntimeSupported()) {
     return emergencyMutateStateFileIf(
       candidate.path,
       predicate,
       null,
-      emergencyRecoveryOptionsForProject('autopilot', candidate.path, root),
+      recoveryOptions,
     );
   }
 
   return clearStateFileLockedIf(
     candidate.path,
     predicate,
-    emergencyRecoveryOptionsForProject('autopilot', candidate.path, root),
+    recoveryOptions,
   ) === 'cleared';
 }
 
@@ -306,11 +367,12 @@ function hasActiveConvergedState(mode: StateToolMode, root: string, sessionId?: 
     .some((statePath) => isConvergedCandidateActiveForSession(statePath, sessionId));
 }
 
-function readTeamNamesFromStateFile(statePath: string): string[] {
+function readTeamNamesFromStateFile(statePath: string, sessionId?: string): string[] {
   if (!existsSync(statePath)) return [];
 
   try {
     const raw = JSON.parse(readFileSync(statePath, 'utf-8')) as Record<string, unknown>;
+    if (sessionId && !canClearStateForSession(raw, sessionId)) return [];
     const teamName = typeof raw.team_name === 'string'
       ? raw.team_name.trim()
       : typeof raw.teamName === 'string'
@@ -378,9 +440,12 @@ function cleanupTeamRuntimeState(root: string, teamNames?: string[]): number {
   }
 
   for (const teamName of teamNames ?? []) {
-    if (!teamName) continue;
+    if (!teamName || !/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(teamName)) continue;
     try {
-      rmSync(join(teamStateRoot, teamName), { recursive: true, force: true });
+      const teamPath = resolve(teamStateRoot, teamName);
+      const withinRoot = relative(resolve(teamStateRoot), teamPath);
+      if (withinRoot.startsWith(`..${sep}`) || withinRoot === '..' || isAbsolute(withinRoot)) continue;
+      rmSync(teamPath, { recursive: true, force: true });
       removed += 1;
     } catch {
       // best effort
@@ -412,7 +477,7 @@ function getLegacyStateFileCandidates(mode: StateToolMode, root: string): string
     getStatePath(mode, root),
     join(getOmcRoot(root), `${normalizedName}.json`),
   ];
-  if (mode === 'autopilot') candidates.push(join(homedir(), '.omc', 'state', 'autopilot-state.json'));
+  if (mode === 'autopilot' && getGitTopLevel(root)) candidates.push(join(homedir(), '.omc', 'state', 'autopilot-state.json'));
 
   return [...new Set(candidates)];
 }
@@ -461,6 +526,10 @@ function getWorkingDirectoryLocalOmcRoot(root: string): string {
 }
 
 function shouldCheckWorkingDirectoryLocalState(root: string): boolean {
+  // Non-git state uses a canonical user/central root. Do not probe or mutate
+  // `{workingDirectory}/.omc` implicitly; legacy recovery requires an explicit
+  // migration path so unrelated directories cannot be swept together.
+  if (!getGitTopLevel(root)) return false;
   return getWorkingDirectoryLocalOmcRoot(root) !== getOmcRoot(root);
 }
 
@@ -569,7 +638,10 @@ function clearCompletedSessionStateCandidates(
   for (const candidate of discovered) {
     const result = clearDiscoveredStateCandidate(
       candidate,
-      (current) => current.active === true && Boolean(candidate.completionEvidencePath && existsSync(candidate.completionEvidencePath)),
+      (current) => current.active === true
+        && candidate.ownerSessionId === candidate.completedSessionId
+        && getStateSessionOwner(current) === candidate.completedSessionId
+        && Boolean(candidate.completionEvidencePath && existsSync(candidate.completionEvidencePath)),
       emergencyRecoveryOptionsForProject(mode, candidate.path, root),
     );
     if (result === 'cleared') cleared++;
@@ -835,7 +907,7 @@ export const stateReadTool: ToolDefinition<{
     const { mode, workingDirectory, session_id } = args;
 
     try {
-      const root = validateWorkingDirectory(workingDirectory);
+      const root = resolveStateWorkingDirectory(workingDirectory);
       const sessionId = session_id as string | undefined;
 
       // If session_id provided, read from session-scoped path
@@ -876,6 +948,15 @@ export const stateReadTool: ToolDefinition<{
 
         const content = readFileSync(statePath, 'utf-8');
         const state = JSON.parse(content);
+        const ownerSessionId = getStateSessionOwner(state);
+        if (ownerSessionId && ownerSessionId !== sessionId) {
+          return {
+            content: [{
+              type: 'text' as const,
+              text: `No state found for mode: ${mode} in session: ${sessionId}\nExpected path: ${statePath}`
+            }]
+          };
+        }
 
         return {
           content: [{
@@ -1014,7 +1095,7 @@ export const stateWriteTool: ToolDefinition<{
     } = args;
 
     try {
-      const root = validateWorkingDirectory(workingDirectory);
+      const root = resolveStateWorkingDirectory(workingDirectory);
       const sessionId = session_id as string | undefined;
 
       // Validate custom state payload size if provided
@@ -1044,6 +1125,14 @@ export const stateWriteTool: ToolDefinition<{
         statePath = getStatePath(mode, root);
       }
 
+      if (sessionId && existsSync(statePath)) {
+        const existingState = readJsonRecord(statePath);
+        const ownerSessionId = existingState ? getStateSessionOwner(existingState) : undefined;
+        if (ownerSessionId && ownerSessionId !== sessionId) {
+          throw new Error(`state is owned by session '${ownerSessionId}' and cannot be modified by session '${sessionId}'`);
+        }
+      }
+
       // Build state from explicit params + custom state
       const builtState: Record<string, unknown> = {};
 
@@ -1065,6 +1154,10 @@ export const stateWriteTool: ToolDefinition<{
             builtState[key] = value;
           }
         }
+      }
+
+      if (isRetiredWorkflowMode(mode) && builtState.active === true) {
+        throw new Error('ultrawork is retired and cannot be activated via state_write; use state_clear to remove legacy state');
       }
 
       const requestedRunId = typeof builtState.workflowRunId === 'string' ? builtState.workflowRunId : undefined;
@@ -1120,7 +1213,7 @@ export const stateWriteTool: ToolDefinition<{
         } else {
           const result = writeStateFileLockedCreateIf(
             statePath,
-            (current) => !hasNamedWorkflowMarker(current),
+            (current) => (!sessionId || !current || canClearStateForSession(current, sessionId)) && !hasNamedWorkflowMarker(current),
             (current) => {
               writtenState = { ...(current ?? {}), ...stateWithMeta };
               return writtenState;
@@ -1133,6 +1226,7 @@ export const stateWriteTool: ToolDefinition<{
         const result = writeStateFileLockedCreateIf(
           statePath,
           (current) => {
+            if (sessionId && current && !canClearStateForSession(current, sessionId)) return false;
             if (!hasNamedWorkflowMarker(current)) return true;
             namedWorkflowExists = true;
             return false;
@@ -1146,8 +1240,17 @@ export const stateWriteTool: ToolDefinition<{
           if (namedWorkflowExists) throw new Error('named autopilot workflow state is runtime-owned; only exact-run deactivation is allowed');
           throw new Error(result === 'failed' ? 'state mutation lock unavailable' : 'autopilot state changed before write');
         }
-      } else if (!writeStateFileLocked(statePath, stateWithMeta)) {
-        throw new Error('state mutation lock unavailable');
+      } else {
+        const result = writeStateFileLockedCreateIf(
+          statePath,
+          (current) => !sessionId || !current || canClearStateForSession(current, sessionId),
+          () => stateWithMeta,
+        );
+        if (result !== 'written') {
+          throw new Error(result === 'failed'
+            ? 'state mutation lock unavailable'
+            : `state is owned by another session and cannot be modified by session '${sessionId ?? 'legacy'}'`);
+        }
       }
 
 
@@ -1179,7 +1282,9 @@ export const stateWriteTool: ToolDefinition<{
 
 function discoverAllRootSessionStateCandidates(mode: StateToolMode, root: string): StateFileDiscovery[] {
   const paths = new Set<string>();
-  const roots = new Set([...getConvergedOmcRoots(root), getWorkingDirectoryLocalOmcRoot(root), getOmcRoot(root)]);
+  const roots = new Set(getConvergedOmcRoots(root));
+  if (shouldCheckWorkingDirectoryLocalState(root)) roots.add(getWorkingDirectoryLocalOmcRoot(root));
+  roots.add(getOmcRoot(root));
   for (const omcRoot of roots) {
     for (const sid of listSessionIdsUnderOmcRoot(omcRoot)) {
       paths.add(join(omcRoot, 'state', 'sessions', sid, getStateFileName(mode)));
@@ -1194,9 +1299,11 @@ function recoverAutopilotEmergencyTransactions(root: string, sessionId?: string)
     ...getWorkingDirectoryLocalStateClearCandidates('autopilot', root),
     ...getConvergedStateCandidates('autopilot', root),
   ]);
-  const localOmcRoot = getWorkingDirectoryLocalOmcRoot(root);
-  for (const sid of listSessionIdsUnderOmcRoot(localOmcRoot)) {
-    broadPaths.add(join(localOmcRoot, 'state', 'sessions', sid, getStateFileName('autopilot')));
+  if (shouldCheckWorkingDirectoryLocalState(root)) {
+    const localOmcRoot = getWorkingDirectoryLocalOmcRoot(root);
+    for (const sid of listSessionIdsUnderOmcRoot(localOmcRoot)) {
+      broadPaths.add(join(localOmcRoot, 'state', 'sessions', sid, getStateFileName('autopilot')));
+    }
   }
   for (const omcRoot of getConvergedOmcRoots(root)) {
     for (const sid of listSessionIdsUnderOmcRoot(omcRoot)) {
@@ -1206,20 +1313,28 @@ function recoverAutopilotEmergencyTransactions(root: string, sessionId?: string)
   const directSessionPaths = new Set<string>();
   if (sessionId) {
     directSessionPaths.add(resolveSessionStatePath('autopilot', sessionId, root));
-    directSessionPaths.add(getWorkingDirectoryLocalSessionStatePath('autopilot', root, sessionId));
+    if (shouldCheckWorkingDirectoryLocalState(root)) directSessionPaths.add(getWorkingDirectoryLocalSessionStatePath('autopilot', root, sessionId));
     for (const omcRoot of getConvergedOmcRoots(root)) {
       directSessionPaths.add(join(omcRoot, 'state', 'sessions', sessionId, getStateFileName('autopilot')));
     }
     for (const path of directSessionPaths) broadPaths.add(path);
   }
   for (const path of broadPaths) {
-    const recoveryOptions = emergencyRecoveryOptionsForProject('autopilot', path, root);
+    let recoveryOptions = emergencyRecoveryOptionsForProject('autopilot', path, root);
     if (!isAutopilotRecoveryCandidateForProject(path, root)) continue;
-    if (sessionId && !directSessionPaths.has(path)) {
+    if (!directSessionPaths.has(path)) {
       const visibleOwner = getStateSessionOwner(readJsonRecord(path) ?? {});
       const journal = readJsonRecord(`${path}.emergency-journal.json`);
       const journalOwner = typeof journal?.sessionOwner === 'string' ? journal.sessionOwner : undefined;
-      if (visibleOwner !== sessionId && journalOwner !== sessionId) continue;
+      const pathSessionId = path.replaceAll('\\', '/').match(/\/state\/sessions\/([^/]+)\/[^/]+$/)?.[1];
+      const ownerSessionId = sessionId ?? visibleOwner ?? journalOwner;
+      if (sessionId && visibleOwner !== sessionId && journalOwner !== sessionId) continue;
+      if (ownerSessionId && ownerSessionId !== pathSessionId) {
+        recoveryOptions = {
+          authorizeState: (state) => isStateCandidateForProject('autopilot', path, state, root)
+            && getStateSessionOwner(state) === ownerSessionId,
+        };
+      }
     }
     if (!recoverEmergencyStateFile(path, recoveryOptions)) throw new Error(`workflow_emergency_recovery_failed: ${path}`);
     if (recoveryOptions && !isAutopilotRecoveryCandidateForProject(path, root)) continue;
@@ -1248,7 +1363,7 @@ export const stateClearTool: ToolDefinition<{
     const { mode, workingDirectory, session_id } = args;
 
     try {
-      const root = validateWorkingDirectory(workingDirectory);
+      const root = resolveStateWorkingDirectory(workingDirectory);
       const sessionId = session_id as string | undefined;
 
       // Merge-readiness is an audit gate, so clearing it must leave a durable
@@ -1295,7 +1410,7 @@ export const stateClearTool: ToolDefinition<{
 
       const collectTeamNamesForCleanup = (statePath: string): void => {
         if (mode !== 'team') return;
-        for (const teamName of readTeamNamesFromStateFile(statePath)) {
+        for (const teamName of readTeamNamesFromStateFile(statePath, sessionId)) {
           cleanedTeamNames.add(teamName);
         }
       };
@@ -1304,7 +1419,7 @@ export const stateClearTool: ToolDefinition<{
       if (sessionId) {
         validateSessionId(sessionId);
         const requestedSessionCandidates = findSessionOwnedStateCandidates(mode, sessionId, root)
-          .filter((candidate) => isStateCandidateForProject(mode, candidate.path, candidate.state, root));
+          .filter((candidate) => isStateCandidateForProject(mode, candidate.path, candidate.state, root) && canClearStateForSession(candidate.state, sessionId));
         const requestedSessionOwnedPaths = requestedSessionCandidates.map((candidate) => candidate.path);
         for (const teamStatePath of findSessionOwnedStateFiles('team', sessionId, root)) {
           collectTeamNamesForCleanup(teamStatePath);
@@ -1391,6 +1506,7 @@ export const stateClearTool: ToolDefinition<{
             workingDirectoryLocalCleanup.cleared === 0
           ) {
             ownerSessionId = findSingleOwningSessionForMode(mode, root, sessionId);
+            if (ownerSessionId !== sessionId) ownerSessionId = undefined;
             if (ownerSessionId) {
               if (mode === 'team') {
                 for (const teamStatePath of findSessionOwnedStateFiles('team', ownerSessionId, root)) {
@@ -1531,6 +1647,7 @@ export const stateClearTool: ToolDefinition<{
           workingDirectoryLocalCleanup.cleared === 0
         ) {
           ownerSessionId = findSingleOwningSessionForMode(mode, root, sessionId);
+          if (ownerSessionId !== sessionId) ownerSessionId = undefined;
           if (ownerSessionId) {
             if (mode === 'team') {
               for (const teamStatePath of findSessionOwnedStateFiles('team', ownerSessionId, root)) {
@@ -1806,7 +1923,7 @@ export const stateListActiveTool: ToolDefinition<{
     const { workingDirectory, session_id, all } = args;
 
     try {
-      const root = validateWorkingDirectory(workingDirectory);
+      const root = resolveStateWorkingDirectory(workingDirectory);
 
       // Resolve the effective session ID:
       //   1. Explicit session_id arg wins (back-compat for callers that pass it directly).
@@ -1822,7 +1939,8 @@ export const stateListActiveTool: ToolDefinition<{
         validateSessionId(sessionId);
 
         // Get active modes from registry for this session
-        const activeModes: string[] = [...getActiveModes(root, sessionId)];
+        const activeModes: string[] = [...getActiveModes(root, sessionId)]
+          .filter((activeMode) => !isRetiredWorkflowMode(activeMode));
 
         for (const mode of EXTRA_STATE_ONLY_MODES) {
           try {
@@ -1830,7 +1948,7 @@ export const stateListActiveTool: ToolDefinition<{
             if (existsSync(statePath)) {
               const content = readFileSync(statePath, 'utf-8');
               const state = JSON.parse(content);
-              if (state.active) {
+              if (state.active && canClearStateForSession(state, sessionId)) {
                 activeModes.push(mode);
               }
             }
@@ -1840,6 +1958,7 @@ export const stateListActiveTool: ToolDefinition<{
         }
 
         for (const mode of CONVERGED_STATE_PATH_MODES) {
+          if (isRetiredWorkflowMode(mode)) continue;
           if (!activeModes.includes(mode) && hasActiveConvergedState(mode, root, sessionId)) {
             activeModes.push(mode);
           }
@@ -1868,7 +1987,8 @@ export const stateListActiveTool: ToolDefinition<{
       const modeSessionMap = new Map<string, string[]>();
 
       // Check legacy paths
-      const legacyActiveModes: string[] = [...getActiveModes(root)];
+      const legacyActiveModes: string[] = [...getActiveModes(root)]
+        .filter((activeMode) => !isRetiredWorkflowMode(activeMode));
       for (const mode of EXTRA_STATE_ONLY_MODES) {
         const statePath = getStatePath(mode, root);
         if (existsSync(statePath)) {
@@ -1885,6 +2005,7 @@ export const stateListActiveTool: ToolDefinition<{
       }
 
       for (const mode of CONVERGED_STATE_PATH_MODES) {
+        if (isRetiredWorkflowMode(mode)) continue;
         if (!legacyActiveModes.includes(mode) && hasActiveConvergedState(mode, root)) {
           legacyActiveModes.push(mode);
         }
@@ -1900,7 +2021,8 @@ export const stateListActiveTool: ToolDefinition<{
       // Check all sessions
       const sessionIds = listSessionIds(root);
       for (const sid of sessionIds) {
-        const sessionActiveModes: string[] = [...getActiveModes(root, sid)];
+        const sessionActiveModes: string[] = [...getActiveModes(root, sid)]
+          .filter((activeMode) => !isRetiredWorkflowMode(activeMode));
 
         for (const mode of EXTRA_STATE_ONLY_MODES) {
           try {
@@ -1908,7 +2030,7 @@ export const stateListActiveTool: ToolDefinition<{
             if (existsSync(statePath)) {
               const content = readFileSync(statePath, 'utf-8');
               const state = JSON.parse(content);
-              if (state.active) {
+              if (state.active && canClearStateForSession(state, sid)) {
                 sessionActiveModes.push(mode);
               }
             }
@@ -1978,7 +2100,7 @@ export const stateGetStatusTool: ToolDefinition<{
     const { mode, workingDirectory, session_id } = args;
 
     try {
-      const root = validateWorkingDirectory(workingDirectory);
+      const root = resolveStateWorkingDirectory(workingDirectory);
       const sessionId = session_id as string | undefined;
 
       if (mode) {
@@ -1992,22 +2114,25 @@ export const stateGetStatusTool: ToolDefinition<{
             ? getStateFilePath(root, mode as ExecutionMode, sessionId)
             : resolveSessionStatePath(mode, sessionId, root);
 
-          const active = MODE_CONFIGS[mode as ExecutionMode]
+          const active = !isRetiredWorkflowMode(mode) && (MODE_CONFIGS[mode as ExecutionMode]
             ? isModeActive(mode as ExecutionMode, root, sessionId)
             : existsSync(statePath) && (() => {
                 try {
                   const content = readFileSync(statePath, 'utf-8');
                   const state = JSON.parse(content);
-                  return state.active === true;
+                  return state.active === true && canClearStateForSession(state, sessionId);
                 } catch { return false; }
-              })();
+              })());
 
           let statePreview = 'No state file';
           if (existsSync(statePath)) {
             try {
               const content = readFileSync(statePath, 'utf-8');
               const state = JSON.parse(content);
-              statePreview = JSON.stringify(publicStateForMode(mode, state), null, 2).slice(0, 500);
+              const owner = getStateSessionOwner(state);
+              if (!owner || owner === sessionId) {
+                statePreview = JSON.stringify(publicStateForMode(mode, state), null, 2).slice(0, 500);
+              }
               if (statePreview.length >= 500) statePreview += '\n...(truncated)';
             } catch {
               statePreview = 'Error reading state file';
@@ -2015,9 +2140,10 @@ export const stateGetStatusTool: ToolDefinition<{
           }
 
           lines.push(`### Session: ${sessionId}`);
-          lines.push(`- **Active:** ${active ? 'Yes' : 'No'}`);
+          const visible = !existsSync(statePath) || statePreview !== 'No state file' && !statePreview.includes('Error reading state file');
+          lines.push(`- **Active:** ${visible && active ? 'Yes' : 'No'}`);
           lines.push(`- **State Path:** ${statePath}`);
-          lines.push(`- **Exists:** ${existsSync(statePath) ? 'Yes' : 'No'}`);
+          lines.push(`- **Exists:** ${visible && existsSync(statePath) ? 'Yes' : 'No'}`);
           lines.push(`\n### State Preview\n\`\`\`json\n${statePreview}\n\`\`\``);
 
           return {
@@ -2030,7 +2156,7 @@ export const stateGetStatusTool: ToolDefinition<{
 
         // No session_id: show all sessions + legacy
         const legacyPath = getStatePath(mode, root);
-        const legacyActive = MODE_CONFIGS[mode as ExecutionMode]
+        const legacyActive = !isRetiredWorkflowMode(mode) && (MODE_CONFIGS[mode as ExecutionMode]
           ? isModeActive(mode as ExecutionMode, root)
           : existsSync(legacyPath) && (() => {
               try {
@@ -2038,7 +2164,7 @@ export const stateGetStatusTool: ToolDefinition<{
                 const state = JSON.parse(content);
                 return state.active === true;
               } catch { return false; }
-            })();
+            })());
 
         lines.push(`### Legacy Path`);
         lines.push(`- **Active:** ${legacyActive ? 'Yes' : 'No'}`);
@@ -2046,7 +2172,7 @@ export const stateGetStatusTool: ToolDefinition<{
         lines.push(`- **Exists:** ${existsSync(legacyPath) ? 'Yes' : 'No'}\n`);
 
         // Show active sessions for this mode
-        const activeSessions = MODE_CONFIGS[mode as ExecutionMode]
+        const activeSessions = isRetiredWorkflowMode(mode) ? [] : MODE_CONFIGS[mode as ExecutionMode]
           ? getActiveSessionsForMode(mode as ExecutionMode, root)
           : listSessionIds(root).filter(sid => {
               try {
@@ -2054,7 +2180,7 @@ export const stateGetStatusTool: ToolDefinition<{
                 if (existsSync(sessionPath)) {
                   const content = readFileSync(sessionPath, 'utf-8');
                   const state = JSON.parse(content);
-                  return state.active === true;
+                  return state.active === true && canClearStateForSession(state, sid);
                 }
                 return false;
               } catch {
@@ -2080,7 +2206,9 @@ export const stateGetStatusTool: ToolDefinition<{
       }
 
       // All modes status
-      const statuses = getAllModeStatuses(root, sessionId);
+      const statuses = getAllModeStatuses(root, sessionId).map((status) =>
+        isRetiredWorkflowMode(status.mode) ? { ...status, active: false } : status,
+      );
       const lines = sessionId
         ? [`## All Mode Statuses (session: ${sessionId})\n`]
         : ['## All Mode Statuses\n'];
@@ -2091,7 +2219,7 @@ export const stateGetStatusTool: ToolDefinition<{
         lines.push(`   Path: \`${status.stateFilePath}\``);
 
         // Show active sessions if no specific session_id
-        if (!sessionId && MODE_CONFIGS[status.mode]) {
+        if (!sessionId && !isRetiredWorkflowMode(status.mode) && MODE_CONFIGS[status.mode]) {
           const activeSessions = getActiveSessionsForMode(status.mode, root);
           if (activeSessions.length > 0) {
             lines.push(`   Active sessions: ${activeSessions.join(', ')}`);
@@ -2109,7 +2237,7 @@ export const stateGetStatusTool: ToolDefinition<{
           try {
             const content = readFileSync(statePath, 'utf-8');
             const state = JSON.parse(content);
-            active = state.active === true;
+            active = state.active === true && (!sessionId || canClearStateForSession(state, sessionId));
           } catch {
             // Ignore parse errors
           }
@@ -2137,6 +2265,113 @@ export const stateGetStatusTool: ToolDefinition<{
   }
 };
 
+const stateMigrateNonGitTool: ToolDefinition<any> = {
+  name: 'state_migrate_non_git',
+  description: 'Explicitly copy session-owned JSON state from a legacy non-git .omc root into the canonical non-git state root without overwriting or deleting source files.',
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  schema: {
+    workingDirectory: z.string().optional().describe('Legacy non-git working directory containing .omc/state/sessions/<session_id>'),
+    session_id: z.string().describe('Exact session owner to migrate'),
+  },
+  handler: async (args: { workingDirectory?: string; session_id?: string }) => {
+    try {
+      if (!args.session_id) throw new Error('session_id is required');
+      validateSessionId(args.session_id);
+      const sourceRoot = realpathSync(resolve(args.workingDirectory || process.cwd()));
+      const trustedWorkingDirectory = realpathSync(resolve(process.cwd()));
+      const sourceFromTrustedCwd = relative(trustedWorkingDirectory, sourceRoot);
+      if (sourceFromTrustedCwd === '..' || sourceFromTrustedCwd.startsWith(`..${sep}`) || isAbsolute(sourceFromTrustedCwd)) {
+        throw new Error('state_migrate_non_git refuses a source outside the trusted session working directory');
+      }
+      const gitProbe = probeGitTopLevel(sourceRoot);
+      if (gitProbe.status === 'ok') throw new Error('state_migrate_non_git only accepts a non-git source directory');
+      if (gitProbe.status !== 'not_a_repository') throw new Error('state_migrate_non_git refused a failed Git probe');
+      if (findGitMetadataDir(sourceRoot)) throw new Error('state_migrate_non_git refuses a directory with Git metadata');
+      const authorizedHome = realpathSync(homedir());
+      const sourceFromHome = relative(authorizedHome, sourceRoot);
+      if (sourceFromHome === '..' || sourceFromHome.startsWith(`..${sep}`) || isAbsolute(sourceFromHome)) {
+        throw new Error('state_migrate_non_git refuses a source outside the authorized home boundary');
+      }
+      if (isSensitiveStateLocation(sourceRoot)) throw new Error('state_migrate_non_git refuses sensitive source directories');
+
+      // Keep the validated non-Git source as the identity input. Replacing it
+      // with HOME would let a Git checkout at HOME change the centralized
+      // namespace on the second root-resolution pass.
+      const canonicalOmc = getOmcRoot(sourceRoot);
+      const sourceDir = join(sourceRoot, OmcPaths.ROOT, 'state', 'sessions', args.session_id);
+      const destinationDir = join(canonicalOmc, 'state', 'sessions', args.session_id);
+      const report = { source: sourceDir, destination: destinationDir, copied: [] as string[], skipped: [] as string[], rejected: [] as string[] };
+
+      const sourceOmc = join(sourceRoot, OmcPaths.ROOT);
+      if (!existsSync(sourceOmc)) {
+        return { content: [{ type: 'text' as const, text: JSON.stringify(report, null, 2) }] };
+      }
+      const sourceState = join(sourceOmc, 'state');
+      const sourceSessions = join(sourceState, 'sessions');
+      for (const path of [sourceOmc, sourceState, sourceSessions]) {
+        if (!existsSync(path)) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify(report, null, 2) }] };
+        }
+        if (lstatSync(path).isSymbolicLink()) throw new Error('state_migrate_non_git refuses symlinked legacy state paths');
+      }
+      if (!existsSync(sourceDir)) {
+        return { content: [{ type: 'text' as const, text: JSON.stringify(report, null, 2) }] };
+      }
+      const destinationState = join(canonicalOmc, 'state');
+      const destinationSessions = join(destinationState, 'sessions');
+      const migrationRoots = [canonicalOmc, destinationState, destinationSessions, destinationDir];
+      if (lstatSync(sourceDir).isSymbolicLink() || migrationRoots.some((path) => existsSync(path) && lstatSync(path).isSymbolicLink())) {
+        throw new Error('state_migrate_non_git refuses symlinked migration roots');
+      }
+      ensureMigrationDirectoryTree(canonicalOmc, destinationDir);
+      for (const entry of readdirSync(sourceDir, { withFileTypes: true })) {
+        if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
+        const sourcePath = join(sourceDir, entry.name);
+        const sourceFd = openSync(sourcePath, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
+        let sourceBytes: Buffer;
+        try {
+          const sourceStat = fstatSync(sourceFd);
+          if (!sourceStat.isFile()) throw new Error('state_migrate_non_git refuses a non-file source entry');
+          if (sourceStat.size > MAX_MIGRATION_FILE_BYTES) {
+            report.rejected.push(entry.name);
+            continue;
+          }
+          sourceBytes = Buffer.alloc(sourceStat.size);
+          const bytesRead = sourceStat.size === 0 ? 0 : readSync(sourceFd, sourceBytes, 0, sourceStat.size, 0);
+          if (bytesRead !== sourceStat.size) {
+            report.rejected.push(entry.name);
+            continue;
+          }
+        } finally {
+          closeSync(sourceFd);
+        }
+        let state: Record<string, unknown> | null = null;
+        try { state = JSON.parse(sourceBytes.toString('utf8')) as Record<string, unknown>; } catch { /* rejected below */ }
+        if (!state || getStateSessionOwner(state) !== args.session_id) {
+          report.rejected.push(entry.name);
+          continue;
+        }
+        const destinationPath = join(destinationDir, entry.name);
+        ensureMigrationDirectoryTree(canonicalOmc, destinationDir);
+        if (existsSync(destinationPath)) {
+          report.skipped.push(entry.name);
+          continue;
+        }
+        try {
+          writeFileSync(destinationPath, sourceBytes, { flag: 'wx', mode: 0o600 });
+          report.copied.push(entry.name);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'EEXIST') report.skipped.push(entry.name);
+          else throw error;
+        }
+      }
+      return { content: [{ type: 'text' as const, text: JSON.stringify(report, null, 2) }] };
+    } catch (error) {
+      return { content: [{ type: 'text' as const, text: `Error migrating non-git state: ${error instanceof Error ? error.message : String(error)}` }], isError: true };
+    }
+  },
+};
+
 /**
  * All state tools for registration
  */
@@ -2146,6 +2381,7 @@ export const stateTools = [
   stateClearTool,
   stateListActiveTool,
   stateGetStatusTool,
+  stateMigrateNonGitTool,
   {
     name: 'merge_readiness_start',
     description: 'Initialize a merge-readiness gate session for the current change. Call this first, before merge_readiness_set_content. The depth profile is parsed from the summary (--quick or --deep; standard is the default when neither flag is present). Re-running it while an active attempt is still pending is rejected - cancel via merge_readiness_cancel or let the attempt pass/pause first, so the in-progress audit trail is never silently overwritten.',
@@ -2157,7 +2393,7 @@ export const stateTools = [
     },
     handler: async (args: { summary: string; workingDirectory?: string; session_id?: string; baseRef?: string }) => {
       try {
-      const directory = validateWorkingDirectory(args.workingDirectory || process.cwd());
+      const directory = resolveStateWorkingDirectory(args.workingDirectory);
       const sessionId = (args.session_id && args.session_id.trim()) || (process.env.CLAUDE_SESSION_ID && process.env.CLAUDE_SESSION_ID.trim()) || resolveSessionId({ context: "cli" });
       const state = createInitialMergeReadinessState(directory, args.summary, sessionId, args.baseRef);
       const blocked = state.result === 'blocked';
@@ -2178,7 +2414,7 @@ export const stateTools = [
     },
     handler: async (args: { why: string; whatChanged: string; tradeoffs: string; risksConsidered: string; teamUnderstanding: string; questions: Array<any>; workingDirectory?: string; session_id?: string }) => {
       try {
-      const directory = validateWorkingDirectory(args.workingDirectory || process.cwd());
+      const directory = resolveStateWorkingDirectory(args.workingDirectory);
       const sessionId = (args.session_id && args.session_id.trim()) || (process.env.CLAUDE_SESSION_ID && process.env.CLAUDE_SESSION_ID.trim()) || resolveSessionId({ context: "cli" });
       const state = setMergeReadinessContent(directory, args, sessionId);
       if (!state || !state.active) {
@@ -2202,7 +2438,7 @@ export const stateTools = [
     },
     handler: async (args: { questionId: string; optionId: string; workingDirectory?: string; session_id?: string }) => {
       try {
-      const directory = validateWorkingDirectory(args.workingDirectory || process.cwd());
+      const directory = resolveStateWorkingDirectory(args.workingDirectory);
       const sessionId = (args.session_id && args.session_id.trim()) || (process.env.CLAUDE_SESSION_ID && process.env.CLAUDE_SESSION_ID.trim()) || resolveSessionId({ context: "cli" });
       const state = recordMergeReadinessMCQAnswer(directory, args.questionId, args.optionId, sessionId);
       if (!state) {
@@ -2229,7 +2465,7 @@ export const stateTools = [
     schema: { workingDirectory: z.string().optional(), session_id: z.string().optional() },
     handler: async (args: { workingDirectory?: string; session_id?: string }) => {
       try {
-      const directory = validateWorkingDirectory(args.workingDirectory || process.cwd());
+      const directory = resolveStateWorkingDirectory(args.workingDirectory);
       const sessionId = (args.session_id && args.session_id.trim()) || (process.env.CLAUDE_SESSION_ID && process.env.CLAUDE_SESSION_ID.trim()) || resolveSessionId({ context: 'cli' });
       const state = readMergeReadinessState(directory, sessionId);
       if (!state) {
@@ -2248,7 +2484,7 @@ export const stateTools = [
     schema: { workingDirectory: z.string().optional(), session_id: z.string().optional() },
     handler: async (args: { workingDirectory?: string; session_id?: string }) => {
       try {
-      const directory = validateWorkingDirectory(args.workingDirectory || process.cwd());
+      const directory = resolveStateWorkingDirectory(args.workingDirectory);
       const sessionId = (args.session_id && args.session_id.trim()) || (process.env.CLAUDE_SESSION_ID && process.env.CLAUDE_SESSION_ID.trim()) || resolveSessionId({ context: 'cli' });
       const state = cancelMergeReadiness(directory, sessionId);
       const persistFailed = state?.result === 'blocked' && (state.validation_errors ?? []).some((e) => e.includes('persisted'));

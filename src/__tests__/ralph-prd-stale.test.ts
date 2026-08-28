@@ -21,6 +21,8 @@ import {
   writeRalphState,
   createRalphLoopHook,
   getSessionPrdPath,
+  getStoryGoverningCriteriaRevision,
+  getPrdRevision,
   type PRD,
   type ObservableCheck,
 } from '../hooks/ralph/index.js';
@@ -81,9 +83,15 @@ function readAuditEntries(directory: string, sessionId?: string): Record<string,
 
 describe('Ralph PRD Stale-State Detection & Reconciliation (#3669)', () => {
   let testDir: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
 
   beforeEach(() => {
     testDir = join(tmpdir(), `ralph-prd-stale-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = testDir;
+    process.env.USERPROFILE = testDir;
     mkdirSync(testDir, { recursive: true });
   });
 
@@ -91,6 +99,10 @@ describe('Ralph PRD Stale-State Detection & Reconciliation (#3669)', () => {
     if (existsSync(testDir)) {
       rmSync(testDir, { recursive: true, force: true });
     }
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
   });
 
   // ==========================================================================
@@ -131,7 +143,7 @@ describe('Ralph PRD Stale-State Detection & Reconciliation (#3669)', () => {
         },
       },
     });
-    expect(writePrd(testDir, prdWithChecks)).toBe(true);
+    expect(writePrd(testDir, prdWithChecks, undefined, getPrdRevision(readPrd(testDir)!))).toBe(true);
     backdatePrd(testDir);
 
     const detection = detectStalePrd(testDir);
@@ -301,7 +313,7 @@ describe('Ralph PRD Stale-State Detection & Reconciliation (#3669)', () => {
     expect(formatStalePrdWarning(dead!)).toContain('no longer exists');
 
     const mergedBranchPrd = makePrd({ branchName: 'feature/landed' });
-    expect(writePrd(testDir, mergedBranchPrd)).toBe(true);
+    expect(writePrd(testDir, mergedBranchPrd, undefined, getPrdRevision(readPrd(testDir)!))).toBe(true);
     const merged = detectStalePrd(testDir);
     expect(merged?.stale).toBe(true);
     expect(merged?.stalePointers.join(' ')).toContain('already merged');
@@ -329,6 +341,11 @@ describe('Ralph PRD Stale-State Detection & Reconciliation (#3669)', () => {
         { id: 'US-002', title: 'Done', description: '', acceptanceCriteria: [], priority: 2, passes: true, architectVerified: true },
       ],
     });
+    for (const story of prd.userStories) {
+      const revision = getStoryGoverningCriteriaRevision(story);
+      story.completionCriteriaRevision = revision;
+      story.architectVerificationCriteriaRevision = revision;
+    }
     expect(writePrd(testDir, prd, 'session-step8')).toBe(true);
 
     expect(getSessionEndStalePrdWarning(testDir, 'session-step8')).toBeNull();

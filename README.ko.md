@@ -91,10 +91,11 @@ omc team shutdown auth-review
 
 `/omc-teams`는 레거시 호환 스킬로 유지되며, 현재는 내부적으로 `omc team ...`으로 라우팅됩니다.
 
-하나의 명령으로 Codex + Gemini 작업을 처리하려면 **`/ccg`** 스킬을 사용하세요:
+Codex와 Gemini의 조언을 함께 검토하려면 `/ask codex`와 `/ask gemini`를 사용하고 Claude가 결과를 통합하도록 하세요:
 
 ```bash
-/ccg Review this PR — architecture (Codex) and UI components (Gemini)
+/ask codex "Review this PR — architecture"
+/ask gemini "Review this PR — UI components"
 ```
 
 | 실행 표면 | 워커 | 최적 용도 |
@@ -102,7 +103,6 @@ omc team shutdown auth-review
 | `omc team N:codex "..."` | N개 Codex CLI 창 | 코드 리뷰, 보안 분석, 아키텍처 |
 | `omc team N:gemini "..."` | N개 Gemini CLI 창 | UI/UX 디자인, 문서, 대용량 컨텍스트 |
 | `omc team N:claude "..."` | N개 Claude CLI 창 | tmux에서 Claude CLI를 통한 일반 작업 |
-| `/ccg` | ask-codex + ask-gemini | Codex+Gemini 조언을 Claude가 통합 |
 
 워커는 요청 시 생성되고 작업 완료 후 종료됩니다 — 유휴 리소스 낭비 없음. `codex` / `gemini` CLI가 설치되어 있고 활성 tmux 세션이 필요합니다.
 
@@ -156,9 +156,7 @@ omc team shutdown auth-review
 |------|---------|---------|
 | **Team (권장)** | 단계별 파이프라인 | 공유 작업 목록에서 협력하는 Claude 에이전트 |
 | **omc team (CLI)** | tmux CLI 워커 | Codex/Gemini CLI 작업; 요청 시 실행, 완료 후 종료 |
-| **ccg** | 트라이-모델 병렬 | Codex(분석) + Gemini(디자인), Claude가 통합 |
 | **Autopilot** | 자율 실행 | 최소한의 설정으로 end-to-end 기능 개발 |
-| **Ultrawork** | 최대 병렬 | Team이 필요 없는 병렬 수정/리팩토링 |
 | **Ralph** | 지속 모드 | 완전히 완료되어야 하는 작업 |
 | **Pipeline** | 순차 처리 | 엄격한 순서가 필요한 다단계 변환 |
 | **Swarm / Ultrapilot (레거시)** | Team으로 라우팅 | 기존 워크플로우와 이전 문서 |
@@ -171,7 +169,7 @@ omc team shutdown auth-review
 
 ### 개발자 경험
 
-- **매직 키워드** - 명시적 제어를 위한 `ralph`, `ulw`, `team`
+- **매직 키워드** - 명시적 제어를 위한 `ralph`, `ralplan`; 병렬 작업은 `/team`을 사용하세요
 - **HUD 상태바** - 상태바에서 실시간 오케스트레이션 메트릭 확인
   - Claude Code를 `claude --plugin-dir <path>`로 직접 시작하는 경우 (OMC shim 우회), shell에서 `OMC_PLUGIN_ROOT=<path>`를 내보내 HUD 번들이 plugin 로더와 동일한 checkout으로 확인되도록 하세요. 자세한 내용은 [REFERENCE.md의 Plugin directory flags 섹션](./docs/REFERENCE.md#plugin-directory-flags)을 참조하세요.
 
@@ -222,10 +220,8 @@ server.py:42의 핸들러를 try/except ClientDisconnectedError로 감싸세요.
 |---------|--------|---------|
 | `team` | 표준 Team 오케스트레이션 | `/team 3:executor "fix all TypeScript errors"` |
 | `omc team` | tmux CLI 워커 (codex/gemini/claude) | `omc team 2:codex "security review"` |
-| `ccg` | 트라이-모델 Codex+Gemini 오케스트레이션 | `/ccg review this PR` |
 | `autopilot` | 완전 자율 실행 | `autopilot: build a todo app` |
 | `ralph` | 지속 모드 | `ralph: refactor auth` |
-| `ulw` | 최대 병렬화 | `ulw fix all errors` |
 | `plan` | 계획 인터뷰 | `plan the API` |
 | `ralplan` | 반복적 계획 합의 | `ralplan this feature` |
 | `deep-interview` | 소크라테스식 요구사항 명확화 | `deep-interview "vague idea"` |
@@ -233,7 +229,7 @@ server.py:42의 핸들러를 try/except ClientDisconnectedError로 감싸세요.
 | `ultrapilot` | **지원 종료** — `team`을 사용하세요 | `ultrapilot: build a fullstack app` |
 
 **참고:**
-- **ralph는 ultrawork를 포함합니다:** ralph 모드를 활성화하면 자동으로 ultrawork의 병렬 실행이 포함됩니다. 키워드를 결합할 필요가 없습니다.
+- **병렬 작업은 Team 또는 executor 위임을 사용하세요:** 여러 작업을 조율하려면 `/team`을 사용하고, 단일 구현 작업은 executor에게 위임하세요. 완전한 검증까지 지속해야 할 때는 Ralph를 사용합니다.
 - `/omc-teams`는 레거시 호환 경로로 남아 있으며 내부적으로 `omc team ...`으로 라우팅됩니다.
 - `swarm N agents` 구문은 에이전트 수 추출을 위해 여전히 인식되지만, v4.1.7+에서 런타임은 Team 기반입니다.
 

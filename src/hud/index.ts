@@ -26,7 +26,6 @@ import {
 } from "./state.js";
 import {
   readRalphStateForHud,
-  readUltraworkStateForHud,
   readPrdStateForHud,
   readAutopilotStateForHud,
 } from "./omc-state.js";
@@ -320,10 +319,6 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
 
     // Read OMC state files
     const ralph = readRalphStateForHud(cwd, currentSessionId ?? undefined);
-    const ultrawork = readUltraworkStateForHud(
-      cwd,
-      currentSessionId ?? undefined,
-    );
     const prd = readPrdStateForHud(cwd);
     const autopilot = readAutopilotStateForHud(
       cwd,
@@ -364,7 +359,10 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
     // Stdin owns fresher five-hour/seven-day values, while getUsage() may provide
     // Sonnet/Opus weekly, monthly, extra, stale, and error metadata.
     const stdinRateLimits = getRateLimitsFromStdin(stdin);
-    const usageResult = config.elements.rateLimits === false ? null : await getUsage();
+    const usageResult =
+      config.elements.rateLimits === false
+        ? null
+        : await getUsage({ clientVersion: stdin.version });
     const rateLimitsResult =
       config.elements.rateLimits === false
         ? null
@@ -462,7 +460,7 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
       modelName: getModelName(stdin),
       modelId: getModelId(stdin),
       ralph,
-      ultrawork,
+      ultrawork: null,
       prd,
       autopilot,
       activeAgents: transcriptData.agents.filter((a) => a.status === "running"),

@@ -267,7 +267,6 @@ function buildSessionStartAdditionalContext(messages) {
   const priorityOrder = [
     /\[MODEL ROUTING OVERRIDE/,
     /\[AUTOPILOT MODE RESTORED\]/,
-    /\[ULTRAWORK MODE RESTORED\]/,
     /\[RALPH LOOP RESTORED\]/,
     /\[PROJECT MEMORY\]/,
     /\[NOTEPAD PRIORITY CONTEXT LOADED\]/,
@@ -381,8 +380,6 @@ ${priorityContext}
 </notepad-priority>`;
 }
 
-const STALE_STATE_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2 hours
-
 /**
  * Validate that a candidate cwd is a real OMC workspace anchor.
  * Returns the candidate unchanged if it is non-empty AND contains a
@@ -428,100 +425,6 @@ function normalizePath(p) {
     normalized = normalized.toLowerCase();
   }
   return normalized;
-}
-
-function getStateRecencyMs(state) {
-  if (!state || typeof state !== 'object') return 0;
-  const startedAt = state.started_at ? new Date(state.started_at).getTime() : 0;
-  const lastCheckedAt = state.last_checked_at ? new Date(state.last_checked_at).getTime() : 0;
-  return Math.max(startedAt || 0, lastCheckedAt || 0);
-}
-
-function isFreshActiveState(state) {
-  if (!state?.active) return false;
-  const recencyMs = getStateRecencyMs(state);
-  if (!Number.isFinite(recencyMs) || recencyMs <= 0) return false;
-  return (Date.now() - recencyMs) <= STALE_STATE_THRESHOLD_MS;
-}
-
-function isOwnerProcessAlive(state) {
-  const pid = state && typeof state.owner_pid === 'number' ? state.owner_pid : null;
-  // Unknown PID → backwards-compat: assume alive (current behavior).
-  if (pid === null || pid <= 0) return true;
-  if (pid === process.pid) return true;
-  try {
-    // Signal 0 probes liveness without affecting the process.
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    // ESRCH = no such process → owner is dead, safe to reclaim.
-    if (err && err.code === 'ESRCH') return false;
-    // EPERM = owned by a different user → can't tell, assume alive.
-    return true;
-  }
-}
-
-function hasConflictingUltraworkRestore(state, sessionId, directory, source) {
-  if (!sessionId || !isFreshActiveState(state)) return false;
-  if (typeof state.session_id !== 'string' || !state.session_id || state.session_id === sessionId) {
-    return false;
-  }
-  // Recorded owner PID is dead → the state file is orphaned, not a real
-  // parallel-session conflict. Allow the current session to reclaim it.
-  if (!isOwnerProcessAlive(state)) return false;
-
-  if (source === 'global') {
-    if (typeof state.project_path !== 'string' || !state.project_path) {
-      return false;
-    }
-    return normalizePath(state.project_path) === normalizePath(directory);
-  }
-
-  return true;
-}
-
-async function getUltraworkRestoreCandidate(directory, sessionId) {
-  const { readPath: localPath } = await resolveSessionStatePathsForHook(directory, 'ultrawork', sessionId || undefined);
-  const globalPath = join(homedir(), '.omc', 'state', 'ultrawork-state.json');
-
-  const localState = readJsonFile(localPath);
-  if (hasConflictingUltraworkRestore(localState, sessionId, directory, 'local')) {
-    return { restore: null, collision: { source: 'local', state: localState } };
-  }
-  if (localState?.active && (!localState.session_id || localState.session_id === sessionId)) {
-    return { restore: localState, collision: null };
-  }
-
-  const globalState = readJsonFile(globalPath);
-  if (hasConflictingUltraworkRestore(globalState, sessionId, directory, 'global')) {
-    return { restore: null, collision: { source: 'global', state: globalState } };
-  }
-  if (globalState?.active && (!globalState.session_id || globalState.session_id === sessionId)) {
-    return { restore: globalState, collision: null };
-  }
-
-  return { restore: null, collision: null };
-}
-
-function formatUltraworkCollisionWarning(source, state) {
-  const startedAt = state?.started_at || 'an unknown time';
-  const ownerSession = state?.session_id || 'another session';
-  const scope = source === 'global' ? 'matching project path in the shared global fallback state' : 'this repo root';
-  return `<session-restore>
-
-[PARALLEL SESSION WARNING]
-
-Detected an active ultrawork session for ${scope}.
-Owner session: ${ownerSession}
-Started: ${startedAt}
-
-To avoid shared \.omc/state bleed across parallel sessions, OMC suppressed the restore for this session.
-Continue normally in this session, or use a separate worktree / close the other same-root session before resuming the prior ultrawork state.
-
-</session-restore>
-
----
-`;
 }
 
 async function main() {
@@ -607,32 +510,6 @@ async function main() {
 
     if (await shouldEmitModelRoutingOverride(directory)) {
       messages.push(MODEL_ROUTING_OVERRIDE_MESSAGE);
-    }
-
-    // Check for ultrawork state - warn on conflicting same-path session, otherwise restore.
-    const ultraworkCandidate = await getUltraworkRestoreCandidate(directory, sessionId);
-    if (ultraworkCandidate.collision) {
-      messages.push(
-        formatUltraworkCollisionWarning(
-          ultraworkCandidate.collision.source,
-          ultraworkCandidate.collision.state,
-        ),
-      );
-    } else if (await shouldRestoreModeState(directory, 'ultrawork', ultraworkCandidate.restore, sessionId)) {
-      const ultraworkState = ultraworkCandidate.restore;
-      messages.push(`<session-restore>
-
-[ULTRAWORK MODE RESTORED]
-
-You have an active ultrawork session from ${ultraworkState.started_at}.
-Original task: ${ultraworkState.original_prompt}
-
-Continue working in ultrawork mode until all tasks are complete.
-
-</session-restore>
-
----
-`);
     }
 
     // Check for incomplete todos (project-local only, not global

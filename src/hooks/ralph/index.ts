@@ -13,8 +13,8 @@ export {
   // State management
   readRalphState,
   writeRalphState,
+  restoreRalphStateIfAbsent,
   clearRalphState,
-  clearLinkedUltraworkState,
   incrementRalphIteration,
 
   // Loop control
@@ -58,6 +58,7 @@ export {
   // File operations
   readPrd,
   writePrd,
+  writePrdIfRevision,
   findPrdPath,
   getPrdPath,
   getOmcPrdPath,
@@ -69,6 +70,11 @@ export {
   markStoryComplete,
   markStoryIncomplete,
   markStoryArchitectVerified,
+  consumeStoryArchitectApproval,
+  consumeCompletionArchitectApproval,
+  getPrdGoverningCriteriaRevision,
+  getPrdRevision,
+  getStoryGoverningCriteriaRevision,
   getStory,
   getNextStory,
   amendCriterion,
@@ -146,6 +152,8 @@ export {
   readVerificationState,
   writeVerificationState,
   clearVerificationState,
+  consumeVerificationRequest,
+  restoreVerificationRequestIfAbsent,
 
   // Verification workflow
   startVerification,

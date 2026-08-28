@@ -268,17 +268,6 @@ async function main() {
           prompt: promptText,
           session_id: sessionId || undefined,
           project_path: directory,
-          linked_ultrawork: true
-        }, sessionId);
-        await activateState(directory, 'ultrawork', {
-          active: true,
-          started_at: now,
-          original_prompt: promptText,
-          session_id: sessionId || undefined,
-          project_path: directory,
-          reinforcement_count: 0,
-          last_checked_at: now,
-          linked_to_ralph: true
         }, sessionId);
       }
       console.log(JSON.stringify({ continue: true, suppressOutput: true }));

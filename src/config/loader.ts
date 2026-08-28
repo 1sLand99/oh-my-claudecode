@@ -19,7 +19,6 @@ import type {
 } from "../shared/types.js";
 import {
   CANONICAL_TEAM_ROLES,
-  CURSOR_EXECUTOR_TEAM_ROLES,
   KNOWN_AGENT_NAMES,
 } from "../shared/types.js";
 import { getConfigDir } from "../utils/paths.js";
@@ -90,7 +89,6 @@ export function buildDefaultConfig(): PluginConfig {
       maxBackgroundTasks: 5,
     },
     magicKeywords: {
-      ultrawork: ["ultrawork", "ulw", "uw"],
       search: ["search", "find", "locate"],
       analyze: ["analyze", "investigate", "examine"],
       ultrathink: ["ultrathink", "think", "reason", "ponder"],
@@ -200,7 +198,7 @@ export function buildDefaultConfig(): PluginConfig {
         context: ["CONTEXT"],
       },
       blockingTools: ["Edit", "MultiEdit", "Write", "Agent", "Task"],
-      executionKeywords: ["ralph", "ultrawork", "autopilot"],
+      executionKeywords: ["ralph", "autopilot"],
     },
   };
 }
@@ -497,7 +495,6 @@ function warnOnDeprecatedDelegationRouting(config: PluginConfig): void {
  * Throws a descriptive error naming offending key + allowed values.
  */
 const CANONICAL_TEAM_ROLE_SET = new Set<string>(CANONICAL_TEAM_ROLES);
-const CURSOR_EXECUTOR_TEAM_ROLE_SET = new Set<string>(CURSOR_EXECUTOR_TEAM_ROLES);
 const KNOWN_AGENT_NAME_SET = new Set<string>(KNOWN_AGENT_NAMES);
 // /team CLI workers — codex/gemini/grok/cursor here are CLI integrations, NOT the deprecated MCP delegationRouting providers.
 const TEAM_ROLE_PROVIDERS = new Set(["claude", "codex", "gemini", "grok", "cursor", "antigravity"]);
@@ -570,11 +567,6 @@ export function validateTeamConfig(config: PluginConfig): void {
       if (typeof spec.provider !== "string" || !TEAM_ROLE_PROVIDERS.has(spec.provider)) {
         throw new Error(
           `[OMC] team.roleRouting.${rawRoleKey}.provider: invalid value "${String(spec.provider)}". Allowed: ${[...TEAM_ROLE_PROVIDERS].join(", ")}`,
-        );
-      }
-      if (spec.provider === "cursor" && !CURSOR_EXECUTOR_TEAM_ROLE_SET.has(normalized)) {
-        throw new Error(
-          `[OMC] team.roleRouting.${rawRoleKey}.provider: cursor is only supported for executor-style roles (${[...CURSOR_EXECUTOR_TEAM_ROLE_SET].join(", ")})`,
         );
       }
     }
@@ -1143,7 +1135,6 @@ export function generateConfigSchema(): object {
         type: "object",
         description: "Magic keyword triggers",
         properties: {
-          ultrawork: { type: "array", items: { type: "string" } },
           search: { type: "array", items: { type: "string" } },
           analyze: { type: "array", items: { type: "string" } },
           ultrathink: { type: "array", items: { type: "string" } },

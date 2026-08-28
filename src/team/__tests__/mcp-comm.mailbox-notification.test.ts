@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdir, mkdtemp, rm, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -20,9 +20,30 @@ import type { TeamMailboxMessage } from '../types.js';
 
 let sequence = 0;
 const temporaryDirectories: string[] = [];
+let suiteHome: string;
+let previousHome: string | undefined;
+let previousUserProfile: string | undefined;
+let previousStateDir: string | undefined;
+
+beforeEach(async () => {
+  suiteHome = await mkdtemp(join(tmpdir(), 'omc-mcp-comm-home-'));
+  previousHome = process.env.HOME;
+  previousUserProfile = process.env.USERPROFILE;
+  previousStateDir = process.env.OMC_STATE_DIR;
+  process.env.HOME = suiteHome;
+  process.env.USERPROFILE = suiteHome;
+  delete process.env.OMC_STATE_DIR;
+});
 
 afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
+  if (previousHome === undefined) delete process.env.HOME;
+  else process.env.HOME = previousHome;
+  if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+  else process.env.USERPROFILE = previousUserProfile;
+  if (previousStateDir === undefined) delete process.env.OMC_STATE_DIR;
+  else process.env.OMC_STATE_DIR = previousStateDir;
+  await rm(suiteHome, { recursive: true, force: true });
 });
 
 function params(overrides: Partial<MailboxNotificationAttemptParams> = {}): MailboxNotificationAttemptParams {
@@ -437,7 +458,7 @@ describe('direct mailbox notification orchestration', () => {
   it('uses the broadcast recipient snapshot 1:1 and surfaces a persisted recipient divergence', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'omc-mcp-broadcast-'));
     temporaryDirectories.push(cwd);
-    await mkdir(join(cwd, '.omc', 'state', 'team', 'dispatch-team'), { recursive: true });
+    await mkdir(join(suiteHome, '.omc', 'state', 'team', 'dispatch-team'), { recursive: true });
 
     let nextMessage = 0;
     const effects: string[] = [];
@@ -477,7 +498,7 @@ describe('direct mailbox notification orchestration', () => {
   it('does not notify a broadcast when persisting the second recipient fails', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'omc-mcp-broadcast-'));
     temporaryDirectories.push(cwd);
-    await mkdir(join(cwd, '.omc', 'state', 'team', 'dispatch-team'), { recursive: true });
+    await mkdir(join(suiteHome, '.omc', 'state', 'team', 'dispatch-team'), { recursive: true });
     const notify = vi.fn(async () => ({ ok: true, transport: 'hook' as const, reason: 'queued_for_hook_dispatch' }));
 
     await expect(queueBroadcastMailboxMessage({

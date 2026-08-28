@@ -54,6 +54,14 @@ export declare function findWorkspaceRoot(startDir?: string): string | null;
  * marker is empty or unparseable — callers should not throw on config errors.
  */
 export declare function readWorkspaceMarkerConfig(workspaceRoot: string): WorkspaceMarkerConfig;
+/** Return true when state must not be anchored at this directory. */
+export declare function isSensitiveStateLocation(dir: string): boolean;
+/**
+ * Resolve the canonical state anchor for a non-git cwd.
+ * Legacy cwd-local `.omc/` trees are never adopted implicitly; callers must
+ * use the explicit migration surface to copy owner-matched session state.
+ */
+export declare function resolveNonGitStateAnchor(startDir?: string): string;
 /**
  * Get the literal git toplevel for a directory: `git rev-parse --show-toplevel`
  * with NO submodule→superproject climb. Returns null if not in a git repository.
@@ -65,6 +73,25 @@ export declare function readWorkspaceMarkerConfig(workspaceRoot: string): Worksp
  * anchoring and would widen the boundary across submodule borders; see #3349
  * and the Codex review on PR #3350).
  */
+type GitTopLevelProbe = {
+    status: 'ok';
+    root: string;
+} | {
+    status: 'not_a_repository';
+} | {
+    status: 'git_missing';
+} | {
+    status: 'probe_failed';
+    detail: string;
+};
+/**
+ * Injectable `git rev-parse --show-toplevel` runner for tests (#3858).
+ * Throw to simulate spawn/exit failures; return stdout to simulate success.
+ */
+export type GitShowToplevelProbe = (cwd: string) => string | Buffer;
+export declare function setGitShowToplevelProbeForTests(probe?: GitShowToplevelProbe): void;
+export declare function findGitMetadataDir(start: string): string | null;
+export declare function probeGitTopLevel(cwd: string): GitTopLevelProbe;
 export declare function getGitTopLevel(cwd?: string): string | null;
 /**
  * Get the state-anchor "worktree root" for a directory.
@@ -376,6 +403,10 @@ export declare function resolveToWorktreeRoot(directory?: string): string;
  * @returns The resolved transcript path (original if already correct or no resolution found)
  */
 export declare function resolveTranscriptPath(transcriptPath: string | undefined, cwd?: string): string | undefined;
+export declare function getCanonicalWorkingDirectoryRoots(target: object): {
+    providedRoot: string;
+    trustedRoot: string;
+};
 /**
  * Validate that a workingDirectory is within the trusted git top-level.
  * The trusted root is derived from process.cwd(), NOT from user input.
@@ -390,15 +421,80 @@ export declare function resolveTranscriptPath(transcriptPath: string | undefined
  */
 export declare function validateWorkingDirectory(workingDirectory?: string): string;
 /**
+ * Resolve a state-tool workingDirectory with visible repository-boundary
+ * failures. Git sessions may target the same repository or a linked worktree;
+ * git-less sessions retain an explicit child directory while still rejecting
+ * paths outside the trusted non-git context.
+ */
+export declare function resolveStateWorkingDirectory(workingDirectory?: string): string;
+/**
+ * Result of resolving a caller-provided workingDirectory against the trusted
+ * startup repository (#3858).
+ *
+ * - `ok`: the directory is usable as the wiki/root; `root` is either the
+ *   trusted root (default, subdirectory, or non-repo directory under it) or an
+ *   accepted same-repo/same-common-dir worktree root.
+ * - `foreign_repository`: the directory belongs to a different git repository.
+ *   Callers MUST NOT use it and MUST NOT silently fall back to the trusted
+ *   root; they are expected to surface the rejection to their caller.
+ *
+ * Canonical roots are stored in a WeakMap keyed by the resolution or error
+ * object. They are not own properties and cannot be recovered by
+ * JSON.stringify, object spread, structuredClone, showHidden inspection,
+ * or getOwnPropertyNames. Internal consumers use
+ * `getCanonicalWorkingDirectoryRoots()`. Caller-visible text must use
+ * `callerLabel` and a basename-only trusted-root label.
+ */
+export type WorkingDirectoryResolution = {
+    status: 'ok';
+    root: string;
+} | {
+    status: 'foreign_repository';
+    callerLabel: string;
+};
+/**
+ * Typed error thrown when a workingDirectory resolves to a different git
+ * repository than the trusted startup repository. The rejection must reach the
+ * tool caller; it is never silently substituted (#3858).
+ *
+ * `.message` is the caller-visible contract: the original workingDirectory
+ * label plus a basename-only trusted-root identity. Canonical roots are
+ * WeakMap-only internal diagnostics. `callerLabel` is required and enumerable.
+ */
+export declare class ForeignWorkingDirectoryError extends Error {
+    readonly callerLabel: string;
+    constructor(providedRoot: string, trustedRoot: string, callerLabel: string);
+    toJSON(): {
+        name: string;
+        message: string;
+        callerLabel: string;
+    };
+}
+/**
+ * Resolve a workingDirectory while permitting linked git worktrees for the same
+ * repository, returning a typed result (#3858).
+ *
+ * Same-root and linked-worktree (shared git common directory) directories
+ * resolve to `ok` with the provided root. A directory inside a *different* git
+ * repository resolves to `foreign_repository` — callers must reject it
+ * visibly. Non-repo paths outside the trusted root are rejected by throwing,
+ * matching validateWorkingDirectory. Generic git-probe failures (anything other
+ * than confirmed executable-not-found ENOENT or `rev-parse` 128 not-a-repo)
+ * fail closed — including omitted/empty workingDirectory — and never fall
+ * through to trusted-root/subdir/non-repo gitless behavior.
+ */
+export declare function resolveWorkingDirectoryOrLinkedWorktree(workingDirectory?: string): WorkingDirectoryResolution;
+/**
  * Validate a workingDirectory while permitting linked git worktrees for the
  * same repository.
  *
  * This preserves validateWorkingDirectory's default cwd behavior and its
  * same-root/subdirectory normalization, but allows a per-call directory to
  * resolve to a sibling manual `git worktree` when both worktrees share the
- * same git common directory. Other unrelated git repositories still fall back
- * to the trusted startup cwd, and non-repo paths outside the trusted root are
- * rejected.
+ * same git common directory. A directory inside a different git repository is
+ * rejected with ForeignWorkingDirectoryError instead of silently falling back
+ * to the trusted startup cwd (#3858); non-repo paths outside the trusted root
+ * are rejected by throwing.
  */
 export declare function validateWorkingDirectoryOrLinkedWorktree(workingDirectory?: string): string;
 export {};

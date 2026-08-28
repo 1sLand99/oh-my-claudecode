@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   readRalphStateForHud,
-  readUltraworkStateForHud,
   readAutopilotStateForHud,
   isAnyModeActive,
   getActiveSkills,
@@ -13,7 +12,7 @@ import {
   writeFileSync,
   utimesSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 function writeJson(path: string, data: unknown, mtimeMs = Date.now()): void {
@@ -25,17 +24,25 @@ function writeJson(path: string, data: unknown, mtimeMs = Date.now()): void {
 
 describe('hud omc state session scoping', () => {
   const tempDirs: string[] = [];
+  const originalHome = process.env.HOME;
+  const originalUserProfile = process.env.USERPROFILE;
 
   afterEach(() => {
     for (const dir of tempDirs) {
       rmSync(dir, { recursive: true, force: true });
     }
     tempDirs.length = 0;
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalUserProfile;
     delete process.env.OMC_STATE_DIR;
   });
 
   function createWorktree(): string {
-    const dir = mkdtempSync(join(tmpdir(), 'omc-hud-state-'));
+    const dir = mkdtempSync(join(homedir(), 'omc-hud-state-'));
+    process.env.HOME = dir;
+    process.env.USERPROFILE = dir;
     tempDirs.push(dir);
     return dir;
   }
@@ -155,20 +162,23 @@ describe('hud omc state session scoping', () => {
       iteration: 3,
       max_iterations: 8,
       current_story_id: 'story-b',
-    });
-    writeJson(join(omcRoot, 'state', 'sessions', 'session-b', 'ultrawork-state.json'), {
-      active: true,
-      reinforcement_count: 7,
-    });
+    }, Date.now() + 1000);
 
     expect(isAnyModeActive(worktree)).toBe(true);
     expect(isAnyModeActive(worktree, 'session-a')).toBe(false);
     expect(isAnyModeActive(worktree, 'session-b')).toBe(true);
     expect(getActiveSkills(worktree, 'session-a')).toEqual([]);
-    expect(getActiveSkills(worktree, 'session-b')).toEqual(['ralph', 'ultrawork']);
-    expect(readUltraworkStateForHud(worktree, 'session-b')).toMatchObject({
+    expect(getActiveSkills(worktree, 'session-b')).toEqual(['ralph']);
+  });
+
+  it('ignores an active legacy Ultrawork file for HUD mode state', () => {
+    const worktree = createWorktree();
+    writeJson(join(worktree, '.omc', 'state', 'ultrawork-state.json'), {
       active: true,
-      reinforcementCount: 7,
+      reinforcement_count: 7,
     });
+
+    expect(isAnyModeActive(worktree)).toBe(false);
+    expect(getActiveSkills(worktree)).toEqual([]);
   });
 });

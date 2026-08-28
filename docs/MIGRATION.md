@@ -9,11 +9,37 @@ This guide covers all migration paths for oh-my-claudecode. Find your current ve
 - [v4.x → v5.0: Workflow Retirement](#v4x--v50-workflow-retirement)
 - [Unreleased: Team MCP Runtime Deprecation (CLI-Only)](#unreleased-team-mcp-runtime-deprecation-cli-only)
 - [Unreleased: Native Team Worktree Mode (Opt-In)](#unreleased-native-team-worktree-mode-opt-in)
+- [Unreleased: Git-less State Root Recovery](#unreleased-git-less-state-root-recovery)
 - [v3.5.3 → v3.5.5: Test Fixes & Cleanup](#v353--v355-test-fixes--cleanup)
 - [v3.5.2 → v3.5.3: Skill Consolidation](#v352--v353-skill-consolidation)
 - [v2.x → v3.0: Package Rename & Auto-Activation](#v2x--v30-package-rename--auto-activation)
 - [v3.0 → v3.1: Notepad Wisdom & Enhanced Features](#v30--v31-notepad-wisdom--enhanced-features)
 - [v3.x → v4.0: Major Architecture Overhaul](#v3x--v40-major-architecture-overhaul)
+
+---
+
+## Unreleased: Git-less State Root Recovery
+
+### TL;DR
+
+Sessions launched outside a Git repository no longer create a separate `.omc/`
+directory for every cwd. OMC uses one canonical `~/.omc/` root, or
+`$OMC_STATE_DIR/non-git` when centralized state is configured. Protected
+locations and descendants of system temp/OS roots are never used as roots.
+
+### Migration and compatibility
+
+- Existing non-git `.omc/` roots remain untouched and are not adopted implicitly.
+  Use `state_migrate_non_git` with the owning `session_id` to copy matching JSON
+  records into the canonical root without overwriting or deleting sources.
+- Existing state under protected locations is never moved or deleted
+  automatically, and cannot be used as a migration source.
+- `OMC_STATE_DIR` remains the explicit centralized option. In git-less sessions
+  it uses one fixed `non-git` child rather than hashing each cwd.
+- `workingDirectory` on state tools is honored within the validated context;
+  foreign repositories and failed Git probes are rejected visibly.
+- Session-scoped state remains owned by its `session_id`. No time-based cleanup
+  or cancellation was added.
 
 ---
 
@@ -44,7 +70,7 @@ names no longer resolve. Use the replacement in the table below.
 | `ccg`                  | `/oh-my-claudecode:ask` + `/team`        | Run `/ask codex` and `/ask antigravity`, then synthesize      |
 | `omc-teams`            | `/oh-my-claudecode:team` or `omc team`   |                                                               |
 | `setup`                | `/oh-my-claudecode:omc-setup`            |                                                               |
-| `mcp-setup`            | `/oh-my-claudecode:omc-setup`            |                                                               |
+| `mcp-setup`            | Claude Code native MCP configuration     | Use `claude mcp add <name> ...` or the path selected by `CLAUDE_MCP_CONFIG_PATH`. |
 | `omc-reference`        | `/oh-my-claudecode:wiki`                 | Model-routing reference moved into the wiki skill             |
 | `learner`              | `/oh-my-claudecode:remember`             |                                                               |
 | `writer-memory`        | `/oh-my-claudecode:remember`             |                                                               |

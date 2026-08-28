@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdtempSync as createTempDir, readFileSync, readdirSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isProcessAlive } from '../../platform/process-utils.js';
@@ -74,9 +74,33 @@ const launchMetadata = { worker_cli: 'claude' as const,
     binary: '/bin/echo', args: [] } };
 
 let cwd = '';
+let previousHome: string | undefined;
+let previousUserProfile: string | undefined;
+let previousOmcStateDir: string | undefined;
+
+beforeEach(() => {
+  previousHome = process.env.HOME;
+  previousUserProfile = process.env.USERPROFILE;
+  previousOmcStateDir = process.env.OMC_STATE_DIR;
+});
+
+function mkdtempSync(prefix: string): string {
+  const root = createTempDir(prefix);
+  process.env.HOME = root;
+  process.env.USERPROFILE = root;
+  delete process.env.OMC_STATE_DIR;
+  return root;
+}
+
 afterEach(() => {
   vi.clearAllMocks();
   if (cwd) rmSync(cwd, { recursive: true, force: true });
+  if (previousHome === undefined) delete process.env.HOME;
+  else process.env.HOME = previousHome;
+  if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+  else process.env.USERPROFILE = previousUserProfile;
+  if (previousOmcStateDir === undefined) delete process.env.OMC_STATE_DIR;
+  else process.env.OMC_STATE_DIR = previousOmcStateDir;
 });
 
 async function expectRecoveryLockReleased(teamName: string, workerName: string, suffix: string): Promise<void> {

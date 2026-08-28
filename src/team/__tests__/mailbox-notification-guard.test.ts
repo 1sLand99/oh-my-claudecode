@@ -19,6 +19,23 @@ import {
   type MailboxTargetOwnership,
 } from '../mailbox-notification-guard.js';
 
+function isolateFixtureRoot(root: string): () => void {
+  const home = process.env.HOME;
+  const userProfile = process.env.USERPROFILE;
+  const stateDir = process.env.OMC_STATE_DIR;
+  process.env.HOME = root;
+  process.env.USERPROFILE = root;
+  delete process.env.OMC_STATE_DIR;
+  return () => {
+    if (home === undefined) delete process.env.HOME;
+    else process.env.HOME = home;
+    if (userProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = userProfile;
+    if (stateDir === undefined) delete process.env.OMC_STATE_DIR;
+    else process.env.OMC_STATE_DIR = stateDir;
+  };
+}
+
 const teamName = 'dispatch-team';
 const timestamp = '2026-07-13T00:00:00.000Z';
 const input: MailboxNotificationGuardInput = {
@@ -109,6 +126,7 @@ function validState(overrides: Partial<MailboxNotificationGuardState> = {}): Mai
 
 describe('teamReadCanonicalMailboxMessageStrict', () => {
   let cwd: string;
+  let restoreFixtureEnv: (() => void) | undefined;
 
   async function writeMailbox(value: unknown, workerName = input.recipient): Promise<void> {
     const path = join(cwd, '.omc', 'state', 'team', teamName, 'mailbox', `${workerName}.json`);
@@ -124,10 +142,17 @@ describe('teamReadCanonicalMailboxMessageStrict', () => {
 
   beforeEach(async () => {
     cwd = await mkdtemp(join(tmpdir(), 'omc-mailbox-strict-'));
+    restoreFixtureEnv = isolateFixtureRoot(cwd);
   });
 
   afterEach(async () => {
-    await rm(cwd, { recursive: true, force: true });
+    const restore = restoreFixtureEnv;
+    restoreFixtureEnv = undefined;
+    try {
+      restore?.();
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
   });
 
   it('never falls back to legacy JSONL while compatibility reads still do', async () => {

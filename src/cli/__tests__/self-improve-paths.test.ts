@@ -16,6 +16,7 @@ describe('self-improve path scoping helpers', () => {
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'omc-self-improve-paths-'));
+    execFileSync('git', ['init'], { cwd: root, stdio: 'pipe' });
   });
 
   afterEach(() => {

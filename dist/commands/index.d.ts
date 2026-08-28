@@ -58,7 +58,7 @@ export declare function expandCommand(name: string, args?: string): ExpandedComm
  * import { expandCommandPrompt } from 'oh-my-claudecode';
  * import { query } from '@anthropic-ai/claude-agent-sdk';
  *
- * const prompt = expandCommandPrompt('ultrawork', 'Refactor the auth module');
+ * const prompt = expandCommandPrompt('team', 'Refactor the auth module');
  *
  * for await (const msg of query({ prompt })) {
  *   console.log(msg);

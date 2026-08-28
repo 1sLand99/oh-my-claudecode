@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
-import { tmpdir } from "os";
+import { homedir } from "os";
 import {
   recordToolUsage,
   getAgentDashboard,
@@ -38,15 +38,25 @@ import { readReplayEvents, getReplaySummary } from "../session-replay.js";
 
 describe("subagent-tracker", () => {
   let testDir: string;
+  let previousHome: string | undefined;
+  let previousUserProfile: string | undefined;
 
   beforeEach(() => {
-    testDir = join(tmpdir(), `subagent-test-${Date.now()}`);
+    testDir = mkdtempSync(join(homedir(), "subagent-test-"));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = testDir;
+    process.env.USERPROFILE = testDir;
     mkdirSync(join(testDir, ".omc", "state"), { recursive: true });
   });
 
   afterEach(() => {
     flushPendingWrites();
     rmSync(testDir, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
   });
 
   describe("recordToolUsage", () => {

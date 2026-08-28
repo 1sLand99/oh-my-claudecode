@@ -69,7 +69,7 @@ jobs:
   test-windows:
     name: Test (Windows path suite)
     if: github.event_name != 'push' || github.ref_type != 'tag'
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
         with:
@@ -78,6 +78,9 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
+          # better-sqlite3 12.10+ no longer ships a Node 20 Windows prebuild.
+          # Pin the runner with the supported VS 2022 toolchain so Node 20 users
+          # keep a tested source-build path instead of hiding the gap with Node 22.
           node-version: '20'
           cache: 'npm'
 
@@ -94,12 +97,16 @@ jobs:
       # this gate. Keep this list in sync with the path-handling test files.
       - name: Run Windows path-handling tests
         run: >-
-          npx vitest run
+          npx vitest run --fileParallelism=false
           src/utils/__tests__/encode-project-path.test.ts
           src/__tests__/resolve-transcript-path.test.ts
           src/__tests__/session-history-search.test.ts
           src/cli/__tests__/session-search.test.ts
           src/lib/__tests__/worktree-paths.test.ts
+          src/lib/__tests__/worktree-paths-git-probe-failclosed.test.ts
+          src/lib/__tests__/worktree-paths-foreign-root.test.ts
+          src/tools/__tests__/wiki-tools-git-probe-failclosed.test.ts
+          src/tools/__tests__/wiki-tools-direct-dist-failclosed.test.ts
           src/hooks/project-memory/__tests__/hot-path-tracker.test.ts
           src/hooks/merge-readiness/__tests__/win-cross-platform.test.ts
           src/hooks/merge-readiness/__tests__/runtime.test.ts
@@ -108,6 +115,31 @@ jobs:
           src/installer/__tests__/claude-md-transaction.test.ts
           src/team/__tests__/cli-detection.windows.integration.test.ts
 
+  better-sqlite3-node26:
+    name: better-sqlite3 Node 26 (${{ matrix.os }})
+    if: github.event_name != 'push' || github.ref_type != 'tag'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-2022]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Smoke-test native SQLite on Node 26
+        run: node -e "const Database = require('better-sqlite3'); const db = new Database(':memory:'); db.prepare('select 1 as ok').get(); db.close();"
+
   test-precompact-restore:
     name: PreCompact restore (${{ matrix.os }})
     if: github.event_name != 'push' || github.ref_type != 'tag'
@@ -115,7 +147,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest, windows-2022]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -222,7 +254,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-2022]
     steps:
       - uses: actions/checkout@v4
         with:

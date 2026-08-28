@@ -1,6 +1,6 @@
 {
   "name": "oh-my-claude-sisyphus",
-  "version": "5.0.0",
+  "version": "5.0.1",
   "description": "Multi-agent orchestration system for Claude Code - Inspired by oh-my-opencode",
   "type": "module",
   "main": "dist/index.js",
@@ -93,7 +93,7 @@
     "@modelcontextprotocol/sdk": "^1.26.0",
     "@types/better-sqlite3": "^7.6.13",
     "ajv": "^8.17.1",
-    "better-sqlite3": "^12.6.2",
+    "better-sqlite3": "^12.10.0",
     "chalk": "^5.3.0",
     "commander": "^12.1.0",
     "jsonc-parser": "^3.3.1",
@@ -118,7 +118,7 @@
     "vitest": "^4.0.17"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": "20.x || 22.x || 23.x || 24.x || 25.x || 26.x"
   },
   "repository": {
     "type": "git",

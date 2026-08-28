@@ -18,7 +18,7 @@
 import type { TeamConfig, TeamManifestV2, TeamTask, TeamTaskDelegationPlan, WorkerInfo, WorkerStatus, WorkerHeartbeat } from './types.js';
 import type { TeamPhase } from './phase-controller.js';
 import type { CliAgentType } from './model-contract.js';
-import { type WorkerPaneLiveness } from './tmux-session.js';
+import { type StartupInboxResubmitOutcome, type WorkerPaneLiveness } from './tmux-session.js';
 import type { CanonicalTeamRole, PluginConfig, RoleAssignment, TeamRoleAssignmentSpec } from '../shared/types.js';
 import { type CliWorkerOutputPayload } from './cli-worker-contract.js';
 import { type RecoveryDurableOutcome } from './recovery-request-store.js';
@@ -173,9 +173,24 @@ export interface WorkerStartupEvidencePolicy {
     finalRecheckBudgetMs: number;
     resubmitAttempts: number;
     resubmitBudgetMs: number;
+    /** Read-only evidence recheck granted only when the owned pane was observed
+     * actively working (the worker demonstrably consumed the startup trigger). */
+    engagedPaneRecheckBudgetMs: number;
 }
 export declare function getWorkerStartupEvidencePolicy(agentType: CliAgentType): WorkerStartupEvidencePolicy;
 export declare function waitForStartupEvidenceBudget(hasEvidence: () => Promise<boolean>, budgetMs: number, delayMs?: number): Promise<boolean>;
+/**
+ * Settle worker startup evidence under a provider-aware policy.
+ *
+ * The resubmit loop exists to recover a lost interactive submit. When the probe
+ * reports `pane_busy`, the owned worker demonstrably consumed the trigger and is
+ * actively working, so resubmitting would duplicate the inbox and stopping the
+ * wait would tear down a healthy provider (issue #3849). In that case the loop
+ * stops resubmitting and one bounded read-only engaged-pane recheck runs before
+ * the caller's fail-closed teardown. Panes that are idle, wrong, or dead never
+ * earn that recheck and keep the existing fast failure path.
+ */
+export declare function settleStartupEvidence(policy: WorkerStartupEvidencePolicy, waitForCurrentEvidence: (budgetMs: number) => Promise<boolean>, resubmit?: () => Promise<StartupInboxResubmitOutcome>): Promise<boolean>;
 export declare function promptModeRecoveryRequiresProgressEvidence(promptMode: boolean, continuationCount: number): boolean;
 interface RecoveryOwnerFinalizationDeps {
     readRevisionedConfig: (teamName: string, cwd: string) => Promise<{
@@ -249,17 +264,18 @@ export interface CliWorkerVerdictResult {
     reason?: string;
 }
 /**
- * Post-exit handler for CLI workers that emitted a structured verdict
- * (AC-7). Scans workers whose panes have exited and whose WorkerInfo
+ * Completion handler for CLI workers that emitted a structured verdict
+ * (AC-7). Scans workers whose panes have exited, plus live Cursor panes whose
+ * persistent reviewer session has published a verdict, and whose WorkerInfo
  * carries `output_file`. For each:
  *   - Reads + validates the JSON payload via `parseCliWorkerVerdict`.
  *   - Locates the worker's in_progress task and writes a terminal status
  *     (completed for `approve`, failed for `revise`/`reject`) plus verdict
- *     metadata directly to the task file — the worker process is gone and
- *     cannot re-enter `transitionTaskStatus` with its claim token.
- *   - Renames `verdict.json` to `verdict.processed.json` so a subsequent
- *     monitor cycle does not reprocess it.
- *   - Emits a team event describing the outcome.
+ *     metadata through the canonical `transitionTaskStatus` path so lease,
+ *     delegation, event, and monitor-snapshot invariants remain authoritative.
+ *   - Renames the assignment-scoped verdict artifact to `.processed` so a
+ *     subsequent monitor cycle does not reprocess it.
+ *   - Quarantines stale `.processing` artifacts when replacement output exists.
  * On parse failure, emits a warning event and leaves the task untouched
  * for human review (per plan AC-7).
  */

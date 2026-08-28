@@ -84,7 +84,7 @@ export interface TransitionResult {
  *
  * This:
  * 1. Saves Ralph's progress to autopilot state
- * 2. Cleanly terminates Ralph mode (and linked Ultrawork)
+ * 2. Cleanly terminates Ralph mode
  * 3. Transitions to the QA phase
  * 4. Preserves context for potential rollback
  */

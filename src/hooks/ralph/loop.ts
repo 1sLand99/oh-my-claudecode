@@ -14,6 +14,7 @@ import { execFileSync } from "child_process";
 import { basename } from "path";
 import {
   writeModeState,
+  writeModeStateIfAbsent,
   readModeState,
   clearModeStateFile,
 } from "../../lib/mode-state-io.js";
@@ -40,10 +41,9 @@ import {
   addPattern,
 } from "./progress.js";
 import {
-  UltraworkState,
-  readUltraworkState as readUltraworkStateFromModule,
-  writeUltraworkState as writeUltraworkStateFromModule,
-} from "../ultrawork/index.js";
+  resolveSessionStatePath,
+  getOmcRoot,
+} from "../../lib/worktree-paths.js";
 import { readTeamPipelineState } from "../team-pipeline/state.js";
 import type { TeamPipelinePhase } from "../team-pipeline/types.js";
 
@@ -67,8 +67,6 @@ export interface RalphLoopState {
   prd_mode?: boolean;
   /** Current story being worked on */
   current_story_id?: string;
-  /** Whether ultrawork is linked/auto-activated with ralph */
-  linked_ultrawork?: boolean;
   /** Reviewer mode for Ralph completion verification */
   critic_mode?: RalphCriticMode;
 }
@@ -79,8 +77,6 @@ export type RalphCriticMode = typeof RALPH_CRITIC_MODES[number];
 export interface RalphLoopOptions {
   /** Maximum iterations (default: 10) */
   maxIterations?: number;
-  /** Disable auto-activation of ultrawork (default: false - ultrawork is enabled) */
-  disableUltrawork?: boolean;
   /** Reviewer mode for Ralph completion verification */
   criticMode?: RalphCriticMode;
 }
@@ -136,31 +132,23 @@ export function writeRalphState(
   );
 }
 
+export function restoreRalphStateIfAbsent(
+  directory: string,
+  state: RalphLoopState,
+  sessionId?: string,
+): boolean {
+  return writeModeStateIfAbsent('ralph', state as unknown as Record<string, unknown>, directory, sessionId);
+}
+
 /**
  * Clear Ralph Loop state (includes ghost-legacy cleanup)
  */
 export function clearRalphState(
   directory: string,
   sessionId?: string,
+  expectedState?: RalphLoopState,
 ): boolean {
-  return clearModeStateFile("ralph", directory, sessionId);
-}
-
-/**
- * Clear ultrawork state (only if linked to ralph)
- */
-export function clearLinkedUltraworkState(
-  directory: string,
-  sessionId?: string,
-): boolean {
-  const state = readUltraworkStateFromModule(directory, sessionId);
-
-  // Only clear if it was linked to ralph (auto-activated)
-  if (!state || !state.linked_to_ralph) {
-    return true;
-  }
-
-  return clearModeStateFile("ultrawork", directory, sessionId);
+  return clearModeStateFile("ralph", directory, sessionId, expectedState as Record<string, unknown> | undefined);
 }
 
 /**
@@ -247,7 +235,6 @@ export function createRalphLoopHook(directory: string): RalphLoopHook {
     prompt: string,
     options?: RalphLoopOptions,
   ): boolean => {
-    const enableUltrawork = !options?.disableUltrawork;
     const now = new Date().toISOString();
     const normalizedPrompt = stripCriticModeFlag(stripNoPrdFlag(prompt));
 
@@ -298,7 +285,6 @@ export function createRalphLoopHook(directory: string): RalphLoopHook {
       prompt: normalizedPrompt,
       session_id: sessionId,
       project_path: directory,
-      linked_ultrawork: enableUltrawork,
       critic_mode: options?.criticMode ?? detectCriticModeFlag(prompt) ?? DEFAULT_RALPH_CRITIC_MODE,
       prd_mode: true,
     };
@@ -308,25 +294,7 @@ export function createRalphLoopHook(directory: string): RalphLoopHook {
       state.current_story_id = prdCompletion.nextStory.id;
     }
 
-    const ralphSuccess = writeRalphState(directory, state, sessionId);
-
-    // Auto-activate ultrawork (linked to ralph) by default
-    // Include session_id and project_path for proper isolation
-    if (ralphSuccess && enableUltrawork) {
-      const ultraworkState: UltraworkState = {
-        active: true,
-        reinforcement_count: 0,
-        original_prompt: normalizedPrompt,
-        started_at: now,
-        last_checked_at: now,
-        linked_to_ralph: true,
-        session_id: sessionId,
-        project_path: directory,
-      };
-      writeUltraworkStateFromModule(ultraworkState, directory, sessionId);
-    }
-
-    return ralphSuccess;
+    return writeRalphState(directory, state, sessionId);
   };
 
   const cancelLoop = (sessionId: string): boolean => {
@@ -334,11 +302,6 @@ export function createRalphLoopHook(directory: string): RalphLoopHook {
 
     if (!state || state.session_id !== sessionId) {
       return false;
-    }
-
-    // Also clear linked ultrawork state if it was auto-activated
-    if (state.linked_ultrawork) {
-      clearLinkedUltraworkState(directory, sessionId);
     }
 
     return clearRalphState(directory, sessionId);

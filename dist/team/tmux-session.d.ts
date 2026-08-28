@@ -214,7 +214,8 @@ export declare function captureTeamPane(paneId: string): Promise<string>;
 export declare function sendTeamPaneKey(paneId: string, key: string): Promise<void>;
 export declare function killTeamPane(paneId: string): Promise<void>;
 export declare function killOwnedWorkerPane(ownership: WorkerPaneOwnership): Promise<void>;
-export declare function paneHasTrustPrompt(captured: string): boolean;
+export declare function paneHasTrustPrompt(captured: string, provider?: CliAgentType): boolean;
+export declare function paneHasCursorWorkspaceTrustPrompt(captured: string): boolean;
 export declare function paneHasActiveTask(captured: string, provider?: CliAgentType): boolean;
 export declare function paneLooksReady(captured: string, provider?: CliAgentType): boolean;
 export interface WaitForPaneReadyOptions {
@@ -228,7 +229,7 @@ export type StartupPaneReadyResult = {
     ok: true;
 } | {
     ok: false;
-    reason: 'attempt_inactive' | 'ownership_mismatch' | 'copy_mode' | 'copy_mode_unknown' | 'capture_failed' | 'selector_unsupported' | 'selector_persistent' | 'pane_busy' | 'readiness_timeout';
+    reason: 'attempt_inactive' | 'ownership_mismatch' | 'copy_mode' | 'copy_mode_unknown' | 'capture_failed' | 'selector_unsupported' | 'selector_persistent' | 'cursor_workspace_untrusted' | 'pane_busy' | 'readiness_timeout';
 };
 export declare function waitForStartupPaneReady(context: StartupPaneContext, opts?: WaitForPaneReadyOptions): Promise<StartupPaneReadyResult>;
 export declare function deliverStartupInbox(context: StartupPaneContext, message: string, options?: {
@@ -240,9 +241,19 @@ export declare function deliverStartupInbox(context: StartupPaneContext, message
     ok: false;
     reason: string;
 }>;
+/**
+ * Outcome of a startup-inbox resubmit probe:
+ * - `resubmitted` — the trigger was still visibly pending and Enter was re-sent.
+ * - `pane_busy` — the owned pane shows an active task: the worker consumed the
+ *   trigger and is working, so resubmitting would duplicate the inbox. Callers
+ *   must keep waiting for startup evidence instead of tearing the launch down.
+ * - `unavailable` — the pane cannot be re-submitted into (inactive attempt,
+ *   copy mode, capture failure, selector, or the trigger text is gone).
+ */
+export type StartupInboxResubmitOutcome = 'resubmitted' | 'pane_busy' | 'unavailable';
 export declare function retryStartupInboxSubmit(context: StartupPaneContext, message: string, options?: {
     attemptAlreadyFenced?: boolean;
-}): Promise<boolean>;
+}): Promise<StartupInboxResubmitOutcome>;
 export declare function shouldAttemptAdaptiveRetry(args: {
     paneBusy: boolean;
     latestCapture: string | null;

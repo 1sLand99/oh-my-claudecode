@@ -8,7 +8,7 @@
 import { readStdin, writeStdinCache, readStdinCache, getContextPercent, getModelId, getModelName, getRateLimitsFromStdin, stabilizeContextPercent, } from "./stdin.js";
 import { parseTranscript } from "./transcript.js";
 import { readHudState, readHudConfig, getRunningTasks, writeHudState, initializeHUDState, } from "./state.js";
-import { readRalphStateForHud, readUltraworkStateForHud, readPrdStateForHud, readAutopilotStateForHud, } from "./omc-state.js";
+import { readRalphStateForHud, readPrdStateForHud, readAutopilotStateForHud, } from "./omc-state.js";
 import { getUsage, getSubscriptionInfo } from "./usage-api.js";
 import { executeCustomProvider } from "./custom-rate-provider.js";
 import { render } from "./render.js";
@@ -242,7 +242,6 @@ async function main(watchMode = false, skipInit = false) {
         }
         // Read OMC state files
         const ralph = readRalphStateForHud(cwd, currentSessionId ?? undefined);
-        const ultrawork = readUltraworkStateForHud(cwd, currentSessionId ?? undefined);
         const prd = readPrdStateForHud(cwd);
         const autopilot = readAutopilotStateForHud(cwd, currentSessionId ?? undefined);
         // Read HUD state for background tasks
@@ -278,7 +277,9 @@ async function main(watchMode = false, skipInit = false) {
         // Stdin owns fresher five-hour/seven-day values, while getUsage() may provide
         // Sonnet/Opus weekly, monthly, extra, stale, and error metadata.
         const stdinRateLimits = getRateLimitsFromStdin(stdin);
-        const usageResult = config.elements.rateLimits === false ? null : await getUsage();
+        const usageResult = config.elements.rateLimits === false
+            ? null
+            : await getUsage({ clientVersion: stdin.version });
         const rateLimitsResult = config.elements.rateLimits === false
             ? null
             : mergeStdinRateLimits(stdinRateLimits, usageResult);
@@ -356,7 +357,7 @@ async function main(watchMode = false, skipInit = false) {
             modelName: getModelName(stdin),
             modelId: getModelId(stdin),
             ralph,
-            ultrawork,
+            ultrawork: null,
             prd,
             autopilot,
             activeAgents: transcriptData.agents.filter((a) => a.status === "running"),

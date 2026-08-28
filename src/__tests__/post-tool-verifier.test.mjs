@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { execSync } from 'child_process';
+import { execFileSync, execSync } from 'child_process';
 import { join } from 'path';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
@@ -38,14 +38,50 @@ function runPostToolVerifier(input, env = {}) {
   return runHookScript(SCRIPT_PATH, input, env);
 }
 
+function scopedHookEnvironment(cwd, env) {
+  const homeDir = mkdtempSync(join(tmpdir(), 'post-tool-verifier-home-'));
+  if (cwd && cwd !== process.cwd() && !existsSync(join(cwd, '.git'))) {
+    execFileSync('git', ['init', '--quiet'], { cwd, stdio: 'pipe' });
+  }
+
+  const effectiveHome = env.HOME || homeDir;
+  const childEnv = {
+    ...process.env,
+    NODE_ENV: 'test',
+    DISABLE_OMC: '',
+    OMC_SKIP_HOOKS: '',
+    OMC_QUIET: '0',
+    OMC_STATE_DIR: '',
+    CLAUDE_PLUGIN_ROOT: '',
+    HOME: effectiveHome,
+    USERPROFILE: env.USERPROFILE || effectiveHome,
+    CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR || join(effectiveHome, '.claude'),
+    ...env,
+  };
+
+  return {
+    childEnv,
+    cleanup() {
+      rmSync(homeDir, { recursive: true, force: true });
+    },
+  };
+}
+
 function runHookScript(scriptPath, input, env = {}) {
-  const stdout = execSync(`node "${scriptPath}"`, {
-    input: JSON.stringify(input),
-    encoding: 'utf-8',
-    timeout: 5000,
-    env: { ...process.env, NODE_ENV: 'test', ...env },
-  });
-  return JSON.parse(stdout.trim());
+  const cwd = typeof input?.cwd === 'string' && input.cwd.length > 0 ? input.cwd : process.cwd();
+  const fixture = scopedHookEnvironment(cwd, env);
+  try {
+    const stdout = execSync(`node "${scriptPath}"`, {
+      cwd,
+      input: JSON.stringify(input),
+      encoding: 'utf-8',
+      timeout: 5000,
+      env: fixture.childEnv,
+    });
+    return JSON.parse(stdout.trim());
+  } finally {
+    fixture.cleanup();
+  }
 }
 
 function withTempDir(fn) {
@@ -976,6 +1012,30 @@ describe('Skill active state cleanup on PostToolUse (issue #2103)', () => {
       expect(out).toEqual({ continue: true, suppressOutput: true });
       expect(existsSync(skillStatePath(tempDir, sessionId))).toBe(false);
       expect(existsSync(legacySkillStatePath(tempDir))).toBe(false);
+    });
+  });
+
+  it('activates only ralph state for the template post-tool hook path', () => {
+    withTempDir((tempDir) => {
+      const sessionId = 'ralph-template-no-ultrawork';
+      // Redirect HOME so the template hook's shared-home global fallback write
+      // (~/.omc/state/ralph-state.json) lands in the sandbox instead of the
+      // real home. Leaving it in the real home leaks active ralph state into
+      // other suites (e.g. cancel-integration's broad-clear location count).
+      const homeDir = join(tempDir, 'home');
+      mkdirSync(homeDir, { recursive: true });
+      const out = runHookScript(TEMPLATE_HOOK_PATH, {
+        tool_name: 'Skill',
+        tool_input: { skill: 'oh-my-claudecode:ralph' },
+        tool_response: { ok: true },
+        session_id: sessionId,
+        cwd: tempDir,
+      }, { HOME: homeDir });
+
+      expect(out).toEqual({ continue: true, suppressOutput: true });
+      const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+      expect(existsSync(join(stateDir, 'ralph-state.json'))).toBe(true);
+      expect(existsSync(join(stateDir, 'ultrawork-state.json'))).toBe(false);
     });
   });
 

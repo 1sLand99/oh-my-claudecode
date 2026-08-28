@@ -50,7 +50,7 @@ import {
   type StartupPaneContext,
   type WorkerPaneOwnership,
 } from './tmux-session.js';
-import { TeamPaths, absPath } from './state-paths.js';
+import { TeamPaths, absPath, teamStateRoot as resolveTeamStateRoot } from './state-paths.js';
 import { writeWorkerOverlay } from './worker-bootstrap.js';
 import {
   ensureWorkerWorktree,
@@ -316,7 +316,7 @@ export async function scaleUpOwned(
       return { ok: false, error: released ? 'team_mutation_busy' : 'scale_up_fence_release_failed' };
     }
 
-    const teamStateRoot = config.team_state_root ?? `${leaderCwd}/.omc/state/team/${sanitized}`;
+    const teamStateRoot = config.team_state_root ?? resolveTeamStateRoot(leaderCwd, sanitized);
     const worktreeMode: TeamWorktreeMode = config.worktree_mode ?? 'disabled';
 
     // Resolve the monotonic worker index counter

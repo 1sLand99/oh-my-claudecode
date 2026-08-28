@@ -2,7 +2,7 @@
  * Pipeline Types
  *
  * Type definitions for the configurable pipeline orchestrator.
- * The pipeline unifies autopilot/ultrawork/ultrapilot into a single
+ * The pipeline unifies autopilot and ultrapilot into a single
  * configurable sequence: RALPLAN -> EXECUTION -> RALPH -> QA.
  *
  * @see https://github.com/Yeachan-Heo/oh-my-claudecode/issues/1130
@@ -197,7 +197,7 @@ export interface PipelineTracking {
 }
 /**
  * Maps deprecated mode names to their pipeline configuration equivalents.
- * Used to translate ultrawork/ultrapilot invocations into autopilot + config.
+ * Used to translate ultrapilot invocations into autopilot + config.
  */
 export declare const DEPRECATED_MODE_ALIASES: Record<string, {
     config: Partial<PipelineConfig>;

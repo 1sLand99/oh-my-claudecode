@@ -9,7 +9,7 @@ import { parseEvaluatorResult, } from './contracts.js';
 const AUTORESEARCH_RESULTS_HEADER = 'iteration\tcommit\tpass\tscore\tstatus\tdescription\n';
 const AUTORESEARCH_WORKTREE_EXCLUDES = ['results.tsv', 'run.log', 'node_modules', '.omc/'];
 // Exclusive modes that cannot run concurrently with autoresearch
-const EXCLUSIVE_MODES = ['ralph', 'ultrawork', 'autopilot', 'autoresearch'];
+const EXCLUSIVE_MODES = ['ralph', 'autopilot', 'autoresearch'];
 function nowIso() {
     return new Date().toISOString();
 }
@@ -215,7 +215,7 @@ async function assertAutoresearchLockAvailable(projectRoot) {
     }
 }
 /**
- * Assert no exclusive mode is already active (ralph, ultrawork, autopilot).
+ * Assert no exclusive mode is already active (ralph, autopilot).
  * Mirrors OMX assertModeStartAllowed semantics using OMC mode-state-io.
  */
 export async function assertModeStartAllowed(mode, projectRoot) {

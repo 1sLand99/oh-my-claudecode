@@ -533,7 +533,7 @@ describe("team.roleRouting (Option E)", () => {
 
 
 
-  it("rejects cursor for non-executor team roleRouting providers", () => {
+  it("accepts cursor for reviewer team roleRouting providers (issue #3880)", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "omc-team-routing-cursor-reviewer-"));
     try {
       const claudeDir = join(tempDir, ".claude");
@@ -543,13 +543,19 @@ describe("team.roleRouting (Option E)", () => {
         JSON.stringify({
           team: {
             roleRouting: {
-              "code-reviewer": { provider: "cursor" },
+              "code-reviewer": { provider: "cursor", model: "cursor-grok-4.6-high" },
+              "critic": { provider: "cursor" },
             },
           },
         }),
       );
       process.chdir(tempDir);
-      expect(() => loadConfig()).toThrow(/cursor is only supported for executor-style roles/);
+      const config = loadConfig();
+      expect(config.team?.roleRouting?.["code-reviewer"]).toEqual({
+        provider: "cursor",
+        model: "cursor-grok-4.6-high",
+      });
+      expect(config.team?.roleRouting?.critic).toEqual({ provider: "cursor" });
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

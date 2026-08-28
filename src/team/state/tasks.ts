@@ -169,7 +169,7 @@ export async function transitionTaskStatus(
   from: TeamTaskStatus,
   to: TeamTaskStatus,
   claimToken: string,
-  terminalData: { result?: string; error?: string } | undefined,
+  terminalData: { result?: string; error?: string; metadata?: Record<string, unknown> } | undefined,
   deps: TransitionDeps,
 ): Promise<TransitionTaskResult> {
   if (!deps.canTransitionTaskStatus(from, to)) return { ok: false, error: 'invalid_transition' };
@@ -206,6 +206,9 @@ export async function transitionTaskStatus(
       delegation_compliance: to === 'completed' ? delegationCompliance ?? v.delegation_compliance : v.delegation_compliance,
       claim: undefined,
       version: v.version + 1,
+      ...(terminalData && 'metadata' in terminalData && terminalData.metadata
+        ? { metadata: { ...(v.metadata ?? {}), ...terminalData.metadata } }
+        : {}),
     };
     await deps.writeAtomic(deps.taskFilePath(deps.teamName, taskId, deps.cwd), JSON.stringify(updated, null, 2));
 
@@ -386,7 +389,17 @@ export async function adoptRecoveryReservations(taskIds: string[], workerName: s
       if (!reservation) {
         if (task.status === 'in_progress' && task.owner === workerName && task.claim && task.recovery_adoption?.recovery_id === proof.recoveryId && task.recovery_adoption.request_id === proof.requestId && task.recovery_adoption.replacement_generation === proof.replacementGeneration) {
           const checkpoint = await deps.readRecoveryCheckpoint(task.recovery_adoption.checkpoint_path);
-          return checkpoint.ok ? { ok: true as const, task, claimToken: task.claim.token, checkpoint: checkpoint.checkpoint, replayed: true } : { ok: false as const, error: checkpointError(checkpoint.error) };
+          if (!checkpoint.ok) return { ok: false as const, error: checkpointError(checkpoint.error) };
+          if (deps.launchAttemptId && task.claim.launch_attempt_id !== deps.launchAttemptId) {
+            const rebound: TeamTaskV2 = {
+              ...task,
+              claim: { ...task.claim, launch_attempt_id: deps.launchAttemptId },
+              version: task.version + 1,
+            };
+            await deps.writeAtomic(deps.taskFilePath(deps.teamName, taskId, deps.cwd), JSON.stringify(rebound, null, 2));
+            return { ok: true as const, task: rebound, claimToken: rebound.claim!.token, checkpoint: checkpoint.checkpoint, replayed: true };
+          }
+          return { ok: true as const, task, claimToken: task.claim.token, checkpoint: checkpoint.checkpoint, replayed: true };
         }
         return { ok: false as const, error: 'claim_conflict' as const };
       }
@@ -394,7 +407,12 @@ export async function adoptRecoveryReservations(taskIds: string[], workerName: s
       const checkpoint = await deps.readRecoveryCheckpoint(reservation.checkpoint_path);
       if (!checkpoint.ok || checkpoint.checkpoint.resume_payload_hash !== reservation.checkpoint_hash || checkpoint.checkpoint.sequence !== reservation.continuation_sequence) return { ok: false as const, error: checkpointError(checkpoint.ok ? 'stale' : checkpoint.error) };
       const claimToken = randomUUID(); const adoptedAt = new Date().toISOString();
-      const updated: TeamTaskV2 = { ...task, status: 'in_progress', owner: workerName, claim: { owner: workerName, token: claimToken, leased_until: new Date(Date.now() + 15 * 60 * 1000).toISOString() }, version: task.version + 1, recovery_reservation: undefined, recovery_adoption: { recovery_id: reservation.recovery_id, request_id: reservation.request_id, continuation_sequence: reservation.continuation_sequence, checkpoint_path: reservation.checkpoint_path, checkpoint_hash: reservation.checkpoint_hash, replacement_worker: workerName, replacement_generation: reservation.replacement_generation, adopted_at: adoptedAt } };
+      const updated: TeamTaskV2 = { ...task, status: 'in_progress', owner: workerName, claim: {
+        owner: workerName,
+        token: claimToken,
+        leased_until: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+        ...(deps.launchAttemptId ? { launch_attempt_id: deps.launchAttemptId } : {}),
+      }, version: task.version + 1, recovery_reservation: undefined, recovery_adoption: { recovery_id: reservation.recovery_id, request_id: reservation.request_id, continuation_sequence: reservation.continuation_sequence, checkpoint_path: reservation.checkpoint_path, checkpoint_hash: reservation.checkpoint_hash, replacement_worker: workerName, replacement_generation: reservation.replacement_generation, adopted_at: adoptedAt } };
       await deps.writeAtomic(deps.taskFilePath(deps.teamName, taskId, deps.cwd), JSON.stringify(updated, null, 2));
       return { ok: true as const, task: updated, claimToken, checkpoint: checkpoint.checkpoint, replayed: false };
     });

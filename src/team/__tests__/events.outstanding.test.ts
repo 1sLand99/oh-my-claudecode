@@ -13,6 +13,23 @@ import { emitMonitorDerivedEvents, readTeamEventsByType } from '../events.js';
 const TEAM = 'demo-team';
 const WORKER = 'worker-1';
 
+function isolateFixtureRoot(root: string): () => void {
+  const home = process.env.HOME;
+  const userProfile = process.env.USERPROFILE;
+  const stateDir = process.env.OMC_STATE_DIR;
+  process.env.HOME = root;
+  process.env.USERPROFILE = root;
+  delete process.env.OMC_STATE_DIR;
+  return () => {
+    if (home === undefined) delete process.env.HOME;
+    else process.env.HOME = home;
+    if (userProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = userProfile;
+    if (stateDir === undefined) delete process.env.OMC_STATE_DIR;
+    else process.env.OMC_STATE_DIR = stateDir;
+  };
+}
+
 function seed(cwd: string, options: { undeliveredInbound?: boolean; undeliveredOutbound?: boolean } = {}): string {
   const stateDir = join(cwd, '.omc', 'state');
   const teamDir = join(stateDir, 'team', TEAM);
@@ -56,13 +73,21 @@ function seed(cwd: string, options: { undeliveredInbound?: boolean; undeliveredO
 
 describe('emitMonitorDerivedEvents worker_idle outstanding metadata (issue #3662)', () => {
   let cwd: string;
+  let restoreFixtureEnv: (() => void) | undefined;
 
   beforeEach(async () => {
     cwd = mkdtempSync(join(tmpdir(), 'omc-events-outstanding-'));
+    restoreFixtureEnv = isolateFixtureRoot(cwd);
   });
 
   afterEach(() => {
-    rmSync(cwd, { recursive: true, force: true });
+    const restore = restoreFixtureEnv;
+    restoreFixtureEnv = undefined;
+    try {
+      restore?.();
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
   });
 
   it('includes undelivered directed-message counts on the worker_idle event', async () => {

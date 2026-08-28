@@ -50,7 +50,6 @@ describe('HUD watch mode initialization', () => {
   const originalIsTTY = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY');
   let initializeHUDState: ReturnType<typeof vi.fn>;
   let readRalphStateForHud: ReturnType<typeof vi.fn>;
-  let readUltraworkStateForHud: ReturnType<typeof vi.fn>;
   let readAutopilotStateForHud: ReturnType<typeof vi.fn>;
   let getUsage: ReturnType<typeof vi.fn>;
   let render: ReturnType<typeof vi.fn>;
@@ -68,7 +67,6 @@ describe('HUD watch mode initialization', () => {
 
     initializeHUDState = vi.fn(async () => {});
     readRalphStateForHud = vi.fn(() => null);
-    readUltraworkStateForHud = vi.fn(() => null);
     readAutopilotStateForHud = vi.fn(() => null);
     getUsage = vi.fn(async () => overrides.getUsageResult ?? null);
     render = vi.fn(async () => '[HUD] ok');
@@ -120,7 +118,6 @@ describe('HUD watch mode initialization', () => {
 
     vi.doMock('../../hud/omc-state.js', () => ({
       readRalphStateForHud,
-      readUltraworkStateForHud,
       readPrdStateForHud: vi.fn(() => null),
       readAutopilotStateForHud,
     }));
@@ -213,7 +210,6 @@ describe('HUD watch mode initialization', () => {
     await hud.main(true, false);
 
     expect(readRalphStateForHud).toHaveBeenCalledWith('/tmp/worktree', '123e4567-e89b-12d3-a456-426614174000');
-    expect(readUltraworkStateForHud).toHaveBeenCalledWith('/tmp/worktree', '123e4567-e89b-12d3-a456-426614174000');
     expect(readAutopilotStateForHud).toHaveBeenCalledWith('/tmp/worktree', '123e4567-e89b-12d3-a456-426614174000');
   });
 

@@ -129,7 +129,6 @@ export interface PluginConfig {
 
   // Magic keyword customization
   magicKeywords?: {
-    ultrawork?: string[];
     search?: string[];
     analyze?: string[];
     ultrathink?: string[];
@@ -474,9 +473,6 @@ export const CANONICAL_TEAM_ROLES = [
 ] as const;
 
 export type CanonicalTeamRole = typeof CANONICAL_TEAM_ROLES[number];
-
-/** Cursor team workers are currently supported only for executor-style tasks. */
-export const CURSOR_EXECUTOR_TEAM_ROLES = ["executor"] as const;
 
 /** Provider for /team role routing. */
 export type TeamRoleProvider = 'claude' | 'codex' | 'gemini' | 'grok' | 'cursor' | 'antigravity';

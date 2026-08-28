@@ -11,8 +11,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { mkdirSync, rmSync, existsSync, readFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, rmSync, existsSync, readFileSync } from 'fs';
 import { readFile } from 'fs/promises';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
 
 type ExecFileCallback = (error: Error | null, stdout: string, stderr: string) => void;
 
@@ -33,7 +34,6 @@ import { killWorkerPanes, killTeamSession } from '../../team/tmux-session.js';
 
 let killedPanes: string[] = [];
 let killedSessions: string[] = [];
-
 beforeEach(async () => {
   killedPanes = [];
   killedSessions = [];
@@ -84,8 +84,14 @@ describe('killWorkerPanes', () => {
   });
 
   it('writes shutdown sentinel before force-killing', async () => {
-    const cwd = join(tmpdir(), `omc-cleanup-test-${process.pid}`);
-    const stateDir = join(cwd, '.omc', 'state', 'team', 'myteam');
+    const cwd = mkdtempSync(join(tmpdir(), 'omc-cleanup-test-'));
+    const previousHome = process.env.HOME;
+    const previousUserProfile = process.env.USERPROFILE;
+    const previousStateDir = process.env.OMC_STATE_DIR;
+    process.env.HOME = cwd;
+    process.env.USERPROFILE = cwd;
+    process.env.OMC_STATE_DIR = cwd;
+    const stateDir = join(getOmcRoot(cwd), 'state', 'team', 'myteam');
     mkdirSync(stateDir, { recursive: true });
 
     try {
@@ -101,6 +107,12 @@ describe('killWorkerPanes', () => {
       expect(content).toHaveProperty('requestedAt');
       expect(typeof content.requestedAt).toBe('number');
     } finally {
+      if (previousHome === undefined) delete process.env.HOME;
+      else process.env.HOME = previousHome;
+      if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+      else process.env.USERPROFILE = previousUserProfile;
+      if (previousStateDir === undefined) delete process.env.OMC_STATE_DIR;
+      else process.env.OMC_STATE_DIR = previousStateDir;
       rmSync(cwd, { recursive: true, force: true });
     }
   });

@@ -4,9 +4,10 @@
  * This test is the "ongoing drift enforcement" owned by #3702. It asserts:
  *  - committed baseline exists and is valid JSON with the expected schema
  *  - public/internal/generated counts are separately reported and match filesystem
- *  - registry-to-installed drift: installed skills/commands/workflows/agents equal
- *    the manifest's public lists (no phantom entries) — the "registry-to-installed
- *    drift test" required by #3702
+ *  - registry-to-installed drift: installed skills/commands/workflows and the
+ *    registry's routable agent roles equal the manifest's public lists
+ *    (no phantom entries) — the "registry-to-installed drift test" required
+ *    by #3702
  *  - exact base/head provenance (base + planningHead immutable, head present)
  *  - deterministic graph: re-running the generator yields an identical manifest
  *    modulo ephemeral head/generatedAt; the embedded manifestSha256 is consistent
@@ -83,6 +84,16 @@ type Manifest = {
 function loadManifest(): Manifest {
   if (!existsSync(BASELINE)) throw new Error(`baseline missing at ${relative(REPO_ROOT, BASELINE)} — run: node scripts/generate-inventory-graph.mjs --write`);
   return JSON.parse(readFileSync(BASELINE, 'utf8')) as Manifest;
+}
+
+function collectRegisteredAgents(): string[] {
+  const source = readFileSync(join(REPO_ROOT, 'src/workflow/registry.ts'), 'utf8');
+  const start = source.indexOf('export const WORKFLOW_ROLES');
+  const end = source.indexOf('];', start);
+  if (start < 0 || end < 0) throw new Error('WORKFLOW_ROLES registry is missing');
+  return [...source.slice(start, end).matchAll(/\{\s*name:\s*'([^']+)'/g)]
+    .map((match) => match[1]!)
+    .sort();
 }
 
 function sha256Hex(s: string): string {
@@ -220,7 +231,7 @@ describe('inventory-graph drift enforcement (#3702)', () => {
     const liveSkills = stable.filter((p) => /^skills\/[^/]+\/SKILL\.md$/.test(p)).map((p) => p.split('/')[1]).sort();
     const liveCommands = stable.filter((p) => /^commands\/[^/]+\.md$/.test(p)).map((p) => p.slice('commands/'.length, -3)).sort();
     const liveWorkflows = stable.filter((p) => p.startsWith('.github/workflows/')).sort();
-    const liveAgents = stable.filter((p) => /^src\/agents\/[^/]+\.ts$/.test(p)).map((p) => p.slice('src/agents/'.length, -3)).sort();
+    const liveAgents = collectRegisteredAgents();
 
     const missing = (live: string[], listed: string[]) => live.filter((x) => !listed.includes(x));
     const extra = (live: string[], listed: string[]) => listed.filter((x) => !live.includes(x));

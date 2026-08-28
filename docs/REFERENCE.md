@@ -93,7 +93,7 @@ Configure omc for all Claude Code sessions:
 | Feature           | Without     | With omc Config         |
 | ----------------- | ----------- | ----------------------- |
 | Agent delegation  | Manual only | Automatic based on task |
-| Keyword detection | Disabled    | ultrawork, search       |
+| Keyword detection | Disabled    | supported prompt triggers |
 | Todo continuation | Basic       | Enforced completion     |
 | Model routing     | Default     | Smart tier selection    |
 | Skill composition | None        | Auto-combines skills    |
@@ -151,9 +151,28 @@ Git handling is intentionally conservative. The repository `.gitignore` keeps `.
 Worktree behavior follows the resolved state root:
 
 - **Default single repo / monorepo**: `getOmcRoot()` uses the git toplevel, so every package below one git root shares `{repo}/.omc/`.
+- **Git-less directories**: all cwd variants use the canonical `$HOME/.omc/` root; with `OMC_STATE_DIR`, they use `$OMC_STATE_DIR/non-git`. Existing cwd-local `.omc/` trees are never adopted or mutated implicitly. Protected locations such as `~/.ssh`, `~/.claude`, `~/.config`, user content directories, and descendants of system temp/OS roots are rejected as migration sources. Use the explicit `state_migrate_non_git` tool for owner-checked, non-overwriting migration. Session ownership still comes from `session_id`, and no time-based cleanup is performed.
 - **Linked git worktrees**: without `OMC_STATE_DIR`, each linked worktree has its own `{worktree}/.omc/`; removing that worktree removes its local OMC state. Re-run setup from the worktree you are actively using so installed hooks and generated instructions match that checkout.
 - **Persistent state across worktree deletion**: set `OMC_STATE_DIR`; OMC writes to `$OMC_STATE_DIR/{project-id}/`, where the project id is stable across linked worktrees when a remote or primary git dir is available.
 - **Multi-repo workspace**: add `.omc-workspace` to a non-git parent when independent sibling repos should share `{parent}/.omc/`. This is for multi-repo workspaces, not ordinary monorepos.
+
+State MCP tools honor an explicit `workingDirectory`. In a git-less session, it identifies the legacy source for explicit migration while state storage follows the canonical non-git root; in a git-backed session, repository and linked-worktree boundary checks remain enforced. A path from another repository or a failed Git probe is rejected rather than silently substituted with the session cwd.
+
+The `state_migrate_non_git` tool is the only supported non-git legacy migration
+path. It requires the exact owning `session_id`, reads only
+`.omc/state/sessions/<session_id>/*.json`, copies records whose embedded owner
+matches that ID into the canonical root, never overwrites an existing
+destination, preserves source bytes, and reports copied/skipped/rejected
+filenames. It never deletes or mutates the legacy source and refuses Git,
+sensitive, system-temp, and symlinked legacy roots.
+
+#### Session-scoped state cannot capture another session (#3873)
+
+Mode-state files that carry a `session_id` under `.omc/state/sessions/<id>/` are authoritative only for that session. They cannot attach to, resume, or disarm a different session. Only legacy flat-layout files without a `session_id` can bind to whatever session starts next in that directory.
+
+Do not treat idle time as evidence that a session has ended. OMC performs no time-based cancellation of session-scoped state; cleanup tooling must preserve session-owned files and must not use a time threshold to delete active state.
+
+When migrating to `OMC_STATE_DIR`, remember that setting the variable does not migrate existing contents. Copy or migrate legacy state first, then enable the centralized root; otherwise old plans, notepads, and project memory remain in their original `.omc/` location and are no longer visible.
 
 Plan persistence follows the same rule. Default generated plans under `.omc/plans/` are local operational artifacts and are ignored. If a plan should become durable project documentation, move it to a tracked docs path or configure `planOutput.directory` to a reviewed directory such as `docs/plans`; keep machine-local session state in `.omc/`.
 
@@ -781,7 +800,7 @@ Per story, `acceptanceCriteria` holds the currently governing criteria, and the 
 
 Programmatic API (from `src/hooks/ralph`): `amendCriterion(dir, storyId, { original, replacement, reason, evidence, authority })` replaces an active criterion and inserts the corrected one at its position; `supersedeCriterion(dir, storyId, { original, reason, evidence, authority })` removes it with no replacement. Both require non-empty reason/authority and bounded evidence (`MIN_CRITERION_EVIDENCE_LENGTH = 10`); failures return closed error codes and never mutate the PRD.
 
-Fail-closed invariants: a malformed ledger entry, an amended original that is still active, or an original amended twice makes the PRD invalid on read (`readPrd` → `null`), matching existing invalid-PRD startup behavior. Backward compatible: legacy PRDs without `criterionAmendments` read, format, and write unchanged; an empty `[]` ledger is treated as absent. Older builds that rewrite a PRD serialize only fields their own normalizer knows, so amendment records are only preserved by builds that ship this schema. See [ADR 03664](./adr/03664-ralph-prd-criterion-amendment.md) for the decision record.
+Fail-closed invariants: a malformed ledger entry, an amended original that is still active, or an original amended twice makes the PRD invalid on read (`readPrd` → `null`), matching existing invalid-PRD startup behavior. Legacy PRDs without `criterionAmendments` still read and format normally, but a completion or architect-verification claim lacking its governing-criteria revision is reopened and requires current-criteria re-verification before it can progress. An empty `[]` ledger is treated as absent. Older builds that rewrite a PRD serialize only fields their own normalizer knows, so amendment records are only preserved by builds that ship this schema. See [ADR 03664](./adr/03664-ralph-prd-criterion-amendment.md) for the decision record.
 
 ## Named autopilot stage profiles (v1)
 
@@ -969,7 +988,7 @@ For each UserPromptSubmit command, 30s is the outer host fuse, including any lau
 
 The `workflow-drift-guard` blocks only supported source-associated local selection forks with a known minimum of two live alternatives—including exact binary questions and cardinality templates; explicit open input and every unsupported or ambiguous form fail open.
 
-> **Note**: autopilot, ralph, and ultrawork are **skills** (activated via keyword-detector), not hooks. The `persistent-mode.mjs` hook enforces their continuation by blocking the Stop event. A fresh unconfirmed ultragoal does not enforce matching `/goal`; confirmed runs remain fail-closed.
+> **Note**: autopilot and ralph are **skills** (activated via keyword-detector), not hooks. The `persistent-mode.mjs` hook enforces their continuation by blocking the Stop event. A fresh unconfirmed ultragoal does not enforce matching `/goal`; confirmed runs remain fail-closed.
 
 ### Code Simplifier Hook
 
@@ -1024,11 +1043,9 @@ Use these trigger phrases in natural language prompts to activate enhanced modes
 
 | Keyword                                                                        | Effect                                                                                        |
 | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
-| `ultrawork`, `ulw`, `uw`                                                       | Activates parallel agent orchestration                                                        |
 | `autopilot`, `build me`, `I want a`, `handle it all`, `end to end`, `e2e this` | Full autonomous execution                                                                     |
 | `deslop`, `anti-slop`, cleanup/refactor + slop smells                          | Anti-slop cleanup workflow (`ai-slop-cleaner`)                                                |
 | `ralph`, `don't stop`, `must complete`, `until done`                           | Persistence until verified complete                                                           |
-| `ccg`, `claude-codex-gemini`                                                   | Claude-Codex-Gemini orchestration (use `antigravity` when using the Antigravity CLI)         |
 | `ralplan`                                                                      | Iterative planning consensus with structured deliberation (`--deliberate` for high-risk mode) |
 | `deep interview`, `ouroboros`                                                  | Deep Socratic interview with mathematical clarity gating                                      |
 | `deepsearch`, `search the codebase`, `find in codebase`                        | Codebase-focused search mode                                                                  |
@@ -1047,10 +1064,8 @@ The keyword detector recognizes localized aliases in addition to the English tri
 | ---------------- | ----------- | ------------------ |
 | `ralph`          | 랄프        | ラルフ             |
 | `autopilot`      | 오토파일럿  | オートパイロット   |
-| `ultrawork`      | 울트라워크  | ウルトラワーク     |
 | `ralplan`        | 랄플랜      | ラルプラン         |
 | `ultrathink`     | 울트라씽크  | ウルトラシンク     |
-| `ccg`            | 씨씨지      | シーシージー       |
 | `deep-interview` | 딥인터뷰    | ディープインタビュー |
 | `tdd`            | 테스트 퍼스트 | テスト ファースト |
 | `code-review`    | 코드 리뷰   | コード レビュー    |
@@ -1071,9 +1086,6 @@ The keyword detector recognizes localized aliases in addition to the English tri
 
 ```bash
 # In Claude Code:
-
-# Maximum parallelism
-ultrawork implement user authentication with OAuth
 
 # Enhanced search
 deepsearch for files that import the utils module

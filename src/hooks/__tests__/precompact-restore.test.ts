@@ -29,9 +29,10 @@ import {
 } from 'fs';
 import * as nodeFs from 'fs';
 import { basename, dirname, join, sep } from 'path';
-import { tmpdir } from 'os';
+import { homedir } from 'os';
 import { pathToFileURL } from 'url';
 import { createHash } from 'crypto';
+import { execFileSync } from 'child_process';
 
 vi.mock('fs', async () => {
   const actual = await vi.importActual<typeof import('fs')>('fs');
@@ -83,7 +84,8 @@ function withPublisherPreload<T>(
 // ============================================================================
 
 function createTempDir(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'precompact-restore-test-'));
+  const dir = mkdtempSync(join(homedir(), 'precompact-restore-test-'));
+  execFileSync('git', ['init', '--quiet'], { cwd: dir, stdio: 'ignore' });
   mkdirSync(join(dir, '.omc', 'state'), { recursive: true });
   return dir;
 }
@@ -159,6 +161,7 @@ describe('PreCompact writer - plan anchors (issue #3730)', () => {
     // Arrange: session-scoped PRD (ralph PRD mode)
     // PRD lives at .omc/state/sessions/{sessionId}/prd.json
     const prdDir = join(getOmcRootForTest(tempDir), 'state', 'sessions', 'test-session');
+    const completionCriteriaRevision = `sha256:${createHash('sha256').update(JSON.stringify({ acceptanceCriteria: ['bug reproduces'], criterionAmendments: [] })).digest('hex')}`;
     mkdirSync(prdDir, { recursive: true });
     writeFileSync(
       join(prdDir, 'prd.json'),
@@ -174,6 +177,7 @@ describe('PreCompact writer - plan anchors (issue #3730)', () => {
             acceptanceCriteria: ['bug reproduces'],
             priority: 1,
             passes: true,
+            completionCriteriaRevision,
           },
           {
             id: 'US-2',

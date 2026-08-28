@@ -2,7 +2,7 @@
  * PreCompact Hook - State Preservation Before Context Compaction
  *
  * Creates checkpoints before compaction to preserve critical state including:
- * - Active mode states (autopilot, ralph, ultrawork)
+ * - Active mode states (autopilot, ralph, ultraqa)
  * - TODO summary
  * - Wisdom from notepads
  *
@@ -45,7 +45,6 @@ export interface CompactCheckpoint {
   active_modes: {
     autopilot?: { phase: string; originalIdea: string };
     ralph?: { iteration: number; prompt: string };
-    ultrawork?: { original_prompt: string };
   };
   todo_summary: {
     pending: number;
@@ -208,14 +207,6 @@ export async function saveModeSummary(
               iteration: s.iteration || 0,
               prompt: s.originalPrompt || s.prompt || "",
             }
-          : null,
-    },
-    {
-      file: "ultrawork-state.json",
-      key: "ultrawork",
-      extract: (s: any) =>
-        s.active
-          ? { original_prompt: s.original_prompt || s.prompt || "" }
           : null,
     },
   ];
@@ -446,11 +437,6 @@ export function formatCompactSummary(checkpoint: CompactCheckpoint): string {
       lines.push(`  Prompt: ${ralph.prompt}`);
     }
 
-    if (checkpoint.active_modes.ultrawork) {
-      const uw = checkpoint.active_modes.ultrawork;
-      lines.push(`- **Ultrawork**`);
-      lines.push(`  Prompt: ${uw.original_prompt}`);
-    }
 
     lines.push("");
   }
