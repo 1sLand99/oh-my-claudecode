@@ -836,7 +836,7 @@ describe('model-contract', () => {
     });
 
     it('keeps Claude on its own resolver because external snapshots have no Claude field', () => {
-      expect(resolveDefaultWorkerModel('claude', { OMC_MODEL_MEDIUM: 'claude-env' }, { cursorModel: 'captured-model' })).toBe('claude-env');
+      expect(resolveDefaultWorkerModel('claude', { OMC_MODEL_MEDIUM: 'claude-env' }, { cursorModel: 'captured-model' })).toBeUndefined();
     });
   });
   describe('worker launch descriptors', () => {

@@ -553,22 +553,23 @@ export function resolveClaudeWorkerModel(
   }
 
   // Direct model env vars — highest priority
-  const directModel = env.ANTHROPIC_MODEL || env.CLAUDE_MODEL || '';
+  const directModel = (env.ANTHROPIC_MODEL || env.CLAUDE_MODEL || '').trim();
   if (directModel) {
     return directModel;
   }
 
   // Fallback: Bedrock tier-specific env vars (default to sonnet tier)
-  const bedrockModel =
+  const bedrockModel = (
     env.CLAUDE_CODE_BEDROCK_SONNET_MODEL ||
     env.ANTHROPIC_DEFAULT_SONNET_MODEL ||
-    '';
+    ''
+  ).trim();
   if (bedrockModel) {
     return bedrockModel;
   }
 
   // OMC tier env vars
-  const omcModel = env.OMC_MODEL_MEDIUM || '';
+  const omcModel = (env.OMC_MODEL_MEDIUM || '').trim();
   if (omcModel) {
     return omcModel;
   }
