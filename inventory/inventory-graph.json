@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "ac0e3999771b6c801ecafd452d4f696b30d90fce",
-    "sourceSha256": "7abdac468d9ab48612aa02674f2de6d98fe2ebcca4e11ae319a2a5a40bcae00d",
+    "head": "6803fceeb01d5e58a50258dfbfb72ec2e56620f9",
+    "sourceSha256": "20ac9072884ef297dd0c550ad9f7f74ac1f17c3f0cb1cbc68ef0e7275a4f222f",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "ac0e3999771b6c801ecafd452d4f696b30d90fce",
-  "sourceSha256": "7abdac468d9ab48612aa02674f2de6d98fe2ebcca4e11ae319a2a5a40bcae00d",
+  "head": "6803fceeb01d5e58a50258dfbfb72ec2e56620f9",
+  "sourceSha256": "20ac9072884ef297dd0c550ad9f7f74ac1f17c3f0cb1cbc68ef0e7275a4f222f",
   "counts": {
     "public": {
       "skills": 32,
@@ -28,8 +28,8 @@
       "toolFiles": 60,
       "libFiles": 37,
       "templateHooks": 21,
-      "srcFiles": 1308,
-      "total": 1329
+      "srcFiles": 1309,
+      "total": 1330
     },
     "generated": {
       "distFiles": 4955,
@@ -35972,6 +35972,11 @@
         "path": "src/graph/__tests__/runtime/runner.test.ts"
       },
       {
+        "id": "src/graph/__tests__/runtime/safe-fs.test.ts",
+        "kind": "src",
+        "path": "src/graph/__tests__/runtime/safe-fs.test.ts"
+      },
+      {
         "id": "src/graph/__tests__/runtime/store.test.ts",
         "kind": "src",
         "path": "src/graph/__tests__/runtime/store.test.ts"
@@ -53477,6 +53482,36 @@
         "from": "src/graph/__tests__/runtime/runner.test.ts",
         "to": "src/graph/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/safe-fs.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/safe-fs.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/safe-fs.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/safe-fs.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/safe-fs.test.ts",
+        "to": "src/graph/runtime/run-dir.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/safe-fs.test.ts",
+        "to": "src/graph/runtime/safe-fs.ts",
+        "kind": "imports"
       },
       {
         "from": "src/graph/__tests__/runtime/store.test.ts",
@@ -76395,12 +76430,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6833,
-      "edgeCount": 7190,
-      "importEdgeCount": 5906,
+      "nodeCount": 6834,
+      "edgeCount": 7196,
+      "importEdgeCount": 5912,
       "registerEdgeCount": 53
     }
   },
-  "inventorySha256": "d34ebca442eea63fe880245c9973a6450b99ecf04856906bcd66c03d35ee5c5b",
-  "manifestSha256": "03f3480bbcd693936ddc3efad835dbc86f6c25a4b8eb7dd0b6e6cc3817dae335"
+  "inventorySha256": "105c63a2ed379d8c3bf6b66c30853f3dce437799afe24b2c22ca6a8d79503eb8",
+  "manifestSha256": "eb93bf7a50e730779a1291777abb98a9ddbae64d47b1462bd370d798b70fcbdc"
 }
