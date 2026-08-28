@@ -21,7 +21,9 @@ export function openNoFollow(
   if (process.platform === "win32") {
     try {
       if (lstatSync(filePath).isSymbolicLink()) {
-        const error = new Error(`symbolic link refused: ${filePath}`) as NodeJS.ErrnoException;
+        const error = new Error(
+          `symbolic link refused: ${filePath}`,
+        ) as NodeJS.ErrnoException;
         error.code = "ELOOP";
         throw error;
       }
@@ -43,9 +45,23 @@ export function readFileNoFollow(filePath: string): string {
   }
 }
 
-function descriptorPath(directoryFd: number): string {
-  if (process.platform === "linux") return `/proc/self/fd/${directoryFd}`;
-  return `/dev/fd/${directoryFd}`;
+/**
+ * Resolve a path for an already-open run directory without changing the
+ * process-wide platform state. Linux exposes directory FDs as traversable
+ * procfs directories. macOS (and other non-Linux POSIX platforms) does not,
+ * so use the validated run-directory path and retain the final-component
+ * no-follow guard in openNoFollow.
+ */
+export function containedPathForPlatform(
+  directoryFd: number,
+  runDirPath: string,
+  fileName: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  if (platform === "linux") {
+    return join(`/proc/self/fd/${directoryFd}`, fileName);
+  }
+  return join(runDirPath, fileName);
 }
 
 /**
@@ -59,7 +75,25 @@ export function withContainedPath<T>(
   fileName: string,
   operation: (filePath: string) => T,
 ): T {
-  if (process.platform === "win32") {
+  return withContainedPathForPlatform(
+    runDir,
+    fileName,
+    operation,
+    process.platform,
+  );
+}
+
+export function withContainedPathForPlatform<T>(
+  runDir: RunDirHandle,
+  fileName: string,
+  operation: (filePath: string) => T,
+  platform: NodeJS.Platform,
+): T {
+  if (platform !== "linux") {
+    // Non-Linux POSIX systems cannot traverse a directory FD via /dev/fd.
+    // The identity check immediately before operation plus O_NOFOLLOW on the
+    // final artifact preserves the available portable guarantees, but cannot
+    // eliminate a parent-directory swap racing this synchronous call.
     const stats = statSync(runDir.path);
     if (stats.dev !== runDir.device || stats.ino !== runDir.inode) {
       throw new Error("run directory identity changed");
@@ -75,7 +109,9 @@ export function withContainedPath<T>(
     if (stats.dev !== runDir.device || stats.ino !== runDir.inode) {
       throw new Error("run directory identity changed");
     }
-    return operation(join(descriptorPath(directoryFd), fileName));
+    return operation(
+      containedPathForPlatform(directoryFd, runDir.path, fileName, platform),
+    );
   } finally {
     closeSync(directoryFd);
   }
@@ -88,4 +124,3 @@ export function readContainedFileNoFollow(
 ): string {
   return withContainedPath(runDir, fileName, readFileNoFollow);
 }
-

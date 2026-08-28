@@ -394,12 +394,13 @@ export async function teamReleaseTaskClaim(teamName, taskId, claimToken, workerN
         writeAtomic,
     });
 }
-function recoveryTransitionDeps(teamName, cwd) {
+function recoveryTransitionDeps(teamName, cwd, launchAttemptId) {
     return {
         teamName, cwd, readTask: teamReadTask,
         readTeamConfig: teamReadConfig,
         withTaskClaimLock, normalizeTask, isTerminalTaskStatus: isTerminalTeamTaskStatus,
         taskFilePath: (tn, tid, c) => canonicalTaskFilePath(tn, tid, c), writeAtomic,
+        ...(launchAttemptId ? { launchAttemptId } : {}),
         readRecoverySidecar: async (tn, recoveryId, tid, c) => {
             const path = absPath(c, TeamPaths.taskRecoverySidecar(tn, recoveryId, tid));
             if (!existsSync(path))
@@ -426,8 +427,8 @@ export async function teamRequeueRecoveredTask(teamName, cwd, input) {
     return requeueRecoveredTaskImpl(input, recoveryTransitionDeps(teamName, cwd));
 }
 /** Runtime-owner-only continuation adoption; call before provider launch. */
-export async function teamAdoptRecoveryReservations(teamName, cwd, taskIds, workerName, proof) {
-    return adoptRecoveryReservationsImpl(taskIds, workerName, proof, recoveryTransitionDeps(teamName, cwd));
+export async function teamAdoptRecoveryReservations(teamName, cwd, taskIds, workerName, proof, launchAttemptId) {
+    return adoptRecoveryReservationsImpl(taskIds, workerName, proof, recoveryTransitionDeps(teamName, cwd, launchAttemptId));
 }
 // ---------------------------------------------------------------------------
 // Messaging
