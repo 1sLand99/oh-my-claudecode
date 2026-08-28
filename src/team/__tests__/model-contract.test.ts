@@ -16,6 +16,7 @@ import {
   clearResolvedPathCache,
   validateCliBinaryPath,
   resolveClaudeWorkerModel,
+  resolveDefaultWorkerModel,
   shouldUseClaudeBareMode,
   _testInternals,
   buildValidatedWorkerLaunchDescriptor,
@@ -786,6 +787,32 @@ describe('model-contract', () => {
       // isBedrock() detects Bedrock from the model ID pattern
       expect(resolveClaudeWorkerModel()).toBe('us.anthropic.claude-sonnet-4-5-20250929-v1:0');
       vi.unstubAllEnvs();
+    });
+  });
+
+  describe('resolveDefaultWorkerModel', () => {
+    it.each([
+      ['codex', 'OMC_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL', 'OMC_CODEX_DEFAULT_MODEL'],
+      ['gemini', 'OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL', 'OMC_GEMINI_DEFAULT_MODEL'],
+      ['antigravity', 'OMC_EXTERNAL_MODELS_DEFAULT_ANTIGRAVITY_MODEL', 'OMC_ANTIGRAVITY_DEFAULT_MODEL'],
+      ['grok', 'OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL', 'OMC_GROK_DEFAULT_MODEL'],
+      ['cursor', 'OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL', 'OMC_CURSOR_DEFAULT_MODEL'],
+    ] as const)('%s prefers canonical env over legacy fallback', (provider, canonical, legacy) => {
+      expect(resolveDefaultWorkerModel(provider, { [canonical]: 'canonical-model', [legacy]: 'legacy-model' })).toBe('canonical-model');
+    });
+
+    it.each([
+      ['codex', 'OMC_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL', 'OMC_CODEX_DEFAULT_MODEL'],
+      ['gemini', 'OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL', 'OMC_GEMINI_DEFAULT_MODEL'],
+      ['antigravity', 'OMC_EXTERNAL_MODELS_DEFAULT_ANTIGRAVITY_MODEL', 'OMC_ANTIGRAVITY_DEFAULT_MODEL'],
+      ['grok', 'OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL', 'OMC_GROK_DEFAULT_MODEL'],
+      ['cursor', 'OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL', 'OMC_CURSOR_DEFAULT_MODEL'],
+    ] as const)('%s falls back to legacy env', (provider, canonical, legacy) => {
+      expect(resolveDefaultWorkerModel(provider, { [canonical]: '', [legacy]: 'legacy-model' })).toBe('legacy-model');
+    });
+
+    it('returns undefined when external provider config is absent', () => {
+      expect(resolveDefaultWorkerModel('cursor', {})).toBeUndefined();
     });
   });
   describe('worker launch descriptors', () => {

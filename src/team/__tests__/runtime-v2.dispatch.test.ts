@@ -68,6 +68,17 @@ const modelContractMocks = vi.hoisted(() => ({
   isPromptModeAgent: vi.fn(() => false),
   getPromptModeArgs: vi.fn((_agentType: string, instruction: string) => [instruction]),
   resolveClaudeWorkerModel: vi.fn(() => undefined),
+  resolveDefaultWorkerModel: vi.fn((agentType: string) => {
+    if (agentType === 'claude') return undefined;
+    const keys: Record<string, string[]> = {
+      codex: ['OMC_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL', 'OMC_CODEX_DEFAULT_MODEL'],
+      gemini: ['OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL', 'OMC_GEMINI_DEFAULT_MODEL'],
+      antigravity: ['OMC_EXTERNAL_MODELS_DEFAULT_ANTIGRAVITY_MODEL', 'OMC_ANTIGRAVITY_DEFAULT_MODEL'],
+      grok: ['OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL', 'OMC_GROK_DEFAULT_MODEL'],
+      cursor: ['OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL', 'OMC_CURSOR_DEFAULT_MODEL'],
+    };
+    return keys[agentType]?.map(key => process.env[key]).find(Boolean);
+  }),
   buildValidatedWorkerLaunchDescriptor: vi.fn((agentType: string, config: { model?: string; resolvedBinaryPath?: string }, appendedArgs: string[] = []) => {
     const [binary, ...args] = modelContractMocks.buildWorkerArgv(agentType, config);
     return { schema_version: 1, provider: agentType, model: config.model ?? null,
@@ -101,6 +112,7 @@ vi.mock('../model-contract.js', () => ({
   isPromptModeAgent: modelContractMocks.isPromptModeAgent,
   getPromptModeArgs: modelContractMocks.getPromptModeArgs,
   resolveClaudeWorkerModel: modelContractMocks.resolveClaudeWorkerModel,
+  resolveDefaultWorkerModel: modelContractMocks.resolveDefaultWorkerModel,
   buildValidatedWorkerLaunchDescriptor: modelContractMocks.buildValidatedWorkerLaunchDescriptor,
   validateWorkerLaunchDescriptor: modelContractMocks.validateWorkerLaunchDescriptor,
   assertHeadlessSupported: () => {},

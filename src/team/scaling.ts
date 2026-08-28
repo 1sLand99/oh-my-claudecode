@@ -19,7 +19,7 @@ import {
   buildWorkerArgv,
   clearResolvedPathCache,
   getWorkerEnv as getModelWorkerEnv,
-  resolveClaudeWorkerModel,
+  resolveDefaultWorkerModel,
   assertHeadlessSupported,
   resolveValidatedBinaryPath,
   validateWorkerLaunchDescriptor,
@@ -540,9 +540,9 @@ export async function scaleUpOwned(
           workerAgentType = primaryProvider;
           workerModel = primary.model;
         }
-      } else if (cliAgentType === 'claude') {
-        // Honor Bedrock/Vertex default-model resolution for non-routed claude workers.
-        workerModel = resolveClaudeWorkerModel(env);
+      } else {
+        // Honor provider-specific default-model resolution for non-routed workers.
+        workerModel = resolveDefaultWorkerModel(workerAgentType, env);
       }
 
       let launchBinary: string;
