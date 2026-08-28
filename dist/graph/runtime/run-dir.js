@@ -5,19 +5,102 @@
  * descriptor-supplied and therefore untrusted: resolving it must never let a
  * traversal-shaped id or a symlinked run directory redirect writes outside
  * the runs root. resolveRunDir validates, creates, and containment-checks
- * the directory, failing closed on any escape.
+ * the directory with a Linux directory FD, failing closed on any escape or
+ * on platforms without that primitive.
  */
-import { lstatSync, mkdirSync, realpathSync, statSync } from "fs";
-import { join, sep } from "path";
-import { ensureDirSync } from "../../lib/atomic-write.js";
+import { closeSync, constants as fsConstants, fstatSync, lstatSync, mkdirSync, openSync, realpathSync, } from "fs";
+import { join, resolve, sep } from "path";
 const RUN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const DIRECTORY_FLAGS = fsConstants.O_RDONLY |
+    (fsConstants.O_DIRECTORY ?? 0) |
+    (fsConstants.O_NOFOLLOW ?? 0);
+function fdPath(directoryFd, child) {
+    return child === undefined
+        ? `/proc/self/fd/${directoryFd}`
+        : `/proc/self/fd/${directoryFd}/${child}`;
+}
+function isErrno(error, code) {
+    return error.code === code;
+}
+function isSymbolicLink(path) {
+    try {
+        return lstatSync(path).isSymbolicLink();
+    }
+    catch {
+        return false;
+    }
+}
+/** Open an existing directory without following its final pathname component. */
+function openDirectory(path, label) {
+    try {
+        return openSync(path, DIRECTORY_FLAGS);
+    }
+    catch (error) {
+        // Linux reports ENOTDIR (rather than ELOOP) for O_DIRECTORY|O_NOFOLLOW
+        // when the final component is a symlink to a directory. The lstat is only
+        // used to preserve the fail-closed diagnostic; creation remains FD-bound.
+        if (isErrno(error, "ELOOP") || (isErrno(error, "ENOTDIR") && isSymbolicLink(path))) {
+            throw new Error(`${label} must not be a symbolic link`);
+        }
+        throw error;
+    }
+}
+/**
+ * Open or create one directory component below an already-open directory.
+ * Both the mkdir and the subsequent open are anchored at the parent FD, so a
+ * pathname replacement cannot redirect creation through a symlink.
+ */
+function openOrCreateDirectoryAt(parentFd, name, label) {
+    const childPath = fdPath(parentFd, name);
+    try {
+        return openDirectory(childPath, label);
+    }
+    catch (error) {
+        if (!isErrno(error, "ENOENT"))
+            throw error;
+        try {
+            mkdirSync(childPath);
+        }
+        catch (mkdirError) {
+            if (!isErrno(mkdirError, "EEXIST"))
+                throw mkdirError;
+        }
+        return openDirectory(childPath, label);
+    }
+}
+/**
+ * Securely open or create runsRoot one component at a time from `/`.
+ * This replaces recursive pathname mkdir, which can follow a component that
+ * is swapped for a symlink while the root is being created.
+ */
+function openOrCreateRunsRoot(runsRoot) {
+    const absoluteRoot = resolve(runsRoot);
+    const rootName = absoluteRoot.slice(0, 1) === sep ? sep : "";
+    const components = absoluteRoot
+        .slice(rootName.length)
+        .split(sep)
+        .filter((component) => component.length > 0);
+    let directoryFd = openDirectory(rootName || sep, "runs root");
+    try {
+        for (const component of components) {
+            const nextFd = openOrCreateDirectoryAt(directoryFd, component, "runs root");
+            closeSync(directoryFd);
+            directoryFd = nextFd;
+        }
+        return directoryFd;
+    }
+    catch (error) {
+        closeSync(directoryFd);
+        throw error;
+    }
+}
 /**
  * Resolve (and create) the contained run directory for one run.
  *
  * Returns the plain `join(runsRoot, runId)` path so existing relative
- * behaviors stay stable; containment is enforced against realpaths before
- * returning. Throws RangeError("invalid run_id") on malformed ids and Error
- * on symlinked or escaping directories.
+ * behaviors stay stable; containment is enforced against an open directory
+ * FD before returning. Throws RangeError("invalid run_id") on malformed ids
+ * and Error on symlinked or escaping directories.
  */
 export function resolveRunDir(runsRoot, runId) {
     return resolveRunDirHandle(runsRoot, runId).path;
@@ -35,31 +118,33 @@ export function resolveRunDirHandle(runsRoot, runId) {
         runId === "..") {
         throw new RangeError("invalid run_id");
     }
-    ensureDirSync(runsRoot);
-    const runsRootReal = realpathSync(runsRoot);
+    if (process.platform !== "linux") {
+        throw new Error(`contained directory-FD traversal is unavailable on ${process.platform}; refusing pathname fallback`);
+    }
     const target = join(runsRoot, runId);
-    let stats;
+    const runsRootFd = openOrCreateRunsRoot(runsRoot);
     try {
-        stats = lstatSync(target);
+        const runsRootReal = realpathSync(fdPath(runsRootFd));
+        // Keep the target directory open while both containment and identity are
+        // checked. Creation is rooted at the runs-root FD rather than at `target`.
+        // Thus replacing the root pathname or target pathname during mkdir cannot
+        // redirect creation through an attacker-controlled symlink.
+        const directoryFd = openOrCreateDirectoryAt(runsRootFd, runId, "run directory");
+        try {
+            const resolved = realpathSync(fdPath(directoryFd));
+            const prefixCmp = runsRootReal === sep ? sep : `${runsRootReal}${sep}`;
+            if (!resolved.startsWith(prefixCmp)) {
+                throw new Error(`run directory ${resolved} escapes the persistence root ${runsRootReal}`);
+            }
+            const identity = fstatSync(directoryFd);
+            return { path: target, device: identity.dev, inode: identity.ino };
+        }
+        finally {
+            closeSync(directoryFd);
+        }
     }
-    catch {
-        // Absent (ENOENT or stat failure): nothing to reject yet; created below.
+    finally {
+        closeSync(runsRootFd);
     }
-    if (stats !== undefined && stats.isSymbolicLink()) {
-        // Fail closed: a symlinked run dir could redirect every write below it.
-        throw new Error("run directory must not be a symbolic link");
-    }
-    mkdirSync(target, { recursive: true });
-    const resolved = realpathSync(target);
-    const isWin32 = process.platform === "win32";
-    const resolvedCmp = isWin32 ? resolved.toLowerCase() : resolved;
-    const prefixCmp = isWin32
-        ? `${runsRootReal}${sep}`.toLowerCase()
-        : `${runsRootReal}${sep}`;
-    if (!resolvedCmp.startsWith(prefixCmp)) {
-        throw new Error(`run directory ${resolved} escapes the persistence root ${runsRootReal}`);
-    }
-    const identity = statSync(target);
-    return { path: target, device: identity.dev, inode: identity.ino };
 }
 //# sourceMappingURL=run-dir.js.map

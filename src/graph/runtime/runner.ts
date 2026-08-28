@@ -36,7 +36,11 @@ import type { RunDirHandle } from "./run-dir.js";
 import { computeJournalFingerprint, FileJournal } from "./journal.js";
 import { FileOwnershipFence } from "./fence.js";
 import { FileProjectionStore } from "./store.js";
-import { readContainedFileNoFollow, withContainedPath } from "./safe-fs.js";
+import {
+  assertContainedFsSupported,
+  readContainedFileNoFollow,
+  withContainedPath,
+} from "./safe-fs.js";
 
 import { EXIT_CODES, FenceError, JournalCorruptionError } from "./types.js";
 import type {
@@ -60,6 +64,7 @@ import type {
 
 const DEFAULT_RUNS_ROOT_SEGMENTS = [".omc", "graph-runs"];
 const DESCRIPTOR_FILE_NAME = "descriptor.json";
+const REQUEST_FINGERPRINT_PATTERN = /^[a-f0-9]{64}$/;
 
 // ---------------------------------------------------------------------------
 // Deterministic synthetic identity scheme
@@ -165,6 +170,7 @@ function buildLiveNodeResultIdentities(
   descriptor: SealedGraphDescriptor,
   projection: GraphSchedulerProjection,
   nodeId: string,
+  activationId: string,
   output: NodeExecutionOutput,
 ): SchedulerTransitionIdentities | undefined {
   if (output.outcome === "failed") {
@@ -211,7 +217,7 @@ function buildLiveNodeResultIdentities(
   // this completion is the last arriving branch token of the cohort.
   const targetNode = sealedNode(descriptor, matchedEdge.to);
   if (targetNode?.kind === "join") {
-    return joinArrivalIdentities(descriptor, projection, nodeId, targetNode);
+    return joinArrivalIdentities(descriptor, projection, activationId, targetNode);
   }
   return {
     next_activation_ids: {
@@ -228,12 +234,12 @@ function buildLiveNodeResultIdentities(
 function joinArrivalIdentities(
   descriptor: SealedGraphDescriptor,
   projection: GraphSchedulerProjection,
-  nodeId: string,
+  activationId: string,
   joinNode: { readonly id: string },
 ): SchedulerTransitionIdentities | undefined {
   const sourceActivation = Object.values(projection.activations).find(
     (activation) =>
-      activation.node_id === nodeId &&
+      activation.activation_id === activationId &&
       activation.status === "running" &&
       activation.branch_token_id !== undefined,
   );
@@ -247,7 +253,7 @@ function joinArrivalIdentities(
     token.current_activation_id !== sourceActivation?.activation_id
   ) {
     throw new Error(
-      `activation for ${nodeId} does not hold an active branch token`,
+      `activation ${activationId} does not hold an active branch token`,
     );
   }
   const cohort = projection.cohorts[token.cohort_id];
@@ -376,6 +382,33 @@ function foldOneRecord(
   record: JournalRecord,
 ): GraphSchedulerProjection {
   const transition = record.transition;
+  // The scheduler recomputes the request fingerprint from the replay request,
+  // but it deliberately does not consume persisted transition metadata. Keep
+  // those fields explicit at the runtime boundary so a forged envelope cannot
+  // smuggle a foreign descriptor or fingerprint version through a valid fold.
+  if (
+    transition.descriptor_hash !== descriptor.descriptor_hash
+  ) {
+    throw new GraphSchedulerError(
+      "descriptor_mismatch",
+      `journal record ${record.seq} transition is bound to descriptor ${transition.descriptor_hash}`,
+    );
+  }
+  if (transition.fingerprint_version !== 1) {
+    throw new GraphSchedulerError(
+      "transition_fenced",
+      `journal record ${record.seq} has unsupported fingerprint_version ${String(transition.fingerprint_version)}`,
+    );
+  }
+  if (
+    typeof transition.request_fingerprint !== "string" ||
+    !REQUEST_FINGERPRINT_PATTERN.test(transition.request_fingerprint)
+  ) {
+    throw new GraphSchedulerError(
+      "transition_fenced",
+      `journal record ${record.seq} has invalid request_fingerprint metadata`,
+    );
+  }
   const { journal_fingerprint: recordedFingerprint, ...unsignedRecord } =
     record;
   if (recordedFingerprint !== computeJournalFingerprint(unsignedRecord)) {
@@ -412,6 +445,11 @@ function foldOneRecord(
         identities: buildReplayJoinIdentities(transition),
       });
       break;
+    default:
+      throw new GraphSchedulerError(
+        "transition_fenced",
+        `journal record ${record.seq} has an unknown transition outcome`,
+      );
   }
   // AC-11b content-tamper detection: a record whose fields were edited
   // after commit folds into a DIFFERENT recomputed request fingerprint.
@@ -491,15 +529,18 @@ export async function runGraph(
   sealed: SealedGraphDescriptor,
   options: RunOptions,
 ): Promise<RunResult> {
+  // Refuse unsupported POSIX platforms before resolving/acquiring any
+  // run-scoped ownership state. Node has no supported openat/f*at API, so a
+  // pathname fallback would make the containment guarantee raceable.
+  assertContainedFsSupported(process.platform);
   const runsRoot =
     options.runsRoot ?? join(process.cwd(), ...DEFAULT_RUNS_ROOT_SEGMENTS);
   const runId = sealed.run_id;
   // Contained run dir (P1-3): validates run_id, rejects symlink escapes, and
   // creates the directory before any persistence component touches disk.
   const runDirHandle: RunDirHandle = resolveRunDirHandle(runsRoot, runId);
-  const fence = new FileOwnershipFence(runsRoot, runId);
-  const journal = new FileJournal(runsRoot, runId);
-  const store = new FileProjectionStore(runsRoot, runId);
+  const fence = new FileOwnershipFence(runsRoot, runId, undefined, runDirHandle);
+  const store = new FileProjectionStore(runsRoot, runId, runDirHandle);
 
   const emit = (event: RuntimeProgressEvent): void => {
     options.reporter?.onEvent(event);
@@ -522,6 +563,15 @@ export async function runGraph(
     };
   }
   const epoch = acquired.epoch;
+  // Bind journal publication to this acquired ownership epoch.  The journal
+  // performs the final check while its append fd is open and rolls back a
+  // suffix when that check observes lease loss.
+  const journal = new FileJournal(
+    runsRoot,
+    runId,
+    runDirHandle,
+    () => fence.assertEpoch(epoch),
+  );
 
   // Phase gates which GraphSchedulerError maps to CORRUPT_JOURNAL(20):
   // startup/fold-phase scheduler errors mean tampered persisted state;
@@ -563,7 +613,18 @@ export async function runGraph(
 
     // Replay fold: always a full fold; the snapshot is a status cache only.
     phase = "fold";
+    // A persisted descriptor establishes a run identity.  It is not valid to
+    // resume that identity from an absent/empty journal: doing so would let a
+    // caller replay the entry activations as if no history existed.  Fresh
+    // descriptors are the sole exception; their journal is created by the
+    // first committed transition below.
     const records = await journal.readAll();
+    if (!descriptorIsFresh && records.length === 0) {
+      throw new GraphSchedulerError(
+        "transition_fenced",
+        `persisted descriptor for run ${runId} has no committed journal history`,
+      );
+    }
     let projection = initializeGraphProjection(
       stored,
       entryActivationIds(stored),
@@ -577,7 +638,7 @@ export async function runGraph(
         epoch,
         saved_at_seq: -1,
         projection,
-      });
+      }, () => fence.assertEpoch(epoch));
     }
     // Epoch provenance: takeovers only ever raise the epoch, so committed
     // history must be non-decreasing and must never exceed the epoch this
@@ -594,6 +655,12 @@ export async function runGraph(
         throw new GraphSchedulerError(
           "transition_fenced",
           `journal record ${record.seq} carries epoch ${record.epoch} outside fenced history (last ${lastRecordEpoch}, acquired ${epoch})`,
+        );
+      }
+      if (record.transition.descriptor_hash !== record.descriptor_hash) {
+        throw new GraphSchedulerError(
+          "descriptor_mismatch",
+          `journal record ${record.seq} transition descriptor does not match its envelope`,
         );
       }
       lastRecordEpoch = record.epoch;
@@ -638,7 +705,7 @@ export async function runGraph(
         epoch,
         saved_at_seq: seq,
         projection,
-      });
+      }, () => fence.assertEpoch(epoch));
     };
 
     /** Finds the executor registered for an executable node kind. */
@@ -774,6 +841,7 @@ export async function runGraph(
           sealed,
           projection,
           entry.nodeId,
+          entry.activationId,
           output,
         );
         const applied = applyNodeResult(sealed, projection, {
@@ -963,7 +1031,17 @@ export async function runGraph(
 
     // Release before emitting run_ended: if release throws, the catch path
     // emits the single run_ended for this run instead of a duplicate.
-    await fence.release(epoch);
+    const released = await fence.release(epoch);
+    if (!released) {
+      terminalResult = {
+        terminal: "failed",
+        run_id: runId,
+        descriptor_hash: stored.descriptor_hash,
+        epoch,
+        exit_code: EXIT_CODES.FENCED_OUT,
+      };
+      terminalSummary = "graph ownership lost before release";
+    }
     emit({
       type: "run_ended",
       terminal: terminalResult.terminal,

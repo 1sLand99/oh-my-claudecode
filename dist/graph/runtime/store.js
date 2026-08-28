@@ -7,7 +7,7 @@
  * (atomicWriteJsonSync); every read fails closed on corruption (AC-3).
  */
 import { join } from "path";
-import { atomicWriteJsonSync } from "../../lib/atomic-write.js";
+import { atomicWriteJsonSync, } from "../../lib/atomic-write.js";
 import { resolveRunDirHandle } from "./run-dir.js";
 import { readContainedFileNoFollow, withContainedPath } from "./safe-fs.js";
 const DESCRIPTOR_HASH_PATTERN = /^[a-f0-9]{64}$/;
@@ -65,21 +65,26 @@ function parseStoredEnvelope(raw) {
 export class FileProjectionStore {
     runsRoot;
     runId;
-    constructor(runsRoot, runId) {
+    handle;
+    constructor(runsRoot, runId, runDirHandle) {
         this.runsRoot = runsRoot;
         this.runId = runId;
-        resolveRunDirHandle(runsRoot, runId);
+        this.handle = runDirHandle;
+        if (this.handle === undefined) {
+            resolveRunDirHandle(runsRoot, runId);
+        }
     }
     runDir() {
-        return resolveRunDirHandle(this.runsRoot, this.runId);
+        return this.handle ?? resolveRunDirHandle(this.runsRoot, this.runId);
     }
-    async save(envelope) {
+    async save(envelope, assertOwnership) {
         if (envelope.schema_version !== 1) {
             throw new ProjectionStoreError("corrupt", "envelope schema_version must be 1");
         }
         // Binding check first (AC-3): the path is bound to one descriptor/run/revision.
         // A corrupt snapshot is a cache-miss here, not run-fatal: the journal is
         // the source of truth, so treat it as absent and proceed with the overwrite.
+        assertOwnership?.();
         let stored;
         try {
             stored = await this.load();
@@ -96,8 +101,22 @@ export class FileProjectionStore {
                 envelope.revision_id !== stored.revision_id)) {
             throw new ProjectionStoreError("descriptor_mismatch", `snapshot path bound to descriptor ${stored.descriptor_hash}, run ${stored.run_id}, revision ${stored.revision_id}`);
         }
+        if (stored !== null &&
+            (envelope.epoch < stored.epoch ||
+                (envelope.epoch === stored.epoch &&
+                    envelope.saved_at_seq < stored.saved_at_seq))) {
+            throw new ProjectionStoreError("corrupt", `projection snapshot regresses from epoch ${stored.epoch} seq ${stored.saved_at_seq} to epoch ${envelope.epoch} seq ${envelope.saved_at_seq}`);
+        }
         withContainedPath(this.runDir(), PROJECTION_FILE_NAME, (filePath) => {
-            atomicWriteJsonSync(filePath, envelope);
+            assertOwnership?.();
+            const hooks = assertOwnership
+                ? {
+                    beforeRename: assertOwnership,
+                    afterRename: assertOwnership,
+                }
+                : undefined;
+            atomicWriteJsonSync(filePath, envelope, hooks);
+            assertOwnership?.();
         });
     }
     async load() {

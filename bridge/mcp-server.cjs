@@ -27132,6 +27132,14 @@ var stateClearTool = {
     try {
       const root = resolveStateWorkingDirectory(workingDirectory);
       const sessionId = session_id;
+      if (mode === "ultrawork") {
+        try {
+          if ((0, import_fs25.lstatSync)((0, import_path27.join)((0, import_path27.resolve)(root), OmcPaths.ROOT)).isSymbolicLink()) {
+            return { content: [{ type: "text", text: `No state found to clear for mode: ${mode}` }] };
+          }
+        } catch {
+        }
+      }
       if (mode === "merge-readiness") {
         const cancelledSessions = [];
         const blockedSessions = [];

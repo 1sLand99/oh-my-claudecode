@@ -22,19 +22,26 @@ import {
   closeSync,
   constants as fsConstants,
   fstatSync,
+  linkSync,
+  lstatSync,
   mkdirSync,
-  openSync,
-  readFileSync,
+  readdirSync,
   renameSync,
-  statSync,
   unlinkSync,
   writeSync,
 } from "fs";
+import type { Stats } from "fs";
 import { randomBytes } from "crypto";
 import { dirname, join } from "path";
 import { atomicWriteFileSync } from "../../lib/atomic-write.js";
 import { isProcessAlive } from "../../platform/index.js";
-import { resolveRunDir } from "./run-dir.js";
+import { resolveRunDirHandle } from "./run-dir.js";
+import type { RunDirHandle } from "./run-dir.js";
+import {
+  openNoFollow,
+  readFileNoFollow,
+  withContainedDirectory,
+} from "./safe-fs.js";
 import { FenceError } from "./types.js";
 import type { FenceAcquireResult, FenceLockPayload, OwnershipFence } from "./types.js";
 
@@ -42,17 +49,57 @@ const DEFAULT_STALE_GRACE_MS = 30_000;
 const LOCK_FILE_NAME = "owner.lock";
 const EPOCH_FILE_NAME = "owner.epoch";
 
+interface LockIdentity {
+  readonly dev: number;
+  readonly ino: number;
+  readonly size: number;
+  readonly mtimeMs: number;
+  readonly payload: FenceLockPayload | null;
+}
+
+function isSafeEpoch(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value >= 1 &&
+    value <= Number.MAX_SAFE_INTEGER
+  );
+}
+
+function canIssueSuccessor(value: unknown): value is number {
+  return isSafeEpoch(value) && value < Number.MAX_SAFE_INTEGER;
+}
+
 /**
  * Highest epoch ever issued for this run, parsed from the sidecar; null when
  * the sidecar is missing or unreadable (fresh run / lost continuity).
  */
 function readSidecarCeiling(filePath: string): number | null {
+  let text: string;
   try {
-    const value = Number.parseInt(readFileSync(filePath, "utf8").trim(), 10);
-    return Number.isInteger(value) && value >= 1 ? value : null;
-  } catch {
-    return null;
+    text = readFileNoFollow(filePath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
   }
+  if (!/^[1-9][0-9]*$/.test(text)) {
+    throw new Error("owner.epoch is not a canonical plain integer");
+  }
+  const value = Number(text);
+  if (!Number.isSafeInteger(value) || String(value) !== text) {
+    throw new Error("owner.epoch is outside the safe integer range");
+  }
+  return value;
+}
+
+function lstatNoFollow(filePath: string): Stats {
+  const stats = lstatSync(filePath);
+  if (stats.isSymbolicLink()) {
+    const error = new Error(`symbolic link refused: ${filePath}`) as NodeJS.ErrnoException;
+    error.code = "ELOOP";
+    throw error;
+  }
+  return stats;
 }
 
 export interface FileOwnershipFenceOptions {
@@ -60,6 +107,10 @@ export interface FileOwnershipFenceOptions {
   readonly staleGraceMs?: number;
   /** Test-only interlock used to deterministically exercise takeover races. */
   readonly beforeTakeoverRename?: () => void;
+  /** Test-only interlock used to deterministically exercise release races. */
+  readonly beforeReleaseRename?: () => void;
+  /** Test-only interlock used to exercise failed-create cleanup races. */
+  readonly beforeEpochPersist?: () => void;
 }
 
 export class FileOwnershipFence implements OwnershipFence {
@@ -67,6 +118,9 @@ export class FileOwnershipFence implements OwnershipFence {
   private readonly runId?: string;
   private readonly staleGraceMs: number;
   private readonly beforeTakeoverRename?: () => void;
+  private readonly beforeReleaseRename?: () => void;
+  private readonly beforeEpochPersist?: () => void;
+  private handle?: RunDirHandle;
   /** fd of the held lock file while we own the run; null otherwise. */
   private fd: number | null = null;
   private heldEpoch: number | null = null;
@@ -81,35 +135,63 @@ export class FileOwnershipFence implements OwnershipFence {
     runsRoot: string,
     runId?: string,
     options?: FileOwnershipFenceOptions,
+    runDirHandle?: RunDirHandle,
   ) {
     this.runsRoot = runsRoot;
     this.runId = runId;
     this.staleGraceMs = options?.staleGraceMs ?? DEFAULT_STALE_GRACE_MS;
     this.beforeTakeoverRename = options?.beforeTakeoverRename;
+    this.beforeReleaseRename = options?.beforeReleaseRename;
+    this.beforeEpochPersist = options?.beforeEpochPersist;
+    this.handle = runDirHandle;
   }
 
-  private lockPath(): string {
+  private runDir(): RunDirHandle {
     if (this.runId === undefined) {
       throw new Error(
         "FileOwnershipFence is not bound to a run; pass runId to the constructor",
       );
     }
-    return join(resolveRunDir(this.runsRoot, this.runId), LOCK_FILE_NAME);
+    this.handle ??= resolveRunDirHandle(this.runsRoot, this.runId);
+    return this.handle;
+  }
+
+  private lockPath(directoryPath: string): string {
+    return join(directoryPath, LOCK_FILE_NAME);
   }
 
   async acquire(): Promise<FenceAcquireResult> {
-    const lockPath = this.lockPath();
+    return withContainedDirectory(this.runDir(), (directoryPath) =>
+      this.acquireAt(directoryPath),
+    );
+  }
+
+  private acquireAt(directoryPath: string): FenceAcquireResult {
+    const lockPath = this.lockPath(directoryPath);
     const epochFilePath = join(dirname(lockPath), EPOCH_FILE_NAME);
     let candidateEpoch = 1;
     // Each iteration makes progress toward either acquisition or a
     // live-holder busy. The sidecar ceiling is re-read every iteration
-    // because a concurrent racer may have persisted a higher epoch between
+    // concurrent racer may have persisted a higher epoch between
     // our attempts.
     for (;;) {
+      if (this.hasOrphanedTombstone(directoryPath)) {
+        // A contender must never create a new lock while a moved foreign
+        // inode has no live name. The owner performing the restoration may
+        // still be in flight, so report the same fail-closed busy outcome as
+        // any other concurrent takeover rather than racing it.
+        return { outcome: "busy" };
+      }
       const ceiling = readSidecarCeiling(epochFilePath);
+      if (ceiling === Number.MAX_SAFE_INTEGER) {
+        throw new Error("owner.epoch has no representable successor");
+      }
       // Never reissue an epoch the sidecar has seen; a missing/corrupt
       // sidecar imposes no floor (fresh runs still start at epoch 1).
       const candidate = Math.max(candidateEpoch, (ceiling ?? 0) + 1);
+      if (!isSafeEpoch(candidate)) {
+        throw new Error("owner epoch has no safe representable value");
+      }
       const fd = this.tryCreate(lockPath, epochFilePath, candidate);
       if (fd !== null) {
         this.fd = fd;
@@ -127,8 +209,9 @@ export class FileOwnershipFence implements OwnershipFence {
       // Dead pid or unparseable content: takeover only past the grace period.
       let ageMs: number;
       try {
-        ageMs = Date.now() - statSync(lockPath).mtimeMs;
-      } catch {
+        ageMs = Date.now() - lstatNoFollow(lockPath).mtimeMs;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ELOOP") throw error;
         continue; // Lock vanished under us; retry exclusive creation.
       }
       if (ageMs <= this.staleGraceMs) {
@@ -136,6 +219,11 @@ export class FileOwnershipFence implements OwnershipFence {
       }
 
       const staleIdentity = this.readLockIdentity(lockPath);
+      if (staleIdentity === null) {
+        // The path disappeared or became unreadable after the staleness
+        // check.  Do not rename an object we cannot positively identify.
+        continue;
+      }
       this.beforeTakeoverRename?.();
 
       // Takeover step: atomic rename to a unique tombstone. Exactly one
@@ -154,19 +242,13 @@ export class FileOwnershipFence implements OwnershipFence {
       // extra tombstone link and never adopt/delete its ownership.
       const movedIdentity = this.readLockIdentity(tombstone);
       if (!this.sameLockIdentity(staleIdentity, movedIdentity)) {
-        try {
-          if (!this.pathExists(lockPath)) {
-            renameSync(tombstone, lockPath);
-          } else {
-            unlinkSync(tombstone);
-          }
-        } catch {
-          try {
-            unlinkSync(tombstone);
-          } catch {
-            // Best effort cleanup of the foreign tombstone link.
-          }
-        }
+        // The object we moved was not the stale lock we inspected.  It is a
+        // foreign owner's lock; never unlink it and never overwrite a path
+        // that may have been recreated by another writer.  A no-replace hard
+        // link restores the live name when it is still absent.  Leaving the
+        // unique tombstone behind is intentional when restoration races: it
+        // is safer than deleting a foreign lock to tidy up our own name.
+        this.restoreForeignTombstone(lockPath, tombstone);
         continue;
       }
 
@@ -175,18 +257,30 @@ export class FileOwnershipFence implements OwnershipFence {
       // old_epoch 1; continuity then rests on the owner.epoch sidecar, and
       // only if BOTH are lost can an epoch value repeat. Ownership safety
       // comes from O_EXCL create + atomic rename, not from the epoch value.
-      let oldEpoch = 1; // fallback per protocol when unreadable
+      let oldEpoch = 1; // preserve corrupt-lock recovery for non-JSON content
       try {
-        const parsed: unknown = JSON.parse(readFileSync(tombstone, "utf8"));
+        const parsed: unknown = JSON.parse(readFileNoFollow(tombstone));
         if (
           parsed !== null &&
           typeof parsed === "object" &&
-          typeof (parsed as Record<string, unknown>).epoch === "number"
+          Object.prototype.hasOwnProperty.call(parsed, "epoch")
         ) {
-          oldEpoch = (parsed as Record<string, unknown>).epoch as number;
+          const epoch = (parsed as Record<string, unknown>).epoch;
+          if (!canIssueSuccessor(epoch)) {
+            throw new Error("stale lock epoch is not a safe integer");
+          }
+          oldEpoch = epoch;
         }
-      } catch {
-        // Unparseable tombstone: keep fallback old_epoch = 1.
+      } catch (error) {
+        if ((error as Error).message === "stale lock epoch is not a safe integer") {
+          try {
+            unlinkSync(tombstone);
+          } catch {
+            // Best effort cleanup of our own tombstone.
+          }
+          throw error;
+        }
+        // Unparseable JSON tombstone: keep fallback old_epoch = 1.
       }
       try {
         unlinkSync(tombstone); // safe: unique name we exclusively own
@@ -198,11 +292,17 @@ export class FileOwnershipFence implements OwnershipFence {
   }
 
   assertEpoch(epoch: number): void {
+    withContainedDirectory(this.runDir(), (directoryPath) =>
+      this.assertEpochAt(epoch, directoryPath),
+    );
+  }
+
+  private assertEpochAt(epoch: number, directoryPath: string): void {
     if (
       this.fd === null ||
       this.heldEpoch === null ||
       epoch !== this.heldEpoch ||
-      !this.holdsLiveLockFile(this.lockPath())
+      !this.holdsLiveLockFile(this.lockPath(directoryPath))
     ) {
       throw new FenceError(
         "fenced_out",
@@ -212,18 +312,26 @@ export class FileOwnershipFence implements OwnershipFence {
   }
 
   async release(epoch: number): Promise<boolean> {
+    return withContainedDirectory(this.runDir(), (directoryPath) =>
+      this.releaseAt(epoch, directoryPath),
+    );
+  }
+
+  private releaseAt(epoch: number, directoryPath: string): boolean {
     if (this.fd === null || this.heldEpoch === null || epoch !== this.heldEpoch) {
       return false;
     }
-    const lockPath = this.lockPath();
+    const lockPath = this.lockPath(directoryPath);
     // Identity check before any mutation: the file at the lock path must
     // still be OUR held file. A stale holder must never rename away a
     // replacement owner's lock planted at the same path.
-    if (!this.holdsLiveLockFile(lockPath)) {
+    const heldIdentity = this.readLockIdentity(lockPath);
+    if (heldIdentity === null || !this.holdsLiveLockFile(lockPath)) {
       // We no longer own the run; leave whatever is there untouched.
       this.clearHeld();
       return false;
     }
+    this.beforeReleaseRename?.();
     const tombstone = `${lockPath}.tomb.${randomBytes(6).toString("hex")}`;
     try {
       renameSync(lockPath, tombstone);
@@ -234,6 +342,18 @@ export class FileOwnershipFence implements OwnershipFence {
         return false;
       }
       throw error;
+    }
+    const movedIdentity = this.readLockIdentity(tombstone);
+    if (!this.sameLockIdentity(heldIdentity, movedIdentity)) {
+      // The live path changed after our identity check.  We moved a foreign
+      // lock, so restore it without replacement and do not delete its only
+      // directory entry.  The held fd is closed below; ownership is lost.
+      try {
+        this.restoreForeignTombstone(lockPath, tombstone);
+      } finally {
+        this.clearHeld();
+      }
+      return false;
     }
     this.clearHeld();
     try {
@@ -259,7 +379,7 @@ export class FileOwnershipFence implements OwnershipFence {
     mkdirSync(dirname(lockPath), { recursive: true });
     let fd: number;
     try {
-      fd = openSync(
+      fd = openNoFollow(
         lockPath,
         fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY,
         0o600,
@@ -277,18 +397,17 @@ export class FileOwnershipFence implements OwnershipFence {
         timestamp: Date.now(),
       };
       writeSync(fd, JSON.stringify(payload), null, "utf8");
+      this.beforeEpochPersist?.();
       // Persist epoch continuity while we still hold exclusive ownership of
       // the just-created lock (temp+rename inside; failure cleans up below).
       atomicWriteFileSync(epochFilePath, String(epoch));
     } catch (error) {
+      const createdIdentity = this.identityFromFd(fd);
       closeSync(fd);
-      // We exclusively created this file moments ago; removing our own
-      // partial write is not a read-then-unlink of a foreign lock.
-      try {
-        unlinkSync(lockPath);
-      } catch {
-        // Best effort.
-      }
+      // The path may have been replaced while writing the payload or
+      // persisting owner.epoch.  Move-then-identify cleanup removes only the
+      // inode we created; a replacement is restored/no-replace preserved.
+      this.cleanupCreatedLock(lockPath, createdIdentity);
       throw error;
     }
     return fd;
@@ -297,7 +416,7 @@ export class FileOwnershipFence implements OwnershipFence {
   /** Best-effort parse of the lock payload; null when absent/unparseable. */
   private readPayload(lockPath: string): FenceLockPayload | null {
     try {
-      const parsed: unknown = JSON.parse(readFileSync(lockPath, "utf8"));
+      const parsed: unknown = JSON.parse(readFileNoFollow(lockPath));
       if (parsed === null || typeof parsed !== "object") {
         return null;
       }
@@ -305,7 +424,7 @@ export class FileOwnershipFence implements OwnershipFence {
       if (
         typeof record.pid !== "number" ||
         !Number.isInteger(record.pid) ||
-        typeof record.epoch !== "number" ||
+        !isSafeEpoch(record.epoch) ||
         typeof record.timestamp !== "number"
       ) {
         return null;
@@ -320,15 +439,11 @@ export class FileOwnershipFence implements OwnershipFence {
     }
   }
 
-  private readLockIdentity(lockPath: string): {
-    readonly ino: number;
-    readonly size: number;
-    readonly mtimeMs: number;
-    readonly payload: FenceLockPayload | null;
-  } | null {
+  private readLockIdentity(lockPath: string): LockIdentity | null {
     try {
-      const stats = statSync(lockPath);
+      const stats = lstatNoFollow(lockPath);
       return {
+        dev: stats.dev,
         ino: stats.ino,
         size: stats.size,
         mtimeMs: stats.mtimeMs,
@@ -340,13 +455,14 @@ export class FileOwnershipFence implements OwnershipFence {
   }
 
   private sameLockIdentity(
-    left: ReturnType<FileOwnershipFence["readLockIdentity"]>,
-    right: ReturnType<FileOwnershipFence["readLockIdentity"]>,
+    left: LockIdentity | null,
+    right: LockIdentity | null,
   ): boolean {
     if (left === null || right === null) return false;
     const leftPayload = left.payload;
     const rightPayload = right.payload;
     return (
+      left.dev === right.dev &&
       left.ino === right.ino &&
       left.size === right.size &&
       left.mtimeMs === right.mtimeMs &&
@@ -356,18 +472,103 @@ export class FileOwnershipFence implements OwnershipFence {
     );
   }
 
-  private pathExists(path: string): boolean {
+  private sameFileIdentity(
+    left: LockIdentity | null,
+    right: LockIdentity | null,
+  ): boolean {
+    return (
+      left !== null &&
+      right !== null &&
+      left.dev === right.dev &&
+      left.ino === right.ino
+    );
+  }
+
+  private identityFromFd(fd: number): LockIdentity | null {
     try {
-      statSync(path);
-      return true;
+      const stats = fstatSync(fd);
+      return {
+        dev: stats.dev,
+        ino: stats.ino,
+        size: stats.size,
+        mtimeMs: stats.mtimeMs,
+        payload: null,
+      };
     } catch {
-      return false;
+      return null;
     }
+  }
+
+  /** Restore a foreign tombstone without replacing a path or deleting it. */
+  private restoreForeignTombstone(lockPath: string, tombstone: string): void {
+    try {
+      // linkSync never replaces an existing destination.  If it races with a
+      // new owner, keep both entries rather than unlinking the foreign inode.
+      linkSync(tombstone, lockPath);
+      unlinkSync(tombstone);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+        // A concurrent owner already restored/planted the live path. Only
+        // remove our tombstone when it is the same inode; never hide a
+        // distinct foreign lock behind an orphaned alias.
+        const liveIdentity = this.readLockIdentity(lockPath);
+        const tombstoneIdentity = this.readLockIdentity(tombstone);
+        if (this.sameLockIdentity(liveIdentity, tombstoneIdentity)) {
+          unlinkSync(tombstone);
+          return;
+        }
+        throw new Error("foreign lock restoration raced with another inode");
+      }
+      // Never continue acquisition with an orphaned foreign lock. The
+      // tombstone remains durable for an operator/recovery process to repair.
+      throw new Error(
+        `foreign lock tombstone could not be restored: ${String(
+          (error as Error).message ?? error,
+        )}`,
+      );
+    }
+  }
+
+  /** A failed foreign restoration leaves a tombstone that must block takeover. */
+  private hasOrphanedTombstone(directoryPath: string): boolean {
+    try {
+      return readdirSync(directoryPath).some((entry) =>
+        entry.startsWith(`${LOCK_FILE_NAME}.tomb.`),
+      );
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+      throw error;
+    }
+  }
+
+  /** Remove only a lock inode positively identified as ours after create. */
+  private cleanupCreatedLock(
+    lockPath: string,
+    createdIdentity: LockIdentity | null,
+  ): void {
+    if (createdIdentity === null) return;
+    const tombstone = `${lockPath}.tomb.${randomBytes(6).toString("hex")}`;
+    try {
+      renameSync(lockPath, tombstone);
+    } catch {
+      // The path vanished or another writer owns it; do not mutate anything.
+      return;
+    }
+    const movedIdentity = this.readLockIdentity(tombstone);
+    if (this.sameFileIdentity(createdIdentity, movedIdentity)) {
+      try {
+        unlinkSync(tombstone);
+      } catch {
+        // Best effort cleanup of our own tombstone.
+      }
+      return;
+    }
+    this.restoreForeignTombstone(lockPath, tombstone);
   }
 
   /**
    * Verify the file currently at lockPath is still the exact file we hold an
-   * fd for: same inode and size (fstatSync on our held fd vs statSync on the
+   * fd for: same inode and size (fstatSync on our held fd vs lstatSync on the
    * path) AND payload epoch matching heldEpoch. Any stat failure or mismatch
    * fails closed — the caller must not mutate the path.
    */
@@ -377,7 +578,7 @@ export class FileOwnershipFence implements OwnershipFence {
     }
     try {
       const ours = fstatSync(this.fd);
-      const theirs = statSync(lockPath);
+      const theirs = lstatNoFollow(lockPath);
       if (ours.ino !== theirs.ino || ours.size !== theirs.size) {
         return false;
       }

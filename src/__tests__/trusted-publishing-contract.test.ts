@@ -157,6 +157,8 @@ describe('npm trusted publishing contract', () => {
       'node scripts/release-boundary.mjs verify-registry --package oh-my-claude-sisyphus --version "$VERSION" --tag "$GITHUB_REF_NAME" --sha "$GITHUB_SHA" --evidence "$EVIDENCE_JSON" --tarball "$FINAL_TARBALL" --provenance required --audit "$AUDIT_JSON"',
     );
     expect(releaseJob).toContain('body_path: release-notes.md');
+    expect(releaseJob).toContain('Assert clean deterministic tracked tree before archive');
+    expect(releaseJob).toContain('git restore --worktree dist bridge hooks/hooks.json');
     expect(releaseJob).toContain('GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}');
     expect(releaseJob).not.toContain('generate_release_notes: true');
     expect(releaseJob).not.toMatch(/(?:^|[^A-Z_])GH_TOKEN(?:[^A-Z_]|$)/m);
