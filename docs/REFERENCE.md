@@ -863,6 +863,7 @@ Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files 
 | `execute`                 | Carry an approved task through to working, verified code                       | `/oh-my-claudecode:execute`                |
 | `external-context`        | Parallel document-specialist research                                          | `/oh-my-claudecode:external-context`       |
 | `hud`                     | Configure HUD/statusline                                                        | `/oh-my-claudecode:hud`                     |
+| `minimal-code-discipline` | YAGNI-ladder writing-time discipline: reuse first, shortest correct diff        | `/oh-my-claudecode:minimal-code-discipline` |
 | `omc-doctor`              | Diagnose and fix installation issues                                           | `/oh-my-claudecode:omc-doctor`              |
 | `omc-plan`                | Strategic planning with optional interview and consensus modes                 | `/oh-my-claudecode:omc-plan`               |
 | `omc-review`              | Evaluate finished work for defects, risk, and simplification                   | `/oh-my-claudecode:omc-review`             |
@@ -907,6 +908,7 @@ Most installed skills are exposed as `/oh-my-claudecode:<skill-name>`. Deep Inte
 | `/oh-my-claudecode:execute <task>`                      | Carry an approved task through to working, verified code                                      |
 | `/oh-my-claudecode:external-context <topic>`             | Run parallel document-specialist research                                                     |
 | `/oh-my-claudecode:hud [setup\|minimal\|focused\|full\|status]` | Configure HUD/statusline                                                               |
+| `/oh-my-claudecode:minimal-code-discipline`              | Apply the YAGNI-ladder writing-time discipline while implementing                              |
 | `/oh-my-claudecode:omc-doctor`                           | Diagnose and fix installation issues                                                          |
 | `/oh-my-claudecode:omc-plan <description>`               | Start planning session (supports consensus structured deliberation)                           |
 | `/oh-my-claudecode:omc-review [path]`                    | Review finished work for defects and risk                                                       |

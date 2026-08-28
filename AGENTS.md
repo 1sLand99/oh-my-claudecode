@@ -203,6 +203,7 @@ Workflow Skills:
 - `deep-interview`: Socratic deep interview with Ouroboros-inspired mathematical ambiguity gating before execution
 - `ralplan`: Iterative consensus planning with RALPLAN-DR structured deliberation (planner + architect + critic); supports `--deliberate` for high-risk work
 - `ai-slop-cleaner`: Regression-safe cleanup workflow for duplicate code, dead code, needless abstractions, and boundary violations; supports `--review` for reviewer-only passes
+- `minimal-code-discipline`: YAGNI-ladder writing-time discipline — existence-first, reuse before writing, shortest correct diff, with non-negotiables that are never minimized away
 
 Agent Shortcuts:
 - `analyze` -> debugger: Investigation and root-cause analysis

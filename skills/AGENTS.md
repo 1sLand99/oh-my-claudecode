@@ -1,9 +1,9 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-01-28 | Updated: 2026-03-02 -->
+<!-- Generated: 2026-01-28 | Updated: 2026-08-28 -->
 
 # skills
 
-30 skill directories for workflow automation and specialized behaviors.
+33 skill directories for workflow automation and specialized behaviors.
 
 ## Purpose
 
@@ -49,6 +49,7 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-claudecod
 | File | Skill | Purpose |
 |-----------|-------|---------|
 | `ai-slop-cleaner/SKILL.md` | ai-slop-cleaner | Regression-safe cleanup workflow for AI-generated code slop |
+| `minimal-code-discipline/SKILL.md` | minimal-code-discipline | YAGNI-ladder writing-time discipline: existence-first, reuse before writing, shortest correct diff |
 | `skillify/SKILL.md` | skillify | Extract reusable skill from session |
 | `learner/SKILL.md` | learner | Deprecated compatibility alias/internal implementation history for skillify |
 | `ask/SKILL.md` | ask | Ask Claude, Codex, or Gemini via `omc ask` and capture an artifact |
