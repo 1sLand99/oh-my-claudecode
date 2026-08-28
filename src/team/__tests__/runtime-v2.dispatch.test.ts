@@ -68,7 +68,7 @@ const modelContractMocks = vi.hoisted(() => ({
   isPromptModeAgent: vi.fn(() => false),
   getPromptModeArgs: vi.fn((_agentType: string, instruction: string) => [instruction]),
   resolveClaudeWorkerModel: vi.fn(() => undefined),
-  resolveDefaultWorkerModel: vi.fn((agentType: string) => {
+  resolveDefaultWorkerModel: vi.fn((agentType: string, _env?: NodeJS.ProcessEnv, defaults?: { cursorModel?: string }) => {
     if (agentType === 'claude') return undefined;
     const keys: Record<string, string[]> = {
       codex: ['OMC_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL', 'OMC_CODEX_DEFAULT_MODEL'],
@@ -77,7 +77,7 @@ const modelContractMocks = vi.hoisted(() => ({
       grok: ['OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL', 'OMC_GROK_DEFAULT_MODEL'],
       cursor: ['OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL', 'OMC_CURSOR_DEFAULT_MODEL'],
     };
-    return keys[agentType]?.map(key => process.env[key]).find(Boolean);
+    return keys[agentType]?.map(key => process.env[key]).find(Boolean) ?? (agentType === 'cursor' ? defaults?.cursorModel : undefined);
   }),
   buildValidatedWorkerLaunchDescriptor: vi.fn((agentType: string, config: { model?: string; resolvedBinaryPath?: string }, appendedArgs: string[] = []) => {
     const [binary, ...args] = modelContractMocks.buildWorkerArgv(agentType, config);

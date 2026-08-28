@@ -540,6 +540,9 @@ export async function scaleUpOwned(
           workerAgentType = primaryProvider;
           workerModel = primary.model;
         }
+        if (!workerModel) {
+          workerModel = resolveDefaultWorkerModel(workerAgentType, env);
+        }
       } else {
         // Honor provider-specific default-model resolution for non-routed workers.
         workerModel = resolveDefaultWorkerModel(workerAgentType, env);

@@ -258,6 +258,23 @@ describe('scaleUp duplicate worker guard', () => {
     ]);
   });
 
+  it.each(['claude', 'codex', 'gemini', 'antigravity', 'grok', 'cursor'] as const)(
+    'passes the shared default model through unrouted scale-up for %s', async (provider) => {
+      config = makeConfig({ agent_type: provider, next_worker_index: 2 });
+      const model = `${provider}-default-model`;
+      modelContractMocks.resolveDefaultWorkerModel.mockReturnValue(model);
+      modelContractMocks.buildWorkerArgv.mockImplementation((_agentType: string, options: { model?: string }) => [
+        `/usr/bin/${provider}`, ...(options.model ? ['--model', options.model] : []),
+      ]);
+
+      const result = await scaleUp('demo-team', 1, provider, [{ subject: 'demo', description: 'demo task' }], cwd,
+        { OMC_TEAM_SCALING_ENABLED: '1', OMC_TEAM_SKIP_READY_WAIT: '1' } as NodeJS.ProcessEnv);
+
+      expect(result).toMatchObject({ ok: true });
+      expect(modelContractMocks.resolveDefaultWorkerModel).toHaveBeenCalledWith(provider, expect.anything());
+      expect(modelContractMocks.buildWorkerArgv).toHaveBeenCalledWith(provider, expect.objectContaining({ model }));
+    }, 30000);
+
   it('keeps the active scale-up fence revision aligned through normal worker reservation and commit', async () => {
     config = makeConfig({ state_revision: 4, next_worker_index: 2, worktree_mode: 'disabled' });
     const snapshots: TeamConfig[] = [];
