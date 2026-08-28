@@ -12611,7 +12611,7 @@
       "pullNumber": 3887,
       "targetRef": "main",
       "mergeBaseSha": "781a99cb69683efede9002f9f71e04a219271975",
-      "headSha": "83a099eb0de62f8c257eaad2618eb1e2d4e02ba6",
+      "headSha": "8a38b073db371ea4661d5f989dc478ff37269019",
       "owner": "Yeachan-Heo",
       "expiresAt": "2026-09-10T00:00:00.000Z",
       "generatedDelta": {
@@ -12914,6 +12914,48 @@
           "previousFilename": null
         },
         {
+          "status": "removed",
+          "filename": "dist/hooks/keyword-detector/ultrawork/antigravity.js",
+          "sha": "a6e495dd8f552464cecf26a228d1d566dc0be797",
+          "previousFilename": null
+        },
+        {
+          "status": "removed",
+          "filename": "dist/hooks/keyword-detector/ultrawork/default.js",
+          "sha": "2f3df0fc531b5f4079106f11e52724c26624e00d",
+          "previousFilename": null
+        },
+        {
+          "status": "removed",
+          "filename": "dist/hooks/keyword-detector/ultrawork/gemini.js",
+          "sha": "928a615fa2bb4445b7a2cb118df556e1ac9a282b",
+          "previousFilename": null
+        },
+        {
+          "status": "removed",
+          "filename": "dist/hooks/keyword-detector/ultrawork/gpt.js",
+          "sha": "d1691d5a2ec04d30b19f99da283d18db9b2b01b3",
+          "previousFilename": null
+        },
+        {
+          "status": "removed",
+          "filename": "dist/hooks/keyword-detector/ultrawork/index.js",
+          "sha": "84f3c1195652015e6eb2cfcdf18187a268722980",
+          "previousFilename": null
+        },
+        {
+          "status": "removed",
+          "filename": "dist/hooks/keyword-detector/ultrawork/planner.js",
+          "sha": "ee32541c99164ae7c24e5186e4be76bcbe145b24",
+          "previousFilename": null
+        },
+        {
+          "status": "removed",
+          "filename": "dist/hooks/keyword-detector/ultrawork/source-detector.js",
+          "sha": "52b1cac80dbb8d507eb91ec1cf9f5cd909abb42d",
+          "previousFilename": null
+        },
+        {
           "status": "modified",
           "filename": "dist/hooks/merge-readiness/runtime.js",
           "sha": "823dec3d676b433387c864f75271101a10b25363",
@@ -13067,6 +13109,12 @@
           "status": "modified",
           "filename": "dist/hooks/team-pipeline/state.js",
           "sha": "4e731f32f68f903f343521f720d653319064a9db",
+          "previousFilename": null
+        },
+        {
+          "status": "removed",
+          "filename": "dist/hooks/ultrawork/index.js",
+          "sha": "5c6da6d8619301dbc3743835fbc1b576d4e2a933",
           "previousFilename": null
         },
         {
