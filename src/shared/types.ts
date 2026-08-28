@@ -354,6 +354,7 @@ export interface ExternalModelsDefaults {
   geminiModel?: string;
   grokModel?: string;
   antigravityModel?: string;
+  cursorModel?: string;
 }
 
 /**
