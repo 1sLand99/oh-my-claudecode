@@ -3467,9 +3467,7 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
     resolved_routing_roles: Object.keys(pluginCfg.team?.roleRouting ?? {})
       .map(role => normalizeDelegationRole(role))
       .filter((role): role is CanonicalTeamRole => (CANONICAL_TEAM_ROLES as readonly string[]).includes(role)),
-    ...(externalModelsDefaults
-      ? { external_models_defaults: externalModelsDefaults }
-      : {}),
+    external_models_defaults: externalModelsDefaults,
     workspace_mode: workspaceMode,
     worktree_mode: worktreeMode,
     service_descriptor: config.autoMerge

@@ -531,6 +531,7 @@ export async function scaleUpOwned(
       // passing `--agent-type codex` stay on codex regardless of task text.
       const hasExplicitOwnedRole = ownedRoles.length === 1;
       const hasConfiguredRoute = canonical !== null && config.resolved_routing_roles?.includes(canonical) === true;
+      const scaleEnv = config.external_models_defaults === undefined ? env : {};
       const routedPair = canonical && (hasConfiguredRoute || (hasExplicitOwnedRole && workerAgentType === 'claude'))
         ? config.resolved_routing?.[canonical]
         : undefined;
@@ -542,11 +543,11 @@ export async function scaleUpOwned(
           workerModel = primary.model;
         }
         if (!workerModel) {
-          workerModel = resolveDefaultWorkerModel(workerAgentType, env, config.external_models_defaults);
+          workerModel = resolveDefaultWorkerModel(workerAgentType, scaleEnv, config.external_models_defaults);
         }
       } else {
         // Honor provider-specific default-model resolution for non-routed workers.
-        workerModel = resolveDefaultWorkerModel(workerAgentType, env, config.external_models_defaults);
+        workerModel = resolveDefaultWorkerModel(workerAgentType, scaleEnv, config.external_models_defaults);
       }
 
       let launchBinary: string;

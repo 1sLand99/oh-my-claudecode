@@ -300,7 +300,7 @@ describe('scaleUp launch config', () => {
     expect(result).toMatchObject({ ok: true });
     expect(modelContractMocks.resolveDefaultWorkerModel).toHaveBeenCalledWith(
       'cursor',
-      expect.objectContaining({ OMC_TEAM_SCALING_ENABLED: '1' }),
+      {},
       { cursorModel: 'composer-2.5' },
     );
     expect(modelContractMocks.buildWorkerArgv).toHaveBeenCalledWith(

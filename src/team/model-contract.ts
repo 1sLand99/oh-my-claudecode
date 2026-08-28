@@ -629,7 +629,7 @@ export function normalizeExternalModelsDefaults(defaults?: ExternalModelsDefault
 export function resolveExternalModelsDefaults(
   defaults?: ExternalModelsDefaults,
   env: NodeJS.ProcessEnv = process.env,
-): ExternalModelsDefaults | undefined {
+): ExternalModelsDefaults {
   const normalized = normalizeExternalModelsDefaults(defaults) ?? {};
   for (const [provider, key] of [
     ['CODEX', 'codexModel'], ['GEMINI', 'geminiModel'], ['GROK', 'grokModel'],
@@ -641,7 +641,7 @@ export function resolveExternalModelsDefaults(
       .find(Boolean);
     if (value) normalized[key] = value;
   }
-  return Object.keys(normalized).length > 0 ? normalized : undefined;
+  return normalized;
 }
 
 /**
