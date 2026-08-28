@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "232e79d7b86bcd7fc1443e3718b2c5f91faa6655",
-    "sourceSha256": "f23355c79014b704fabf09cf576825c63baaab15db78de2e89038df3d24c6edb",
+    "head": "4e0c406d0c2bc8f4021ac21cc5619a5621d23289",
+    "sourceSha256": "3c264e96dd2a5b266f05d63c59aea34c68cda24423f314aa31a67498428950f5",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "232e79d7b86bcd7fc1443e3718b2c5f91faa6655",
-  "sourceSha256": "f23355c79014b704fabf09cf576825c63baaab15db78de2e89038df3d24c6edb",
+  "head": "4e0c406d0c2bc8f4021ac21cc5619a5621d23289",
+  "sourceSha256": "3c264e96dd2a5b266f05d63c59aea34c68cda24423f314aa31a67498428950f5",
   "counts": {
     "public": {
       "skills": 32,
@@ -32,9 +32,9 @@
       "total": 1329
     },
     "generated": {
-      "distFiles": 5004,
+      "distFiles": 4968,
       "bridgeFiles": 9,
-      "total": 5013
+      "total": 4977
     },
     "prompt": {
       "promptLikeFiles": 62
@@ -2967,31 +2967,6 @@
       "dist/hooks/keyword-detector/index.d.ts.map",
       "dist/hooks/keyword-detector/index.js",
       "dist/hooks/keyword-detector/index.js.map",
-      "dist/hooks/keyword-detector/ultrawork/__tests__/index.test.d.ts",
-      "dist/hooks/keyword-detector/ultrawork/__tests__/index.test.d.ts.map",
-      "dist/hooks/keyword-detector/ultrawork/__tests__/index.test.js",
-      "dist/hooks/keyword-detector/ultrawork/__tests__/index.test.js.map",
-      "dist/hooks/keyword-detector/ultrawork/antigravity.d.ts",
-      "dist/hooks/keyword-detector/ultrawork/antigravity.d.ts.map",
-      "dist/hooks/keyword-detector/ultrawork/antigravity.js.map",
-      "dist/hooks/keyword-detector/ultrawork/default.d.ts",
-      "dist/hooks/keyword-detector/ultrawork/default.d.ts.map",
-      "dist/hooks/keyword-detector/ultrawork/default.js.map",
-      "dist/hooks/keyword-detector/ultrawork/gemini.d.ts",
-      "dist/hooks/keyword-detector/ultrawork/gemini.d.ts.map",
-      "dist/hooks/keyword-detector/ultrawork/gemini.js.map",
-      "dist/hooks/keyword-detector/ultrawork/gpt.d.ts",
-      "dist/hooks/keyword-detector/ultrawork/gpt.d.ts.map",
-      "dist/hooks/keyword-detector/ultrawork/gpt.js.map",
-      "dist/hooks/keyword-detector/ultrawork/index.d.ts",
-      "dist/hooks/keyword-detector/ultrawork/index.d.ts.map",
-      "dist/hooks/keyword-detector/ultrawork/index.js.map",
-      "dist/hooks/keyword-detector/ultrawork/planner.d.ts",
-      "dist/hooks/keyword-detector/ultrawork/planner.d.ts.map",
-      "dist/hooks/keyword-detector/ultrawork/planner.js.map",
-      "dist/hooks/keyword-detector/ultrawork/source-detector.d.ts",
-      "dist/hooks/keyword-detector/ultrawork/source-detector.d.ts.map",
-      "dist/hooks/keyword-detector/ultrawork/source-detector.js.map",
       "dist/hooks/learner/auto-invoke.d.ts",
       "dist/hooks/learner/auto-invoke.d.ts.map",
       "dist/hooks/learner/auto-invoke.js",
@@ -3729,17 +3704,6 @@
       "dist/hooks/todo-continuation/index.d.ts.map",
       "dist/hooks/todo-continuation/index.js",
       "dist/hooks/todo-continuation/index.js.map",
-      "dist/hooks/ultrawork/__tests__/prompt-truncation.test.d.ts",
-      "dist/hooks/ultrawork/__tests__/prompt-truncation.test.d.ts.map",
-      "dist/hooks/ultrawork/__tests__/prompt-truncation.test.js",
-      "dist/hooks/ultrawork/__tests__/prompt-truncation.test.js.map",
-      "dist/hooks/ultrawork/index.d.ts",
-      "dist/hooks/ultrawork/index.d.ts.map",
-      "dist/hooks/ultrawork/index.js.map",
-      "dist/hooks/ultrawork/session-isolation.test.d.ts",
-      "dist/hooks/ultrawork/session-isolation.test.d.ts.map",
-      "dist/hooks/ultrawork/session-isolation.test.js",
-      "dist/hooks/ultrawork/session-isolation.test.js.map",
       "dist/hooks/wiki/__tests__/cjk-tokenize.test.d.ts",
       "dist/hooks/wiki/__tests__/cjk-tokenize.test.d.ts.map",
       "dist/hooks/wiki/__tests__/cjk-tokenize.test.js",
@@ -18036,131 +18000,6 @@
         "path": "dist/hooks/keyword-detector/index.js.map"
       },
       {
-        "id": "dist/hooks/keyword-detector/ultrawork/__tests__/index.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/__tests__/index.test.d.ts"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/__tests__/index.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/__tests__/index.test.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/__tests__/index.test.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/__tests__/index.test.js"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/__tests__/index.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/__tests__/index.test.js.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/antigravity.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/antigravity.d.ts"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/antigravity.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/antigravity.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/antigravity.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/antigravity.js.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/default.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/default.d.ts"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/default.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/default.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/default.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/default.js.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/gemini.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/gemini.d.ts"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/gemini.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/gemini.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/gemini.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/gemini.js.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/gpt.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/gpt.d.ts"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/gpt.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/gpt.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/gpt.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/gpt.js.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/index.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/index.d.ts"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/index.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/index.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/index.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/index.js.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/planner.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/planner.d.ts"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/planner.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/planner.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/planner.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/planner.js.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/source-detector.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/source-detector.d.ts"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/source-detector.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/source-detector.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/keyword-detector/ultrawork/source-detector.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/keyword-detector/ultrawork/source-detector.js.map"
-      },
-      {
         "id": "dist/hooks/learner/auto-invoke.d.ts",
         "kind": "generated-dist",
         "path": "dist/hooks/learner/auto-invoke.d.ts"
@@ -21844,61 +21683,6 @@
         "id": "dist/hooks/todo-continuation/index.js.map",
         "kind": "generated-dist",
         "path": "dist/hooks/todo-continuation/index.js.map"
-      },
-      {
-        "id": "dist/hooks/ultrawork/__tests__/prompt-truncation.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/ultrawork/__tests__/prompt-truncation.test.d.ts"
-      },
-      {
-        "id": "dist/hooks/ultrawork/__tests__/prompt-truncation.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/ultrawork/__tests__/prompt-truncation.test.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/ultrawork/__tests__/prompt-truncation.test.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/ultrawork/__tests__/prompt-truncation.test.js"
-      },
-      {
-        "id": "dist/hooks/ultrawork/__tests__/prompt-truncation.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/ultrawork/__tests__/prompt-truncation.test.js.map"
-      },
-      {
-        "id": "dist/hooks/ultrawork/index.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/ultrawork/index.d.ts"
-      },
-      {
-        "id": "dist/hooks/ultrawork/index.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/ultrawork/index.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/ultrawork/index.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/ultrawork/index.js.map"
-      },
-      {
-        "id": "dist/hooks/ultrawork/session-isolation.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/hooks/ultrawork/session-isolation.test.d.ts"
-      },
-      {
-        "id": "dist/hooks/ultrawork/session-isolation.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/ultrawork/session-isolation.test.d.ts.map"
-      },
-      {
-        "id": "dist/hooks/ultrawork/session-isolation.test.js",
-        "kind": "generated-dist",
-        "path": "dist/hooks/ultrawork/session-isolation.test.js"
-      },
-      {
-        "id": "dist/hooks/ultrawork/session-isolation.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/hooks/ultrawork/session-isolation.test.js.map"
       },
       {
         "id": "dist/hooks/wiki/__tests__/cjk-tokenize.test.d.ts",
@@ -76689,12 +76473,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6882,
+      "nodeCount": 6846,
       "edgeCount": 7190,
       "importEdgeCount": 5906,
       "registerEdgeCount": 53
     }
   },
   "inventorySha256": "d34ebca442eea63fe880245c9973a6450b99ecf04856906bcd66c03d35ee5c5b",
-  "manifestSha256": "f09dd01ad589ec8b230aff4de63fdf52e35dfb8e1ac8b49bd3894699de167594"
+  "manifestSha256": "805a2f7ca05a9214c78f4a1812c546d67081a156da77aeec1a10695dc1bc2888"
 }
