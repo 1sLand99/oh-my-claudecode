@@ -979,7 +979,17 @@ export async function runGraph(
 
     // Release before emitting run_ended: if release throws, the catch path
     // emits the single run_ended for this run instead of a duplicate.
-    await fence.release(epoch);
+    const released = await fence.release(epoch);
+    if (!released) {
+      terminalResult = {
+        terminal: "failed",
+        run_id: runId,
+        descriptor_hash: stored.descriptor_hash,
+        epoch,
+        exit_code: EXIT_CODES.FENCED_OUT,
+      };
+      terminalSummary = "graph ownership lost before release";
+    }
     emit({
       type: "run_ended",
       terminal: terminalResult.terminal,

@@ -88689,7 +88689,17 @@ async function runGraph(sealed, options) {
       }
       throw new Error("runner stalled with schedulable work remaining");
     }
-    await fence.release(epoch);
+    const released = await fence.release(epoch);
+    if (!released) {
+      terminalResult2 = {
+        terminal: "failed",
+        run_id: runId,
+        descriptor_hash: stored.descriptor_hash,
+        epoch,
+        exit_code: EXIT_CODES.FENCED_OUT
+      };
+      terminalSummary = "graph ownership lost before release";
+    }
     emit({
       type: "run_ended",
       terminal: terminalResult2.terminal,
