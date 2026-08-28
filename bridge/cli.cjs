@@ -86286,7 +86286,10 @@ function assertPrivateRegularFile(fileDescriptor, filePath) {
   }
 }
 function readFileNoFollow2(filePath) {
-  const fd = openNoFollow2(filePath, import_fs128.constants.O_RDONLY);
+  const fd = openNoFollow2(
+    filePath,
+    import_fs128.constants.O_RDONLY | (import_fs128.constants.O_NONBLOCK ?? 0)
+  );
   try {
     assertPrivateRegularFile(fd, filePath);
     return (0, import_fs128.readFileSync)(fd, "utf8");
@@ -87976,13 +87979,14 @@ var init_store = __esm({
       runDir() {
         return this.handle ?? resolveRunDirHandle(this.runsRoot, this.runId);
       }
-      async save(envelope) {
+      async save(envelope, assertOwnership) {
         if (envelope.schema_version !== 1) {
           throw new ProjectionStoreError(
             "corrupt",
             "envelope schema_version must be 1"
           );
         }
+        assertOwnership?.();
         let stored;
         try {
           stored = await this.load();
@@ -87999,7 +88003,9 @@ var init_store = __esm({
           );
         }
         withContainedPath(this.runDir(), PROJECTION_FILE_NAME, (filePath) => {
+          assertOwnership?.();
           atomicWriteJsonSync(filePath, envelope);
+          assertOwnership?.();
         });
       }
       async load() {
@@ -88366,7 +88372,7 @@ async function runGraph(sealed, options) {
         epoch,
         saved_at_seq: -1,
         projection
-      });
+      }, () => fence.assertEpoch(epoch));
     }
     let lastRecordEpoch = 0;
     for (const record2 of records) {
@@ -88412,7 +88418,7 @@ async function runGraph(sealed, options) {
         epoch,
         saved_at_seq: seq,
         projection
-      });
+      }, () => fence.assertEpoch(epoch));
     };
     const findExecutor = (nodeId) => {
       const node = sealed.nodes.find((candidate) => candidate.id === nodeId);

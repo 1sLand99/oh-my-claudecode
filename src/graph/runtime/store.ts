@@ -131,7 +131,10 @@ export class FileProjectionStore implements ProjectionStore {
     return this.handle ?? resolveRunDirHandle(this.runsRoot, this.runId);
   }
 
-  async save(envelope: ProjectionSnapshotEnvelope): Promise<void> {
+  async save(
+    envelope: ProjectionSnapshotEnvelope,
+    assertOwnership?: () => void,
+  ): Promise<void> {
     if (envelope.schema_version !== 1) {
       throw new ProjectionStoreError(
         "corrupt",
@@ -142,6 +145,7 @@ export class FileProjectionStore implements ProjectionStore {
     // Binding check first (AC-3): the path is bound to one descriptor/run/revision.
     // A corrupt snapshot is a cache-miss here, not run-fatal: the journal is
     // the source of truth, so treat it as absent and proceed with the overwrite.
+    assertOwnership?.();
     let stored: ProjectionSnapshotEnvelope | null;
     try {
       stored = await this.load();
@@ -164,7 +168,9 @@ export class FileProjectionStore implements ProjectionStore {
     }
 
     withContainedPath(this.runDir(), PROJECTION_FILE_NAME, (filePath) => {
+      assertOwnership?.();
       atomicWriteJsonSync(filePath, envelope);
+      assertOwnership?.();
     });
   }
 

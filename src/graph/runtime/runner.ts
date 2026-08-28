@@ -593,7 +593,7 @@ export async function runGraph(
         epoch,
         saved_at_seq: -1,
         projection,
-      });
+      }, () => fence.assertEpoch(epoch));
     }
     // Epoch provenance: takeovers only ever raise the epoch, so committed
     // history must be non-decreasing and must never exceed the epoch this
@@ -654,7 +654,7 @@ export async function runGraph(
         epoch,
         saved_at_seq: seq,
         projection,
-      });
+      }, () => fence.assertEpoch(epoch));
     };
 
     /** Finds the executor registered for an executable node kind. */

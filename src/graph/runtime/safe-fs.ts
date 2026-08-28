@@ -86,7 +86,10 @@ export function assertPrivateRegularFile(
 
 /** Read a runtime artifact without following a symlink at the final path. */
 export function readFileNoFollow(filePath: string): string {
-  const fd = openNoFollow(filePath, fsConstants.O_RDONLY);
+  const fd = openNoFollow(
+    filePath,
+    fsConstants.O_RDONLY | (fsConstants.O_NONBLOCK ?? 0),
+  );
   try {
     assertPrivateRegularFile(fd, filePath);
     return readFileSync(fd, "utf8");

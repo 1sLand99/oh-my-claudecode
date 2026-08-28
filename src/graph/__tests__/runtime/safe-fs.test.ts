@@ -110,11 +110,9 @@ describe("graph runtime safe filesystem", () => {
     const result = spawnSync("mkfifo", [fifo]);
     expect(result.status).toBe(0);
     const readerFd = openSync(fifo, fsConstants.O_RDONLY | (fsConstants.O_NONBLOCK ?? 0));
-    const writerFd = openSync(fifo, fsConstants.O_WRONLY | (fsConstants.O_NONBLOCK ?? 0));
     try {
       expect(() => readContainedFileNoFollow(handle, "pipe")).toThrow();
     } finally {
-      closeSync(writerFd);
       closeSync(readerFd);
     }
   });
