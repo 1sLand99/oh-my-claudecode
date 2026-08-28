@@ -13417,12 +13417,12 @@
       "pullNumber": 3898,
       "targetRef": "main",
       "mergeBaseSha": "76d8b9caa3b01153f4b6992030b798e124501845",
-      "headSha": "b4632e6e6c95e2fa4ba80373e139214394fb02be",
+      "headSha": "68a9d4003663d2643dc0aa6312840bc98472a9df",
       "owner": "Yeachan-Heo",
       "expiresAt": "2026-09-27T00:00:00.000Z",
       "generatedDelta": {
-        "count": 12,
-        "sha256": "523a6911e7ca2920ef3b1127b67bd25610f48330ed4ff629ba524e0581ecd1a1"
+        "count": 13,
+        "sha256": "1e6c7fa68d1eccab5163b9572fe8cede5b3ad8073fa01b07f8450cd94c59a7a1"
       },
       "generatedFiles": [
         {
@@ -13434,7 +13434,7 @@
         {
           "status": "modified",
           "filename": "bridge/cli.cjs",
-          "sha": "37abc5adc0309996342e5616dd7ec5dc78b5bdbe",
+          "sha": "dd724a5c909ae37cf22daba468d4a9bcfc277fcb",
           "previousFilename": null
         },
         {
@@ -13464,13 +13464,13 @@
         {
           "status": "modified",
           "filename": "dist/graph/runtime/run-dir.js",
-          "sha": "15e847a82eb30afbd2969e55b340edb30632183a",
+          "sha": "ce83e385c35a4a3814842514967220c9c2b3c479",
           "previousFilename": null
         },
         {
           "status": "modified",
           "filename": "dist/graph/runtime/runner.js",
-          "sha": "769bb1c45286a4606109e95150c61dba4b16dcdc",
+          "sha": "677662f8cdd88c23c288abe6e71a2397d968b52b",
           "previousFilename": null
         },
         {
@@ -13489,6 +13489,12 @@
           "status": "modified",
           "filename": "dist/hooks/skill-bridge.cjs",
           "sha": "6af107361e3119d24216010dd37a75f6066edd60",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/atomic-write.js",
+          "sha": "1d6f6d9f5dfd19761971a9da866192c933abf5cb",
           "previousFilename": null
         },
         {
