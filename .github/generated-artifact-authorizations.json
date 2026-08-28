@@ -13417,12 +13417,12 @@
       "pullNumber": 3898,
       "targetRef": "main",
       "mergeBaseSha": "76d8b9caa3b01153f4b6992030b798e124501845",
-      "headSha": "88a42f725c1f37cd58be22a0e4b6f73b5a636a18",
+      "headSha": "e501e18e553beccfc0e0a0867ffe9a43989ea917",
       "owner": "Yeachan-Heo",
       "expiresAt": "2026-09-27T00:00:00.000Z",
       "generatedDelta": {
         "count": 13,
-        "sha256": "1d7ffea54bd53f17adee10c8c62b0951ecd5523669ca204e1efd8a197313689e"
+        "sha256": "c0ba25cc964dfcfb948735b90113a1b871c8504c4807329b56204dc02aa75153"
       },
       "generatedFiles": [
         {
@@ -13494,7 +13494,7 @@
         {
           "status": "modified",
           "filename": "dist/lib/atomic-write.js",
-          "sha": "fdf9ef2cd9bc83db8cd8f0a31c260026c7d225bc",
+          "sha": "5599c59c6e99db6bfcc250c1f31e68a7141e9320",
           "previousFilename": null
         },
         {
