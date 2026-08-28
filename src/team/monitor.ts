@@ -96,6 +96,7 @@ function configFromManifest(manifest: TeamManifestV2): TeamConfig {
     resize_hook_name: manifest.resize_hook_name,
     resize_hook_target: manifest.resize_hook_target,
     next_worker_index: manifest.next_worker_index,
+    resolved_routing: manifest.resolved_routing,
     resolved_routing_roles: manifest.resolved_routing_roles,
     external_models_defaults: manifest.external_models_defaults,
     service_descriptor: manifest.service_descriptor,
@@ -113,9 +114,11 @@ function isNonEmptyString(value: unknown): value is string {
 function isOptionalExternalModelsDefaults(value: unknown): boolean {
   if (value === undefined) return true;
   if (!isRecord(value)) return false;
+  const allowed = new Set(['provider', 'codexModel', 'geminiModel', 'grokModel', 'antigravityModel', 'cursorModel']);
+  if (Object.keys(value).some(key => !allowed.has(key))) return false;
   if (value.provider !== undefined && !['codex', 'gemini', 'antigravity'].includes(value.provider as string)) return false;
   return ['codexModel', 'geminiModel', 'grokModel', 'antigravityModel', 'cursorModel']
-    .every(key => value[key] === undefined || isNonEmptyString(value[key]));
+    .every(key => value[key] === undefined || value[key] === '' || isNonEmptyString(value[key]));
 }
 
 function isOptionalRoutingRoles(value: unknown): boolean {
@@ -299,13 +302,14 @@ function isOptionalRouting(value: unknown): boolean {
 }
 
 function isResolvedRoleRoute(value: unknown): value is { primary: RoleAssignment; fallback: RoleAssignment } {
-  return isRecord(value) && isRoleAssignment(value.primary) && isRoleAssignment(value.fallback);
+  return isRecord(value) && isRoleAssignment(value.primary, true) && isRoleAssignment(value.fallback);
 }
 
-function isRoleAssignment(value: unknown): value is RoleAssignment {
+function isRoleAssignment(value: unknown, allowEmptyExternalModel = false): value is RoleAssignment {
+  const provider = isRecord(value) ? value.provider as string : undefined;
   return isRecord(value)
-    && ['claude', 'codex', 'gemini', 'grok', 'cursor', 'antigravity'].includes(value.provider as string)
-    && isNonEmptyString(value.model)
+    && ['claude', 'codex', 'gemini', 'grok', 'cursor', 'antigravity'].includes(provider as string)
+    && (isNonEmptyString(value.model) || (allowEmptyExternalModel && provider !== 'claude' && value.model === ''))
     && KNOWN_AGENT_NAMES.some(agent => agent === value.agent);
 }
 
@@ -942,6 +946,9 @@ async function saveTeamConfigUnlocked(config: TeamConfig, cwd: string): Promise<
       resize_hook_name: config.resize_hook_name,
       resize_hook_target: config.resize_hook_target,
       next_worker_index: config.next_worker_index,
+      resolved_routing: config.resolved_routing,
+      resolved_routing_roles: config.resolved_routing_roles,
+      external_models_defaults: config.external_models_defaults,
       policy: config.policy ?? existingManifest.policy,
       governance: config.governance ?? existingManifest.governance,
       state_revision: config.state_revision,

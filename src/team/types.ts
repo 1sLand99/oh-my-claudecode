@@ -457,6 +457,7 @@ export interface TeamManifestV2 {
   resize_hook_name: string | null;
   resize_hook_target: string | null;
   next_worker_index?: number;
+  resolved_routing?: Record<CanonicalTeamRole, { primary: RoleAssignment; fallback: RoleAssignment }>;
   resolved_routing_roles?: CanonicalTeamRole[];
   external_models_defaults?: ExternalModelsDefaults;
   service_descriptor?: TeamServiceDescriptor;

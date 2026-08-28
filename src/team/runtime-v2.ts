@@ -3523,6 +3523,7 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
     resize_hook_name: null,
     resize_hook_target: null,
     next_worker_index: teamConfig.next_worker_index,
+    resolved_routing: teamConfig.resolved_routing,
     resolved_routing_roles: teamConfig.resolved_routing_roles,
     external_models_defaults: teamConfig.external_models_defaults,
     service_descriptor: teamConfig.service_descriptor,

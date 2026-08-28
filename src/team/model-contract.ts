@@ -594,6 +594,9 @@ export function resolveDefaultWorkerModel(
     grok: 'grokModel',
     cursor: 'cursorModel',
   };
+  const configured = defaults?.[providerConfigKeys[agentType]]?.trim();
+  if (configured) return configured;
+
   const providerName = agentType.toUpperCase();
   const envKeys = [
     `OMC_EXTERNAL_MODELS_DEFAULT_${providerName}_MODEL`,
@@ -603,8 +606,6 @@ export function resolveDefaultWorkerModel(
     const value = env[key]?.trim();
     if (value) return value;
   }
-  const configured = defaults?.[providerConfigKeys[agentType]];
-  if (configured) return configured;
   return undefined;
 }
 
