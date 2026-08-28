@@ -553,23 +553,23 @@ export function resolveClaudeWorkerModel(
   }
 
   // Direct model env vars — highest priority
-  const directModel = (env.ANTHROPIC_MODEL || env.CLAUDE_MODEL || '').trim();
+  const directModel = [env.ANTHROPIC_MODEL, env.CLAUDE_MODEL]
+    .map(value => value?.trim())
+    .find(Boolean) ?? '';
   if (directModel) {
     return directModel;
   }
 
   // Fallback: Bedrock tier-specific env vars (default to sonnet tier)
-  const bedrockModel = (
-    env.CLAUDE_CODE_BEDROCK_SONNET_MODEL ||
-    env.ANTHROPIC_DEFAULT_SONNET_MODEL ||
-    ''
-  ).trim();
+  const bedrockModel = [env.CLAUDE_CODE_BEDROCK_SONNET_MODEL, env.ANTHROPIC_DEFAULT_SONNET_MODEL]
+    .map(value => value?.trim())
+    .find(Boolean) ?? '';
   if (bedrockModel) {
     return bedrockModel;
   }
 
   // OMC tier env vars
-  const omcModel = (env.OMC_MODEL_MEDIUM || '').trim();
+  const omcModel = env.OMC_MODEL_MEDIUM?.trim() ?? '';
   if (omcModel) {
     return omcModel;
   }
@@ -621,6 +621,25 @@ export function normalizeExternalModelsDefaults(defaults?: ExternalModelsDefault
   }
   if (defaults.provider === 'codex' || defaults.provider === 'gemini' || defaults.provider === 'antigravity') {
     normalized.provider = defaults.provider;
+  }
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+/** Capture the effective provider defaults at team creation for env-removal parity. */
+export function resolveExternalModelsDefaults(
+  defaults?: ExternalModelsDefaults,
+  env: NodeJS.ProcessEnv = process.env,
+): ExternalModelsDefaults | undefined {
+  const normalized = normalizeExternalModelsDefaults(defaults) ?? {};
+  for (const [provider, key] of [
+    ['CODEX', 'codexModel'], ['GEMINI', 'geminiModel'], ['GROK', 'grokModel'],
+    ['CURSOR', 'cursorModel'], ['ANTIGRAVITY', 'antigravityModel'],
+  ] as const) {
+    if (normalized[key]) continue;
+    const value = [env[`OMC_EXTERNAL_MODELS_DEFAULT_${provider}_MODEL`], env[`OMC_${provider}_DEFAULT_MODEL`]]
+      .map(candidate => candidate?.trim())
+      .find(Boolean);
+    if (value) normalized[key] = value;
   }
   return Object.keys(normalized).length > 0 ? normalized : undefined;
 }

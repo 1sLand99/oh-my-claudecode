@@ -69,6 +69,7 @@ const modelContractMocks = vi.hoisted(() => ({
   getPromptModeArgs: vi.fn((_agentType: string, instruction: string) => [instruction]),
   resolveClaudeWorkerModel: vi.fn(() => undefined),
   normalizeExternalModelsDefaults: vi.fn((defaults: unknown) => defaults),
+  resolveExternalModelsDefaults: vi.fn((defaults: unknown) => defaults),
   resolveDefaultWorkerModel: vi.fn((agentType: string, _env?: NodeJS.ProcessEnv, defaults?: { cursorModel?: string }) => {
     if (agentType === 'claude') return undefined;
     const keys: Record<string, string[]> = {
@@ -114,6 +115,7 @@ vi.mock('../model-contract.js', () => ({
   getPromptModeArgs: modelContractMocks.getPromptModeArgs,
   resolveClaudeWorkerModel: modelContractMocks.resolveClaudeWorkerModel,
   normalizeExternalModelsDefaults: modelContractMocks.normalizeExternalModelsDefaults,
+  resolveExternalModelsDefaults: modelContractMocks.resolveExternalModelsDefaults,
   resolveDefaultWorkerModel: modelContractMocks.resolveDefaultWorkerModel,
   buildValidatedWorkerLaunchDescriptor: modelContractMocks.buildValidatedWorkerLaunchDescriptor,
   validateWorkerLaunchDescriptor: modelContractMocks.validateWorkerLaunchDescriptor,

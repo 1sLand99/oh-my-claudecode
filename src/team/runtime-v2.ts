@@ -68,7 +68,7 @@ import type { CliAgentType } from './model-contract.js';
 import {
   buildValidatedWorkerLaunchDescriptor, clearResolvedPathCache, validateWorkerLaunchDescriptor, resolveValidatedBinaryPath,
   getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs,
-  resolveDefaultWorkerModel, normalizeExternalModelsDefaults, assertHeadlessSupported,
+  resolveDefaultWorkerModel, resolveExternalModelsDefaults, assertHeadlessSupported,
 } from './model-contract.js';
 import {
   createTeamSession,
@@ -3332,7 +3332,7 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
 
   const startupByWorker = new Map(startupAllocations.map(item => [item.workerName, item.taskIndex]));
   const preparedLaunches = new Map<string, { agentType: CliAgentType; role?: CanonicalTeamRole; descriptor: WorkerLaunchDescriptor; verdictAssignmentId?: string }>();
-  const externalModelsDefaults = normalizeExternalModelsDefaults(pluginCfg.externalModels?.defaults);
+  const externalModelsDefaults = resolveExternalModelsDefaults(pluginCfg.externalModels?.defaults, process.env);
   const resolveDefaultModel = (agentType: CliAgentType): string | undefined => {
     return resolveDefaultWorkerModel(agentType, process.env, externalModelsDefaults);
   };
