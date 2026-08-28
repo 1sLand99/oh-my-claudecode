@@ -595,7 +595,8 @@ export function resolveDefaultWorkerModel(
     grok: 'grokModel',
     cursor: 'cursorModel',
   };
-  const configured = defaults?.[providerConfigKeys[agentType]]?.trim();
+  const configuredValue = defaults?.[providerConfigKeys[agentType]];
+  const configured = typeof configuredValue === 'string' ? configuredValue.trim() : undefined;
   if (configured) return configured;
 
   const providerName = agentType.toUpperCase();
