@@ -13417,12 +13417,12 @@
       "pullNumber": 3898,
       "targetRef": "main",
       "mergeBaseSha": "76d8b9caa3b01153f4b6992030b798e124501845",
-      "headSha": "e501e18e553beccfc0e0a0867ffe9a43989ea917",
+      "headSha": "adce865a50f583bf1a4437a138fb15c6b504c8f9",
       "owner": "Yeachan-Heo",
       "expiresAt": "2026-09-27T00:00:00.000Z",
       "generatedDelta": {
         "count": 13,
-        "sha256": "c0ba25cc964dfcfb948735b90113a1b871c8504c4807329b56204dc02aa75153"
+        "sha256": "20c43d250ff28d40f44e0aaa359cde3a04acb8a88cda03436e27b67aeb62233e"
       },
       "generatedFiles": [
         {
@@ -13434,7 +13434,7 @@
         {
           "status": "modified",
           "filename": "bridge/cli.cjs",
-          "sha": "a6cf0a66d8d53bdcbcbd4f0bfa806b34094a9fa3",
+          "sha": "f61cbcd7c250df8082326d307d18be1cbaef6037",
           "previousFilename": null
         },
         {
@@ -13494,7 +13494,7 @@
         {
           "status": "modified",
           "filename": "dist/lib/atomic-write.js",
-          "sha": "5599c59c6e99db6bfcc250c1f31e68a7141e9320",
+          "sha": "4035bc38b6fca419bd0b3b1cad66e7eedcc9a9a2",
           "previousFilename": null
         },
         {
