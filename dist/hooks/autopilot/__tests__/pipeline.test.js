@@ -19,9 +19,10 @@ describe("Pipeline Types", () => {
             qa: true,
         });
     });
-    it("should define only the surviving ultrapilot deprecation alias", () => {
-        expect(DEPRECATED_MODE_ALIASES).not.toHaveProperty("ultrawork");
+    it("should define deprecation aliases for ultrawork and ultrapilot", () => {
+        expect(DEPRECATED_MODE_ALIASES).toHaveProperty("ultrawork");
         expect(DEPRECATED_MODE_ALIASES).toHaveProperty("ultrapilot");
+        expect(DEPRECATED_MODE_ALIASES.ultrawork.config.execution).toBe("team");
         expect(DEPRECATED_MODE_ALIASES.ultrapilot.config.execution).toBe("team");
     });
 });
@@ -159,11 +160,11 @@ describe("resolvePipelineConfig", () => {
         expect(config.planning).toBe("ralplan"); // unchanged
     });
     it("should apply deprecated mode aliases", () => {
-        const config = resolvePipelineConfig(undefined, "ultrapilot");
+        const config = resolvePipelineConfig(undefined, "ultrawork");
         expect(config.execution).toBe("team");
     });
     it("should let user overrides win over deprecated aliases", () => {
-        const config = resolvePipelineConfig({ execution: "solo" }, "ultrapilot");
+        const config = resolvePipelineConfig({ execution: "solo" }, "ultrawork");
         expect(config.execution).toBe("solo");
     });
     it("should return defaults for unknown deprecated modes", () => {
@@ -172,8 +173,9 @@ describe("resolvePipelineConfig", () => {
     });
 });
 describe("getDeprecationWarning", () => {
-    it("should not alias removed ultrawork", () => {
-        expect(getDeprecationWarning("ultrawork")).toBeNull();
+    it("should return warning for ultrawork", () => {
+        const warning = getDeprecationWarning("ultrawork");
+        expect(warning).toContain("deprecated");
     });
     it("should return warning for ultrapilot", () => {
         const warning = getDeprecationWarning("ultrapilot");
@@ -239,25 +241,11 @@ describe("Signal mapping", () => {
 });
 describe("Pipeline Orchestrator (with state)", () => {
     let testDir;
-    let previousHome;
-    let previousUserProfile;
     beforeEach(() => {
         testDir = mkdtempSync(join(tmpdir(), "pipeline-test-"));
-        previousHome = process.env.HOME;
-        previousUserProfile = process.env.USERPROFILE;
-        process.env.HOME = testDir;
-        process.env.USERPROFILE = testDir;
     });
     afterEach(() => {
         rmSync(testDir, { recursive: true, force: true });
-        if (previousHome === undefined)
-            delete process.env.HOME;
-        else
-            process.env.HOME = previousHome;
-        if (previousUserProfile === undefined)
-            delete process.env.USERPROFILE;
-        else
-            process.env.USERPROFILE = previousUserProfile;
     });
     describe("initPipeline", () => {
         it("should initialize autopilot state with pipeline tracking", () => {
@@ -283,7 +271,7 @@ describe("Pipeline Orchestrator (with state)", () => {
             expect(tracking.stages[2].status).toBe("skipped"); // ralph skipped
         });
         it("should handle deprecated mode names", () => {
-            const state = initPipeline(testDir, "test", undefined, undefined, undefined, "ultrapilot");
+            const state = initPipeline(testDir, "test", undefined, undefined, undefined, "ultrawork");
             const tracking = readPipelineTracking(state);
             expect(tracking.pipelineConfig.execution).toBe("team");
         });
@@ -538,7 +526,7 @@ describe("autopilot team CLI worker configuration", () => {
         expect(config.execution).toBe("solo");
         expect(config.team?.agentTypes).toEqual(["cursor"]);
     });
-    it("instructs team execution to use omc team for Cursor workers", () => {
+    it("instructs team execution to use omc team for Cursor executor workers", () => {
         const prompt = executionAdapter.getPrompt({
             idea: "test",
             directory: "/tmp",
@@ -552,8 +540,8 @@ describe("autopilot team CLI worker configuration", () => {
         expect(prompt).toContain("CLI Team Runtime Required");
         expect(prompt).toContain("omc team 1:cursor");
         expect(prompt).toContain("/omc-teams 1:cursor");
-        expect(prompt).toContain("including reviewer-style roles");
-        expect(prompt).toContain("structured verdict-output contract");
+        expect(prompt).toContain("executor-style only");
+        expect(prompt).toContain("reviewer, critic, security-review, validation verdict");
         expect(prompt).toContain("cursor-agent");
         expect(prompt).toContain("installed and authenticated");
         expect(prompt).not.toContain("TeamCreate");

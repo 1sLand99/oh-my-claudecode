@@ -109,15 +109,11 @@ describe('stage-router resolveRoleAssignment', () => {
             expect(out.model).not.toBe(CLAUDE_FAMILY_DEFAULTS.OPUS);
             expect(out.agent).toBe('executor');
         });
-        it('accepts provider=cursor for reviewer/verdict roles (issue #3880)', () => {
-            // Cursor reviewers emit the verdict-file contract like every other
-            // non-Claude provider, so the role gate that used to throw here is gone.
-            for (const role of ['code-reviewer', 'critic', 'security-reviewer', 'test-engineer']) {
-                const cfg = {
-                    team: { roleRouting: { [role]: { provider: 'cursor' } } },
-                };
-                expect(resolveRoleAssignment(role, cfg).provider).toBe('cursor');
-            }
+        it('rejects provider=cursor for reviewer/verdict roles', () => {
+            const cfg = {
+                team: { roleRouting: { 'code-reviewer': { provider: 'cursor' } } },
+            };
+            expect(() => resolveRoleAssignment('code-reviewer', cfg)).toThrow(/cursor is only supported for executor-style roles/);
         });
         it('grok resolves configured externalModels.defaults.grokModel when model omitted', () => {
             const cfg = {

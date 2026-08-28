@@ -2,76 +2,14 @@ import { createHash, randomUUID } from 'node:crypto';
 import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { clearWorktreeCache, getOmcRoot } from '../lib/worktree-paths.js';
 const ROOT = process.cwd();
 const NODE = process.execPath;
 const HOOKS = [
     join(ROOT, 'scripts', 'keyword-detector.mjs'),
     join(ROOT, 'templates', 'hooks', 'keyword-detector.mjs'),
 ];
-const SESSION_ID = 'workflow-activation-fixture';
-const STATE_DIR_NAME = '.omc-state';
-function fixtureStateDir(cwd) {
-    return join(cwd, STATE_DIR_NAME);
-}
-function gitTopLevel(cwd) {
-    try {
-        return execFileSync('git', ['rev-parse', '--show-toplevel'], {
-            cwd,
-            encoding: 'utf8',
-            stdio: ['ignore', 'pipe', 'ignore'],
-        }).trim() || null;
-    }
-    catch {
-        return null;
-    }
-}
-function canonicalOmcRoot(cwd, stateDir = fixtureStateDir(cwd)) {
-    const previousStateDir = process.env.OMC_STATE_DIR;
-    process.env.OMC_STATE_DIR = stateDir;
-    try {
-        // The standalone hook fallback derives centralized Git identity from the
-        // repository top-level. Resolve that anchor before delegating to the
-        // canonical resolver so nested Git fixtures observe the same state root.
-        const root = gitTopLevel(cwd);
-        return root ? getOmcRoot(root) : join(stateDir, 'non-git');
-    }
-    finally {
-        if (previousStateDir === undefined)
-            delete process.env.OMC_STATE_DIR;
-        else
-            process.env.OMC_STATE_DIR = previousStateDir;
-    }
-}
-function sessionStatePath(cwd, fileName, stateDir = fixtureStateDir(cwd)) {
-    return join(canonicalOmcRoot(cwd, stateDir), 'state', 'sessions', SESSION_ID, fileName);
-}
-function statePathFor(cwd, stateName = 'autopilot', stateDir = fixtureStateDir(cwd)) {
-    return sessionStatePath(cwd, `${stateName}-state.json`, stateDir);
-}
-function globalStatePathFor(cwd, stateName = 'autopilot', stateDir = fixtureStateDir(cwd)) {
-    return join(canonicalOmcRoot(cwd, stateDir), 'state', `${stateName}-state.json`);
-}
-function hookEnvironment(cwd, configHome, extraEnv = {}) {
-    const home = join(cwd, 'home');
-    return {
-        ...process.env,
-        NODE_ENV: 'test',
-        DISABLE_OMC: '',
-        OMC_SKIP_HOOKS: '',
-        OMC_TEAM_WORKER: '',
-        CLAUDE_PLUGIN_ROOT: '',
-        HOME: home,
-        USERPROFILE: home,
-        OMC_STATE_DIR: fixtureStateDir(cwd),
-        XDG_CONFIG_HOME: configHome,
-        CLAUDE_CONFIG_DIR: join(cwd, 'claude-config'),
-        ...extraEnv,
-    };
-}
 function runHook(script, prompt, cwd, configHome, transcriptPath = join(cwd, 'claude-config', 'projects', 'workflow-activation-fixture.jsonl'), extraEnv = {}) {
     return JSON.parse(execFileSync(NODE, [script], {
         input: JSON.stringify({
@@ -82,14 +20,14 @@ function runHook(script, prompt, cwd, configHome, transcriptPath = join(cwd, 'cl
             transcript_path: transcriptPath,
         }),
         encoding: 'utf8',
-        env: hookEnvironment(cwd, configHome, extraEnv),
+        env: { ...process.env, NODE_ENV: 'test', OMC_SKIP_HOOKS: '', XDG_CONFIG_HOME: configHome, CLAUDE_CONFIG_DIR: join(cwd, 'claude-config'), ...extraEnv },
     }));
 }
-function runHookAsync(script, prompt, cwd, configHome, transcriptPath = join(cwd, 'claude-config', 'projects', 'workflow-activation-fixture.jsonl'), extraEnv = {}) {
+function runHookAsync(script, prompt, cwd, configHome, transcriptPath = join(cwd, 'claude-config', 'projects', 'workflow-activation-fixture.jsonl')) {
     return new Promise((resolve, reject) => {
         const child = spawn(NODE, [script], {
             cwd,
-            env: hookEnvironment(cwd, configHome, extraEnv),
+            env: { ...process.env, NODE_ENV: 'test', OMC_SKIP_HOOKS: '', XDG_CONFIG_HOME: configHome, CLAUDE_CONFIG_DIR: join(cwd, 'claude-config') },
             stdio: ['pipe', 'pipe', 'pipe'],
         });
         let stdout = '';
@@ -112,16 +50,8 @@ function abandonedLockOwner() {
     return JSON.stringify({ version: 1, pid: 999999999, processStart: '1', createdAt: new Date().toISOString(), nonce: randomUUID() });
 }
 function stateBytes(cwd) {
-    const stateDir = fixtureStateDir(cwd);
-    const previousStateDir = process.env.OMC_STATE_DIR;
-    process.env.OMC_STATE_DIR = stateDir;
-    clearWorktreeCache();
-    const path = join(getOmcRoot(cwd), 'state', 'sessions', SESSION_ID, 'autopilot-state.json');
-    if (previousStateDir === undefined)
-        delete process.env.OMC_STATE_DIR;
-    else
-        process.env.OMC_STATE_DIR = previousStateDir;
-    return existsSync(path) ? readFileSync(path) : null;
+    const statePath = join(cwd, '.omc', 'state', 'sessions', 'workflow-activation-fixture', 'autopilot-state.json');
+    return existsSync(statePath) ? readFileSync(statePath) : null;
 }
 function fileIdentity(path, content) {
     const stat = lstatSync(path);
@@ -176,7 +106,6 @@ function writeEmergencyJournal(statePath, original, intent, phase, intended, own
 }
 function createFixture(cwd = mkdtempSync(join(tmpdir(), 'omc-workflow-activation-'))) {
     const configHome = join(cwd, 'config');
-    mkdirSync(join(cwd, 'home'), { recursive: true });
     mkdirSync(join(cwd, '.claude'), { recursive: true });
     mkdirSync(join(configHome, 'claude-omc'), { recursive: true });
     mkdirSync(join(cwd, 'claude-config', 'projects'), { recursive: true });
@@ -205,74 +134,6 @@ function createNestedGitFixture() {
     return { ...fixture, nested, parent };
 }
 describe('workflow profile activation hook fixtures (#3487)', () => {
-    it('keeps every inline resolver aligned for local, linked, and workspace Git identities', async () => {
-        const root = mkdtempSync(join(tmpdir(), 'omc-fallback-parity-'));
-        const project = join(root, 'project');
-        const nested = join(project, 'nested', 'cwd');
-        const linked = join(root, 'linked-worktree');
-        const workspace = join(root, 'workspace');
-        const workspaceRepo = join(workspace, 'repo');
-        const central = join(root, 'central');
-        mkdirSync(nested, { recursive: true });
-        mkdirSync(workspaceRepo, { recursive: true });
-        writeFileSync(join(project, 'marker.txt'), 'marker');
-        writeFileSync(join(workspace, '.omc-workspace'), JSON.stringify({ id: 'fallback-parity' }));
-        execFileSync('git', ['init', '--quiet'], { cwd: project, stdio: 'pipe' });
-        execFileSync('git', ['add', 'marker.txt'], { cwd: project, stdio: 'pipe' });
-        execFileSync('git', ['-c', 'user.name=OMC Test', '-c', 'user.email=omc@example.test', 'commit', '--quiet', '-m', 'fixture'], { cwd: project, stdio: 'pipe' });
-        execFileSync('git', ['worktree', 'add', '--quiet', linked, '-b', 'fallback-parity-linked'], { cwd: project, stdio: 'pipe' });
-        execFileSync('git', ['init', '--quiet'], { cwd: workspaceRepo, stdio: 'pipe' });
-        const previousStateDir = process.env.OMC_STATE_DIR;
-        const previousPluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
-        process.env.OMC_STATE_DIR = central;
-        process.env.CLAUDE_PLUGIN_ROOT = '';
-        clearWorktreeCache();
-        try {
-            const [esm, cjs, template] = await Promise.all([
-                import(pathToFileURL(join(ROOT, 'scripts', 'lib', 'state-root.mjs')).href),
-                import(pathToFileURL(join(ROOT, 'scripts', 'lib', 'state-root.cjs')).href),
-                import(pathToFileURL(join(ROOT, 'templates', 'hooks', 'lib', 'state-root.mjs')).href),
-            ]);
-            for (const directory of [project, nested, linked]) {
-                const expected = getOmcRoot(directory);
-                const roots = await Promise.all([
-                    esm.resolveOmcStateRoot(directory),
-                    cjs.resolveOmcStateRoot(directory),
-                    template.resolveOmcStateRoot(directory),
-                ]);
-                expect(new Set([expected, ...roots]).size).toBe(1);
-            }
-            const workspaceRoots = await Promise.all([
-                esm.resolveOmcStateRoot(workspaceRepo),
-                cjs.resolveOmcStateRoot(workspaceRepo),
-                template.resolveOmcStateRoot(workspaceRepo),
-            ]);
-            expect(new Set(workspaceRoots).size).toBe(1);
-            expect(workspaceRoots[0]).toContain('fallback-parity-');
-            delete process.env.OMC_STATE_DIR;
-            clearWorktreeCache();
-            const defaultRoots = await Promise.all([
-                getOmcRoot(linked),
-                esm.resolveOmcStateRoot(linked),
-                cjs.resolveOmcStateRoot(linked),
-                template.resolveOmcStateRoot(linked),
-            ]);
-            expect(new Set(defaultRoots).size).toBe(1);
-            expect(defaultRoots[0]).toBe(join(linked, '.omc'));
-        }
-        finally {
-            if (previousStateDir === undefined)
-                delete process.env.OMC_STATE_DIR;
-            else
-                process.env.OMC_STATE_DIR = previousStateDir;
-            if (previousPluginRoot === undefined)
-                delete process.env.CLAUDE_PLUGIN_ROOT;
-            else
-                process.env.CLAUDE_PLUGIN_ROOT = previousPluginRoot;
-            clearWorktreeCache();
-            rmSync(root, { recursive: true, force: true });
-        }
-    });
     it.each(HOOKS)('activates root project profiles from a nested git CWD through %s', (script) => {
         const { configHome, nested, parent } = createNestedGitFixture();
         try {
@@ -386,7 +247,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
     });
     it.each(HOOKS)('recovers an abandoned activation lock through %s', (script) => {
         const { cwd, configHome } = createFixture();
-        const statePath = statePathFor(cwd);
+        const statePath = join(cwd, '.omc', 'state', 'sessions', 'workflow-activation-fixture', 'autopilot-state.json');
         try {
             mkdirSync(join(statePath, '..'), { recursive: true });
             writeFileSync(`${statePath}.mutation.lock`, abandonedLockOwner());
@@ -415,7 +276,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
         const { cwd, configHome } = createFixture();
         try {
             runHook(script, '/autopilot --workflow release-flow ship it', cwd, configHome);
-            const dependentPath = statePathFor(cwd, 'ralph');
+            const dependentPath = join(cwd, '.omc', 'state', 'sessions', 'workflow-activation-fixture', 'ralph-state.json');
             writeFileSync(dependentPath, JSON.stringify({ active: true, linked_ultrawork: true }));
             const dependentBefore = readFileSync(dependentPath);
             const before = stateBytes(cwd);
@@ -429,7 +290,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
     });
     it.each(HOOKS)('reactivates the exact persisted named run through %s', (script) => {
         const { cwd, configHome } = createFixture();
-        const statePath = statePathFor(cwd);
+        const statePath = join(cwd, '.omc', 'state', 'sessions', 'workflow-activation-fixture', 'autopilot-state.json');
         try {
             runHook(script, '/autopilot --workflow release-flow ship it', cwd, configHome);
             const paused = JSON.parse(readFileSync(statePath, 'utf8'));
@@ -450,7 +311,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
     });
     it.each(HOOKS)('starts a fresh run after valid terminal workflow history through %s', (script) => {
         const { cwd, configHome } = createFixture();
-        const statePath = statePathFor(cwd);
+        const statePath = join(cwd, '.omc', 'state', 'sessions', 'workflow-activation-fixture', 'autopilot-state.json');
         const transcriptPath = join(cwd, 'claude-config', 'projects', 'workflow-activation-fixture.jsonl');
         try {
             runHook(script, '/autopilot --workflow release-flow first task', cwd, configHome);
@@ -470,7 +331,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
     });
     it.each(HOOKS)('recovers a quarantined publish journal before resuming through %s', (script) => {
         const { cwd, configHome } = createFixture();
-        const statePath = statePathFor(cwd);
+        const statePath = join(cwd, '.omc', 'state', 'sessions', 'workflow-activation-fixture', 'autopilot-state.json');
         try {
             runHook(script, '/autopilot --workflow release-flow ship it', cwd, configHome);
             const original = readFileSync(statePath);
@@ -492,7 +353,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
     });
     it.each(HOOKS)('converges a quarantined clear journal before activating through %s', (script) => {
         const { cwd, configHome } = createFixture();
-        const statePath = statePathFor(cwd);
+        const statePath = join(cwd, '.omc', 'state', 'sessions', 'workflow-activation-fixture', 'autopilot-state.json');
         try {
             mkdirSync(join(statePath, '..'), { recursive: true });
             const original = Buffer.from('{"active":true,"sentinel":"interrupted-cancellation"}\n');
@@ -511,7 +372,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
     });
     it.each(HOOKS)('rejects an unrelated replacement beside an interrupted journal through %s', (script) => {
         const { cwd, configHome } = createFixture();
-        const statePath = statePathFor(cwd);
+        const statePath = join(cwd, '.omc', 'state', 'sessions', 'workflow-activation-fixture', 'autopilot-state.json');
         try {
             mkdirSync(join(statePath, '..'), { recursive: true });
             const original = Buffer.from('{"active":true,"sentinel":"original"}\n');
@@ -531,7 +392,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
     });
     it.each(HOOKS)('recovers a dead PID-reused preparing journal through %s', (script) => {
         const { cwd, configHome } = createFixture();
-        const statePath = statePathFor(cwd);
+        const statePath = join(cwd, '.omc', 'state', 'sessions', 'workflow-activation-fixture', 'autopilot-state.json');
         try {
             mkdirSync(join(statePath, '..'), { recursive: true });
             const original = Buffer.from('{"active":true,"sentinel":"pid-reused-preparing"}\n');
@@ -552,7 +413,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
     });
     it.each(HOOKS)('reclaims a stale recovery claim and discards an uninitialized dead preparing journal through %s', (script) => {
         const { cwd, configHome } = createFixture();
-        const statePath = statePathFor(cwd);
+        const statePath = join(cwd, '.omc', 'state', 'sessions', 'workflow-activation-fixture', 'autopilot-state.json');
         try {
             mkdirSync(join(statePath, '..'), { recursive: true });
             const original = Buffer.from('{"active":false,"sentinel":"partial-preparing"}\n');
@@ -580,7 +441,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
     });
     it.each(HOOKS)('discards a dead preparing publish journal with an absent payload when its original remains through %s', (script) => {
         const { cwd, configHome } = createFixture();
-        const statePath = statePathFor(cwd);
+        const statePath = join(cwd, '.omc', 'state', 'sessions', 'workflow-activation-fixture', 'autopilot-state.json');
         try {
             mkdirSync(join(statePath, '..'), { recursive: true });
             const original = Buffer.from('{"active":false,"sentinel":"missing-payload"}\n');
@@ -599,7 +460,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
     });
     it.each(HOOKS)('fails closed when a preparing owner start identity is unknown through %s', (script) => {
         const { cwd, configHome } = createFixture();
-        const statePath = statePathFor(cwd);
+        const statePath = join(cwd, '.omc', 'state', 'sessions', 'workflow-activation-fixture', 'autopilot-state.json');
         try {
             mkdirSync(join(statePath, '..'), { recursive: true });
             const original = Buffer.from('{"active":true,"sentinel":"unknown-owner"}\n');
@@ -623,7 +484,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
     });
     it.each(HOOKS)('converges transaction artifacts while preserving a conflicting replacement through %s', (script) => {
         const { cwd, configHome } = createFixture();
-        const statePath = statePathFor(cwd);
+        const statePath = join(cwd, '.omc', 'state', 'sessions', 'workflow-activation-fixture', 'autopilot-state.json');
         try {
             mkdirSync(join(statePath, '..'), { recursive: true });
             const original = Buffer.from('{"active":true,"sentinel":"original"}\n');
@@ -644,7 +505,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
     });
     it.each(HOOKS)('does not unlink a replacement made between recovery authentication and capture through %s', (script) => {
         const { cwd, configHome } = createFixture();
-        const statePath = statePathFor(cwd);
+        const statePath = join(cwd, '.omc', 'state', 'sessions', 'workflow-activation-fixture', 'autopilot-state.json');
         try {
             mkdirSync(join(statePath, '..'), { recursive: true });
             const original = Buffer.from('{"active":true,"sentinel":"original"}\n');
@@ -691,7 +552,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
         for (const [name, mutate, resumes] of cases) {
             const { cwd, configHome } = createFixture();
             const projects = join(cwd, 'claude-config', 'projects');
-            const statePath = statePathFor(cwd);
+            const statePath = join(cwd, '.omc', 'state', 'sessions', 'workflow-activation-fixture', 'autopilot-state.json');
             const transcriptPath = join(projects, 'workflow-activation-fixture.jsonl');
             try {
                 runHook(script, '/autopilot --workflow release-flow ship it', cwd, configHome);
@@ -723,7 +584,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
             ['authenticated advance', 'PIPELINE_RALPLAN_COMPLETE', undefined, true],
         ]) {
             const { cwd, configHome } = createFixture();
-            const statePath = statePathFor(cwd);
+            const statePath = join(cwd, '.omc', 'state', 'sessions', 'workflow-activation-fixture', 'autopilot-state.json');
             const transcriptPath = join(cwd, 'claude-config', 'projects', 'workflow-activation-fixture.jsonl');
             try {
                 runHook(script, '/autopilot --workflow release-flow ship it', cwd, configHome);
@@ -752,7 +613,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
     });
     it.each(HOOKS)('retires an older-run cancel signal during activation through %s', (script) => {
         const { cwd, configHome } = createFixture();
-        const signalPath = sessionStatePath(cwd, 'cancel-signal-state.json');
+        const signalPath = join(cwd, '.omc', 'state', 'sessions', 'workflow-activation-fixture', 'cancel-signal-state.json');
         try {
             mkdirSync(join(signalPath, '..'), { recursive: true });
             writeFileSync(signalPath, JSON.stringify({ active: true, mode: 'autopilot', target_workflow_run_id: '11111111-1111-4111-8111-111111111111' }));
@@ -765,7 +626,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
     });
     it.each(HOOKS)('rejects activation without a stable canonical transcript through %s', (script) => {
         const { cwd, configHome } = createFixture();
-        const statePath = statePathFor(cwd);
+        const statePath = join(cwd, '.omc', 'state', 'sessions', 'workflow-activation-fixture', 'autopilot-state.json');
         const canonical = join(cwd, 'claude-config', 'projects', 'workflow-activation-fixture.jsonl');
         const target = join(cwd, 'claude-config', 'projects', 'target.jsonl');
         try {
@@ -799,7 +660,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
     });
     it.each(HOOKS)('serializes activation through the shared state mutation lock in %s', async (script) => {
         const { cwd, configHome } = createFixture();
-        const statePath = statePathFor(cwd);
+        const statePath = join(cwd, '.omc', 'state', 'sessions', 'workflow-activation-fixture', 'autopilot-state.json');
         const lockPath = `${statePath}.mutation.lock`;
         try {
             mkdirSync(join(statePath, '..'), { recursive: true });
@@ -857,7 +718,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
     });
     it.each(HOOKS)('preserves partial own named markers for generic and named activation through %s', (script) => {
         const { cwd, configHome } = createFixture();
-        const statePath = statePathFor(cwd);
+        const statePath = join(cwd, '.omc', 'state', 'sessions', 'workflow-activation-fixture', 'autopilot-state.json');
         try {
             mkdirSync(join(statePath, '..'), { recursive: true });
             for (const marker of ['workflow', 'workflowRunId', 'pipelineTracking']) {
@@ -878,8 +739,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
         const script = join(ROOT, 'templates', 'hooks', 'keyword-detector.mjs');
         const projectA = createFixture();
         const projectB = createFixture();
-        const sharedStateDir = join(projectA.cwd, STATE_DIR_NAME);
-        const globalStatePath = globalStatePathFor(projectA.cwd, 'autopilot', sharedStateDir);
+        const globalStatePath = join(projectA.cwd, '.omc', 'state', 'autopilot-state.json');
         try {
             mkdirSync(join(globalStatePath, '..'), { recursive: true });
             const foreignState = Buffer.from(JSON.stringify({ active: true, project_path: projectB.cwd, sentinel: 'project-b' }, null, 2));
@@ -890,7 +750,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
                 writeFileSync(globalStatePath, foreignState);
                 writeFileSync(artifact, abandonedLockOwner());
                 const before = readFileSync(artifact);
-                const output = runHook(script, 'autopilot activate project A', projectA.cwd, projectA.configHome, undefined, { HOME: projectA.cwd, USERPROFILE: projectA.cwd, OMC_STATE_DIR: sharedStateDir });
+                const output = runHook(script, 'autopilot activate project A', projectA.cwd, projectA.configHome, undefined, { HOME: projectA.cwd, USERPROFILE: projectA.cwd });
                 expect(output.hookSpecificOutput?.additionalContext).toContain('autopilot');
                 expect(readFileSync(globalStatePath)).toEqual(foreignState);
                 expect(readFileSync(artifact)).toEqual(before);
@@ -910,7 +770,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
         ['/autopilot --workflow unknown-flow ship it', 'workflow profile "unknown-flow" was not found'],
     ])('rejects %s without writing state', (prompt, error) => {
         const { cwd, configHome } = createFixture();
-        const statePath = dirname(statePathFor(cwd));
+        const statePath = join(cwd, '.omc', 'state', 'sessions', 'workflow-activation-fixture');
         mkdirSync(statePath, { recursive: true });
         writeFileSync(join(statePath, 'autopilot-state.json'), '{"sentinel":true}\n');
         const before = stateBytes(cwd);

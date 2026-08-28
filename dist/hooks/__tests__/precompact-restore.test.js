@@ -13,10 +13,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, mkdirSync, existsSync, linkSync, rmSync, readdirSync, renameSync, symlinkSync, statSync, unlinkSync, utimesSync, writeFileSync, readFileSync, realpathSync, } from 'fs';
 import * as nodeFs from 'fs';
 import { basename, dirname, join, sep } from 'path';
-import { homedir } from 'os';
+import { tmpdir } from 'os';
 import { pathToFileURL } from 'url';
 import { createHash } from 'crypto';
-import { execFileSync } from 'child_process';
 vi.mock('fs', async () => {
     const actual = await vi.importActual('fs');
     return { ...actual };
@@ -50,8 +49,7 @@ function withPublisherPreload(preloadPath, env, callback) {
 // Helpers
 // ============================================================================
 function createTempDir() {
-    const dir = mkdtempSync(join(homedir(), 'precompact-restore-test-'));
-    execFileSync('git', ['init', '--quiet'], { cwd: dir, stdio: 'ignore' });
+    const dir = mkdtempSync(join(tmpdir(), 'precompact-restore-test-'));
     mkdirSync(join(dir, '.omc', 'state'), { recursive: true });
     return dir;
 }
@@ -106,7 +104,6 @@ describe('PreCompact writer - plan anchors (issue #3730)', () => {
         // Arrange: session-scoped PRD (ralph PRD mode)
         // PRD lives at .omc/state/sessions/{sessionId}/prd.json
         const prdDir = join(getOmcRootForTest(tempDir), 'state', 'sessions', 'test-session');
-        const completionCriteriaRevision = `sha256:${createHash('sha256').update(JSON.stringify({ acceptanceCriteria: ['bug reproduces'], criterionAmendments: [] })).digest('hex')}`;
         mkdirSync(prdDir, { recursive: true });
         writeFileSync(join(prdDir, 'prd.json'), JSON.stringify({
             project: 'Fix the login bug',
@@ -120,7 +117,6 @@ describe('PreCompact writer - plan anchors (issue #3730)', () => {
                     acceptanceCriteria: ['bug reproduces'],
                     priority: 1,
                     passes: true,
-                    completionCriteriaRevision,
                 },
                 {
                     id: 'US-2',

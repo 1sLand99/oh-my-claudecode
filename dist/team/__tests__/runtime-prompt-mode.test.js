@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync as rawMkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 /**
@@ -22,23 +22,6 @@ const tmuxCalls = vi.hoisted(() => ({
     afterSplit: null,
     afterKillPane: null,
 }));
-let fixtureRoot;
-let previousHome;
-let previousUserProfile;
-let previousStateDir;
-function mkdtempSync(prefix) {
-    const root = rawMkdtempSync(prefix);
-    if (!fixtureRoot) {
-        fixtureRoot = root;
-        previousHome = process.env.HOME;
-        previousUserProfile = process.env.USERPROFILE;
-        previousStateDir = process.env.OMC_STATE_DIR;
-        process.env.HOME = root;
-        process.env.USERPROFILE = root;
-        delete process.env.OMC_STATE_DIR;
-    }
-    return root;
-}
 vi.mock('child_process', async (importOriginal) => {
     const actual = await importOriginal();
     const { promisify: utilPromisify } = await import('util');
@@ -164,7 +147,7 @@ function makeRuntime(cwd, agentType) {
 function setupTaskDir(cwd) {
     const tasksDir = join(cwd, '.omc/state/team/test-team/tasks');
     mkdirSync(tasksDir, { recursive: true });
-    writeFileSync(join(tasksDir, 'task-1.json'), JSON.stringify({
+    writeFileSync(join(tasksDir, '1.json'), JSON.stringify({
         id: '1',
         subject: 'Test task',
         description: 'Do something',
@@ -175,7 +158,7 @@ function setupTaskDir(cwd) {
     mkdirSync(workerDir, { recursive: true });
 }
 function denyTaskReset(cwd) {
-    writeFileSync(join(cwd, '.omc/state/team/test-team/tasks/task-1.lock'), JSON.stringify({ pid: process.pid, timestamp: Date.now() }));
+    writeFileSync(join(cwd, '.omc/state/team/test-team/tasks/1.lock'), JSON.stringify({ pid: process.pid, timestamp: Date.now() }));
 }
 function resetTmuxFailureState() {
     tmuxCalls.splitPaneOutput = '%42\n';
@@ -193,24 +176,6 @@ describe('spawnWorkerForTask – prompt mode and interactive worker launch', () 
         delete process.env.OMC_SHELL_READY_TIMEOUT_MS;
         cwd = mkdtempSync(join(tmpdir(), 'runtime-gemini-prompt-'));
         setupTaskDir(cwd);
-    });
-    afterEach(() => {
-        if (previousHome === undefined)
-            delete process.env.HOME;
-        else
-            process.env.HOME = previousHome;
-        if (previousUserProfile === undefined)
-            delete process.env.USERPROFILE;
-        else
-            process.env.USERPROFILE = previousUserProfile;
-        if (previousStateDir === undefined)
-            delete process.env.OMC_STATE_DIR;
-        else
-            process.env.OMC_STATE_DIR = previousStateDir;
-        fixtureRoot = undefined;
-        previousHome = undefined;
-        previousUserProfile = undefined;
-        previousStateDir = undefined;
     });
     it('gemini worker launch args include -p flag with inbox path', async () => {
         const runtime = makeRuntime(cwd, 'gemini');
@@ -255,7 +220,7 @@ describe('spawnWorkerForTask – prompt mode and interactive worker launch', () 
         expect(rollbackFailure.cause?.taskCleanupError).toBeInstanceOf(Error);
         expect((rollbackFailure.cause?.taskCleanupError).message)
             .toBe('worker_layout_task_reset_unconfirmed:worker-1:1');
-        const task = JSON.parse(readFileSync(join(cwd, '.omc/state/team/test-team/tasks/task-1.json'), 'utf-8'));
+        const task = JSON.parse(readFileSync(join(cwd, '.omc/state/team/test-team/tasks/1.json'), 'utf-8'));
         expect(task.status).toBe('in_progress');
         expect(task.owner).toBe('worker-1');
         rmSync(cwd, { recursive: true, force: true });
@@ -275,7 +240,7 @@ describe('spawnWorkerForTask – prompt mode and interactive worker launch', () 
         const rollbackFailure = failure;
         expect(rollbackFailure.message).toBe('worker_startup_task_reset_unconfirmed:worker-1:1');
         expect(rollbackFailure.cause?.taskCleanupError).toBeInstanceOf(Error);
-        const task = JSON.parse(readFileSync(join(cwd, '.omc/state/team/test-team/tasks/task-1.json'), 'utf-8'));
+        const task = JSON.parse(readFileSync(join(cwd, '.omc/state/team/test-team/tasks/1.json'), 'utf-8'));
         expect(task.status).toBe('in_progress');
         expect(task.owner).toBe('worker-1');
         rmSync(cwd, { recursive: true, force: true });
@@ -367,7 +332,7 @@ describe('spawnWorkerForTask – prompt mode and interactive worker launch', () 
         tmuxCalls.capturePaneText = 'still booting\n';
         process.env.OMC_SHELL_READY_TIMEOUT_MS = '40';
         await expect(spawnWorkerForTask(runtime, 'worker-1', 0)).rejects.toThrow('worker_pane_not_ready:worker-1');
-        const taskPath = join(cwd, '.omc/state/team/test-team/tasks/task-1.json');
+        const taskPath = join(cwd, '.omc/state/team/test-team/tasks/1.json');
         const task = JSON.parse(readFileSync(taskPath, 'utf-8'));
         expect(task.status).toBe('pending');
         expect(task.owner).toBeNull();
@@ -392,7 +357,7 @@ describe('spawnWorkerForTask – prompt mode and interactive worker launch', () 
         expect(rollbackFailure.cause?.paneCleanupError).toBeUndefined();
         expect((rollbackFailure.cause?.taskCleanupError).message)
             .toBe('worker_startup_task_reset_unconfirmed:worker-1:1');
-        const task = JSON.parse(readFileSync(join(cwd, '.omc/state/team/test-team/tasks/task-1.json'), 'utf-8'));
+        const task = JSON.parse(readFileSync(join(cwd, '.omc/state/team/test-team/tasks/1.json'), 'utf-8'));
         expect(task.status).toBe('in_progress');
         expect(task.owner).toBe('worker-1');
         rmSync(cwd, { recursive: true, force: true });
@@ -414,7 +379,7 @@ describe('spawnWorkerForTask – prompt mode and interactive worker launch', () 
             .toBe('worker_notify_failed:worker-1:initial-inbox');
         expect(rollbackFailure.cause?.paneCleanupError).toBeInstanceOf(Error);
         expect(rollbackFailure.cause?.taskCleanupError).toBeUndefined();
-        const task = JSON.parse(readFileSync(join(cwd, '.omc/state/team/test-team/tasks/task-1.json'), 'utf-8'));
+        const task = JSON.parse(readFileSync(join(cwd, '.omc/state/team/test-team/tasks/1.json'), 'utf-8'));
         expect(task.status).toBe('pending');
         expect(task.owner).toBeNull();
         rmSync(cwd, { recursive: true, force: true });
@@ -433,13 +398,13 @@ describe('spawnWorkerForTask – prompt mode and interactive worker launch', () 
         const rollbackFailure = failure;
         expect(rollbackFailure.message).toBe('tmux_send-keys_failed');
         expect(rollbackFailure.cause).toBeUndefined();
-        const task = JSON.parse(readFileSync(join(cwd, '.omc/state/team/test-team/tasks/task-1.json'), 'utf-8'));
+        const task = JSON.parse(readFileSync(join(cwd, '.omc/state/team/test-team/tasks/1.json'), 'utf-8'));
         expect(task.status).toBe('pending');
         expect(task.owner).toBeNull();
         rmSync(cwd, { recursive: true, force: true });
     });
     it('returns empty and skips spawn when task is already in_progress (claim already taken)', async () => {
-        const taskPath = join(cwd, '.omc/state/team/test-team/tasks/task-1.json');
+        const taskPath = join(cwd, '.omc/state/team/test-team/tasks/1.json');
         writeFileSync(taskPath, JSON.stringify({
             id: '1',
             subject: 'Test task',
@@ -460,9 +425,7 @@ describe('spawnWorkerForTask – prompt mode and interactive worker launch', () 
 });
 describe('spawnWorkerForTask – model passthrough from environment variables', () => {
     let cwd;
-    let previousHome;
-    let previousUserProfile;
-    let previousStateDir;
+    const originalEnv = process.env;
     beforeEach(() => {
         tmuxCalls.args = [];
         tmuxCalls.capturePaneText = '❯ ready\n';
@@ -493,27 +456,10 @@ describe('spawnWorkerForTask – model passthrough from environment variables', 
         delete process.env.OMC_MODEL_MEDIUM;
         delete process.env.OMC_MODEL_LOW;
         cwd = mkdtempSync(join(tmpdir(), 'runtime-model-passthrough-'));
-        previousHome = process.env.HOME;
-        previousUserProfile = process.env.USERPROFILE;
-        previousStateDir = process.env.OMC_STATE_DIR;
-        process.env.HOME = cwd;
-        process.env.USERPROFILE = cwd;
-        delete process.env.OMC_STATE_DIR;
         setupTaskDir(cwd);
     });
     afterEach(() => {
-        if (previousHome === undefined)
-            delete process.env.HOME;
-        else
-            process.env.HOME = previousHome;
-        if (previousUserProfile === undefined)
-            delete process.env.USERPROFILE;
-        else
-            process.env.USERPROFILE = previousUserProfile;
-        if (previousStateDir === undefined)
-            delete process.env.OMC_STATE_DIR;
-        else
-            process.env.OMC_STATE_DIR = previousStateDir;
+        process.env = originalEnv;
         rmSync(cwd, { recursive: true, force: true });
     });
     it('codex worker passes model from OMC_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL', async () => {

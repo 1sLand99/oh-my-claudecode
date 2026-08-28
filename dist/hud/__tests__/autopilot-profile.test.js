@@ -1,5 +1,4 @@
 import { createHash } from 'crypto';
-import { execFileSync } from 'child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
@@ -95,36 +94,7 @@ function workflowState(overrides = {}) {
 }
 describe('autopilot workflow profile observability', () => {
     const directories = [];
-    const restorers = [];
-    function makeFixture(prefix) {
-        const directory = mkdtempSync(join(tmpdir(), prefix));
-        execFileSync('git', ['init'], { cwd: directory, stdio: 'pipe' });
-        const previousHome = process.env.HOME;
-        const previousUserProfile = process.env.USERPROFILE;
-        const previousStateDir = process.env.OMC_STATE_DIR;
-        process.env.HOME = directory;
-        process.env.USERPROFILE = directory;
-        delete process.env.OMC_STATE_DIR;
-        directories.push(directory);
-        restorers.push(() => {
-            if (previousHome === undefined)
-                delete process.env.HOME;
-            else
-                process.env.HOME = previousHome;
-            if (previousUserProfile === undefined)
-                delete process.env.USERPROFILE;
-            else
-                process.env.USERPROFILE = previousUserProfile;
-            if (previousStateDir === undefined)
-                delete process.env.OMC_STATE_DIR;
-            else
-                process.env.OMC_STATE_DIR = previousStateDir;
-        });
-        return directory;
-    }
     afterEach(() => {
-        for (const restore of restorers.splice(0).reverse())
-            restore();
         for (const directory of directories.splice(0)) {
             rmSync(directory, { recursive: true, force: true });
         }
@@ -136,7 +106,8 @@ describe('autopilot workflow profile observability', () => {
             profileVersion: 1,
             stages,
         })).digest('hex');
-        const directory = makeFixture('omc-autopilot-profile-');
+        const directory = mkdtempSync(join(tmpdir(), 'omc-autopilot-profile-'));
+        directories.push(directory);
         const statePath = join(directory, '.omc', 'state', 'autopilot-state.json');
         mkdirSync(join(statePath, '..'), { recursive: true });
         writeFileSync(statePath, JSON.stringify(workflowState({
@@ -155,7 +126,8 @@ describe('autopilot workflow profile observability', () => {
         expect(output).toContain(`#${longNameHash.slice(0, 12)}`);
     });
     it('marks a malformed workflow descriptor invalid when reading HUD state', () => {
-        const directory = makeFixture('omc-autopilot-profile-');
+        const directory = mkdtempSync(join(tmpdir(), 'omc-autopilot-profile-'));
+        directories.push(directory);
         const statePath = join(directory, '.omc', 'state', 'autopilot-state.json');
         mkdirSync(join(statePath, '..'), { recursive: true });
         writeFileSync(statePath, JSON.stringify(workflowState({
@@ -166,7 +138,8 @@ describe('autopilot workflow profile observability', () => {
         expect(renderAutopilot(hudState)).toContain('workflow:invalid');
     });
     it('marks a falsy named-workflow marker invalid instead of rendering legacy autopilot state', () => {
-        const directory = makeFixture('omc-autopilot-profile-');
+        const directory = mkdtempSync(join(tmpdir(), 'omc-autopilot-profile-'));
+        directories.push(directory);
         const statePath = join(directory, '.omc', 'state', 'autopilot-state.json');
         mkdirSync(join(statePath, '..'), { recursive: true });
         writeFileSync(statePath, JSON.stringify({
@@ -206,7 +179,8 @@ describe('autopilot workflow profile observability', () => {
         })).toContain('Phase');
     });
     it('bounds and redacts Stop-facing runtime insight fields', () => {
-        const directory = makeFixture('.tmp-omc-runtime-insight-profile-');
+        const directory = mkdtempSync(join(process.cwd(), '.tmp-omc-runtime-insight-profile-'));
+        directories.push(directory);
         writeHudState({
             timestamp: new Date().toISOString(),
             backgroundTasks: [{
