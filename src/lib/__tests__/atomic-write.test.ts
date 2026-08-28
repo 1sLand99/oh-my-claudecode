@@ -49,7 +49,11 @@ vi.mock('fs/promises', async importOriginal => {
   };
 });
 
-import { atomicWriteJson } from '../atomic-write.js';
+import {
+  atomicWriteBatchSync,
+  atomicWriteFileSync,
+  atomicWriteJson,
+} from '../atomic-write.js';
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve!: () => void;
@@ -224,6 +228,50 @@ describe('atomicWriteJson', () => {
 
       expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual(oldValue);
       if (extraPath !== undefined) rmSync(extraPath, { force: true });
+    },
+  );
+
+  it('rejects a temp replacement at rename and restores the prior target', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'atomic-write-publication-race-'));
+    directories.push(directory);
+    const filePath = join(directory, 'state.json');
+    const oldValue = { status: 'old' };
+    writeFileSync(filePath, JSON.stringify(oldValue));
+    let raced = false;
+    fsPromisesControl.renameHook = async from => {
+      if (raced) return;
+      raced = true;
+      unlinkSync(from.toString());
+      writeFileSync(from.toString(), JSON.stringify({ status: 'attacker' }));
+    };
+
+    await expect(atomicWriteJson(filePath, { status: 'new' })).rejects.toThrow(
+      'target was replaced at publication',
+    );
+    expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual(oldValue);
+    expect(readdirSync(directory)).toEqual(['state.json']);
+  });
+
+  it.each(['sync', 'batch'] as const)(
+    'rolls back the prior target when %s publication loses its ownership hook',
+    kind => {
+      const directory = mkdtempSync(join(tmpdir(), `atomic-write-${kind}-boundary-`));
+      directories.push(directory);
+      const filePath = join(directory, 'state.json');
+      writeFileSync(filePath, 'old', 'utf8');
+      const hooks = { afterRename: () => { throw new Error('publication fenced'); } };
+
+      if (kind === 'sync') {
+        expect(() => atomicWriteFileSync(filePath, 'new', hooks)).toThrow(
+          'publication fenced',
+        );
+      } else {
+        expect(() => atomicWriteBatchSync([{ path: filePath, content: 'new' }], hooks)).toThrow(
+          'publication fenced',
+        );
+      }
+      expect(readFileSync(filePath, 'utf8')).toBe('old');
+      expect(readdirSync(directory)).toEqual(['state.json']);
     },
   );
 

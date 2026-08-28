@@ -32307,7 +32307,8 @@ function verifyPrivateTempFile(fd, tempPath, label) {
   } catch {
     throw new Error(`${label} temporary file was replaced before rename`);
   }
-  const isPrivateRegularSingleLink = (stats) => stats.isFile() && stats.nlink === 1 && (stats.mode & 511) === 384;
+  const isWindows2 = process.platform === "win32";
+  const isPrivateRegularSingleLink = (stats) => stats.isFile() && (isWindows2 ? stats.nlink <= 1 : stats.nlink === 1) && (isWindows2 || (stats.mode & 511) === 384);
   if (!isPrivateRegularSingleLink(fdStats) || !isPrivateRegularSingleLink(pathStats)) {
     throw new Error(
       `${label} temporary file must be a private regular single-link file`
@@ -32317,15 +32318,83 @@ function verifyPrivateTempFile(fd, tempPath, label) {
     throw new Error(`${label} temporary file was replaced before rename`);
   }
 }
-async function atomicWriteJson(filePath, data) {
+function verifyPublishedFile(fd, filePath, label) {
+  const fdStats = fsSync.fstatSync(fd);
+  let pathStats;
+  try {
+    pathStats = fsSync.lstatSync(filePath);
+  } catch {
+    throw new Error(`${label} target was replaced at publication`);
+  }
+  if (!pathStats.isFile() || fdStats.dev !== pathStats.dev || fdStats.ino !== pathStats.ino) {
+    throw new Error(`${label} target was replaced at publication`);
+  }
+}
+function preservePriorTarget(filePath) {
+  const backupPath = `${filePath}.rollback.${crypto3.randomUUID()}`;
+  try {
+    const stats = fsSync.lstatSync(filePath);
+    const isWindows2 = process.platform === "win32";
+    if (!stats.isFile() || (isWindows2 ? stats.nlink > 1 : stats.nlink !== 1)) {
+      return null;
+    }
+    fsSync.linkSync(filePath, backupPath);
+    return backupPath;
+  } catch (error2) {
+    if (error2.code !== "ENOENT") {
+      try {
+        fsSync.unlinkSync(backupPath);
+      } catch {
+      }
+    }
+    return null;
+  }
+}
+function currentFileIdentity(filePath) {
+  try {
+    const stats = fsSync.lstatSync(filePath);
+    return { dev: stats.dev, ino: stats.ino };
+  } catch {
+    return null;
+  }
+}
+function descriptorIdentity(fd) {
+  try {
+    const stats = fsSync.fstatSync(fd);
+    return { dev: stats.dev, ino: stats.ino };
+  } catch {
+    return null;
+  }
+}
+function rollbackPriorTarget(filePath, backupPath, expectedIdentity) {
+  if (backupPath === null || expectedIdentity === null) return;
+  const current = currentFileIdentity(filePath);
+  if (current === null || current.dev !== expectedIdentity.dev || current.ino !== expectedIdentity.ino) {
+    return;
+  }
+  try {
+    fsSync.renameSync(backupPath, filePath);
+  } catch {
+  }
+}
+function removeBackup(backupPath) {
+  if (backupPath === null) return;
+  try {
+    fsSync.unlinkSync(backupPath);
+  } catch {
+  }
+}
+async function atomicWriteJson(filePath, data, hooks) {
   const dir = path2.dirname(filePath);
   const base = path2.basename(filePath);
   const tempPath = path2.join(dir, `.${base}.tmp.${crypto3.randomUUID()}`);
   let success = false;
+  let backupPath = null;
+  let fd = null;
   try {
     ensureDirSync(dir);
     const jsonContent = Buffer.from(JSON.stringify(data, null, 2), "utf-8");
-    const fd = await fs3.open(tempPath, "wx", 384);
+    fd = await fs3.open(tempPath, "wx", 384);
     try {
       let offset = 0;
       while (offset < jsonContent.length) {
@@ -32342,11 +32411,29 @@ async function atomicWriteJson(filePath, data) {
       }
       await fd.sync();
       verifyPrivateTempFile(fd.fd, tempPath, "atomic JSON write");
+      backupPath = preservePriorTarget(filePath);
+      hooks?.beforeRename?.();
+      await fs3.rename(tempPath, filePath);
+      let publishedIdentity = null;
+      try {
+        verifyPublishedFile(fd.fd, filePath, "atomic JSON write");
+        publishedIdentity = descriptorIdentity(fd.fd);
+        hooks?.afterRename?.();
+        verifyPublishedFile(fd.fd, filePath, "atomic JSON write");
+      } catch (error2) {
+        rollbackPriorTarget(
+          filePath,
+          backupPath,
+          publishedIdentity ?? currentFileIdentity(filePath)
+        );
+        throw error2;
+      }
     } finally {
       await fd.close();
+      fd = null;
     }
-    await fs3.rename(tempPath, filePath);
     success = true;
+    removeBackup(backupPath);
     try {
       const dirFd = await fs3.open(dir, "r");
       try {
@@ -32360,25 +32447,44 @@ async function atomicWriteJson(filePath, data) {
     if (!success) {
       await fs3.unlink(tempPath).catch(() => {
       });
+      removeBackup(backupPath);
     }
   }
 }
-function atomicWriteFileSync(filePath, content) {
+function atomicWriteFileSync(filePath, content, hooks) {
   const dir = path2.dirname(filePath);
   const base = path2.basename(filePath);
   const tempPath = path2.join(dir, `.${base}.tmp.${crypto3.randomUUID()}`);
   let fd = null;
   let success = false;
+  let backupPath = null;
   try {
     ensureDirSync(dir);
     fd = fsSync.openSync(tempPath, "wx", 384);
     writeAllSync(fd, content, "atomic write");
     fsSync.fsyncSync(fd);
     verifyPrivateTempFile(fd, tempPath, "atomic write");
+    backupPath = preservePriorTarget(filePath);
+    hooks?.beforeRename?.();
+    fsSync.renameSync(tempPath, filePath);
+    let publishedIdentity = null;
+    try {
+      verifyPublishedFile(fd, filePath, "atomic write");
+      publishedIdentity = descriptorIdentity(fd);
+      hooks?.afterRename?.();
+      verifyPublishedFile(fd, filePath, "atomic write");
+    } catch (error2) {
+      rollbackPriorTarget(
+        filePath,
+        backupPath,
+        publishedIdentity ?? currentFileIdentity(filePath)
+      );
+      throw error2;
+    }
     fsSync.closeSync(fd);
     fd = null;
-    fsSync.renameSync(tempPath, filePath);
     success = true;
+    removeBackup(backupPath);
     try {
       const dirFd = fsSync.openSync(dir, "r");
       try {
@@ -32400,12 +32506,13 @@ function atomicWriteFileSync(filePath, content) {
         fsSync.unlinkSync(tempPath);
       } catch {
       }
+      removeBackup(backupPath);
     }
   }
 }
-function atomicWriteJsonSync(filePath, data) {
+function atomicWriteJsonSync(filePath, data, hooks) {
   const jsonContent = JSON.stringify(data, null, 2);
-  atomicWriteFileSync(filePath, jsonContent);
+  atomicWriteFileSync(filePath, jsonContent, hooks);
 }
 async function safeReadJson(filePath) {
   try {
@@ -87685,6 +87792,9 @@ var init_fence = __esm({
         const epochFilePath = (0, import_path151.join)((0, import_path151.dirname)(lockPath2), EPOCH_FILE_NAME);
         let candidateEpoch = 1;
         for (; ; ) {
+          if (this.hasOrphanedTombstone(directoryPath)) {
+            return { outcome: "busy" };
+          }
           const ceiling = readSidecarCeiling(epochFilePath);
           if (ceiling === Number.MAX_SAFE_INTEGER) {
             throw new Error("owner.epoch has no representable successor");
@@ -87798,8 +87908,11 @@ var init_fence = __esm({
         }
         const movedIdentity = this.readLockIdentity(tombstone);
         if (!this.sameLockIdentity(heldIdentity, movedIdentity)) {
-          this.restoreForeignTombstone(lockPath2, tombstone);
-          this.clearHeld();
+          try {
+            this.restoreForeignTombstone(lockPath2, tombstone);
+          } finally {
+            this.clearHeld();
+          }
           return false;
         }
         this.clearHeld();
@@ -87909,7 +88022,33 @@ var init_fence = __esm({
       restoreForeignTombstone(lockPath2, tombstone) {
         try {
           (0, import_fs130.linkSync)(tombstone, lockPath2);
-        } catch {
+          (0, import_fs130.unlinkSync)(tombstone);
+        } catch (error2) {
+          if (error2.code === "EEXIST") {
+            const liveIdentity = this.readLockIdentity(lockPath2);
+            const tombstoneIdentity = this.readLockIdentity(tombstone);
+            if (this.sameLockIdentity(liveIdentity, tombstoneIdentity)) {
+              (0, import_fs130.unlinkSync)(tombstone);
+              return;
+            }
+            throw new Error("foreign lock restoration raced with another inode");
+          }
+          throw new Error(
+            `foreign lock tombstone could not be restored: ${String(
+              error2.message ?? error2
+            )}`
+          );
+        }
+      }
+      /** A failed foreign restoration leaves a tombstone that must block takeover. */
+      hasOrphanedTombstone(directoryPath) {
+        try {
+          return (0, import_fs130.readdirSync)(directoryPath).some(
+            (entry2) => entry2.startsWith(`${LOCK_FILE_NAME}.tomb.`)
+          );
+        } catch (error2) {
+          if (error2.code === "ENOENT") return false;
+          throw error2;
         }
       }
       /** Remove only a lock inode positively identified as ours after create. */
@@ -88076,9 +88215,19 @@ var init_store = __esm({
             `snapshot path bound to descriptor ${stored.descriptor_hash}, run ${stored.run_id}, revision ${stored.revision_id}`
           );
         }
+        if (stored !== null && (envelope.epoch < stored.epoch || envelope.epoch === stored.epoch && envelope.saved_at_seq < stored.saved_at_seq)) {
+          throw new ProjectionStoreError(
+            "corrupt",
+            `projection snapshot regresses from epoch ${stored.epoch} seq ${stored.saved_at_seq} to epoch ${envelope.epoch} seq ${envelope.saved_at_seq}`
+          );
+        }
         withContainedPath(this.runDir(), PROJECTION_FILE_NAME, (filePath) => {
           assertOwnership?.();
-          atomicWriteJsonSync(filePath, envelope);
+          const hooks = assertOwnership ? {
+            beforeRename: assertOwnership,
+            afterRename: assertOwnership
+          } : void 0;
+          atomicWriteJsonSync(filePath, envelope, hooks);
           assertOwnership?.();
         });
       }
@@ -88159,7 +88308,7 @@ function tokenIdFor(cohortId, index) {
 function nextActivationIdFor(projection, targetNodeId) {
   return `${targetNodeId}-act${activationCount(projection, targetNodeId)}`;
 }
-function buildLiveNodeResultIdentities(descriptor, projection, nodeId, output) {
+function buildLiveNodeResultIdentities(descriptor, projection, nodeId, activationId, output) {
   if (output.outcome === "failed") {
     return void 0;
   }
@@ -88197,7 +88346,7 @@ function buildLiveNodeResultIdentities(descriptor, projection, nodeId, output) {
   }
   const targetNode = sealedNode(descriptor, matchedEdge.to);
   if (targetNode?.kind === "join") {
-    return joinArrivalIdentities(descriptor, projection, nodeId, targetNode);
+    return joinArrivalIdentities(descriptor, projection, activationId, targetNode);
   }
   return {
     next_activation_ids: {
@@ -88205,14 +88354,14 @@ function buildLiveNodeResultIdentities(descriptor, projection, nodeId, output) {
     }
   };
 }
-function joinArrivalIdentities(descriptor, projection, nodeId, joinNode) {
+function joinArrivalIdentities(descriptor, projection, activationId, joinNode) {
   const sourceActivation = Object.values(projection.activations).find(
-    (activation) => activation.node_id === nodeId && activation.status === "running" && activation.branch_token_id !== void 0
+    (activation) => activation.activation_id === activationId && activation.status === "running" && activation.branch_token_id !== void 0
   );
   const token = sourceActivation?.branch_token_id !== void 0 ? projection.branch_tokens[sourceActivation.branch_token_id] : void 0;
   if (token === void 0 || token.status !== "active" || token.current_activation_id !== sourceActivation?.activation_id) {
     throw new Error(
-      `activation for ${nodeId} does not hold an active branch token`
+      `activation ${activationId} does not hold an active branch token`
     );
   }
   const cohort = projection.cohorts[token.cohort_id];
@@ -88351,6 +88500,11 @@ function foldOneRecord(descriptor, projection, record2) {
         identities: buildReplayJoinIdentities(transition)
       });
       break;
+    default:
+      throw new GraphSchedulerError(
+        "transition_fenced",
+        `journal record ${record2.seq} has an unknown transition outcome`
+      );
   }
   if (applied.transition.request_fingerprint !== record2.transition.request_fingerprint) {
     throw new GraphSchedulerError(
@@ -88450,27 +88604,13 @@ async function runGraph(sealed, options) {
       }
     }
     phase = "fold";
-    let rawJournal;
-    let journalMissing = false;
-    try {
-      rawJournal = readContainedFileNoFollow(runDirHandle, "journal.jsonl");
-    } catch (error2) {
-      if (error2.code === "ENOENT") {
-        rawJournal = null;
-        journalMissing = true;
-      } else if (error2.code === "ELOOP") {
-        rawJournal = null;
-      } else {
-        throw error2;
-      }
-    }
-    if (!descriptorIsFresh && (journalMissing || rawJournal?.length === 0)) {
+    const records = await journal.readAll();
+    if (!descriptorIsFresh && records.length === 0) {
       throw new GraphSchedulerError(
         "transition_fenced",
         `persisted descriptor for run ${runId} has no committed journal history`
       );
     }
-    const records = await journal.readAll();
     let projection = initializeGraphProjection(
       stored,
       entryActivationIds(stored)
@@ -88646,6 +88786,7 @@ async function runGraph(sealed, options) {
           sealed,
           projection,
           entry2.nodeId,
+          entry2.activationId,
           output
         );
         const applied = applyNodeResult(sealed, projection, {

@@ -17,7 +17,7 @@
  *   sidecar has seen, so resume after release keeps advancing past journal
  *   history instead of restarting at 1.
  */
-import { closeSync, constants as fsConstants, fstatSync, linkSync, lstatSync, mkdirSync, renameSync, unlinkSync, writeSync, } from "fs";
+import { closeSync, constants as fsConstants, fstatSync, linkSync, lstatSync, mkdirSync, readdirSync, renameSync, unlinkSync, writeSync, } from "fs";
 import { randomBytes } from "crypto";
 import { dirname, join } from "path";
 import { atomicWriteFileSync } from "../../lib/atomic-write.js";
@@ -114,9 +114,16 @@ export class FileOwnershipFence {
         let candidateEpoch = 1;
         // Each iteration makes progress toward either acquisition or a
         // live-holder busy. The sidecar ceiling is re-read every iteration
-        // because a concurrent racer may have persisted a higher epoch between
+        // concurrent racer may have persisted a higher epoch between
         // our attempts.
         for (;;) {
+            if (this.hasOrphanedTombstone(directoryPath)) {
+                // A contender must never create a new lock while a moved foreign
+                // inode has no live name. The owner performing the restoration may
+                // still be in flight, so report the same fail-closed busy outcome as
+                // any other concurrent takeover rather than racing it.
+                return { outcome: "busy" };
+            }
             const ceiling = readSidecarCeiling(epochFilePath);
             if (ceiling === Number.MAX_SAFE_INTEGER) {
                 throw new Error("owner.epoch has no representable successor");
@@ -269,8 +276,12 @@ export class FileOwnershipFence {
             // The live path changed after our identity check.  We moved a foreign
             // lock, so restore it without replacement and do not delete its only
             // directory entry.  The held fd is closed below; ownership is lost.
-            this.restoreForeignTombstone(lockPath, tombstone);
-            this.clearHeld();
+            try {
+                this.restoreForeignTombstone(lockPath, tombstone);
+            }
+            finally {
+                this.clearHeld();
+            }
             return false;
         }
         this.clearHeld();
@@ -403,10 +414,35 @@ export class FileOwnershipFence {
             // linkSync never replaces an existing destination.  If it races with a
             // new owner, keep both entries rather than unlinking the foreign inode.
             linkSync(tombstone, lockPath);
+            unlinkSync(tombstone);
         }
-        catch {
-            // EPERM/EXDEV on a platform without hard-link support, or EEXIST from a
-            // concurrent owner: in every case the foreign tombstone is preserved.
+        catch (error) {
+            if (error.code === "EEXIST") {
+                // A concurrent owner already restored/planted the live path. Only
+                // remove our tombstone when it is the same inode; never hide a
+                // distinct foreign lock behind an orphaned alias.
+                const liveIdentity = this.readLockIdentity(lockPath);
+                const tombstoneIdentity = this.readLockIdentity(tombstone);
+                if (this.sameLockIdentity(liveIdentity, tombstoneIdentity)) {
+                    unlinkSync(tombstone);
+                    return;
+                }
+                throw new Error("foreign lock restoration raced with another inode");
+            }
+            // Never continue acquisition with an orphaned foreign lock. The
+            // tombstone remains durable for an operator/recovery process to repair.
+            throw new Error(`foreign lock tombstone could not be restored: ${String(error.message ?? error)}`);
+        }
+    }
+    /** A failed foreign restoration leaves a tombstone that must block takeover. */
+    hasOrphanedTombstone(directoryPath) {
+        try {
+            return readdirSync(directoryPath).some((entry) => entry.startsWith(`${LOCK_FILE_NAME}.tomb.`));
+        }
+        catch (error) {
+            if (error.code === "ENOENT")
+                return false;
+            throw error;
         }
     }
     /** Remove only a lock inode positively identified as ours after create. */

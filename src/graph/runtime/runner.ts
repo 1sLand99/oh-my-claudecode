@@ -170,6 +170,7 @@ function buildLiveNodeResultIdentities(
   descriptor: SealedGraphDescriptor,
   projection: GraphSchedulerProjection,
   nodeId: string,
+  activationId: string,
   output: NodeExecutionOutput,
 ): SchedulerTransitionIdentities | undefined {
   if (output.outcome === "failed") {
@@ -216,7 +217,7 @@ function buildLiveNodeResultIdentities(
   // this completion is the last arriving branch token of the cohort.
   const targetNode = sealedNode(descriptor, matchedEdge.to);
   if (targetNode?.kind === "join") {
-    return joinArrivalIdentities(descriptor, projection, nodeId, targetNode);
+    return joinArrivalIdentities(descriptor, projection, activationId, targetNode);
   }
   return {
     next_activation_ids: {
@@ -233,12 +234,12 @@ function buildLiveNodeResultIdentities(
 function joinArrivalIdentities(
   descriptor: SealedGraphDescriptor,
   projection: GraphSchedulerProjection,
-  nodeId: string,
+  activationId: string,
   joinNode: { readonly id: string },
 ): SchedulerTransitionIdentities | undefined {
   const sourceActivation = Object.values(projection.activations).find(
     (activation) =>
-      activation.node_id === nodeId &&
+      activation.activation_id === activationId &&
       activation.status === "running" &&
       activation.branch_token_id !== undefined,
   );
@@ -252,7 +253,7 @@ function joinArrivalIdentities(
     token.current_activation_id !== sourceActivation?.activation_id
   ) {
     throw new Error(
-      `activation for ${nodeId} does not hold an active branch token`,
+      `activation ${activationId} does not hold an active branch token`,
     );
   }
   const cohort = projection.cohorts[token.cohort_id];
@@ -444,6 +445,11 @@ function foldOneRecord(
         identities: buildReplayJoinIdentities(transition),
       });
       break;
+    default:
+      throw new GraphSchedulerError(
+        "transition_fenced",
+        `journal record ${record.seq} has an unknown transition outcome`,
+      );
   }
   // AC-11b content-tamper detection: a record whose fields were edited
   // after commit folds into a DIFFERENT recomputed request fingerprint.
@@ -612,29 +618,13 @@ export async function runGraph(
     // caller replay the entry activations as if no history existed.  Fresh
     // descriptors are the sole exception; their journal is created by the
     // first committed transition below.
-    let rawJournal: string | null;
-    let journalMissing = false;
-    try {
-      rawJournal = readContainedFileNoFollow(runDirHandle, "journal.jsonl");
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        rawJournal = null;
-        journalMissing = true;
-      } else if ((error as NodeJS.ErrnoException).code === "ELOOP") {
-        // Let FileJournal.readAll map symlinked journals to its normative
-        // JournalCorruptionError surface below.
-        rawJournal = null;
-      } else {
-        throw error;
-      }
-    }
-    if (!descriptorIsFresh && (journalMissing || rawJournal?.length === 0)) {
+    const records = await journal.readAll();
+    if (!descriptorIsFresh && records.length === 0) {
       throw new GraphSchedulerError(
         "transition_fenced",
         `persisted descriptor for run ${runId} has no committed journal history`,
       );
     }
-    const records = await journal.readAll();
     let projection = initializeGraphProjection(
       stored,
       entryActivationIds(stored),
@@ -851,6 +841,7 @@ export async function runGraph(
           sealed,
           projection,
           entry.nodeId,
+          entry.activationId,
           output,
         );
         const applied = applyNodeResult(sealed, projection, {

@@ -87,7 +87,7 @@ function nextActivationIdFor(projection, targetNodeId) {
  * exactly so the generated maps contain precisely the fields applyNodeResult
  * will demand for this outcome.
  */
-function buildLiveNodeResultIdentities(descriptor, projection, nodeId, output) {
+function buildLiveNodeResultIdentities(descriptor, projection, nodeId, activationId, output) {
     if (output.outcome === "failed") {
         return undefined;
     }
@@ -129,7 +129,7 @@ function buildLiveNodeResultIdentities(descriptor, projection, nodeId, output) {
     // this completion is the last arriving branch token of the cohort.
     const targetNode = sealedNode(descriptor, matchedEdge.to);
     if (targetNode?.kind === "join") {
-        return joinArrivalIdentities(descriptor, projection, nodeId, targetNode);
+        return joinArrivalIdentities(descriptor, projection, activationId, targetNode);
     }
     return {
         next_activation_ids: {
@@ -142,8 +142,8 @@ function buildLiveNodeResultIdentities(descriptor, projection, nodeId, output) {
  * Supplies join_activation_id iff every sibling token has already arrived;
  * the scheduler creates nothing otherwise.
  */
-function joinArrivalIdentities(descriptor, projection, nodeId, joinNode) {
-    const sourceActivation = Object.values(projection.activations).find((activation) => activation.node_id === nodeId &&
+function joinArrivalIdentities(descriptor, projection, activationId, joinNode) {
+    const sourceActivation = Object.values(projection.activations).find((activation) => activation.activation_id === activationId &&
         activation.status === "running" &&
         activation.branch_token_id !== undefined);
     const token = sourceActivation?.branch_token_id !== undefined
@@ -152,7 +152,7 @@ function joinArrivalIdentities(descriptor, projection, nodeId, joinNode) {
     if (token === undefined ||
         token.status !== "active" ||
         token.current_activation_id !== sourceActivation?.activation_id) {
-        throw new Error(`activation for ${nodeId} does not hold an active branch token`);
+        throw new Error(`activation ${activationId} does not hold an active branch token`);
     }
     const cohort = projection.cohorts[token.cohort_id];
     if (cohort === undefined) {
@@ -293,6 +293,8 @@ function foldOneRecord(descriptor, projection, record) {
                 identities: buildReplayJoinIdentities(transition),
             });
             break;
+        default:
+            throw new GraphSchedulerError("transition_fenced", `journal record ${record.seq} has an unknown transition outcome`);
     }
     // AC-11b content-tamper detection: a record whose fields were edited
     // after commit folds into a DIFFERENT recomputed request fingerprint.
@@ -414,29 +416,10 @@ export async function runGraph(sealed, options) {
         // caller replay the entry activations as if no history existed.  Fresh
         // descriptors are the sole exception; their journal is created by the
         // first committed transition below.
-        let rawJournal;
-        let journalMissing = false;
-        try {
-            rawJournal = readContainedFileNoFollow(runDirHandle, "journal.jsonl");
-        }
-        catch (error) {
-            if (error.code === "ENOENT") {
-                rawJournal = null;
-                journalMissing = true;
-            }
-            else if (error.code === "ELOOP") {
-                // Let FileJournal.readAll map symlinked journals to its normative
-                // JournalCorruptionError surface below.
-                rawJournal = null;
-            }
-            else {
-                throw error;
-            }
-        }
-        if (!descriptorIsFresh && (journalMissing || rawJournal?.length === 0)) {
+        const records = await journal.readAll();
+        if (!descriptorIsFresh && records.length === 0) {
             throw new GraphSchedulerError("transition_fenced", `persisted descriptor for run ${runId} has no committed journal history`);
         }
-        const records = await journal.readAll();
         let projection = initializeGraphProjection(stored, entryActivationIds(stored));
         if (descriptorIsFresh) {
             await store.save({
@@ -609,7 +592,7 @@ export async function runGraph(sealed, options) {
                         external_idempotency_key: output.external_idempotency_key,
                     }),
                 };
-                const identities = buildLiveNodeResultIdentities(sealed, projection, entry.nodeId, output);
+                const identities = buildLiveNodeResultIdentities(sealed, projection, entry.nodeId, entry.activationId, output);
                 const applied = applyNodeResult(sealed, projection, {
                     activation_id: entry.activationId,
                     transition_id: entry.transitionId,

@@ -7,7 +7,7 @@
  * (atomicWriteJsonSync); every read fails closed on corruption (AC-3).
  */
 import { join } from "path";
-import { atomicWriteJsonSync } from "../../lib/atomic-write.js";
+import { atomicWriteJsonSync, } from "../../lib/atomic-write.js";
 import { resolveRunDirHandle } from "./run-dir.js";
 import { readContainedFileNoFollow, withContainedPath } from "./safe-fs.js";
 const DESCRIPTOR_HASH_PATTERN = /^[a-f0-9]{64}$/;
@@ -101,9 +101,21 @@ export class FileProjectionStore {
                 envelope.revision_id !== stored.revision_id)) {
             throw new ProjectionStoreError("descriptor_mismatch", `snapshot path bound to descriptor ${stored.descriptor_hash}, run ${stored.run_id}, revision ${stored.revision_id}`);
         }
+        if (stored !== null &&
+            (envelope.epoch < stored.epoch ||
+                (envelope.epoch === stored.epoch &&
+                    envelope.saved_at_seq < stored.saved_at_seq))) {
+            throw new ProjectionStoreError("corrupt", `projection snapshot regresses from epoch ${stored.epoch} seq ${stored.saved_at_seq} to epoch ${envelope.epoch} seq ${envelope.saved_at_seq}`);
+        }
         withContainedPath(this.runDir(), PROJECTION_FILE_NAME, (filePath) => {
             assertOwnership?.();
-            atomicWriteJsonSync(filePath, envelope);
+            const hooks = assertOwnership
+                ? {
+                    beforeRename: assertOwnership,
+                    afterRename: assertOwnership,
+                }
+                : undefined;
+            atomicWriteJsonSync(filePath, envelope, hooks);
             assertOwnership?.();
         });
     }
