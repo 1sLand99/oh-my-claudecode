@@ -13417,12 +13417,12 @@
       "pullNumber": 3898,
       "targetRef": "main",
       "mergeBaseSha": "76d8b9caa3b01153f4b6992030b798e124501845",
-      "headSha": "adce865a50f583bf1a4437a138fb15c6b504c8f9",
+      "headSha": "fbce67d43baa121e205c4b42dc81390f7c9475a1",
       "owner": "Yeachan-Heo",
       "expiresAt": "2026-09-27T00:00:00.000Z",
       "generatedDelta": {
-        "count": 13,
-        "sha256": "20c43d250ff28d40f44e0aaa359cde3a04acb8a88cda03436e27b67aeb62233e"
+        "count": 15,
+        "sha256": "890bc8f9b78dd0cce2f655c54c7599a39dcaf0563f0d8074fe829207fe7597b6"
       },
       "generatedFiles": [
         {
@@ -13434,13 +13434,25 @@
         {
           "status": "modified",
           "filename": "bridge/cli.cjs",
-          "sha": "f61cbcd7c250df8082326d307d18be1cbaef6037",
+          "sha": "b104b4036eb540901eb7b02ceddbb455a5a16081",
           "previousFilename": null
         },
         {
           "status": "modified",
           "filename": "bridge/mcp-server.cjs",
-          "sha": "bc8ed1b160244405ae406cdaf7952e1af2f24b05",
+          "sha": "6d6c560ce9baa7b2f5a5085f680368e70166162d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "bridge/runtime-cli.cjs",
+          "sha": "effc3fd1f6423391aa056a1a0c1513941fde3eea",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "bridge/team.js",
+          "sha": "18003b5d9beeb4e96806df44dce00c79a401dd93",
           "previousFilename": null
         },
         {
@@ -13494,7 +13506,7 @@
         {
           "status": "modified",
           "filename": "dist/lib/atomic-write.js",
-          "sha": "4035bc38b6fca419bd0b3b1cad66e7eedcc9a9a2",
+          "sha": "544abc24059162b8482b7eeb9444b9ec4cd1fe21",
           "previousFilename": null
         },
         {
