@@ -62,15 +62,17 @@ function envelopeError(value) {
 export class FileJournal {
     runsRoot;
     runId;
+    handle;
     /**
      * The frozen `Journal` interface is run-scoped but carries no run id, so an
      * instance must be bound to one run. `runId` is optional only to keep the
      * brief's `new FileJournal(runsRoot)` signature constructible; unbound
      * instances fail closed on use.
      */
-    constructor(runsRoot, runId) {
+    constructor(runsRoot, runId, runDirHandle) {
         this.runsRoot = runsRoot;
         this.runId = runId;
+        this.handle = runDirHandle;
     }
     async append(record) {
         const runDir = this.runDir();
@@ -106,7 +108,7 @@ export class FileJournal {
         if (this.runId === undefined) {
             throw new Error("FileJournal is not bound to a run; pass runId to the constructor");
         }
-        return resolveRunDirHandle(this.runsRoot, this.runId);
+        return (this.handle ?? resolveRunDirHandle(this.runsRoot, this.runId));
     }
     async readAll() {
         const runDir = this.runDir();

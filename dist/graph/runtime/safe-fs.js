@@ -1,6 +1,43 @@
 import { closeSync, constants as fsConstants, fstatSync, lstatSync, openSync, readFileSync, statSync, } from "fs";
-import { join } from "path";
+import { isAbsolute, join, normalize, win32 } from "path";
 const NO_FOLLOW = process.platform === "win32" ? 0 : fsConstants.O_NOFOLLOW;
+const UNSAFE_CONTROL = /[\u0000-\u001f\u007f]/;
+const WINDOWS_DEVICE_NAME = /^(?:con|prn|aux|nul|clock\$|com[1-9¹²³]|lpt[1-9¹²³])(?:\..*)?$/i;
+/** Fail closed before acquiring any run-scoped locks on unsupported POSIX. */
+export function assertContainedFsSupported(platform = process.platform) {
+    if (platform !== "linux" && platform !== "win32") {
+        throw new Error(`contained directory-FD traversal is unavailable on ${platform}; refusing pathname fallback`);
+    }
+}
+/**
+ * Validate the untrusted final component before it reaches any path API.
+ * Contained artifacts are deliberately a single portable basename: allowing
+ * either platform separator would make the contract depend on the host that
+ * happens to process the descriptor, and Windows also treats `:` as an ADS
+ * separator. Require canonical NFC so the same artifact name has one portable
+ * byte-level spelling across Linux, macOS, and Windows; reject normalization-
+ * changing values rather than attempting to canonicalize untrusted input.
+ */
+export function assertSafeContainedFileName(fileName, platform = process.platform) {
+    if (typeof fileName !== "string" ||
+        fileName.length === 0 ||
+        fileName === "." ||
+        fileName === ".." ||
+        fileName.includes("/") ||
+        fileName.includes("\\") ||
+        fileName.includes("\0") ||
+        UNSAFE_CONTROL.test(fileName) ||
+        fileName.normalize("NFC") !== fileName ||
+        isAbsolute(fileName) ||
+        win32.isAbsolute(fileName) ||
+        normalize(fileName) !== fileName ||
+        win32.normalize(fileName) !== fileName ||
+        (platform === "win32" && fileName.includes(":")) ||
+        (platform === "win32" && WINDOWS_DEVICE_NAME.test(fileName)) ||
+        (fileName.endsWith(".") || fileName.endsWith(" "))) {
+        throw new RangeError(`invalid contained artifact fileName: ${JSON.stringify(fileName)}`);
+    }
+}
 /** Open a runtime artifact without following a symlink at the final path. */
 export function openNoFollow(filePath, flags, mode = 0o600) {
     if (process.platform === "win32") {
@@ -29,10 +66,20 @@ export function readFileNoFollow(filePath) {
         closeSync(fd);
     }
 }
-function descriptorPath(directoryFd) {
-    if (process.platform === "linux")
-        return `/proc/self/fd/${directoryFd}`;
-    return `/dev/fd/${directoryFd}`;
+/**
+ * Resolve a path for an already-open run directory without changing the
+ * process-wide platform state. Linux exposes directory FDs as traversable
+ * procfs directories. macOS (and other non-Linux POSIX platforms) does not,
+ * so use the validated run-directory path and retain the final-component
+ * no-follow guard in openNoFollow.
+ */
+export function containedPathForPlatform(directoryFd, runDirPath, fileName, platform = process.platform) {
+    assertSafeContainedFileName(fileName, platform);
+    if (platform === "linux") {
+        return join(`/proc/self/fd/${directoryFd}`, fileName);
+    }
+    assertContainedFsSupported(platform);
+    return join(runDirPath, fileName);
 }
 /**
  * Run a synchronous operation against a directory FD on POSIX. If the
@@ -41,7 +88,36 @@ function descriptorPath(directoryFd) {
  * Windows falls back to the final-component no-follow guard.
  */
 export function withContainedPath(runDir, fileName, operation) {
-    if (process.platform === "win32") {
+    return withContainedPathForPlatform(runDir, fileName, operation, process.platform);
+}
+/** Run several related operations beneath one identity-checked directory FD. */
+export function withContainedDirectory(runDir, operation, platform = process.platform) {
+    assertContainedFsSupported(platform);
+    if (platform === "win32") {
+        const stats = statSync(runDir.path);
+        if (stats.dev !== runDir.device || stats.ino !== runDir.inode) {
+            throw new Error("run directory identity changed");
+        }
+        return operation(runDir.path);
+    }
+    const directoryFd = openNoFollow(runDir.path, fsConstants.O_RDONLY | (fsConstants.O_DIRECTORY ?? 0));
+    try {
+        const stats = fstatSync(directoryFd);
+        if (stats.dev !== runDir.device || stats.ino !== runDir.inode) {
+            throw new Error("run directory identity changed");
+        }
+        return operation(`/proc/self/fd/${directoryFd}`);
+    }
+    finally {
+        closeSync(directoryFd);
+    }
+}
+export function withContainedPathForPlatform(runDir, fileName, operation, platform) {
+    assertSafeContainedFileName(fileName, platform);
+    if (platform !== "linux") {
+        assertContainedFsSupported(platform);
+        // Windows has no POSIX dirfd primitive. Keep its existing identity guard
+        // and final-component no-follow behavior unchanged.
         const stats = statSync(runDir.path);
         if (stats.dev !== runDir.device || stats.ino !== runDir.inode) {
             throw new Error("run directory identity changed");
@@ -54,7 +130,7 @@ export function withContainedPath(runDir, fileName, operation) {
         if (stats.dev !== runDir.device || stats.ino !== runDir.inode) {
             throw new Error("run directory identity changed");
         }
-        return operation(join(descriptorPath(directoryFd), fileName));
+        return operation(containedPathForPlatform(directoryFd, runDir.path, fileName, platform));
     }
     finally {
         closeSync(directoryFd);

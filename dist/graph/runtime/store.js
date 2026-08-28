@@ -65,13 +65,17 @@ function parseStoredEnvelope(raw) {
 export class FileProjectionStore {
     runsRoot;
     runId;
-    constructor(runsRoot, runId) {
+    handle;
+    constructor(runsRoot, runId, runDirHandle) {
         this.runsRoot = runsRoot;
         this.runId = runId;
-        resolveRunDirHandle(runsRoot, runId);
+        this.handle = runDirHandle;
+        if (this.handle === undefined) {
+            resolveRunDirHandle(runsRoot, runId);
+        }
     }
     runDir() {
-        return resolveRunDirHandle(this.runsRoot, this.runId);
+        return this.handle ?? resolveRunDirHandle(this.runsRoot, this.runId);
     }
     async save(envelope) {
         if (envelope.schema_version !== 1) {

@@ -11778,8 +11778,8 @@ var init_sdk = __esm({
         }
         return count;
       }
-      function getFullPath(resolver, id = "", normalize13) {
-        if (normalize13 !== false)
+      function getFullPath(resolver, id = "", normalize14) {
+        if (normalize14 !== false)
           id = normalizeId(id);
         const p = resolver.parse(id);
         return _getFullPath(resolver, p);
@@ -13022,7 +13022,7 @@ var init_sdk = __esm({
     require_fast_uri = __commonJS2((exports2, module2) => {
       var { normalizeIPv6, normalizeIPv4, removeDotSegments, recomposeAuthority, normalizeComponentEncoding } = require_utils();
       var SCHEMES = require_schemes();
-      function normalize13(uri, options) {
+      function normalize14(uri, options) {
         if (typeof uri === "string") {
           uri = serialize(parse62(uri, options), options);
         } else if (typeof uri === "object") {
@@ -13262,7 +13262,7 @@ var init_sdk = __esm({
       }
       var fastUri = {
         SCHEMES,
-        normalize: normalize13,
+        normalize: normalize14,
         resolve: resolve36,
         resolveComponents,
         equal,
@@ -61136,13 +61136,13 @@ var init_tasks = __esm({
 // src/team/task-recovery-checkpoint.ts
 function canonicalJson(value) {
   const seen = /* @__PURE__ */ new Set();
-  const normalize13 = (current) => {
+  const normalize14 = (current) => {
     if (current === null || typeof current === "string" || typeof current === "boolean") return current;
     if (typeof current === "number") {
       if (!Number.isFinite(current)) throw new TypeError("Checkpoint payload must be finite JSON");
       return current;
     }
-    if (Array.isArray(current)) return current.map(normalize13);
+    if (Array.isArray(current)) return current.map(normalize14);
     if (typeof current === "object") {
       if (seen.has(current)) throw new TypeError("Checkpoint payload must not contain cycles");
       seen.add(current);
@@ -61152,14 +61152,14 @@ function canonicalJson(value) {
         if (child === void 0 || typeof child === "function" || typeof child === "symbol" || typeof child === "bigint") {
           throw new TypeError("Checkpoint payload must be JSON");
         }
-        output[key] = normalize13(child);
+        output[key] = normalize14(child);
       }
       seen.delete(current);
       return output;
     }
     throw new TypeError("Checkpoint payload must be JSON");
   };
-  return JSON.stringify(normalize13(value));
+  return JSON.stringify(normalize14(value));
 }
 function hashTaskRecoveryCheckpointPayload(payload) {
   return (0, import_node_crypto4.createHash)("sha256").update(canonicalJson(payload)).digest("hex");
@@ -68850,8 +68850,8 @@ async function startMergeOrchestrator(config2) {
   let persisted = { lastShas: {} };
   if ((0, import_node_fs14.existsSync)(persistedPath)) {
     try {
-      const { readFileSync: readFileSync117 } = await import("node:fs");
-      persisted = JSON.parse(readFileSync117(persistedPath, "utf-8"));
+      const { readFileSync: readFileSync116 } = await import("node:fs");
+      persisted = JSON.parse(readFileSync116(persistedPath, "utf-8"));
     } catch {
       persisted = { lastShas: {} };
     }
@@ -69257,8 +69257,8 @@ async function recoverFromRestart(config2) {
   let persistedShasLoaded = 0;
   if ((0, import_node_fs14.existsSync)(persistedPath)) {
     try {
-      const { readFileSync: readFileSync117 } = await import("node:fs");
-      const persisted = JSON.parse(readFileSync117(persistedPath, "utf-8"));
+      const { readFileSync: readFileSync116 } = await import("node:fs");
+      const persisted = JSON.parse(readFileSync116(persistedPath, "utf-8"));
       persistedShasLoaded = Object.keys(persisted.lastShas ?? {}).length;
     } catch {
       persistedShasLoaded = 0;
@@ -73131,7 +73131,7 @@ async function processCliWorkerVerdicts(teamName, cwd2) {
     "team.runtime-v2.processCliWorkerVerdicts appendTeamEvent failed"
   );
   const { rename: rename7 } = await import("fs/promises");
-  const { renameSync: renameSync16, readFileSync: readFileSync117, writeFileSync: writeFileSync45, existsSync: fsExistsSync } = await import("fs");
+  const { renameSync: renameSync16, readFileSync: readFileSync116, writeFileSync: writeFileSync45, existsSync: fsExistsSync } = await import("fs");
   const { withFileLockSync: withFileLockSync2 } = await Promise.resolve().then(() => (init_file_lock(), file_lock_exports));
   for (const worker of config2.workers) {
     const outputFile = worker.output_file;
@@ -73182,7 +73182,7 @@ async function processCliWorkerVerdicts(teamName, cwd2) {
               return;
             }
           }
-          const raw2 = readFileSync117(outputFile, "utf-8");
+          const raw2 = readFileSync116(outputFile, "utf-8");
           parseCliWorkerVerdict(raw2);
           renameSync16(outputFile, processingOutputFile);
           verdictFile = processingOutputFile;
@@ -73233,7 +73233,7 @@ async function processCliWorkerVerdicts(teamName, cwd2) {
       const taskPath2 = absPath(cwd2, TeamPaths.taskFile(sanitized, taskId));
       if (!fsExistsSync(taskPath2)) continue;
       try {
-        const taskRaw = readFileSync117(taskPath2, "utf-8");
+        const taskRaw = readFileSync116(taskPath2, "utf-8");
         const taskData = JSON.parse(taskRaw);
         const taskRole = typeof taskData.role === "string" ? normalizeDelegationRole(taskData.role) : null;
         const claim = taskData.claim && typeof taskData.claim === "object" ? taskData.claim : null;
@@ -73250,7 +73250,7 @@ async function processCliWorkerVerdicts(teamName, cwd2) {
       if (cursorReviewer && verdictFile === processingOutputFile) {
         const processedTaskPath = absPath(cwd2, TeamPaths.taskFile(sanitized, payload.task_id));
         try {
-          const processedTask = JSON.parse(readFileSync117(processedTaskPath, "utf-8"));
+          const processedTask = JSON.parse(readFileSync116(processedTaskPath, "utf-8"));
           const metadata = processedTask.metadata && typeof processedTask.metadata === "object" ? processedTask.metadata : void 0;
           const processedTaskRole = typeof processedTask.role === "string" ? normalizeDelegationRole(processedTask.role) : null;
           const taskAlreadyRecorded = processedTask.owner === worker.name && (processedTask.status === "completed" || processedTask.status === "failed") && (!cursorReviewer || processedTaskRole === workerRole) && metadata?.verdict_source === "cli_worker_output_contract" && (!cursorReviewer || metadata.verdict_claim_token === payload.claim_token && metadata.verdict_task_version === payload.task_version) && (worker.launch_attempt_id === void 0 || metadata.verdict_worker_launch_attempt_id === worker.launch_attempt_id) && metadata.verdict === payload.verdict;
@@ -73339,7 +73339,7 @@ async function processCliWorkerVerdicts(teamName, cwd2) {
         transitionOk = transition.ok;
       } else {
         withFileLockSync2(targetTaskPath + ".lock", () => {
-          const raw = readFileSync117(targetTaskPath, "utf-8");
+          const raw = readFileSync116(targetTaskPath, "utf-8");
           const taskData = JSON.parse(raw);
           if (taskData.status !== "in_progress" || taskData.owner !== worker.name) {
             return;
@@ -86208,9 +86208,6 @@ var init_types9 = __esm({
 });
 
 // src/graph/runtime/run-dir.ts
-function resolveRunDir(runsRoot, runId) {
-  return resolveRunDirHandle(runsRoot, runId).path;
-}
 function resolveRunDirHandle(runsRoot, runId) {
   if (typeof runId !== "string" || !RUN_ID_PATTERN.test(runId) || runId.includes("/") || runId.includes("\\") || runId === "." || runId === "..") {
     throw new RangeError("invalid run_id");
@@ -86251,11 +86248,25 @@ var init_run_dir = __esm({
 });
 
 // src/graph/runtime/safe-fs.ts
+function assertContainedFsSupported(platform = process.platform) {
+  if (platform !== "linux" && platform !== "win32") {
+    throw new Error(
+      `contained directory-FD traversal is unavailable on ${platform}; refusing pathname fallback`
+    );
+  }
+}
+function assertSafeContainedFileName(fileName, platform = process.platform) {
+  if (typeof fileName !== "string" || fileName.length === 0 || fileName === "." || fileName === ".." || fileName.includes("/") || fileName.includes("\\") || fileName.includes("\0") || UNSAFE_CONTROL.test(fileName) || fileName.normalize("NFC") !== fileName || (0, import_path149.isAbsolute)(fileName) || import_path149.win32.isAbsolute(fileName) || (0, import_path149.normalize)(fileName) !== fileName || import_path149.win32.normalize(fileName) !== fileName || platform === "win32" && fileName.includes(":") || platform === "win32" && WINDOWS_DEVICE_NAME.test(fileName) || (fileName.endsWith(".") || fileName.endsWith(" "))) {
+    throw new RangeError(`invalid contained artifact fileName: ${JSON.stringify(fileName)}`);
+  }
+}
 function openNoFollow2(filePath, flags, mode = 384) {
   if (process.platform === "win32") {
     try {
       if ((0, import_fs128.lstatSync)(filePath).isSymbolicLink()) {
-        const error2 = new Error(`symbolic link refused: ${filePath}`);
+        const error2 = new Error(
+          `symbolic link refused: ${filePath}`
+        );
         error2.code = "ELOOP";
         throw error2;
       }
@@ -86273,12 +86284,49 @@ function readFileNoFollow2(filePath) {
     (0, import_fs128.closeSync)(fd);
   }
 }
-function descriptorPath(directoryFd) {
-  if (process.platform === "linux") return `/proc/self/fd/${directoryFd}`;
-  return `/dev/fd/${directoryFd}`;
+function containedPathForPlatform(directoryFd, runDirPath, fileName, platform = process.platform) {
+  assertSafeContainedFileName(fileName, platform);
+  if (platform === "linux") {
+    return (0, import_path149.join)(`/proc/self/fd/${directoryFd}`, fileName);
+  }
+  assertContainedFsSupported(platform);
+  return (0, import_path149.join)(runDirPath, fileName);
 }
 function withContainedPath(runDir, fileName, operation) {
-  if (process.platform === "win32") {
+  return withContainedPathForPlatform(
+    runDir,
+    fileName,
+    operation,
+    process.platform
+  );
+}
+function withContainedDirectory(runDir, operation, platform = process.platform) {
+  assertContainedFsSupported(platform);
+  if (platform === "win32") {
+    const stats = (0, import_fs128.statSync)(runDir.path);
+    if (stats.dev !== runDir.device || stats.ino !== runDir.inode) {
+      throw new Error("run directory identity changed");
+    }
+    return operation(runDir.path);
+  }
+  const directoryFd = openNoFollow2(
+    runDir.path,
+    import_fs128.constants.O_RDONLY | (import_fs128.constants.O_DIRECTORY ?? 0)
+  );
+  try {
+    const stats = (0, import_fs128.fstatSync)(directoryFd);
+    if (stats.dev !== runDir.device || stats.ino !== runDir.inode) {
+      throw new Error("run directory identity changed");
+    }
+    return operation(`/proc/self/fd/${directoryFd}`);
+  } finally {
+    (0, import_fs128.closeSync)(directoryFd);
+  }
+}
+function withContainedPathForPlatform(runDir, fileName, operation, platform) {
+  assertSafeContainedFileName(fileName, platform);
+  if (platform !== "linux") {
+    assertContainedFsSupported(platform);
     const stats = (0, import_fs128.statSync)(runDir.path);
     if (stats.dev !== runDir.device || stats.ino !== runDir.inode) {
       throw new Error("run directory identity changed");
@@ -86294,7 +86342,9 @@ function withContainedPath(runDir, fileName, operation) {
     if (stats.dev !== runDir.device || stats.ino !== runDir.inode) {
       throw new Error("run directory identity changed");
     }
-    return operation((0, import_path149.join)(descriptorPath(directoryFd), fileName));
+    return operation(
+      containedPathForPlatform(directoryFd, runDir.path, fileName, platform)
+    );
   } finally {
     (0, import_fs128.closeSync)(directoryFd);
   }
@@ -86302,13 +86352,15 @@ function withContainedPath(runDir, fileName, operation) {
 function readContainedFileNoFollow(runDir, fileName) {
   return withContainedPath(runDir, fileName, readFileNoFollow2);
 }
-var import_fs128, import_path149, NO_FOLLOW;
+var import_fs128, import_path149, NO_FOLLOW, UNSAFE_CONTROL, WINDOWS_DEVICE_NAME;
 var init_safe_fs = __esm({
   "src/graph/runtime/safe-fs.ts"() {
     "use strict";
     import_fs128 = require("fs");
     import_path149 = require("path");
     NO_FOLLOW = process.platform === "win32" ? 0 : import_fs128.constants.O_NOFOLLOW;
+    UNSAFE_CONTROL = /[\u0000-\u001f\u007f]/;
+    WINDOWS_DEVICE_NAME = /^(?:con|prn|aux|nul|clock\$|com[1-9¹²³]|lpt[1-9¹²³])(?:\..*)?$/i;
   }
 });
 
@@ -87315,15 +87367,17 @@ var init_journal = __esm({
     FileJournal = class {
       runsRoot;
       runId;
+      handle;
       /**
        * The frozen `Journal` interface is run-scoped but carries no run id, so an
        * instance must be bound to one run. `runId` is optional only to keep the
        * brief's `new FileJournal(runsRoot)` signature constructible; unbound
        * instances fail closed on use.
        */
-      constructor(runsRoot, runId) {
+      constructor(runsRoot, runId, runDirHandle) {
         this.runsRoot = runsRoot;
         this.runId = runId;
+        this.handle = runDirHandle;
       }
       async append(record2) {
         const runDir = this.runDir();
@@ -87367,7 +87421,7 @@ var init_journal = __esm({
             "FileJournal is not bound to a run; pass runId to the constructor"
           );
         }
-        return resolveRunDirHandle(this.runsRoot, this.runId);
+        return this.handle ?? resolveRunDirHandle(this.runsRoot, this.runId);
       }
       async readAll() {
         const runDir = this.runDir();
@@ -87434,13 +87488,37 @@ var init_journal = __esm({
 });
 
 // src/graph/runtime/fence.ts
+function isSafeEpoch(value) {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 1 && value <= Number.MAX_SAFE_INTEGER;
+}
+function canIssueSuccessor(value) {
+  return isSafeEpoch(value) && value < Number.MAX_SAFE_INTEGER;
+}
 function readSidecarCeiling(filePath) {
+  let text;
   try {
-    const value = Number.parseInt((0, import_fs130.readFileSync)(filePath, "utf8").trim(), 10);
-    return Number.isInteger(value) && value >= 1 ? value : null;
-  } catch {
-    return null;
+    text = readFileNoFollow2(filePath);
+  } catch (error2) {
+    if (error2.code === "ENOENT") return null;
+    throw error2;
   }
+  if (!/^[1-9][0-9]*$/.test(text)) {
+    throw new Error("owner.epoch is not a canonical plain integer");
+  }
+  const value = Number(text);
+  if (!Number.isSafeInteger(value) || String(value) !== text) {
+    throw new Error("owner.epoch is outside the safe integer range");
+  }
+  return value;
+}
+function lstatNoFollow(filePath) {
+  const stats = (0, import_fs130.lstatSync)(filePath);
+  if (stats.isSymbolicLink()) {
+    const error2 = new Error(`symbolic link refused: ${filePath}`);
+    error2.code = "ELOOP";
+    throw error2;
+  }
+  return stats;
 }
 var import_fs130, import_crypto40, import_path151, DEFAULT_STALE_GRACE_MS, LOCK_FILE_NAME, EPOCH_FILE_NAME, FileOwnershipFence;
 var init_fence = __esm({
@@ -87452,6 +87530,7 @@ var init_fence = __esm({
     init_atomic_write();
     init_platform();
     init_run_dir();
+    init_safe_fs();
     init_types9();
     DEFAULT_STALE_GRACE_MS = 3e4;
     LOCK_FILE_NAME = "owner.lock";
@@ -87461,6 +87540,7 @@ var init_fence = __esm({
       runId;
       staleGraceMs;
       beforeTakeoverRename;
+      handle;
       /** fd of the held lock file while we own the run; null otherwise. */
       fd = null;
       heldEpoch = null;
@@ -87470,27 +87550,44 @@ var init_fence = __esm({
        * keep the brief's `new FileOwnershipFence(runsRoot)` signature
        * constructible; unbound instances fail closed on use.
        */
-      constructor(runsRoot, runId, options) {
+      constructor(runsRoot, runId, options, runDirHandle) {
         this.runsRoot = runsRoot;
         this.runId = runId;
         this.staleGraceMs = options?.staleGraceMs ?? DEFAULT_STALE_GRACE_MS;
         this.beforeTakeoverRename = options?.beforeTakeoverRename;
+        this.handle = runDirHandle;
       }
-      lockPath() {
+      runDir() {
         if (this.runId === void 0) {
           throw new Error(
             "FileOwnershipFence is not bound to a run; pass runId to the constructor"
           );
         }
-        return (0, import_path151.join)(resolveRunDir(this.runsRoot, this.runId), LOCK_FILE_NAME);
+        this.handle ??= resolveRunDirHandle(this.runsRoot, this.runId);
+        return this.handle;
+      }
+      lockPath(directoryPath) {
+        return (0, import_path151.join)(directoryPath, LOCK_FILE_NAME);
       }
       async acquire() {
-        const lockPath2 = this.lockPath();
+        return withContainedDirectory(
+          this.runDir(),
+          (directoryPath) => this.acquireAt(directoryPath)
+        );
+      }
+      acquireAt(directoryPath) {
+        const lockPath2 = this.lockPath(directoryPath);
         const epochFilePath = (0, import_path151.join)((0, import_path151.dirname)(lockPath2), EPOCH_FILE_NAME);
         let candidateEpoch = 1;
         for (; ; ) {
           const ceiling = readSidecarCeiling(epochFilePath);
+          if (ceiling === Number.MAX_SAFE_INTEGER) {
+            throw new Error("owner.epoch has no representable successor");
+          }
           const candidate = Math.max(candidateEpoch, (ceiling ?? 0) + 1);
+          if (!isSafeEpoch(candidate)) {
+            throw new Error("owner epoch has no safe representable value");
+          }
           const fd = this.tryCreate(lockPath2, epochFilePath, candidate);
           if (fd !== null) {
             this.fd = fd;
@@ -87503,8 +87600,9 @@ var init_fence = __esm({
           }
           let ageMs;
           try {
-            ageMs = Date.now() - (0, import_fs130.statSync)(lockPath2).mtimeMs;
-          } catch {
+            ageMs = Date.now() - lstatNoFollow(lockPath2).mtimeMs;
+          } catch (error2) {
+            if (error2.code === "ELOOP") throw error2;
             continue;
           }
           if (ageMs <= this.staleGraceMs) {
@@ -87536,11 +87634,22 @@ var init_fence = __esm({
           }
           let oldEpoch = 1;
           try {
-            const parsed = JSON.parse((0, import_fs130.readFileSync)(tombstone, "utf8"));
-            if (parsed !== null && typeof parsed === "object" && typeof parsed.epoch === "number") {
-              oldEpoch = parsed.epoch;
+            const parsed = JSON.parse(readFileNoFollow2(tombstone));
+            if (parsed !== null && typeof parsed === "object" && Object.prototype.hasOwnProperty.call(parsed, "epoch")) {
+              const epoch = parsed.epoch;
+              if (!canIssueSuccessor(epoch)) {
+                throw new Error("stale lock epoch is not a safe integer");
+              }
+              oldEpoch = epoch;
             }
-          } catch {
+          } catch (error2) {
+            if (error2.message === "stale lock epoch is not a safe integer") {
+              try {
+                (0, import_fs130.unlinkSync)(tombstone);
+              } catch {
+              }
+              throw error2;
+            }
           }
           try {
             (0, import_fs130.unlinkSync)(tombstone);
@@ -87550,7 +87659,13 @@ var init_fence = __esm({
         }
       }
       assertEpoch(epoch) {
-        if (this.fd === null || this.heldEpoch === null || epoch !== this.heldEpoch || !this.holdsLiveLockFile(this.lockPath())) {
+        withContainedDirectory(
+          this.runDir(),
+          (directoryPath) => this.assertEpochAt(epoch, directoryPath)
+        );
+      }
+      assertEpochAt(epoch, directoryPath) {
+        if (this.fd === null || this.heldEpoch === null || epoch !== this.heldEpoch || !this.holdsLiveLockFile(this.lockPath(directoryPath))) {
           throw new FenceError(
             "fenced_out",
             `epoch ${epoch} is not owned by this process (held: ${String(this.heldEpoch)})`
@@ -87558,10 +87673,16 @@ var init_fence = __esm({
         }
       }
       async release(epoch) {
+        return withContainedDirectory(
+          this.runDir(),
+          (directoryPath) => this.releaseAt(epoch, directoryPath)
+        );
+      }
+      releaseAt(epoch, directoryPath) {
         if (this.fd === null || this.heldEpoch === null || epoch !== this.heldEpoch) {
           return false;
         }
-        const lockPath2 = this.lockPath();
+        const lockPath2 = this.lockPath(directoryPath);
         if (!this.holdsLiveLockFile(lockPath2)) {
           this.clearHeld();
           return false;
@@ -87594,7 +87715,7 @@ var init_fence = __esm({
         (0, import_fs130.mkdirSync)((0, import_path151.dirname)(lockPath2), { recursive: true });
         let fd;
         try {
-          fd = (0, import_fs130.openSync)(
+          fd = openNoFollow2(
             lockPath2,
             import_fs130.constants.O_CREAT | import_fs130.constants.O_EXCL | import_fs130.constants.O_WRONLY,
             384
@@ -87626,12 +87747,12 @@ var init_fence = __esm({
       /** Best-effort parse of the lock payload; null when absent/unparseable. */
       readPayload(lockPath2) {
         try {
-          const parsed = JSON.parse((0, import_fs130.readFileSync)(lockPath2, "utf8"));
+          const parsed = JSON.parse(readFileNoFollow2(lockPath2));
           if (parsed === null || typeof parsed !== "object") {
             return null;
           }
           const record2 = parsed;
-          if (typeof record2.pid !== "number" || !Number.isInteger(record2.pid) || typeof record2.epoch !== "number" || typeof record2.timestamp !== "number") {
+          if (typeof record2.pid !== "number" || !Number.isInteger(record2.pid) || !isSafeEpoch(record2.epoch) || typeof record2.timestamp !== "number") {
             return null;
           }
           return {
@@ -87645,7 +87766,7 @@ var init_fence = __esm({
       }
       readLockIdentity(lockPath2) {
         try {
-          const stats = (0, import_fs130.statSync)(lockPath2);
+          const stats = lstatNoFollow(lockPath2);
           return {
             ino: stats.ino,
             size: stats.size,
@@ -87664,15 +87785,16 @@ var init_fence = __esm({
       }
       pathExists(path27) {
         try {
-          (0, import_fs130.statSync)(path27);
+          lstatNoFollow(path27);
           return true;
-        } catch {
+        } catch (error2) {
+          if (error2.code === "ELOOP") throw error2;
           return false;
         }
       }
       /**
        * Verify the file currently at lockPath is still the exact file we hold an
-       * fd for: same inode and size (fstatSync on our held fd vs statSync on the
+       * fd for: same inode and size (fstatSync on our held fd vs lstatSync on the
        * path) AND payload epoch matching heldEpoch. Any stat failure or mismatch
        * fails closed — the caller must not mutate the path.
        */
@@ -87682,7 +87804,7 @@ var init_fence = __esm({
         }
         try {
           const ours = (0, import_fs130.fstatSync)(this.fd);
-          const theirs = (0, import_fs130.statSync)(lockPath2);
+          const theirs = lstatNoFollow(lockPath2);
           if (ours.ino !== theirs.ino || ours.size !== theirs.size) {
             return false;
           }
@@ -87780,13 +87902,17 @@ var init_store = __esm({
     FileProjectionStore = class {
       runsRoot;
       runId;
-      constructor(runsRoot, runId) {
+      handle;
+      constructor(runsRoot, runId, runDirHandle) {
         this.runsRoot = runsRoot;
         this.runId = runId;
-        resolveRunDirHandle(runsRoot, runId);
+        this.handle = runDirHandle;
+        if (this.handle === void 0) {
+          resolveRunDirHandle(runsRoot, runId);
+        }
       }
       runDir() {
-        return resolveRunDirHandle(this.runsRoot, this.runId);
+        return this.handle ?? resolveRunDirHandle(this.runsRoot, this.runId);
       }
       async save(envelope) {
         if (envelope.schema_version !== 1) {
@@ -88099,12 +88225,13 @@ function foldNodeResultRecord(descriptor, projection, transition) {
   });
 }
 async function runGraph(sealed, options) {
+  assertContainedFsSupported(process.platform);
   const runsRoot = options.runsRoot ?? (0, import_path153.join)(process.cwd(), ...DEFAULT_RUNS_ROOT_SEGMENTS);
   const runId = sealed.run_id;
   const runDirHandle = resolveRunDirHandle(runsRoot, runId);
-  const fence = new FileOwnershipFence(runsRoot, runId);
-  const journal = new FileJournal(runsRoot, runId);
-  const store = new FileProjectionStore(runsRoot, runId);
+  const fence = new FileOwnershipFence(runsRoot, runId, void 0, runDirHandle);
+  const journal = new FileJournal(runsRoot, runId, runDirHandle);
+  const store = new FileProjectionStore(runsRoot, runId, runDirHandle);
   const emit = (event) => {
     options.reporter?.onEvent(event);
   };
@@ -98234,6 +98361,14 @@ var stateClearTool = {
     try {
       const root2 = resolveStateWorkingDirectory(workingDirectory);
       const sessionId = session_id;
+      if (mode === "ultrawork") {
+        try {
+          if ((0, import_fs30.lstatSync)((0, import_path37.join)((0, import_path37.resolve)(root2), OmcPaths.ROOT)).isSymbolicLink()) {
+            return { content: [{ type: "text", text: `No state found to clear for mode: ${mode}` }] };
+          }
+        } catch {
+        }
+      }
       if (mode === "merge-readiness") {
         const cancelledSessions = [];
         const blockedSessions = [];
@@ -118818,19 +118953,19 @@ function fail2(message2, code) {
   console.error(source_default.red(`Error: ${message2}`));
   process.exitCode = code;
 }
-async function loadSealedDescriptor(descriptorPath2, runsRoot) {
+async function loadSealedDescriptor(descriptorPath, runsRoot) {
   let parsedUser;
   try {
-    parsedUser = JSON.parse(readFileNoFollow2(descriptorPath2));
+    parsedUser = JSON.parse(readFileNoFollow2(descriptorPath));
   } catch (error2) {
-    fail2(`cannot read descriptor file "${descriptorPath2}": ${errorMessage(error2)}`, 1);
+    fail2(`cannot read descriptor file "${descriptorPath}": ${errorMessage(error2)}`, 1);
     return null;
   }
   let fresh;
   try {
     fresh = sealGraphDescriptor(parsedUser);
   } catch (error2) {
-    fail2(`invalid graph descriptor "${descriptorPath2}": ${errorMessage(error2)}`, 1);
+    fail2(`invalid graph descriptor "${descriptorPath}": ${errorMessage(error2)}`, 1);
     return null;
   }
   let storedPath;
@@ -118861,15 +118996,21 @@ async function loadSealedDescriptor(descriptorPath2, runsRoot) {
   }
   if (canonicalJson2(stored) !== canonicalJson2(fresh)) {
     fail2(
-      `descriptor mismatch for run "${fresh.run_id}": ${storedPath} belongs to a different revision than "${descriptorPath2}"`,
+      `descriptor mismatch for run "${fresh.run_id}": ${storedPath} belongs to a different revision than "${descriptorPath}"`,
       EXIT_CODES.DESCRIPTOR_MISMATCH
     );
     return null;
   }
   return stored;
 }
-async function runAction(descriptorPath2, runsRoot) {
-  const sealed = await loadSealedDescriptor(descriptorPath2, runsRoot);
+async function runAction(descriptorPath, runsRoot) {
+  try {
+    assertContainedFsSupported(process.platform);
+  } catch (error2) {
+    fail2(`graph runtime is unavailable on ${process.platform}: ${errorMessage(error2)}`, 1);
+    return;
+  }
+  const sealed = await loadSealedDescriptor(descriptorPath, runsRoot);
   if (sealed === null) return;
   const [{ runGraph: runGraph2 }] = await Promise.all([Promise.resolve().then(() => (init_runner(), runner_exports))]);
   const options = {
@@ -118910,8 +119051,8 @@ Exit codes:
   20  corrupt journal
   21  descriptor mismatch on resume
   70  runtime crash (unmapped error)`
-  ).action(async (descriptorPath2, options) => {
-    await runAction(descriptorPath2, options.runsRoot);
+  ).action(async (descriptorPath, options) => {
+    await runAction(descriptorPath, options.runsRoot);
   });
   return command;
 }

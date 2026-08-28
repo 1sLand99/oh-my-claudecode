@@ -1,19 +1,16 @@
-# oh-my-claudecode v5.0.1
+# oh-my-claudecode v5.0.2
 
 ## Release Notes
 
-v5.0.1 is the patch release from `v5.0.0..9e701b690a87acb546297ef5b1c93b0b1ad480b2`. It consolidates the latest workflow, state, team, and Cursor reliability work without exposing internal release operations.
+v5.0.2 is the patch release from `v5.0.1..9d4d6c834fdd78febdb177eba70dc264efafad93`. It corrects Claude Code subagent nesting and concurrency guidance and hardens graph artifact containment and path handling.
 
 ### Highlights
 
-- Adds the graph workflow entrypoint and `omc graph run`, including crash recovery, approval handling, progress reporting, and runtime authority checks.
-- Improves workflow discovery and execution guidance across the canonical execute, review, research, and team surfaces.
-- Hardens persistent state ownership, recovery, migration, locking, identity, and non-Git workspace handling.
-- Improves team worker lifecycle reliability, including worker bootstrap state, claims, inbox/task paths, verdict finalization, and slow-start behavior.
-- Fixes Cursor worker trust, reviewer routing, model forwarding, launch, and verdict lifecycle issues.
-- Strengthens script, live-data, Windows argument, and dependency-runtime security boundaries.
-- Keeps prompt projections, inventory metadata, plugin payloads, and package shipping surfaces deterministic and synchronized.
+- Corrects Claude Code subagent nesting and concurrency workflow guidance for current Claude Code releases.
+- Replaces opaque macOS `/dev/fd/N` graph failures with explicit fail-closed containment when a safe directory-descriptor primitive is unavailable.
+- Closes graph artifact basename traversal, path-fallback time-of-check/time-of-use, malformed or unsafe epoch, symlink, and identity-validation gaps.
+- Keeps graph execution deterministic and safe on supported platforms while intentionally not restoring macOS graph execution without a safe `dirfd` primitive.
 
 ### Validation
 
-The release candidate was validated against the exact candidate head with version, projection, inventory, plugin-shipping, build, typecheck, lint, package, and release-boundary checks. Full test execution remains subject to the repository's existing environment-sensitive failures; the release process must not treat those failures as passing evidence.
+The release candidate was validated against the exact candidate head with version, projection, inventory, graph safe-fs/fence/CLI tests, build, typecheck, lint, package, and release-boundary checks. The release process must not treat any failing or unavailable validation as passing evidence.

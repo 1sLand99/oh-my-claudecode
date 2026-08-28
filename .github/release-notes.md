@@ -1,3 +1,7 @@
+## OMC v5.0.2
+
+v5.0.2 improves Claude Code workflow guidance and hardens graph artifact containment. On macOS, graph execution remains intentionally fail-closed when a safe directory-descriptor primitive is unavailable.
+
 ## Install / Upgrade
 
 The npm CLI and the Claude Code marketplace/plugin are separate install tracks, not either/or replacements. Update whichever track you use; if you have both installed, update both. CLI-dependent skill paths such as `ask`, `ccg`, and CLI-backed `team` require the `omc` CLI from the npm package.

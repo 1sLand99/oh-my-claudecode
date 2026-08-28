@@ -15,7 +15,7 @@ import { CommandNodeExecutor } from '../graph/runtime/executors/command.js';
 import { createStdinApprovalGate } from '../graph/runtime/approval.js';
 import { createAsciiProgressReporter } from '../graph/runtime/progress.js';
 import { resolveRunDirHandle } from '../graph/runtime/run-dir.js';
-import { readContainedFileNoFollow, readFileNoFollow, } from '../graph/runtime/safe-fs.js';
+import { assertContainedFsSupported, readContainedFileNoFollow, readFileNoFollow, } from '../graph/runtime/safe-fs.js';
 function errorMessage(error) {
     return error instanceof Error ? error.message : String(error);
 }
@@ -78,6 +78,16 @@ async function loadSealedDescriptor(descriptorPath, runsRoot) {
     return stored;
 }
 async function runAction(descriptorPath, runsRoot) {
+    try {
+        // Reject unsupported POSIX before descriptor/run-directory resolution so
+        // the fail-closed contract cannot create persistence state as a side
+        // effect of a CLI preflight.
+        assertContainedFsSupported(process.platform);
+    }
+    catch (error) {
+        fail(`graph runtime is unavailable on ${process.platform}: ${errorMessage(error)}`, 1);
+        return;
+    }
     const sealed = await loadSealedDescriptor(descriptorPath, runsRoot);
     if (sealed === null)
         return;

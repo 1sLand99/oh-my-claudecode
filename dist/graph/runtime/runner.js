@@ -18,7 +18,7 @@ import { resolveRunDirHandle } from "./run-dir.js";
 import { computeJournalFingerprint, FileJournal } from "./journal.js";
 import { FileOwnershipFence } from "./fence.js";
 import { FileProjectionStore } from "./store.js";
-import { readContainedFileNoFollow, withContainedPath } from "./safe-fs.js";
+import { assertContainedFsSupported, readContainedFileNoFollow, withContainedPath, } from "./safe-fs.js";
 import { EXIT_CODES, FenceError, JournalCorruptionError } from "./types.js";
 const DEFAULT_RUNS_ROOT_SEGMENTS = [".omc", "graph-runs"];
 const DESCRIPTOR_FILE_NAME = "descriptor.json";
@@ -323,14 +323,18 @@ function foldNodeResultRecord(descriptor, projection, transition) {
  * exit); only normal termination releases it — stale reap covers crashes.
  */
 export async function runGraph(sealed, options) {
+    // Refuse unsupported POSIX platforms before resolving/acquiring any
+    // run-scoped ownership state. Node has no supported openat/f*at API, so a
+    // pathname fallback would make the containment guarantee raceable.
+    assertContainedFsSupported(process.platform);
     const runsRoot = options.runsRoot ?? join(process.cwd(), ...DEFAULT_RUNS_ROOT_SEGMENTS);
     const runId = sealed.run_id;
     // Contained run dir (P1-3): validates run_id, rejects symlink escapes, and
     // creates the directory before any persistence component touches disk.
     const runDirHandle = resolveRunDirHandle(runsRoot, runId);
-    const fence = new FileOwnershipFence(runsRoot, runId);
-    const journal = new FileJournal(runsRoot, runId);
-    const store = new FileProjectionStore(runsRoot, runId);
+    const fence = new FileOwnershipFence(runsRoot, runId, undefined, runDirHandle);
+    const journal = new FileJournal(runsRoot, runId, runDirHandle);
+    const store = new FileProjectionStore(runsRoot, runId, runDirHandle);
     const emit = (event) => {
         options.reporter?.onEvent(event);
     };
