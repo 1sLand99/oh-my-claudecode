@@ -151,10 +151,10 @@ function normalizeTarPath(rawPath) {
     fail(`tar archive path is unsafe: ${rawPath}`);
   }
   const segments = normalized.split('/');
-  const windowsDeviceName = /^(?:con|prn|aux|nul|clock\$|com[1-9¹²³]|lpt[1-9¹²³])(?:\..*)?$/i;
+  const windowsDeviceName = /^(?:con|prn|aux|nul|clock\$|com[1-9¹²³]|lpt[1-9¹²³])$/i;
   if (segments.some(segment => segment === '' || segment === '.' || segment === '..'
     || segment.includes(':') || segment.endsWith('.') || segment.endsWith(' ')
-    || windowsDeviceName.test(segment))) {
+    || windowsDeviceName.test(segment.split('.')[0].replace(/[. ]+$/, '')))) {
     fail(`tar archive path is unsafe: ${rawPath}`);
   }
   if (segments[0] !== 'package') {

@@ -129,16 +129,27 @@ function descriptorIdentity(fd) {
     }
 }
 function rollbackPriorTarget(filePath, backupPath, expectedIdentity) {
-    if (backupPath === null || expectedIdentity === null)
-        return;
     const current = currentFileIdentity(filePath);
-    if (current === null ||
-        current.dev !== expectedIdentity.dev ||
-        current.ino !== expectedIdentity.ino) {
+    if (current === null)
+        return;
+    if (expectedIdentity !== null &&
+        (current.dev !== expectedIdentity.dev || current.ino !== expectedIdentity.ino)) {
         return;
     }
     try {
-        fsSync.renameSync(backupPath, filePath);
+        if (backupPath === null) {
+            if (expectedIdentity === null)
+                return;
+            fsSync.unlinkSync(filePath);
+        }
+        else {
+            // If publication failed before we could bind an identity, remove the
+            // occupying inode explicitly before restoring the backup; rename must
+            // never overwrite the inode that caused the publication failure.
+            if (expectedIdentity === null)
+                fsSync.unlinkSync(filePath);
+            fsSync.renameSync(backupPath, filePath);
+        }
     }
     catch {
         // The caller still fails closed; retain whichever durable target remains.
@@ -201,7 +212,7 @@ export async function atomicWriteJson(filePath, data, hooks) {
                 verifyPublishedFile(fd.fd, filePath, "atomic JSON write");
             }
             catch (error) {
-                rollbackPriorTarget(filePath, backupPath, publishedIdentity ?? currentFileIdentity(filePath));
+                rollbackPriorTarget(filePath, backupPath, publishedIdentity);
                 throw error;
             }
         }
@@ -289,7 +300,7 @@ export function atomicWriteFileSync(filePath, content, hooks) {
             verifyPublishedFile(fd, filePath, "atomic write");
         }
         catch (error) {
-            rollbackPriorTarget(filePath, backupPath, publishedIdentity ?? currentFileIdentity(filePath));
+            rollbackPriorTarget(filePath, backupPath, publishedIdentity);
             throw error;
         }
         fsSync.closeSync(fd);
@@ -413,7 +424,7 @@ export function atomicWriteBatchSync(writes, hooks) {
                 verifyPublishedFile(write.fd, write.path, "atomic batch write");
             }
             catch (error) {
-                rollbackPriorTarget(write.path, write.backupPath, publishedIdentity ?? currentFileIdentity(write.path));
+                rollbackPriorTarget(write.path, write.backupPath, publishedIdentity);
                 throw error;
             }
             fsSync.closeSync(write.fd);

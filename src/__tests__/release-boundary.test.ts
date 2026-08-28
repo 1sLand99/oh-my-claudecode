@@ -432,6 +432,7 @@ describe('release-boundary.mjs', () => {
     'package/con/config.json',
     'package/COM1.txt',
     'package/lpt²/log.txt',
+    'package/CON .txt',
     'package/cache./value.json',
     'package/cache /value.json',
   ])('rejects Windows archive path collisions: %s', path => {

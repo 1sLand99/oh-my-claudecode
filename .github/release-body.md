@@ -2,6 +2,8 @@
 
 v5.0.2 is the patch release from v5.0.1 through the final release candidate.
 
+Install the release globally with `npm install -g oh-my-claude-sisyphus@5.0.2`.
+
 ### Highlights
 
 - Corrects Claude Code subagent nesting and concurrency workflow guidance.
