@@ -13417,12 +13417,12 @@
       "pullNumber": 3898,
       "targetRef": "main",
       "mergeBaseSha": "76d8b9caa3b01153f4b6992030b798e124501845",
-      "headSha": "6f1617e84cc931308fff7b1c7b7e8a02810fcde9",
+      "headSha": "d7a23bdeeccbb2eb3d59466f6d1afedb89e42d4a",
       "owner": "Yeachan-Heo",
       "expiresAt": "2026-09-27T00:00:00.000Z",
       "generatedDelta": {
-        "count": 24,
-        "sha256": "0ade956d40ac563483773e10adbd636cf4d505452c2e25df17e995d47c691af4"
+        "count": 12,
+        "sha256": "311831231f4f44a3c5e70aabe4b5eee6be8e95f65f0fb1036ed89676ac56ac3a"
       },
       "generatedFiles": [
         {
@@ -13434,7 +13434,7 @@
         {
           "status": "modified",
           "filename": "bridge/cli.cjs",
-          "sha": "4a0828149d0bad2e88c0a5005ce30c87ba5c3c13",
+          "sha": "4d9803257104fb2695cac28d63633bdfea5b647b",
           "previousFilename": null
         },
         {
@@ -13444,117 +13444,45 @@
           "previousFilename": null
         },
         {
-          "status": "added",
-          "filename": "dist/cli/graph.d.ts",
-          "sha": "2d8c63d47f201e1e73061c9970f6d3b8d27113da",
-          "previousFilename": null
-        },
-        {
           "status": "modified",
           "filename": "dist/cli/graph.js",
           "sha": "e28812eb1fd4939a38472b8865ad459287c763e4",
           "previousFilename": null
         },
         {
-          "status": "added",
-          "filename": "dist/graph/runtime/approval.d.ts",
-          "sha": "b0290d0c536325312c8b59658b64c8158c99d955",
-          "previousFilename": null
-        },
-        {
-          "status": "added",
-          "filename": "dist/graph/runtime/executors/agent.d.ts",
-          "sha": "89c92b101650d9c24bd8bf5904bd43be928d67fe",
-          "previousFilename": null
-        },
-        {
-          "status": "added",
-          "filename": "dist/graph/runtime/executors/authority.d.ts",
-          "sha": "112c3dbf5bc4fbf713dc8cec74f3ba4e6b2dd365",
-          "previousFilename": null
-        },
-        {
-          "status": "added",
-          "filename": "dist/graph/runtime/executors/command.d.ts",
-          "sha": "0b998d9a29d545cbd01552ea620ee537c7ad40b6",
-          "previousFilename": null
-        },
-        {
-          "status": "added",
-          "filename": "dist/graph/runtime/fence.d.ts",
-          "sha": "7526cca871bd6558bca5f802d6d1f1390dea163e",
-          "previousFilename": null
-        },
-        {
           "status": "modified",
           "filename": "dist/graph/runtime/fence.js",
-          "sha": "cde2640a80f9d4fc7724a66db1580d2525659f22",
-          "previousFilename": null
-        },
-        {
-          "status": "added",
-          "filename": "dist/graph/runtime/journal.d.ts",
-          "sha": "87aed0ba987f55efd2827bb534b0adcfb1065478",
+          "sha": "75874a5a74a888efeac77616d7ff744490a60ddc",
           "previousFilename": null
         },
         {
           "status": "modified",
           "filename": "dist/graph/runtime/journal.js",
-          "sha": "c375be4c732a24f55ed0062f09125c201af64bdc",
+          "sha": "b085b7a7039b169216471a5576b67672689397e5",
           "previousFilename": null
         },
         {
-          "status": "added",
-          "filename": "dist/graph/runtime/progress.d.ts",
-          "sha": "26f5092cdb6c3ab0999b5148223d4fa0b2633478",
-          "previousFilename": null
-        },
-        {
-          "status": "added",
-          "filename": "dist/graph/runtime/run-dir.d.ts",
-          "sha": "34a4b163de44e84953ae94ec047870132ef96a24",
-          "previousFilename": null
-        },
-        {
-          "status": "added",
-          "filename": "dist/graph/runtime/runner.d.ts",
-          "sha": "867e4fcb7c2e55d433314e0706e5508f318f324f",
+          "status": "modified",
+          "filename": "dist/graph/runtime/run-dir.js",
+          "sha": "15e847a82eb30afbd2969e55b340edb30632183a",
           "previousFilename": null
         },
         {
           "status": "modified",
           "filename": "dist/graph/runtime/runner.js",
-          "sha": "5776cf7206366b809ea5707328f3597ce003ba36",
-          "previousFilename": null
-        },
-        {
-          "status": "added",
-          "filename": "dist/graph/runtime/safe-fs.d.ts",
-          "sha": "f092c7f98cf0dd05cd7ee2434c66c68a326d9946",
+          "sha": "7901d30a200060e5c5eddac1d5fb1942f7440441",
           "previousFilename": null
         },
         {
           "status": "modified",
           "filename": "dist/graph/runtime/safe-fs.js",
-          "sha": "86b77a52c7c753b4d38b274efcedc35976b87213",
-          "previousFilename": null
-        },
-        {
-          "status": "added",
-          "filename": "dist/graph/runtime/store.d.ts",
-          "sha": "24a4b43e93ca36bd2b4064a90c4c96ed72563691",
+          "sha": "ca7018419ae76d0d2dac47b3e83248db77cff172",
           "previousFilename": null
         },
         {
           "status": "modified",
           "filename": "dist/graph/runtime/store.js",
           "sha": "69dc1ab0b89df8a8192f97171cd532bed9723062",
-          "previousFilename": null
-        },
-        {
-          "status": "added",
-          "filename": "dist/graph/runtime/types.d.ts",
-          "sha": "fd4864a6ba52383ef7e7040a8f10b90e21c931bf",
           "previousFilename": null
         },
         {
