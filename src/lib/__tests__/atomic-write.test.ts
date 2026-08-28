@@ -178,6 +178,20 @@ describe('atomicWriteJson', () => {
     expect(statSync(filePath).mode & 0o777).toBe(0o600);
   });
 
+  it('publishes a normal atomic write under Windows stat semantics', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'atomic-write-win32-'));
+    directories.push(directory);
+    const filePath = join(directory, 'state.json');
+    const originalPlatform = process.platform;
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' });
+    try {
+      await atomicWriteJson(filePath, { status: 'new' });
+    } finally {
+      Object.defineProperty(process, 'platform', { configurable: true, value: originalPlatform });
+    }
+    expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual({ status: 'new' });
+  });
+
   it.each(['hardlink', 'special', 'replacement', 'permissions'])(
     'rejects an untrusted temporary generation (%s) before rename',
     async kind => {

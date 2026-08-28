@@ -64,10 +64,11 @@ function verifyPrivateTempFile(
   } catch {
     throw new Error(`${label} temporary file was replaced before rename`);
   }
+  const isWindows = process.platform === "win32";
   const isPrivateRegularSingleLink = (stats: fsSync.Stats): boolean =>
     stats.isFile() &&
-    stats.nlink === 1 &&
-    (stats.mode & 0o777) === 0o600;
+    (isWindows ? stats.nlink <= 1 : stats.nlink === 1) &&
+    (isWindows || (stats.mode & 0o777) === 0o600);
   if (
     !isPrivateRegularSingleLink(fdStats) ||
     !isPrivateRegularSingleLink(pathStats)
