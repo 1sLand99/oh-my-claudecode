@@ -32,9 +32,10 @@ describe('Pipeline Orchestrator', () => {
             const config = resolvePipelineConfig();
             expect(config).toEqual(DEFAULT_PIPELINE_CONFIG);
         });
-        it('no longer aliases the retired ultrawork mode', () => {
+        it('applies deprecated ultrawork alias (execution: team)', () => {
             const config = resolvePipelineConfig(undefined, 'ultrawork');
-            expect(config.execution).toBe(DEFAULT_PIPELINE_CONFIG.execution);
+            expect(config.execution).toBe('team');
+            expect(config.planning).toBe(DEFAULT_PIPELINE_CONFIG.planning);
         });
         it('applies deprecated ultrapilot alias (execution: team)', () => {
             const config = resolvePipelineConfig(undefined, 'ultrapilot');
@@ -47,13 +48,14 @@ describe('Pipeline Orchestrator', () => {
             expect(config.execution).toBe('solo'); // unchanged
         });
         it('user overrides take precedence over deprecated alias', () => {
-            const config = resolvePipelineConfig({ execution: 'solo' }, 'ultrapilot');
+            const config = resolvePipelineConfig({ execution: 'solo' }, 'ultrawork');
             expect(config.execution).toBe('solo');
         });
     });
     describe('getDeprecationWarning', () => {
-        it('returns no warning for the retired ultrawork mode', () => {
-            expect(getDeprecationWarning('ultrawork')).toBeNull();
+        it('returns warning for ultrawork', () => {
+            const msg = getDeprecationWarning('ultrawork');
+            expect(msg).toContain('/autopilot');
         });
         it('returns warning for ultrapilot', () => {
             const msg = getDeprecationWarning('ultrapilot');
@@ -144,7 +146,7 @@ describe('Pipeline Orchestrator', () => {
             expect(hasPipelineTracking(state)).toBe(true);
         });
         it('applies deprecated mode config', () => {
-            const state = initPipeline(testDir, 'task', 'sess-2', undefined, undefined, 'ultrapilot');
+            const state = initPipeline(testDir, 'task', 'sess-2', undefined, undefined, 'ultrawork');
             expect(state).not.toBeNull();
             // Pipeline tracking should reflect team execution
             const extended = state;
@@ -233,8 +235,8 @@ describe('Pipeline Orchestrator', () => {
         it('STAGE_ORDER has correct sequence', () => {
             expect(STAGE_ORDER).toEqual(['ralplan', 'execution', 'ralph', 'qa']);
         });
-        it('DEPRECATED_MODE_ALIASES retains ultrapilot without the retired ultrawork', () => {
-            expect(DEPRECATED_MODE_ALIASES).not.toHaveProperty('ultrawork');
+        it('DEPRECATED_MODE_ALIASES has ultrawork and ultrapilot', () => {
+            expect(DEPRECATED_MODE_ALIASES).toHaveProperty('ultrawork');
             expect(DEPRECATED_MODE_ALIASES).toHaveProperty('ultrapilot');
         });
     });

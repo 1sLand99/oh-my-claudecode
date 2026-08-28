@@ -413,20 +413,13 @@ describe('worker pane startup safety', () => {
         const context = await acceptedContext('claude');
         const message = 'Read inbox.md, execute now.';
         tmuxState.captures = [`❯ ${message}\n`];
-        await expect(retryStartupInboxSubmit(context, message)).resolves.toBe('resubmitted');
+        await expect(retryStartupInboxSubmit(context, message)).resolves.toBe(true);
         expect(tmuxState.args.some(args => args[0] === 'send-keys' && args.at(-1) === 'Enter')).toBe(true);
-    });
-    it('reports an engaged pane instead of resubmitting when the worker is actively working', async () => {
-        const context = await acceptedContext('claude');
-        const message = 'Read inbox.md, execute now.';
-        tmuxState.captures = [`> ${message}\n\n  ✻ Thinking…\n  (esc to interrupt at any time to stop)\n`];
-        await expect(retryStartupInboxSubmit(context, message)).resolves.toBe('pane_busy');
-        expect(tmuxState.args.some(args => args[0] === 'send-keys' && args.at(-1) === 'Enter')).toBe(false);
     });
     it('does not retry Enter for unrelated pane text', async () => {
         const context = await acceptedContext('claude');
         tmuxState.captures = ['❯ unrelated text\n'];
-        await expect(retryStartupInboxSubmit(context, 'Read inbox.md, execute now.')).resolves.toBe('unavailable');
+        await expect(retryStartupInboxSubmit(context, 'Read inbox.md, execute now.')).resolves.toBe(false);
         expect(tmuxState.args.some(args => args[0] === 'send-keys' && args.at(-1) === 'Enter')).toBe(false);
     });
     it('never sends a Gemini confirmation key without an evidence-backed Gemini selector', async () => {

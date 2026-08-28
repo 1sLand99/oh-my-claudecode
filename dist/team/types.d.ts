@@ -164,6 +164,7 @@ export interface TeamTask {
     owner?: string;
     result?: string;
     error?: string;
+    metadata?: Record<string, unknown>;
     blocked_by?: string[];
     depends_on?: string[];
     version?: number;
@@ -415,8 +416,8 @@ export interface WorkerInfo {
     team_state_root?: string;
     /**
      * Verdict-output file path for CLI-worker output contract (AC-7).
-     * Set when the worker was spawned for a reviewer role on codex/gemini/grok.
-     * Consumed by the worker-completion handler in runtime-v2.
+     * Set when the worker was spawned for a reviewer role on any non-Claude
+     * provider. Consumed by the worker-completion handler in runtime-v2.
      */
     output_file?: string;
     recovery_id?: string;

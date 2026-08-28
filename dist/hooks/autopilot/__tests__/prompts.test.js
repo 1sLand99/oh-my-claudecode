@@ -45,10 +45,10 @@ describe("Prompt Generation", () => {
             const prompt = getExecutionPrompt("/path/to/plan.md");
             expect(prompt).toContain("/path/to/plan.md");
         });
-        it("should specify Ralph persistence without retired workflow activation", () => {
+        it("should specify Ralph+Ultrawork activation", () => {
             const prompt = getExecutionPrompt("plan.md");
             expect(prompt).toContain("Ralph");
-            expect(prompt).not.toContain("Ultrawork");
+            expect(prompt).toContain("Ultrawork");
         });
         it("should require concise executor summaries", () => {
             const prompt = getExecutionPrompt("plan.md");

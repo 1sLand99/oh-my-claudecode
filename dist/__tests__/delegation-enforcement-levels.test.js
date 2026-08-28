@@ -435,6 +435,7 @@ describe('delegation-enforcement-levels', () => {
                 formatCompactSummary: vi.fn(),
             }));
             vi.mock('../installer/hooks.js', () => ({
+                ULTRAWORK_MESSAGE: 'ultrawork',
                 ULTRATHINK_MESSAGE: 'ultrathink',
                 SEARCH_MESSAGE: 'search',
                 ANALYZE_MESSAGE: 'analyze',
