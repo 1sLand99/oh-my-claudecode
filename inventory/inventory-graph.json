@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "c88ca625356db8b01b88d4b6828d51714cc13a29",
-    "sourceSha256": "6de4cf237dfd14219c2231d99cdd567d2acb568d603291bc06bec40a3d5f42bb",
+    "head": "aa3e4aa31348194d46bc73aa69302d7a6a3dfd8e",
+    "sourceSha256": "00e7c6277180d3c34fc18c3e03d530054274e0e6b80bd56e7ff1af7cf0a0b5eb",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "c88ca625356db8b01b88d4b6828d51714cc13a29",
-  "sourceSha256": "6de4cf237dfd14219c2231d99cdd567d2acb568d603291bc06bec40a3d5f42bb",
+  "head": "aa3e4aa31348194d46bc73aa69302d7a6a3dfd8e",
+  "sourceSha256": "00e7c6277180d3c34fc18c3e03d530054274e0e6b80bd56e7ff1af7cf0a0b5eb",
   "counts": {
     "public": {
       "skills": 32,
@@ -71655,6 +71655,11 @@
       },
       {
         "from": "src/team/model-contract.ts",
+        "to": "src/shared/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/model-contract.ts",
         "to": "src/team/team-name.ts",
         "kind": "imports"
       },
@@ -76446,11 +76451,11 @@
     ],
     "stats": {
       "nodeCount": 6834,
-      "edgeCount": 7199,
+      "edgeCount": 7200,
       "importEdgeCount": 5913,
       "registerEdgeCount": 53
     }
   },
   "inventorySha256": "105c63a2ed379d8c3bf6b66c30853f3dce437799afe24b2c22ca6a8d79503eb8",
-  "manifestSha256": "8fceaadf02b82fbf8e3f7241032a826961b52a3073af208332450789658353e7"
+  "manifestSha256": "6009cc548ba87cabc9106d1fde5bb17b00fdd7863d3c49f975e578bae2536dbc"
 }

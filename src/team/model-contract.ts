@@ -5,6 +5,7 @@ import { normalizeToCcAlias } from '../features/delegation-enforcer.js';
 import { isBedrock, isVertexAI, isProviderSpecificModelId } from '../config/models.js';
 import { isExternalLLMDisabled } from '../lib/security-config.js';
 import type { WorkerLaunchDescriptor } from './types.js';
+import type { ExternalModelsDefaults } from '../shared/types.js';
 
 export type CliAgentType = 'claude' | 'codex' | 'gemini' | 'cursor' | 'grok' | 'antigravity';
 
@@ -572,6 +573,38 @@ export function resolveClaudeWorkerModel(
     return omcModel;
   }
 
+  return undefined;
+}
+
+/**
+ * Resolve the default model for any team worker provider from the process
+ * environment. Explicit routing/configured models are applied by callers
+ * before this fallback; this helper only owns provider-specific env precedence.
+ */
+export function resolveDefaultWorkerModel(
+  agentType: CliAgentType,
+  env: NodeJS.ProcessEnv = process.env,
+  defaults?: ExternalModelsDefaults,
+): string | undefined {
+  if (agentType === 'claude') return resolveClaudeWorkerModel(env);
+  const providerConfigKeys: Record<Exclude<CliAgentType, 'claude'>, keyof ExternalModelsDefaults> = {
+    codex: 'codexModel',
+    gemini: 'geminiModel',
+    antigravity: 'antigravityModel',
+    grok: 'grokModel',
+    cursor: 'cursorModel',
+  };
+  const providerName = agentType.toUpperCase();
+  const envKeys = [
+    `OMC_EXTERNAL_MODELS_DEFAULT_${providerName}_MODEL`,
+    `OMC_${providerName}_DEFAULT_MODEL`,
+  ];
+  for (const key of envKeys) {
+    const value = env[key];
+    if (value) return value;
+  }
+  const configured = defaults?.[providerConfigKeys[agentType]];
+  if (configured) return configured;
   return undefined;
 }
 

@@ -14,6 +14,7 @@ const tmuxUtilsMocks = vi.hoisted(() => ({
 const modelContractMocks = vi.hoisted(() => ({
   buildWorkerArgv: vi.fn(),
   getWorkerEnv: vi.fn(),
+  resolveDefaultWorkerModel: vi.fn(),
   validateWorkerLaunchDescriptor: vi.fn((value: unknown) => value),
   clearResolvedPathCache: vi.fn(),
   resolveValidatedBinaryPath: vi.fn((agentType: string) => `/usr/bin/${agentType}`),
@@ -82,6 +83,7 @@ vi.mock('../model-contract.js', () => ({
   clearResolvedPathCache: modelContractMocks.clearResolvedPathCache,
   resolveValidatedBinaryPath: modelContractMocks.resolveValidatedBinaryPath,
   getWorkerEnv: modelContractMocks.getWorkerEnv,
+  resolveDefaultWorkerModel: modelContractMocks.resolveDefaultWorkerModel,
   validateWorkerLaunchDescriptor: modelContractMocks.validateWorkerLaunchDescriptor,
   assertHeadlessSupported: () => {},
   isHeadlessSupportedOnPlatform: () => true,
