@@ -13417,12 +13417,12 @@
       "pullNumber": 3898,
       "targetRef": "main",
       "mergeBaseSha": "76d8b9caa3b01153f4b6992030b798e124501845",
-      "headSha": "d7a23bdeeccbb2eb3d59466f6d1afedb89e42d4a",
+      "headSha": "2dbe1bf571c17d2a00a567792c05d2696847e1f0",
       "owner": "Yeachan-Heo",
       "expiresAt": "2026-09-27T00:00:00.000Z",
       "generatedDelta": {
         "count": 12,
-        "sha256": "311831231f4f44a3c5e70aabe4b5eee6be8e95f65f0fb1036ed89676ac56ac3a"
+        "sha256": "701a998a8ec688b7d0eead09d0e15a5eab7e5aa4537fd70f60e994b0cede3563"
       },
       "generatedFiles": [
         {
@@ -13434,7 +13434,7 @@
         {
           "status": "modified",
           "filename": "bridge/cli.cjs",
-          "sha": "4d9803257104fb2695cac28d63633bdfea5b647b",
+          "sha": "f42d400fb6af79d3790e77d83313ac4bb3dd83e6",
           "previousFilename": null
         },
         {
@@ -13458,7 +13458,7 @@
         {
           "status": "modified",
           "filename": "dist/graph/runtime/journal.js",
-          "sha": "b085b7a7039b169216471a5576b67672689397e5",
+          "sha": "20b7be0bae76c93db8e3f5a5f7feec1a82184393",
           "previousFilename": null
         },
         {
@@ -13476,7 +13476,7 @@
         {
           "status": "modified",
           "filename": "dist/graph/runtime/safe-fs.js",
-          "sha": "ca7018419ae76d0d2dac47b3e83248db77cff172",
+          "sha": "aba601660e7a90189246fa973cf2df115c4b0113",
           "previousFilename": null
         },
         {
