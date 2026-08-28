@@ -611,6 +611,20 @@ export function resolveDefaultWorkerModel(
   return undefined;
 }
 
+/** Keep persisted provider defaults to trimmed, non-sensitive model names. */
+export function normalizeExternalModelsDefaults(defaults?: ExternalModelsDefaults): ExternalModelsDefaults | undefined {
+  if (!defaults || typeof defaults !== 'object') return undefined;
+  const normalized: ExternalModelsDefaults = {};
+  for (const key of ['codexModel', 'geminiModel', 'grokModel', 'antigravityModel', 'cursorModel'] as const) {
+    const value = defaults[key];
+    if (typeof value === 'string' && value.trim()) normalized[key] = value.trim();
+  }
+  if (defaults.provider === 'codex' || defaults.provider === 'gemini' || defaults.provider === 'antigravity') {
+    normalized.provider = defaults.provider;
+  }
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
 /**
  * Get the extra CLI args needed to pass an instruction in prompt mode.
  * Returns empty array if the agent does not support prompt mode.

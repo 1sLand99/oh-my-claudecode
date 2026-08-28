@@ -68,7 +68,7 @@ import type { CliAgentType } from './model-contract.js';
 import {
   buildValidatedWorkerLaunchDescriptor, clearResolvedPathCache, validateWorkerLaunchDescriptor, resolveValidatedBinaryPath,
   getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs,
-  resolveDefaultWorkerModel, assertHeadlessSupported,
+  resolveDefaultWorkerModel, normalizeExternalModelsDefaults, assertHeadlessSupported,
 } from './model-contract.js';
 import {
   createTeamSession,
@@ -3332,8 +3332,9 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
 
   const startupByWorker = new Map(startupAllocations.map(item => [item.workerName, item.taskIndex]));
   const preparedLaunches = new Map<string, { agentType: CliAgentType; role?: CanonicalTeamRole; descriptor: WorkerLaunchDescriptor; verdictAssignmentId?: string }>();
+  const externalModelsDefaults = normalizeExternalModelsDefaults(pluginCfg.externalModels?.defaults);
   const resolveDefaultModel = (agentType: CliAgentType): string | undefined => {
-    return resolveDefaultWorkerModel(agentType, process.env, pluginCfg.externalModels?.defaults);
+    return resolveDefaultWorkerModel(agentType, process.env, externalModelsDefaults);
   };
   for (let i = 0; i < workerNames.length; i++) {
     const workerName = workerNames[i]!;
@@ -3466,8 +3467,8 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
     resolved_routing_roles: Object.keys(pluginCfg.team?.roleRouting ?? {})
       .map(role => normalizeDelegationRole(role))
       .filter((role): role is CanonicalTeamRole => (CANONICAL_TEAM_ROLES as readonly string[]).includes(role)),
-    ...(pluginCfg.externalModels?.defaults
-      ? { external_models_defaults: pluginCfg.externalModels.defaults }
+    ...(externalModelsDefaults
+      ? { external_models_defaults: externalModelsDefaults }
       : {}),
     workspace_mode: workspaceMode,
     worktree_mode: worktreeMode,
