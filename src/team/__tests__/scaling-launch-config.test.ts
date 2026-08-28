@@ -281,6 +281,87 @@ describe('scaleUp launch config', () => {
     })!).toBeLessThan(tmuxUtilsMocks.tmuxSpawn.mock.invocationCallOrder[splitIndex]!);
   });
 
+  it('passes the immutable team defaults to scale-up resolution', async () => {
+    modelContractMocks.resolveDefaultWorkerModel.mockReturnValue('composer-2.5');
+    modelContractMocks.buildWorkerArgv.mockReturnValue(['/usr/bin/cursor', '--model', 'composer-2.5']);
+    config = makeConfig({
+      external_models_defaults: { cursorModel: 'composer-2.5' },
+    });
+
+    const result = await scaleUp(
+      'demo-team',
+      1,
+      'cursor',
+      [{ subject: 'demo', description: 'demo task' }],
+      cwd,
+      { OMC_TEAM_SCALING_ENABLED: '1' } as NodeJS.ProcessEnv,
+    );
+
+    expect(result).toMatchObject({ ok: true });
+    expect(modelContractMocks.resolveDefaultWorkerModel).toHaveBeenCalledWith(
+      'cursor',
+      {},
+      { cursorModel: 'composer-2.5' },
+    );
+    expect(modelContractMocks.buildWorkerArgv).toHaveBeenCalledWith(
+      'cursor',
+      expect.objectContaining({ model: 'composer-2.5' }),
+    );
+  });
+
+  it('does not apply the implicit Claude snapshot to an explicitly typed external worker', async () => {
+    modelContractMocks.resolveDefaultWorkerModel.mockReturnValue('codex-config-model');
+    modelContractMocks.buildWorkerArgv.mockReturnValue(['/usr/bin/codex', '--model', 'codex-config-model']);
+    config = makeConfig({
+      resolved_routing: {
+        executor: { primary: { provider: 'claude', model: '', agent: 'executor' }, fallback: { provider: 'claude', model: '', agent: 'executor' } },
+      } as TeamConfig['resolved_routing'],
+      resolved_routing_roles: [],
+    });
+
+    const result = await scaleUp(
+      'demo-team',
+      1,
+      'codex',
+      [{ subject: 'demo', description: 'demo task', owner: 'worker-1', role: 'executor' }],
+      cwd,
+      { OMC_TEAM_SCALING_ENABLED: '1' } as NodeJS.ProcessEnv,
+    );
+
+    expect(result).toMatchObject({ ok: true });
+    expect(modelContractMocks.resolveDefaultWorkerModel).toHaveBeenCalledWith(
+      'codex',
+      expect.anything(),
+      undefined,
+    );
+    expect(modelContractMocks.buildWorkerArgv).toHaveBeenCalledWith(
+      'codex',
+      expect.objectContaining({ model: 'codex-config-model' }),
+    );
+  });
+
+  it('does not adopt a newly introduced environment default after an empty snapshot', async () => {
+    modelContractMocks.resolveDefaultWorkerModel.mockReturnValue(undefined);
+    modelContractMocks.buildWorkerArgv.mockReturnValue(['/usr/bin/cursor']);
+    config = makeConfig({ external_models_defaults: {} });
+
+    const result = await scaleUp(
+      'demo-team',
+      1,
+      'cursor',
+      [{ subject: 'demo', description: 'demo task' }],
+      cwd,
+      {
+        OMC_TEAM_SCALING_ENABLED: '1',
+        OMC_CURSOR_DEFAULT_MODEL: 'introduced-after-start',
+      } as NodeJS.ProcessEnv,
+    );
+
+    expect(result).toMatchObject({ ok: true });
+    expect(modelContractMocks.resolveDefaultWorkerModel).toHaveBeenCalledWith('cursor', {}, {});
+    expect(modelContractMocks.buildWorkerArgv.mock.calls[0]?.[1]).not.toHaveProperty('model');
+  });
+
   it.each([
     ["relative", "Resolved CLI binary 'codex' to relative path"],
     ["untrusted", "Resolved CLI binary 'codex' to untrusted location: /tmp/shadow/codex"],

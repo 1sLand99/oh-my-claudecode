@@ -68,6 +68,8 @@ const modelContractMocks = vi.hoisted(() => ({
   isPromptModeAgent: vi.fn(() => false),
   getPromptModeArgs: vi.fn((_agentType: string, instruction: string) => [instruction]),
   resolveClaudeWorkerModel: vi.fn(() => undefined),
+  normalizeExternalModelsDefaults: vi.fn((defaults: unknown) => defaults),
+  resolveExternalModelsDefaults: vi.fn((defaults: unknown) => defaults),
   resolveDefaultWorkerModel: vi.fn((agentType: string, _env?: NodeJS.ProcessEnv, defaults?: { cursorModel?: string }) => {
     if (agentType === 'claude') return undefined;
     const keys: Record<string, string[]> = {
@@ -112,6 +114,8 @@ vi.mock('../model-contract.js', () => ({
   isPromptModeAgent: modelContractMocks.isPromptModeAgent,
   getPromptModeArgs: modelContractMocks.getPromptModeArgs,
   resolveClaudeWorkerModel: modelContractMocks.resolveClaudeWorkerModel,
+  normalizeExternalModelsDefaults: modelContractMocks.normalizeExternalModelsDefaults,
+  resolveExternalModelsDefaults: modelContractMocks.resolveExternalModelsDefaults,
   resolveDefaultWorkerModel: modelContractMocks.resolveDefaultWorkerModel,
   buildValidatedWorkerLaunchDescriptor: modelContractMocks.buildValidatedWorkerLaunchDescriptor,
   validateWorkerLaunchDescriptor: modelContractMocks.validateWorkerLaunchDescriptor,
@@ -1947,7 +1951,7 @@ describe('runtime v2 startup inbox dispatch', () => {
     try {
       const { startTeamV2 } = await import('../runtime-v2.js');
 
-      await startTeamV2({
+      const runtime = await startTeamV2({
         teamName: 'dispatch-team',
         workerCount: 1,
         agentTypes: ['cursor'],
@@ -1962,6 +1966,7 @@ describe('runtime v2 startup inbox dispatch', () => {
         'cursor',
         expect.objectContaining({ model: 'composer-2.5' }),
       );
+      expect(runtime.config.external_models_defaults).toEqual({ cursorModel: 'composer-2.5' });
     } finally {
       if (originalCursorModel === undefined) delete process.env.OMC_CURSOR_DEFAULT_MODEL;
       else process.env.OMC_CURSOR_DEFAULT_MODEL = originalCursorModel;

@@ -553,22 +553,23 @@ export function resolveClaudeWorkerModel(
   }
 
   // Direct model env vars — highest priority
-  const directModel = env.ANTHROPIC_MODEL || env.CLAUDE_MODEL || '';
+  const directModel = [env.ANTHROPIC_MODEL, env.CLAUDE_MODEL]
+    .map(value => value?.trim())
+    .find(Boolean) ?? '';
   if (directModel) {
     return directModel;
   }
 
   // Fallback: Bedrock tier-specific env vars (default to sonnet tier)
-  const bedrockModel =
-    env.CLAUDE_CODE_BEDROCK_SONNET_MODEL ||
-    env.ANTHROPIC_DEFAULT_SONNET_MODEL ||
-    '';
+  const bedrockModel = [env.CLAUDE_CODE_BEDROCK_SONNET_MODEL, env.ANTHROPIC_DEFAULT_SONNET_MODEL]
+    .map(value => value?.trim())
+    .find(Boolean) ?? '';
   if (bedrockModel) {
     return bedrockModel;
   }
 
   // OMC tier env vars
-  const omcModel = env.OMC_MODEL_MEDIUM || '';
+  const omcModel = env.OMC_MODEL_MEDIUM?.trim() ?? '';
   if (omcModel) {
     return omcModel;
   }
@@ -594,18 +595,53 @@ export function resolveDefaultWorkerModel(
     grok: 'grokModel',
     cursor: 'cursorModel',
   };
+  const configuredValue = defaults?.[providerConfigKeys[agentType]];
+  const configured = typeof configuredValue === 'string' ? configuredValue.trim() : undefined;
+  if (configured) return configured;
+
   const providerName = agentType.toUpperCase();
   const envKeys = [
     `OMC_EXTERNAL_MODELS_DEFAULT_${providerName}_MODEL`,
     `OMC_${providerName}_DEFAULT_MODEL`,
   ];
   for (const key of envKeys) {
-    const value = env[key];
+    const value = env[key]?.trim();
     if (value) return value;
   }
-  const configured = defaults?.[providerConfigKeys[agentType]];
-  if (configured) return configured;
   return undefined;
+}
+
+/** Keep persisted provider defaults to trimmed, non-sensitive model names. */
+export function normalizeExternalModelsDefaults(defaults?: ExternalModelsDefaults): ExternalModelsDefaults | undefined {
+  if (!defaults || typeof defaults !== 'object') return undefined;
+  const normalized: ExternalModelsDefaults = {};
+  for (const key of ['codexModel', 'geminiModel', 'grokModel', 'antigravityModel', 'cursorModel'] as const) {
+    const value = defaults[key];
+    if (typeof value === 'string' && value.trim()) normalized[key] = value.trim();
+  }
+  if (defaults.provider === 'codex' || defaults.provider === 'gemini' || defaults.provider === 'antigravity') {
+    normalized.provider = defaults.provider;
+  }
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+/** Capture the effective provider defaults at team creation for env-removal parity. */
+export function resolveExternalModelsDefaults(
+  defaults?: ExternalModelsDefaults,
+  env: NodeJS.ProcessEnv = process.env,
+): ExternalModelsDefaults {
+  const normalized = normalizeExternalModelsDefaults(defaults) ?? {};
+  for (const [provider, key] of [
+    ['CODEX', 'codexModel'], ['GEMINI', 'geminiModel'], ['GROK', 'grokModel'],
+    ['CURSOR', 'cursorModel'], ['ANTIGRAVITY', 'antigravityModel'],
+  ] as const) {
+    if (normalized[key]) continue;
+    const value = [env[`OMC_EXTERNAL_MODELS_DEFAULT_${provider}_MODEL`], env[`OMC_${provider}_DEFAULT_MODEL`]]
+      .map(candidate => candidate?.trim())
+      .find(Boolean);
+    if (value) normalized[key] = value;
+  }
+  return normalized;
 }
 
 /**

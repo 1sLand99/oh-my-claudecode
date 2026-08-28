@@ -814,6 +814,30 @@ describe('model-contract', () => {
     it('returns undefined when external provider config is absent', () => {
       expect(resolveDefaultWorkerModel('cursor', {})).toBeUndefined();
     });
+
+    it('ignores whitespace-only environment defaults and uses captured config', () => {
+      expect(resolveDefaultWorkerModel('cursor', {
+        OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL: '   ',
+        OMC_CURSOR_DEFAULT_MODEL: '\t',
+      }, { cursorModel: 'captured-cursor-model' })).toBe('captured-cursor-model');
+    });
+
+    it.each([
+      ['codex', 'codexModel', 'OMC_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL', 'OMC_CODEX_DEFAULT_MODEL'],
+      ['gemini', 'geminiModel', 'OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL', 'OMC_GEMINI_DEFAULT_MODEL'],
+      ['antigravity', 'antigravityModel', 'OMC_EXTERNAL_MODELS_DEFAULT_ANTIGRAVITY_MODEL', 'OMC_ANTIGRAVITY_DEFAULT_MODEL'],
+      ['grok', 'grokModel', 'OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL', 'OMC_GROK_DEFAULT_MODEL'],
+      ['cursor', 'cursorModel', 'OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL', 'OMC_CURSOR_DEFAULT_MODEL'],
+    ] as const)('%s prefers captured config over both environment fallbacks', (provider, key, canonical, legacy) => {
+      expect(resolveDefaultWorkerModel(provider, {
+        [canonical]: 'canonical-model',
+        [legacy]: 'legacy-model',
+      }, { [key]: 'captured-model' })).toBe('captured-model');
+    });
+
+    it('keeps Claude on its own resolver because external snapshots have no Claude field', () => {
+      expect(resolveDefaultWorkerModel('claude', { OMC_MODEL_MEDIUM: 'claude-env' }, { cursorModel: 'captured-model' })).toBeUndefined();
+    });
   });
   describe('worker launch descriptors', () => {
     it('captures exact binary model and appended prompt argv', () => {
