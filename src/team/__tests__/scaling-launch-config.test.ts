@@ -340,6 +340,28 @@ describe('scaleUp launch config', () => {
     );
   });
 
+  it('does not adopt a newly introduced environment default after an empty snapshot', async () => {
+    modelContractMocks.resolveDefaultWorkerModel.mockReturnValue(undefined);
+    modelContractMocks.buildWorkerArgv.mockReturnValue(['/usr/bin/cursor']);
+    config = makeConfig({ external_models_defaults: {} });
+
+    const result = await scaleUp(
+      'demo-team',
+      1,
+      'cursor',
+      [{ subject: 'demo', description: 'demo task' }],
+      cwd,
+      {
+        OMC_TEAM_SCALING_ENABLED: '1',
+        OMC_CURSOR_DEFAULT_MODEL: 'introduced-after-start',
+      } as NodeJS.ProcessEnv,
+    );
+
+    expect(result).toMatchObject({ ok: true });
+    expect(modelContractMocks.resolveDefaultWorkerModel).toHaveBeenCalledWith('cursor', {}, {});
+    expect(modelContractMocks.buildWorkerArgv.mock.calls[0]?.[1]).not.toHaveProperty('model');
+  });
+
   it.each([
     ["relative", "Resolved CLI binary 'codex' to relative path"],
     ["untrusted", "Resolved CLI binary 'codex' to untrusted location: /tmp/shadow/codex"],
