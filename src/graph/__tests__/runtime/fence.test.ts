@@ -17,6 +17,8 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  symlinkSync,
+  unlinkSync,
   utimesSync,
   writeFileSync,
 } from "fs";
@@ -66,7 +68,7 @@ function readLockPayload(dir: string): FenceLockPayload {
 }
 
 describe("FileOwnershipFence", () => {
-  let roots: string[] = [];
+  const roots: string[] = [];
 
   /** Fresh runsRoot + run dir under os.tmpdir(); auto-cleaned after each test. */
   function makeRunDir(): string {
@@ -96,6 +98,30 @@ describe("FileOwnershipFence", () => {
     await expect(makeFence(dir).acquire()).resolves.toEqual({ outcome: "busy" });
   });
 
+  it("fails closed when the run-directory parent is replaced after acquisition", async () => {
+    const dir = makeRunDir();
+    const fence = makeFence(dir);
+    await expect(fence.acquire()).resolves.toEqual({
+      outcome: "acquired",
+      epoch: 1,
+    });
+
+    const originalRoot = dirname(dir);
+    const outsideRoot = mkdtempSync(join(tmpdir(), "omc-fence-outside-"));
+    roots.push(outsideRoot);
+    mkdirSync(join(outsideRoot, basename(dir)), { recursive: true });
+    renameSync(originalRoot, `${originalRoot}-original`);
+    symlinkSync(outsideRoot, originalRoot);
+    try {
+      expect(() => fence.assertEpoch(1)).toThrow();
+      await expect(fence.release(1)).rejects.toThrow("run directory identity changed");
+      expect(existsSync(join(outsideRoot, basename(dir), LOCK_NAME))).toBe(false);
+    } finally {
+      unlinkSync(originalRoot);
+      renameSync(`${originalRoot}-original`, originalRoot);
+    }
+  });
+
   it("takes over a dead holder's lock at old_epoch + 1 (AC-4)", async () => {
     const dir = makeRunDir();
     craftJsonLock(dir, {
@@ -114,6 +140,74 @@ describe("FileOwnershipFence", () => {
       epoch: 2,
     });
     expect(readFileSync(join(dir, EPOCH_FILE_NAME), "utf8").trim()).toBe("2");
+  });
+
+  it.each(["10garbage", "1garbage", "+10", " 10", "10 ", "1.0", "1e2", "0", "9007199254740992"]) (
+    "rejects non-canonical owner.epoch text %j without issuing an epoch",
+    async (sidecar) => {
+      const dir = makeRunDir();
+      writeFileSync(join(dir, EPOCH_FILE_NAME), sidecar, "utf8");
+
+      await expect(makeFence(dir).acquire()).rejects.toThrow("owner.epoch");
+      expect(existsSync(join(dir, LOCK_NAME))).toBe(false);
+    },
+  );
+
+  it("refuses symlinked epoch and lock state instead of reading outside", async () => {
+    const dir = makeRunDir();
+    const outside = mkdtempSync(join(tmpdir(), "omc-fence-symlink-outside-"));
+    roots.push(outside);
+    const outsideEpoch = join(outside, EPOCH_FILE_NAME);
+    const outsideLock = join(outside, LOCK_NAME);
+    writeFileSync(outsideEpoch, "9007199254740992", "utf8");
+    writeFileSync(outsideLock, "not json", "utf8");
+
+    symlinkSync(outsideEpoch, join(dir, EPOCH_FILE_NAME));
+    await expect(makeFence(dir).acquire()).rejects.toThrow(/ELOOP|symbolic link refused/);
+
+    unlinkSync(join(dir, EPOCH_FILE_NAME));
+    symlinkSync(outsideLock, join(dir, LOCK_NAME));
+    await expect(makeFence(dir).acquire()).rejects.toThrow(/ELOOP|symbolic link refused/);
+    expect(readFileSync(outsideEpoch, "utf8")).toBe("9007199254740992");
+    expect(readFileSync(outsideLock, "utf8")).toBe("not json");
+  });
+
+  it.each([1.5, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER + 1])(
+    "rejects stale lock epoch %j instead of issuing an unsafe successor",
+    async (epoch) => {
+      const dir = makeRunDir();
+      craftJsonLock(dir, {
+        pid: spawnDeadPid(),
+        epoch,
+        timestamp: Date.now(),
+      });
+      backdate(join(dir, LOCK_NAME));
+
+      await expect(makeFence(dir).acquire()).rejects.toThrow("stale lock epoch");
+      expect(existsSync(join(dir, LOCK_NAME))).toBe(false);
+    },
+  );
+
+  it("accepts the largest sidecar that still has a safe successor", async () => {
+    const dir = makeRunDir();
+    writeFileSync(
+      join(dir, EPOCH_FILE_NAME),
+      String(Number.MAX_SAFE_INTEGER - 1),
+      "utf8",
+    );
+
+    await expect(makeFence(dir).acquire()).resolves.toEqual({
+      outcome: "acquired",
+      epoch: Number.MAX_SAFE_INTEGER,
+    });
+  });
+
+  it("fails closed when the sidecar has no safe successor", async () => {
+    const dir = makeRunDir();
+    writeFileSync(join(dir, EPOCH_FILE_NAME), String(Number.MAX_SAFE_INTEGER), "utf8");
+
+    await expect(makeFence(dir).acquire()).rejects.toThrow("no representable successor");
+    expect(existsSync(join(dir, LOCK_NAME))).toBe(false);
   });
 
   it("does not take over a replacement lock raced into the stale path", async () => {

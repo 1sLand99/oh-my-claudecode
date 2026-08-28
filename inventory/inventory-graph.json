@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "6803fceeb01d5e58a50258dfbfb72ec2e56620f9",
-    "sourceSha256": "20ac9072884ef297dd0c550ad9f7f74ac1f17c3f0cb1cbc68ef0e7275a4f222f",
+    "head": "96b341e64e49e70a9b7528e39ce9d38696635031",
+    "sourceSha256": "02d8af3144c3ef9c1d8184ae9a2e627a1ca15157d856b374e4a28dc1dc171b5c",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "6803fceeb01d5e58a50258dfbfb72ec2e56620f9",
-  "sourceSha256": "20ac9072884ef297dd0c550ad9f7f74ac1f17c3f0cb1cbc68ef0e7275a4f222f",
+  "head": "96b341e64e49e70a9b7528e39ce9d38696635031",
+  "sourceSha256": "02d8af3144c3ef9c1d8184ae9a2e627a1ca15157d856b374e4a28dc1dc171b5c",
   "counts": {
     "public": {
       "skills": 32,
@@ -53695,12 +53695,27 @@
       },
       {
         "from": "src/graph/runtime/fence.ts",
+        "to": "external:fs",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/graph/runtime/fence.ts",
         "to": "external:path",
         "kind": "imports"
       },
       {
         "from": "src/graph/runtime/fence.ts",
         "to": "src/graph/runtime/run-dir.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/runtime/fence.ts",
+        "to": "src/graph/runtime/run-dir.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/graph/runtime/fence.ts",
+        "to": "src/graph/runtime/safe-fs.ts",
         "kind": "imports"
       },
       {
@@ -76431,11 +76446,11 @@
     ],
     "stats": {
       "nodeCount": 6834,
-      "edgeCount": 7196,
-      "importEdgeCount": 5912,
+      "edgeCount": 7199,
+      "importEdgeCount": 5913,
       "registerEdgeCount": 53
     }
   },
   "inventorySha256": "105c63a2ed379d8c3bf6b66c30853f3dce437799afe24b2c22ca6a8d79503eb8",
-  "manifestSha256": "eb93bf7a50e730779a1291777abb98a9ddbae64d47b1462bd370d798b70fcbdc"
+  "manifestSha256": "539c7204ae706bb16a4f1fc7c5286e0fa9de9d536bdc3e078b20c81994e8f1e8"
 }

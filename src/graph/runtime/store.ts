@@ -112,15 +112,23 @@ function parseStoredEnvelope(raw: unknown): ProjectionSnapshotEnvelope {
 export class FileProjectionStore implements ProjectionStore {
   private readonly runsRoot: string;
   private readonly runId: string;
+  private readonly handle?: RunDirHandle;
 
-  constructor(runsRoot: string, runId: string) {
+  constructor(
+    runsRoot: string,
+    runId: string,
+    runDirHandle?: RunDirHandle,
+  ) {
     this.runsRoot = runsRoot;
     this.runId = runId;
-    resolveRunDirHandle(runsRoot, runId);
+    this.handle = runDirHandle;
+    if (this.handle === undefined) {
+      resolveRunDirHandle(runsRoot, runId);
+    }
   }
 
   private runDir(): RunDirHandle {
-    return resolveRunDirHandle(this.runsRoot, this.runId);
+    return this.handle ?? resolveRunDirHandle(this.runsRoot, this.runId);
   }
 
   async save(envelope: ProjectionSnapshotEnvelope): Promise<void> {

@@ -7,10 +7,59 @@ import {
   readFileSync,
   statSync,
 } from "fs";
-import { join } from "path";
+import { isAbsolute, join, normalize, win32 } from "path";
 import type { RunDirHandle } from "./run-dir.js";
 
 const NO_FOLLOW = process.platform === "win32" ? 0 : fsConstants.O_NOFOLLOW;
+
+const UNSAFE_CONTROL = /[\u0000-\u001f\u007f]/;
+const WINDOWS_DEVICE_NAME = /^(?:con|prn|aux|nul|clock\$|com[1-9¹²³]|lpt[1-9¹²³])(?:\..*)?$/i;
+
+/** Fail closed before acquiring any run-scoped locks on unsupported POSIX. */
+export function assertContainedFsSupported(
+  platform: NodeJS.Platform = process.platform,
+): void {
+  if (platform !== "linux" && platform !== "win32") {
+    throw new Error(
+      `contained directory-FD traversal is unavailable on ${platform}; refusing pathname fallback`,
+    );
+  }
+}
+
+/**
+ * Validate the untrusted final component before it reaches any path API.
+ * Contained artifacts are deliberately a single portable basename: allowing
+ * either platform separator would make the contract depend on the host that
+ * happens to process the descriptor, and Windows also treats `:` as an ADS
+ * separator. Require canonical NFC so the same artifact name has one portable
+ * byte-level spelling across Linux, macOS, and Windows; reject normalization-
+ * changing values rather than attempting to canonicalize untrusted input.
+ */
+export function assertSafeContainedFileName(
+  fileName: string,
+  platform: NodeJS.Platform = process.platform,
+): void {
+  if (
+    typeof fileName !== "string" ||
+    fileName.length === 0 ||
+    fileName === "." ||
+    fileName === ".." ||
+    fileName.includes("/") ||
+    fileName.includes("\\") ||
+    fileName.includes("\0") ||
+    UNSAFE_CONTROL.test(fileName) ||
+    fileName.normalize("NFC") !== fileName ||
+    isAbsolute(fileName) ||
+    win32.isAbsolute(fileName) ||
+    normalize(fileName) !== fileName ||
+    win32.normalize(fileName) !== fileName ||
+    (platform === "win32" && fileName.includes(":")) ||
+    (platform === "win32" && WINDOWS_DEVICE_NAME.test(fileName)) ||
+    (fileName.endsWith(".") || fileName.endsWith(" "))
+  ) {
+    throw new RangeError(`invalid contained artifact fileName: ${JSON.stringify(fileName)}`);
+  }
+}
 
 /** Open a runtime artifact without following a symlink at the final path. */
 export function openNoFollow(
@@ -58,9 +107,11 @@ export function containedPathForPlatform(
   fileName: string,
   platform: NodeJS.Platform = process.platform,
 ): string {
+  assertSafeContainedFileName(fileName, platform);
   if (platform === "linux") {
     return join(`/proc/self/fd/${directoryFd}`, fileName);
   }
+  assertContainedFsSupported(platform);
   return join(runDirPath, fileName);
 }
 
@@ -83,17 +134,46 @@ export function withContainedPath<T>(
   );
 }
 
+/** Run several related operations beneath one identity-checked directory FD. */
+export function withContainedDirectory<T>(
+  runDir: RunDirHandle,
+  operation: (directoryPath: string) => T,
+  platform: NodeJS.Platform = process.platform,
+): T {
+  assertContainedFsSupported(platform);
+  if (platform === "win32") {
+    const stats = statSync(runDir.path);
+    if (stats.dev !== runDir.device || stats.ino !== runDir.inode) {
+      throw new Error("run directory identity changed");
+    }
+    return operation(runDir.path);
+  }
+  const directoryFd = openNoFollow(
+    runDir.path,
+    fsConstants.O_RDONLY | (fsConstants.O_DIRECTORY ?? 0),
+  );
+  try {
+    const stats = fstatSync(directoryFd);
+    if (stats.dev !== runDir.device || stats.ino !== runDir.inode) {
+      throw new Error("run directory identity changed");
+    }
+    return operation(`/proc/self/fd/${directoryFd}`);
+  } finally {
+    closeSync(directoryFd);
+  }
+}
+
 export function withContainedPathForPlatform<T>(
   runDir: RunDirHandle,
   fileName: string,
   operation: (filePath: string) => T,
   platform: NodeJS.Platform,
 ): T {
+  assertSafeContainedFileName(fileName, platform);
   if (platform !== "linux") {
-    // Non-Linux POSIX systems cannot traverse a directory FD via /dev/fd.
-    // The identity check immediately before operation plus O_NOFOLLOW on the
-    // final artifact preserves the available portable guarantees, but cannot
-    // eliminate a parent-directory swap racing this synchronous call.
+    assertContainedFsSupported(platform);
+    // Windows has no POSIX dirfd primitive. Keep its existing identity guard
+    // and final-component no-follow behavior unchanged.
     const stats = statSync(runDir.path);
     if (stats.dev !== runDir.device || stats.ino !== runDir.inode) {
       throw new Error("run directory identity changed");

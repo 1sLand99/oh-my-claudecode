@@ -92,6 +92,7 @@ function envelopeError(value: unknown): string | null {
 export class FileJournal implements Journal {
   private readonly runsRoot: string;
   private readonly runId?: string;
+  private readonly handle?: RunDirHandle;
 
   /**
    * The frozen `Journal` interface is run-scoped but carries no run id, so an
@@ -99,9 +100,14 @@ export class FileJournal implements Journal {
    * brief's `new FileJournal(runsRoot)` signature constructible; unbound
    * instances fail closed on use.
    */
-  constructor(runsRoot: string, runId?: string) {
+  constructor(
+    runsRoot: string,
+    runId?: string,
+    runDirHandle?: RunDirHandle,
+  ) {
     this.runsRoot = runsRoot;
     this.runId = runId;
+    this.handle = runDirHandle;
   }
 
   async append(record: JournalAppendRecord): Promise<void> {
@@ -147,7 +153,9 @@ export class FileJournal implements Journal {
         "FileJournal is not bound to a run; pass runId to the constructor",
       );
     }
-    return resolveRunDirHandle(this.runsRoot, this.runId);
+    return (
+      this.handle ?? resolveRunDirHandle(this.runsRoot, this.runId)
+    );
   }
 
   async readAll(): Promise<readonly JournalRecord[]> {
