@@ -15,7 +15,9 @@ const COMMAND_CEILING_MS = 500;
 const SEQUENTIAL_CEILING_MS = 1_000;
 const HAS_GENERATED_DIST = existsSync(join(REPO_ROOT, 'dist', 'hooks', 'session-end', 'worker.js'));
 const TEST_PRODUCER_GRACE_MS = '25';
-const DETACHED_WORKER_CEILING_MS = 5_000;
+// The worker's required actions have a 9s budget; allow that bounded contract
+// plus process-startup/runner contention under the full suite.
+const DETACHED_WORKER_CEILING_MS = 15_000;
 
 interface ExitResult {
   elapsedMs: number;
