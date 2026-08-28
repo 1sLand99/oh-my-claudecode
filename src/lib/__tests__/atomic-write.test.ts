@@ -231,7 +231,7 @@ describe('atomicWriteJson', () => {
     },
   );
 
-  it('rejects a temp replacement at rename and restores the prior target', async () => {
+  it('rejects a temp replacement at rename without overwriting the foreign target', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'atomic-write-publication-race-'));
     directories.push(directory);
     const filePath = join(directory, 'state.json');
@@ -248,7 +248,7 @@ describe('atomicWriteJson', () => {
     await expect(atomicWriteJson(filePath, { status: 'new' })).rejects.toThrow(
       'target was replaced at publication',
     );
-    expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual(oldValue);
+    expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual({ status: 'attacker' });
     expect(readdirSync(directory)).toEqual(['state.json']);
   });
 

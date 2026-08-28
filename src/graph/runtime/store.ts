@@ -190,7 +190,6 @@ export class FileProjectionStore implements ProjectionStore {
           }
         : undefined;
       atomicWriteJsonSync(filePath, envelope, hooks);
-      assertOwnership?.();
     });
   }
 

@@ -129,6 +129,10 @@ function descriptorIdentity(fd) {
     }
 }
 function rollbackPriorTarget(filePath, backupPath, expectedIdentity) {
+    // Without a positively identified published inode, the target may be a
+    // concurrent foreign replacement. Leave it untouched and fail closed.
+    if (expectedIdentity === null)
+        return;
     const current = currentFileIdentity(filePath);
     if (current === null)
         return;
@@ -138,16 +142,9 @@ function rollbackPriorTarget(filePath, backupPath, expectedIdentity) {
     }
     try {
         if (backupPath === null) {
-            if (expectedIdentity === null)
-                return;
             fsSync.unlinkSync(filePath);
         }
         else {
-            // If publication failed before we could bind an identity, remove the
-            // occupying inode explicitly before restoring the backup; rename must
-            // never overwrite the inode that caused the publication failure.
-            if (expectedIdentity === null)
-                fsSync.unlinkSync(filePath);
             fsSync.renameSync(backupPath, filePath);
         }
     }

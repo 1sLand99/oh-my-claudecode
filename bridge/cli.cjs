@@ -32367,13 +32367,18 @@ function descriptorIdentity(fd) {
   }
 }
 function rollbackPriorTarget(filePath, backupPath, expectedIdentity) {
-  if (backupPath === null || expectedIdentity === null) return;
+  if (expectedIdentity === null) return;
   const current = currentFileIdentity(filePath);
-  if (current === null || current.dev !== expectedIdentity.dev || current.ino !== expectedIdentity.ino) {
+  if (current === null) return;
+  if (expectedIdentity !== null && (current.dev !== expectedIdentity.dev || current.ino !== expectedIdentity.ino)) {
     return;
   }
   try {
-    fsSync.renameSync(backupPath, filePath);
+    if (backupPath === null) {
+      fsSync.unlinkSync(filePath);
+    } else {
+      fsSync.renameSync(backupPath, filePath);
+    }
   } catch {
   }
 }
@@ -32424,7 +32429,7 @@ async function atomicWriteJson(filePath, data, hooks) {
         rollbackPriorTarget(
           filePath,
           backupPath,
-          publishedIdentity ?? currentFileIdentity(filePath)
+          publishedIdentity
         );
         throw error2;
       }
@@ -32477,7 +32482,7 @@ function atomicWriteFileSync(filePath, content, hooks) {
       rollbackPriorTarget(
         filePath,
         backupPath,
-        publishedIdentity ?? currentFileIdentity(filePath)
+        publishedIdentity
       );
       throw error2;
     }
@@ -88228,7 +88233,6 @@ var init_store = __esm({
             afterRename: assertOwnership
           } : void 0;
           atomicWriteJsonSync(filePath, envelope, hooks);
-          assertOwnership?.();
         });
       }
       async load() {
