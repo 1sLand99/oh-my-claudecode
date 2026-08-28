@@ -111,6 +111,8 @@ export function deriveManifestProjection(config: TeamConfig, existing?: TeamMani
     resize_hook_name: config.resize_hook_name,
     resize_hook_target: config.resize_hook_target,
     next_worker_index: config.next_worker_index,
+    resolved_routing_roles: config.resolved_routing_roles,
+    external_models_defaults: config.external_models_defaults,
     // Retain revision in the durable projection although old manifest typings predate it.
     state_revision: config.state_revision,
   } as TeamManifestV2;

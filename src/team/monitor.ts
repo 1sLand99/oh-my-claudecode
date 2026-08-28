@@ -96,6 +96,8 @@ function configFromManifest(manifest: TeamManifestV2): TeamConfig {
     resize_hook_name: manifest.resize_hook_name,
     resize_hook_target: manifest.resize_hook_target,
     next_worker_index: manifest.next_worker_index,
+    resolved_routing_roles: manifest.resolved_routing_roles,
+    external_models_defaults: manifest.external_models_defaults,
     service_descriptor: manifest.service_descriptor,
   };
 }
@@ -106,6 +108,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isOptionalExternalModelsDefaults(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!isRecord(value)) return false;
+  if (value.provider !== undefined && !['codex', 'gemini', 'antigravity'].includes(value.provider as string)) return false;
+  return ['codexModel', 'geminiModel', 'grokModel', 'antigravityModel', 'cursorModel']
+    .every(key => value[key] === undefined || isNonEmptyString(value[key]));
+}
+
+function isOptionalRoutingRoles(value: unknown): boolean {
+  return value === undefined || (Array.isArray(value)
+    && value.every(role => (CANONICAL_TEAM_ROLES as readonly string[]).includes(role as string)));
 }
 
 function isSafeCounter(value: unknown): value is number {
@@ -215,7 +230,9 @@ function isTeamConfig(value: unknown, requireRevision: boolean, expectedTeamName
     || (value.next_task_id !== undefined && !isSafeCounter(value.next_task_id))
     || !isOptionalPolicy(value.policy) || !isOptionalGovernance(value.governance)
     || !isOptionalWorkspaceShape(value) || !isOptionalPaneShape(value)
-    || !isOptionalRouting(value.resolved_routing)) return false;
+    || !isOptionalRouting(value.resolved_routing)
+    || !isOptionalRoutingRoles(value.resolved_routing_roles)
+    || !isOptionalExternalModelsDefaults(value.external_models_defaults)) return false;
   if (requireRevision ? !isSafeCounter(value.state_revision) : value.state_revision !== undefined && !isSafeCounter(value.state_revision)) return false;
   if (!requireRevision && Object.hasOwn(value, 'state_revision')) return false;
   return (value.lifecycle_state === undefined || ['active', 'shutting_down', 'stopped'].includes(value.lifecycle_state as string))

@@ -600,7 +600,7 @@ export function resolveDefaultWorkerModel(
     `OMC_${providerName}_DEFAULT_MODEL`,
   ];
   for (const key of envKeys) {
-    const value = env[key];
+    const value = env[key]?.trim();
     if (value) return value;
   }
   const configured = defaults?.[providerConfigKeys[agentType]];

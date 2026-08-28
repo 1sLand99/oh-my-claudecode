@@ -814,6 +814,13 @@ describe('model-contract', () => {
     it('returns undefined when external provider config is absent', () => {
       expect(resolveDefaultWorkerModel('cursor', {})).toBeUndefined();
     });
+
+    it('ignores whitespace-only environment defaults and uses captured config', () => {
+      expect(resolveDefaultWorkerModel('cursor', {
+        OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL: '   ',
+        OMC_CURSOR_DEFAULT_MODEL: '\t',
+      }, { cursorModel: 'captured-cursor-model' })).toBe('captured-cursor-model');
+    });
   });
   describe('worker launch descriptors', () => {
     it('captures exact binary model and appended prompt argv', () => {

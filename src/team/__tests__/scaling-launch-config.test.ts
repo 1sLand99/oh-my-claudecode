@@ -309,6 +309,37 @@ describe('scaleUp launch config', () => {
     );
   });
 
+  it('does not apply the implicit Claude snapshot to an explicitly typed external worker', async () => {
+    modelContractMocks.resolveDefaultWorkerModel.mockReturnValue('codex-config-model');
+    modelContractMocks.buildWorkerArgv.mockReturnValue(['/usr/bin/codex', '--model', 'codex-config-model']);
+    config = makeConfig({
+      resolved_routing: {
+        executor: { primary: { provider: 'claude', model: '', agent: 'executor' }, fallback: { provider: 'claude', model: '', agent: 'executor' } },
+      } as TeamConfig['resolved_routing'],
+      resolved_routing_roles: [],
+    });
+
+    const result = await scaleUp(
+      'demo-team',
+      1,
+      'codex',
+      [{ subject: 'demo', description: 'demo task', owner: 'worker-1', role: 'executor' }],
+      cwd,
+      { OMC_TEAM_SCALING_ENABLED: '1' } as NodeJS.ProcessEnv,
+    );
+
+    expect(result).toMatchObject({ ok: true });
+    expect(modelContractMocks.resolveDefaultWorkerModel).toHaveBeenCalledWith(
+      'codex',
+      expect.anything(),
+      undefined,
+    );
+    expect(modelContractMocks.buildWorkerArgv).toHaveBeenCalledWith(
+      'codex',
+      expect.objectContaining({ model: 'codex-config-model' }),
+    );
+  });
+
   it.each([
     ["relative", "Resolved CLI binary 'codex' to relative path"],
     ["untrusted", "Resolved CLI binary 'codex' to untrusted location: /tmp/shadow/codex"],

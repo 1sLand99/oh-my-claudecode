@@ -457,6 +457,8 @@ export interface TeamManifestV2 {
   resize_hook_name: string | null;
   resize_hook_target: string | null;
   next_worker_index?: number;
+  resolved_routing_roles?: CanonicalTeamRole[];
+  external_models_defaults?: ExternalModelsDefaults;
   service_descriptor?: TeamServiceDescriptor;
 }
 
@@ -541,6 +543,8 @@ export interface TeamConfig {
    * `scaleUp`, worker restart, and spawn paths. Immutable for the team's lifetime.
    */
   resolved_routing?: Record<CanonicalTeamRole, { primary: RoleAssignment; fallback: RoleAssignment }>;
+  /** Canonical roles explicitly configured for routing; defaults are not opt-in routes. */
+  resolved_routing_roles?: CanonicalTeamRole[];
   /** Immutable provider defaults captured at team creation for scale-up parity. */
   external_models_defaults?: ExternalModelsDefaults;
   state_revision?: number;
