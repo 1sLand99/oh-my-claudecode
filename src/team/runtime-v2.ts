@@ -3337,7 +3337,7 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
     if (agentType === 'gemini') return process.env.OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL || process.env.OMC_GEMINI_DEFAULT_MODEL || undefined;
     if (agentType === 'antigravity') return process.env.OMC_EXTERNAL_MODELS_DEFAULT_ANTIGRAVITY_MODEL || process.env.OMC_ANTIGRAVITY_DEFAULT_MODEL || undefined;
     if (agentType === 'grok') return process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL || process.env.OMC_GROK_DEFAULT_MODEL || undefined;
-    if (agentType === 'cursor') return undefined;
+    if (agentType === 'cursor') return process.env.OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL || process.env.OMC_CURSOR_DEFAULT_MODEL || undefined;
     return resolveClaudeWorkerModel();
   };
   for (let i = 0; i < workerNames.length; i++) {
