@@ -3463,6 +3463,9 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
     resize_hook_name: null,
     resize_hook_target: null,
     resolved_routing: resolvedRouting,
+    ...(pluginCfg.externalModels?.defaults
+      ? { external_models_defaults: pluginCfg.externalModels.defaults }
+      : {}),
     workspace_mode: workspaceMode,
     worktree_mode: worktreeMode,
     service_descriptor: config.autoMerge

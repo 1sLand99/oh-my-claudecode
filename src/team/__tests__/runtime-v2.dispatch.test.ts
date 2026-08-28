@@ -1947,7 +1947,7 @@ describe('runtime v2 startup inbox dispatch', () => {
     try {
       const { startTeamV2 } = await import('../runtime-v2.js');
 
-      await startTeamV2({
+      const runtime = await startTeamV2({
         teamName: 'dispatch-team',
         workerCount: 1,
         agentTypes: ['cursor'],
@@ -1962,6 +1962,7 @@ describe('runtime v2 startup inbox dispatch', () => {
         'cursor',
         expect.objectContaining({ model: 'composer-2.5' }),
       );
+      expect(runtime.config.external_models_defaults).toEqual({ cursorModel: 'composer-2.5' });
     } finally {
       if (originalCursorModel === undefined) delete process.env.OMC_CURSOR_DEFAULT_MODEL;
       else process.env.OMC_CURSOR_DEFAULT_MODEL = originalCursorModel;

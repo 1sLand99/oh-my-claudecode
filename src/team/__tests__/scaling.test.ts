@@ -271,7 +271,7 @@ describe('scaleUp duplicate worker guard', () => {
         { OMC_TEAM_SCALING_ENABLED: '1', OMC_TEAM_SKIP_READY_WAIT: '1' } as NodeJS.ProcessEnv);
 
       expect(result).toMatchObject({ ok: true });
-      expect(modelContractMocks.resolveDefaultWorkerModel).toHaveBeenCalledWith(provider, expect.anything());
+      expect(modelContractMocks.resolveDefaultWorkerModel).toHaveBeenCalledWith(provider, expect.anything(), undefined);
       expect(modelContractMocks.buildWorkerArgv).toHaveBeenCalledWith(provider, expect.objectContaining({ model }));
     }, 30000);
 

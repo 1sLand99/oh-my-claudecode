@@ -281,6 +281,34 @@ describe('scaleUp launch config', () => {
     })!).toBeLessThan(tmuxUtilsMocks.tmuxSpawn.mock.invocationCallOrder[splitIndex]!);
   });
 
+  it('passes the immutable team defaults to scale-up resolution', async () => {
+    modelContractMocks.resolveDefaultWorkerModel.mockReturnValue('composer-2.5');
+    modelContractMocks.buildWorkerArgv.mockReturnValue(['/usr/bin/cursor', '--model', 'composer-2.5']);
+    config = makeConfig({
+      external_models_defaults: { cursorModel: 'composer-2.5' },
+    });
+
+    const result = await scaleUp(
+      'demo-team',
+      1,
+      'cursor',
+      [{ subject: 'demo', description: 'demo task' }],
+      cwd,
+      { OMC_TEAM_SCALING_ENABLED: '1' } as NodeJS.ProcessEnv,
+    );
+
+    expect(result).toMatchObject({ ok: true });
+    expect(modelContractMocks.resolveDefaultWorkerModel).toHaveBeenCalledWith(
+      'cursor',
+      expect.objectContaining({ OMC_TEAM_SCALING_ENABLED: '1' }),
+      { cursorModel: 'composer-2.5' },
+    );
+    expect(modelContractMocks.buildWorkerArgv).toHaveBeenCalledWith(
+      'cursor',
+      expect.objectContaining({ model: 'composer-2.5' }),
+    );
+  });
+
   it.each([
     ["relative", "Resolved CLI binary 'codex' to relative path"],
     ["untrusted", "Resolved CLI binary 'codex' to untrusted location: /tmp/shadow/codex"],

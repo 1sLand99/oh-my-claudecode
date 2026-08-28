@@ -9,7 +9,7 @@
 import type { TeamTaskStatus } from './contracts.js';
 import type { TeamPhase } from './phase-controller.js';
 import type { TeamLeaderNextAction } from './leader-nudge-guidance.js';
-import type { CanonicalTeamRole, RoleAssignment } from '../shared/types.js';
+import type { CanonicalTeamRole, ExternalModelsDefaults, RoleAssignment } from '../shared/types.js';
 
 /** Bridge daemon configuration — passed via --config file to bridge-entry.ts */
 export interface BridgeConfig {
@@ -541,6 +541,8 @@ export interface TeamConfig {
    * `scaleUp`, worker restart, and spawn paths. Immutable for the team's lifetime.
    */
   resolved_routing?: Record<CanonicalTeamRole, { primary: RoleAssignment; fallback: RoleAssignment }>;
+  /** Immutable provider defaults captured at team creation for scale-up parity. */
+  external_models_defaults?: ExternalModelsDefaults;
   state_revision?: number;
   runtime_owner_epoch?: TeamRuntimeOwnerEpoch;
   active_recovery?: TeamRecoveryAttempt;

@@ -541,11 +541,11 @@ export async function scaleUpOwned(
           workerModel = primary.model;
         }
         if (!workerModel) {
-          workerModel = resolveDefaultWorkerModel(workerAgentType, env);
+          workerModel = resolveDefaultWorkerModel(workerAgentType, env, config.external_models_defaults);
         }
       } else {
         // Honor provider-specific default-model resolution for non-routed workers.
-        workerModel = resolveDefaultWorkerModel(workerAgentType, env);
+        workerModel = resolveDefaultWorkerModel(workerAgentType, env, config.external_models_defaults);
       }
 
       let launchBinary: string;
