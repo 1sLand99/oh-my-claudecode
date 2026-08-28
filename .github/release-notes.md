@@ -1,6 +1,6 @@
 ## OMC v5.0.2
 
-v5.0.2 improves Claude Code workflow guidance and hardens graph artifact containment. On macOS, graph execution remains intentionally fail-closed when a safe directory-descriptor primitive is unavailable.
+v5.0.2 improves Claude Code workflow guidance and hardens graph artifact containment. On macOS and Windows, graph execution remains intentionally fail-closed when a safe directory-descriptor primitive is unavailable.
 
 ## Install / Upgrade
 

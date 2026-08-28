@@ -17,6 +17,7 @@ import {
   assertSafeContainedFileName,
   assertContainedFsSupported,
   readContainedFileNoFollow,
+  withContainedDirectory,
   withContainedPathForPlatform,
 } from "../../runtime/safe-fs.js";
 
@@ -42,11 +43,10 @@ describe("graph runtime safe filesystem", () => {
     expect(
       containedPathForPlatform(7, "/runs/example", "artifact", "linux"),
     ).toBe("/proc/self/fd/7/artifact");
-    expect(
-      containedPathForPlatform(7, "C:/runs/example", "artifact", "win32"),
-    ).toBe("C:/runs/example/artifact");
 
     expect(() => containedPathForPlatform(7, "/runs/example", "artifact", "darwin"))
+      .toThrow("refusing pathname fallback");
+    expect(() => containedPathForPlatform(7, "C:/runs/example", "artifact", "win32"))
       .toThrow("refusing pathname fallback");
 
     expect(process.platform).toBe(before);
@@ -104,19 +104,21 @@ describe("graph runtime safe filesystem", () => {
     ).toThrow("refusing pathname fallback");
   });
 
-  it("keeps the Windows path fallback and identity guard unchanged", () => {
+  it("fails closed on Windows instead of using a raceable pathname fallback", () => {
     const { handle } = makeRunDir();
     const artifact = join(handle.path, "artifact.txt");
     writeFileSync(artifact, "windows-compatible");
 
-    expect(
+    expect(() =>
       withContainedPathForPlatform(
         handle,
         "artifact.txt",
         (path) => readFileSync(path, "utf8"),
         "win32",
       ),
-    ).toBe("windows-compatible");
+    ).toThrow("refusing pathname fallback");
+    expect(() => withContainedDirectory(handle, () => undefined, "win32"))
+      .toThrow("refusing pathname fallback");
   });
 
   it("preserves ordinary ENOENT behavior for missing artifacts", () => {
@@ -170,7 +172,9 @@ describe("graph runtime safe filesystem", () => {
       "refusing pathname fallback",
     );
     expect(() => assertContainedFsSupported("linux")).not.toThrow();
-    expect(() => assertContainedFsSupported("win32")).not.toThrow();
+    expect(() => assertContainedFsSupported("win32")).toThrow(
+      "refusing pathname fallback",
+    );
   });
 
   it("rejects a parent replacement before Linux procfs traversal", () => {

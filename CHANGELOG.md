@@ -9,7 +9,7 @@ v5.0.2 is the patch release from `v5.0.1..9d4d6c834fdd78febdb177eba70dc264efafad
 - Corrects Claude Code subagent nesting and concurrency workflow guidance for current Claude Code releases.
 - Replaces opaque macOS `/dev/fd/N` graph failures with explicit fail-closed containment when a safe directory-descriptor primitive is unavailable.
 - Closes graph artifact basename traversal, path-fallback time-of-check/time-of-use, malformed or unsafe epoch, symlink, and identity-validation gaps.
-- Keeps graph execution deterministic and safe on supported platforms while intentionally not restoring macOS graph execution without a safe `dirfd` primitive.
+- Keeps graph execution deterministic and safe on Linux while intentionally failing closed on macOS and Windows without a safe directory-descriptor primitive; macOS graph execution is not restored by this release.
 
 ### Validation
 

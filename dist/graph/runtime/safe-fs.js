@@ -1,11 +1,11 @@
-import { closeSync, constants as fsConstants, fstatSync, lstatSync, openSync, readFileSync, statSync, } from "fs";
+import { closeSync, constants as fsConstants, fstatSync, openSync, readFileSync, } from "fs";
 import { isAbsolute, join, normalize, win32 } from "path";
 const NO_FOLLOW = process.platform === "win32" ? 0 : fsConstants.O_NOFOLLOW;
 const UNSAFE_CONTROL = /[\u0000-\u001f\u007f]/;
 const WINDOWS_DEVICE_NAME = /^(?:con|prn|aux|nul|clock\$|com[1-9¹²³]|lpt[1-9¹²³])(?:\..*)?$/i;
-/** Fail closed before acquiring any run-scoped locks on unsupported POSIX. */
+/** Fail closed before acquiring any run-scoped locks on unsupported platforms. */
 export function assertContainedFsSupported(platform = process.platform) {
-    if (platform !== "linux" && platform !== "win32") {
+    if (platform !== "linux") {
         throw new Error(`contained directory-FD traversal is unavailable on ${platform}; refusing pathname fallback`);
     }
 }
@@ -41,18 +41,7 @@ export function assertSafeContainedFileName(fileName, platform = process.platfor
 /** Open a runtime artifact without following a symlink at the final path. */
 export function openNoFollow(filePath, flags, mode = 0o600) {
     if (process.platform === "win32") {
-        try {
-            if (lstatSync(filePath).isSymbolicLink()) {
-                const error = new Error(`symbolic link refused: ${filePath}`);
-                error.code = "ELOOP";
-                throw error;
-            }
-        }
-        catch (error) {
-            if (error.code === "ELOOP")
-                throw error;
-            // Let openSync report ordinary permission and path errors.
-        }
+        throw new Error("atomic no-follow file opens are unavailable on win32; refusing pathname fallback");
     }
     return openSync(filePath, flags | NO_FOLLOW, mode);
 }
@@ -69,9 +58,8 @@ export function readFileNoFollow(filePath) {
 /**
  * Resolve a path for an already-open run directory without changing the
  * process-wide platform state. Linux exposes directory FDs as traversable
- * procfs directories. macOS (and other non-Linux POSIX platforms) does not,
- * so use the validated run-directory path and retain the final-component
- * no-follow guard in openNoFollow.
+ * procfs directories. Platforms without that primitive fail closed instead of
+ * falling back to a raceable pathname.
  */
 export function containedPathForPlatform(directoryFd, runDirPath, fileName, platform = process.platform) {
     assertSafeContainedFileName(fileName, platform);
@@ -79,13 +67,13 @@ export function containedPathForPlatform(directoryFd, runDirPath, fileName, plat
         return join(`/proc/self/fd/${directoryFd}`, fileName);
     }
     assertContainedFsSupported(platform);
-    return join(runDirPath, fileName);
+    throw new Error("unreachable");
 }
 /**
- * Run a synchronous operation against a directory FD on POSIX. If the
+ * Run a synchronous operation against a directory FD on Linux. If the
  * directory is renamed or its parent path is replaced while the operation is
  * in flight, the FD still refers to the originally validated directory.
- * Windows falls back to the final-component no-follow guard.
+ * Platforms without a traversable directory FD fail closed.
  */
 export function withContainedPath(runDir, fileName, operation) {
     return withContainedPathForPlatform(runDir, fileName, operation, process.platform);
@@ -93,13 +81,6 @@ export function withContainedPath(runDir, fileName, operation) {
 /** Run several related operations beneath one identity-checked directory FD. */
 export function withContainedDirectory(runDir, operation, platform = process.platform) {
     assertContainedFsSupported(platform);
-    if (platform === "win32") {
-        const stats = statSync(runDir.path);
-        if (stats.dev !== runDir.device || stats.ino !== runDir.inode) {
-            throw new Error("run directory identity changed");
-        }
-        return operation(runDir.path);
-    }
     const directoryFd = openNoFollow(runDir.path, fsConstants.O_RDONLY | (fsConstants.O_DIRECTORY ?? 0));
     try {
         const stats = fstatSync(directoryFd);
@@ -114,16 +95,7 @@ export function withContainedDirectory(runDir, operation, platform = process.pla
 }
 export function withContainedPathForPlatform(runDir, fileName, operation, platform) {
     assertSafeContainedFileName(fileName, platform);
-    if (platform !== "linux") {
-        assertContainedFsSupported(platform);
-        // Windows has no POSIX dirfd primitive. Keep its existing identity guard
-        // and final-component no-follow behavior unchanged.
-        const stats = statSync(runDir.path);
-        if (stats.dev !== runDir.device || stats.ino !== runDir.inode) {
-            throw new Error("run directory identity changed");
-        }
-        return operation(join(runDir.path, fileName));
-    }
+    assertContainedFsSupported(platform);
     const directoryFd = openNoFollow(runDir.path, fsConstants.O_RDONLY | (fsConstants.O_DIRECTORY ?? 0));
     try {
         const stats = fstatSync(directoryFd);

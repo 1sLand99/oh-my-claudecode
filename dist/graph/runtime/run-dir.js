@@ -5,9 +5,10 @@
  * descriptor-supplied and therefore untrusted: resolving it must never let a
  * traversal-shaped id or a symlinked run directory redirect writes outside
  * the runs root. resolveRunDir validates, creates, and containment-checks
- * the directory, failing closed on any escape.
+ * the directory with a Linux directory FD, failing closed on any escape or
+ * on platforms without that primitive.
  */
-import { lstatSync, mkdirSync, realpathSync, statSync } from "fs";
+import { closeSync, constants as fsConstants, fstatSync, lstatSync, mkdirSync, openSync, realpathSync, } from "fs";
 import { join, sep } from "path";
 import { ensureDirSync } from "../../lib/atomic-write.js";
 const RUN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
@@ -15,9 +16,9 @@ const RUN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
  * Resolve (and create) the contained run directory for one run.
  *
  * Returns the plain `join(runsRoot, runId)` path so existing relative
- * behaviors stay stable; containment is enforced against realpaths before
- * returning. Throws RangeError("invalid run_id") on malformed ids and Error
- * on symlinked or escaping directories.
+ * behaviors stay stable; containment is enforced against an open directory
+ * FD before returning. Throws RangeError("invalid run_id") on malformed ids
+ * and Error on symlinked or escaping directories.
  */
 export function resolveRunDir(runsRoot, runId) {
     return resolveRunDirHandle(runsRoot, runId).path;
@@ -35,6 +36,9 @@ export function resolveRunDirHandle(runsRoot, runId) {
         runId === "..") {
         throw new RangeError("invalid run_id");
     }
+    if (process.platform !== "linux") {
+        throw new Error(`contained directory-FD traversal is unavailable on ${process.platform}; refusing pathname fallback`);
+    }
     ensureDirSync(runsRoot);
     const runsRootReal = realpathSync(runsRoot);
     const target = join(runsRoot, runId);
@@ -50,16 +54,24 @@ export function resolveRunDirHandle(runsRoot, runId) {
         throw new Error("run directory must not be a symbolic link");
     }
     mkdirSync(target, { recursive: true });
-    const resolved = realpathSync(target);
-    const isWin32 = process.platform === "win32";
-    const resolvedCmp = isWin32 ? resolved.toLowerCase() : resolved;
-    const prefixCmp = isWin32
-        ? `${runsRootReal}${sep}`.toLowerCase()
-        : `${runsRootReal}${sep}`;
-    if (!resolvedCmp.startsWith(prefixCmp)) {
-        throw new Error(`run directory ${resolved} escapes the persistence root ${runsRootReal}`);
+    // Keep the directory open while both containment and identity are checked.
+    // Resolving the path and then statting `target` separately permits a rename
+    // or replacement between those operations; fstatSync binds the identity to
+    // the same directory object that was containment-checked.
+    const directoryFd = openSync(target, fsConstants.O_RDONLY |
+        (fsConstants.O_DIRECTORY ?? 0) |
+        (fsConstants.O_NOFOLLOW ?? 0));
+    try {
+        const resolved = realpathSync(`/proc/self/fd/${directoryFd}`);
+        const prefixCmp = `${runsRootReal}${sep}`;
+        if (!resolved.startsWith(prefixCmp)) {
+            throw new Error(`run directory ${resolved} escapes the persistence root ${runsRootReal}`);
+        }
+        const identity = fstatSync(directoryFd);
+        return { path: target, device: identity.dev, inode: identity.ino };
     }
-    const identity = statSync(target);
-    return { path: target, device: identity.dev, inode: identity.ino };
+    finally {
+        closeSync(directoryFd);
+    }
 }
 //# sourceMappingURL=run-dir.js.map

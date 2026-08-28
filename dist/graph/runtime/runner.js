@@ -333,7 +333,6 @@ export async function runGraph(sealed, options) {
     // creates the directory before any persistence component touches disk.
     const runDirHandle = resolveRunDirHandle(runsRoot, runId);
     const fence = new FileOwnershipFence(runsRoot, runId, undefined, runDirHandle);
-    const journal = new FileJournal(runsRoot, runId, runDirHandle);
     const store = new FileProjectionStore(runsRoot, runId, runDirHandle);
     const emit = (event) => {
         options.reporter?.onEvent(event);
@@ -356,6 +355,10 @@ export async function runGraph(sealed, options) {
         };
     }
     const epoch = acquired.epoch;
+    // Bind journal publication to this acquired ownership epoch.  The journal
+    // performs the final check while its append fd is open and rolls back a
+    // suffix when that check observes lease loss.
+    const journal = new FileJournal(runsRoot, runId, runDirHandle, () => fence.assertEpoch(epoch));
     // Phase gates which GraphSchedulerError maps to CORRUPT_JOURNAL(20):
     // startup/fold-phase scheduler errors mean tampered persisted state;
     // live-phase ones are runner/executor contract violations and rethrow.

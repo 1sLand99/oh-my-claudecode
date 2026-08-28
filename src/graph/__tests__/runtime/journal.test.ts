@@ -18,6 +18,7 @@ import {
   computeJournalFingerprint,
   FileJournal,
 } from "../../runtime/journal.js";
+import { FileOwnershipFence } from "../../runtime/fence.js";
 import { JournalCorruptionError } from "../../runtime/types.js";
 import type {
   JournalAppendRecord,
@@ -222,5 +223,35 @@ describe("FileJournal", () => {
     const parsed = lines.map((line) => JSON.parse(line) as JournalRecord);
     expect(parsed.map((record) => record.seq)).toEqual([0, 1, 2, 3, 4]);
     expect(await journal.readAll()).toEqual(records);
+  });
+
+  it("rolls back a journal line when ownership is lost at publication", async () => {
+    const runsRoot = makeRunsRoot();
+    const runDir = join(runsRoot, "run-1");
+    mkdirSync(runDir, { recursive: true });
+    const fence = new FileOwnershipFence(runsRoot, "run-1");
+    await expect(fence.acquire()).resolves.toEqual({
+      outcome: "acquired",
+      epoch: 1,
+    });
+    let checks = 0;
+    const ownershipCheck = () => {
+      checks += 1;
+      if (checks === 3) {
+        // Simulate takeover between the append's write and post-fsync check.
+        // The stale append must be removed through its open fd.
+        rmSync(join(runDir, "owner.lock"), { force: true });
+      }
+      fence.assertEpoch(1);
+    };
+    const journal = new FileJournal(
+      runsRoot,
+      "run-1",
+      undefined,
+      ownershipCheck,
+    );
+
+    await expect(journal.append(makeRecord(0))).rejects.toThrow("not owned");
+    expect(await journal.readAll()).toEqual([]);
   });
 });

@@ -86212,6 +86212,11 @@ function resolveRunDirHandle(runsRoot, runId) {
   if (typeof runId !== "string" || !RUN_ID_PATTERN.test(runId) || runId.includes("/") || runId.includes("\\") || runId === "." || runId === "..") {
     throw new RangeError("invalid run_id");
   }
+  if (process.platform !== "linux") {
+    throw new Error(
+      `contained directory-FD traversal is unavailable on ${process.platform}; refusing pathname fallback`
+    );
+  }
   ensureDirSync(runsRoot);
   const runsRootReal = (0, import_fs127.realpathSync)(runsRoot);
   const target = (0, import_path148.join)(runsRoot, runId);
@@ -86224,17 +86229,23 @@ function resolveRunDirHandle(runsRoot, runId) {
     throw new Error("run directory must not be a symbolic link");
   }
   (0, import_fs127.mkdirSync)(target, { recursive: true });
-  const resolved = (0, import_fs127.realpathSync)(target);
-  const isWin32 = process.platform === "win32";
-  const resolvedCmp = isWin32 ? resolved.toLowerCase() : resolved;
-  const prefixCmp = isWin32 ? `${runsRootReal}${import_path148.sep}`.toLowerCase() : `${runsRootReal}${import_path148.sep}`;
-  if (!resolvedCmp.startsWith(prefixCmp)) {
-    throw new Error(
-      `run directory ${resolved} escapes the persistence root ${runsRootReal}`
-    );
+  const directoryFd = (0, import_fs127.openSync)(
+    target,
+    import_fs127.constants.O_RDONLY | (import_fs127.constants.O_DIRECTORY ?? 0) | (import_fs127.constants.O_NOFOLLOW ?? 0)
+  );
+  try {
+    const resolved = (0, import_fs127.realpathSync)(`/proc/self/fd/${directoryFd}`);
+    const prefixCmp = `${runsRootReal}${import_path148.sep}`;
+    if (!resolved.startsWith(prefixCmp)) {
+      throw new Error(
+        `run directory ${resolved} escapes the persistence root ${runsRootReal}`
+      );
+    }
+    const identity = (0, import_fs127.fstatSync)(directoryFd);
+    return { path: target, device: identity.dev, inode: identity.ino };
+  } finally {
+    (0, import_fs127.closeSync)(directoryFd);
   }
-  const identity = (0, import_fs127.statSync)(target);
-  return { path: target, device: identity.dev, inode: identity.ino };
 }
 var import_fs127, import_path148, RUN_ID_PATTERN;
 var init_run_dir = __esm({
@@ -86249,7 +86260,7 @@ var init_run_dir = __esm({
 
 // src/graph/runtime/safe-fs.ts
 function assertContainedFsSupported(platform = process.platform) {
-  if (platform !== "linux" && platform !== "win32") {
+  if (platform !== "linux") {
     throw new Error(
       `contained directory-FD traversal is unavailable on ${platform}; refusing pathname fallback`
     );
@@ -86262,17 +86273,9 @@ function assertSafeContainedFileName(fileName, platform = process.platform) {
 }
 function openNoFollow2(filePath, flags, mode = 384) {
   if (process.platform === "win32") {
-    try {
-      if ((0, import_fs128.lstatSync)(filePath).isSymbolicLink()) {
-        const error2 = new Error(
-          `symbolic link refused: ${filePath}`
-        );
-        error2.code = "ELOOP";
-        throw error2;
-      }
-    } catch (error2) {
-      if (error2.code === "ELOOP") throw error2;
-    }
+    throw new Error(
+      "atomic no-follow file opens are unavailable on win32; refusing pathname fallback"
+    );
   }
   return (0, import_fs128.openSync)(filePath, flags | NO_FOLLOW, mode);
 }
@@ -86290,7 +86293,7 @@ function containedPathForPlatform(directoryFd, runDirPath, fileName, platform = 
     return (0, import_path149.join)(`/proc/self/fd/${directoryFd}`, fileName);
   }
   assertContainedFsSupported(platform);
-  return (0, import_path149.join)(runDirPath, fileName);
+  throw new Error("unreachable");
 }
 function withContainedPath(runDir, fileName, operation) {
   return withContainedPathForPlatform(
@@ -86302,13 +86305,6 @@ function withContainedPath(runDir, fileName, operation) {
 }
 function withContainedDirectory(runDir, operation, platform = process.platform) {
   assertContainedFsSupported(platform);
-  if (platform === "win32") {
-    const stats = (0, import_fs128.statSync)(runDir.path);
-    if (stats.dev !== runDir.device || stats.ino !== runDir.inode) {
-      throw new Error("run directory identity changed");
-    }
-    return operation(runDir.path);
-  }
   const directoryFd = openNoFollow2(
     runDir.path,
     import_fs128.constants.O_RDONLY | (import_fs128.constants.O_DIRECTORY ?? 0)
@@ -86325,14 +86321,7 @@ function withContainedDirectory(runDir, operation, platform = process.platform) 
 }
 function withContainedPathForPlatform(runDir, fileName, operation, platform) {
   assertSafeContainedFileName(fileName, platform);
-  if (platform !== "linux") {
-    assertContainedFsSupported(platform);
-    const stats = (0, import_fs128.statSync)(runDir.path);
-    if (stats.dev !== runDir.device || stats.ino !== runDir.inode) {
-      throw new Error("run directory identity changed");
-    }
-    return operation((0, import_path149.join)(runDir.path, fileName));
-  }
+  assertContainedFsSupported(platform);
   const directoryFd = openNoFollow2(
     runDir.path,
     import_fs128.constants.O_RDONLY | (import_fs128.constants.O_DIRECTORY ?? 0)
@@ -87368,18 +87357,25 @@ var init_journal = __esm({
       runsRoot;
       runId;
       handle;
+      assertOwnership;
       /**
        * The frozen `Journal` interface is run-scoped but carries no run id, so an
        * instance must be bound to one run. `runId` is optional only to keep the
        * brief's `new FileJournal(runsRoot)` signature constructible; unbound
-       * instances fail closed on use.
+       * instances fail closed on use.  An optional ownership callback binds each
+       * append to the writer's lease epoch.
        */
-      constructor(runsRoot, runId, runDirHandle) {
+      constructor(runsRoot, runId, runDirHandle, assertOwnership) {
         this.runsRoot = runsRoot;
         this.runId = runId;
         this.handle = runDirHandle;
+        this.assertOwnership = assertOwnership;
       }
       async append(record2) {
+        return this.appendInternal(record2, this.assertOwnership);
+      }
+      async appendInternal(record2, assertOwnership) {
+        assertOwnership?.();
         const runDir = this.runDir();
         const unsignedRecord = { ...record2 };
         delete unsignedRecord.journal_fingerprint;
@@ -87408,8 +87404,28 @@ var init_journal = __esm({
             throw error2;
           }
           try {
-            (0, import_fs129.writeSync)(fd, line);
-            (0, import_fs129.fsyncSync)(fd);
+            const initialSize = (0, import_fs129.fstatSync)(fd).size;
+            assertOwnership?.();
+            let writeCompleted = false;
+            try {
+              (0, import_fs129.writeSync)(fd, line);
+              writeCompleted = true;
+              (0, import_fs129.fsyncSync)(fd);
+              assertOwnership?.();
+            } catch (error2) {
+              if (writeCompleted) {
+                try {
+                  const size = (0, import_fs129.fstatSync)(fd).size;
+                  const expectedSize = initialSize + Buffer.byteLength(line);
+                  if (size === expectedSize) {
+                    (0, import_fs129.ftruncateSync)(fd, initialSize);
+                    (0, import_fs129.fsyncSync)(fd);
+                  }
+                } catch {
+                }
+              }
+              throw error2;
+            }
           } finally {
             (0, import_fs129.closeSync)(fd);
           }
@@ -87540,6 +87556,8 @@ var init_fence = __esm({
       runId;
       staleGraceMs;
       beforeTakeoverRename;
+      beforeReleaseRename;
+      beforeEpochPersist;
       handle;
       /** fd of the held lock file while we own the run; null otherwise. */
       fd = null;
@@ -87555,6 +87573,8 @@ var init_fence = __esm({
         this.runId = runId;
         this.staleGraceMs = options?.staleGraceMs ?? DEFAULT_STALE_GRACE_MS;
         this.beforeTakeoverRename = options?.beforeTakeoverRename;
+        this.beforeReleaseRename = options?.beforeReleaseRename;
+        this.beforeEpochPersist = options?.beforeEpochPersist;
         this.handle = runDirHandle;
       }
       runDir() {
@@ -87609,6 +87629,9 @@ var init_fence = __esm({
             return { outcome: "busy" };
           }
           const staleIdentity = this.readLockIdentity(lockPath2);
+          if (staleIdentity === null) {
+            continue;
+          }
           this.beforeTakeoverRename?.();
           const tombstone = `${lockPath2}.tomb.${(0, import_crypto40.randomBytes)(6).toString("hex")}`;
           try {
@@ -87618,18 +87641,7 @@ var init_fence = __esm({
           }
           const movedIdentity = this.readLockIdentity(tombstone);
           if (!this.sameLockIdentity(staleIdentity, movedIdentity)) {
-            try {
-              if (!this.pathExists(lockPath2)) {
-                (0, import_fs130.renameSync)(tombstone, lockPath2);
-              } else {
-                (0, import_fs130.unlinkSync)(tombstone);
-              }
-            } catch {
-              try {
-                (0, import_fs130.unlinkSync)(tombstone);
-              } catch {
-              }
-            }
+            this.restoreForeignTombstone(lockPath2, tombstone);
             continue;
           }
           let oldEpoch = 1;
@@ -87683,10 +87695,12 @@ var init_fence = __esm({
           return false;
         }
         const lockPath2 = this.lockPath(directoryPath);
-        if (!this.holdsLiveLockFile(lockPath2)) {
+        const heldIdentity = this.readLockIdentity(lockPath2);
+        if (heldIdentity === null || !this.holdsLiveLockFile(lockPath2)) {
           this.clearHeld();
           return false;
         }
+        this.beforeReleaseRename?.();
         const tombstone = `${lockPath2}.tomb.${(0, import_crypto40.randomBytes)(6).toString("hex")}`;
         try {
           (0, import_fs130.renameSync)(lockPath2, tombstone);
@@ -87696,6 +87710,12 @@ var init_fence = __esm({
             return false;
           }
           throw error2;
+        }
+        const movedIdentity = this.readLockIdentity(tombstone);
+        if (!this.sameLockIdentity(heldIdentity, movedIdentity)) {
+          this.restoreForeignTombstone(lockPath2, tombstone);
+          this.clearHeld();
+          return false;
         }
         this.clearHeld();
         try {
@@ -87733,13 +87753,12 @@ var init_fence = __esm({
             timestamp: Date.now()
           };
           (0, import_fs130.writeSync)(fd, JSON.stringify(payload), null, "utf8");
+          this.beforeEpochPersist?.();
           atomicWriteFileSync(epochFilePath, String(epoch));
         } catch (error2) {
+          const createdIdentity = this.identityFromFd(fd);
           (0, import_fs130.closeSync)(fd);
-          try {
-            (0, import_fs130.unlinkSync)(lockPath2);
-          } catch {
-          }
+          this.cleanupCreatedLock(lockPath2, createdIdentity);
           throw error2;
         }
         return fd;
@@ -87768,6 +87787,7 @@ var init_fence = __esm({
         try {
           const stats = lstatNoFollow(lockPath2);
           return {
+            dev: stats.dev,
             ino: stats.ino,
             size: stats.size,
             mtimeMs: stats.mtimeMs,
@@ -87781,16 +87801,50 @@ var init_fence = __esm({
         if (left === null || right === null) return false;
         const leftPayload = left.payload;
         const rightPayload = right.payload;
-        return left.ino === right.ino && left.size === right.size && left.mtimeMs === right.mtimeMs && leftPayload?.pid === rightPayload?.pid && leftPayload?.epoch === rightPayload?.epoch && leftPayload?.timestamp === rightPayload?.timestamp;
+        return left.dev === right.dev && left.ino === right.ino && left.size === right.size && left.mtimeMs === right.mtimeMs && leftPayload?.pid === rightPayload?.pid && leftPayload?.epoch === rightPayload?.epoch && leftPayload?.timestamp === rightPayload?.timestamp;
       }
-      pathExists(path27) {
+      sameFileIdentity(left, right) {
+        return left !== null && right !== null && left.dev === right.dev && left.ino === right.ino;
+      }
+      identityFromFd(fd) {
         try {
-          lstatNoFollow(path27);
-          return true;
-        } catch (error2) {
-          if (error2.code === "ELOOP") throw error2;
-          return false;
+          const stats = (0, import_fs130.fstatSync)(fd);
+          return {
+            dev: stats.dev,
+            ino: stats.ino,
+            size: stats.size,
+            mtimeMs: stats.mtimeMs,
+            payload: null
+          };
+        } catch {
+          return null;
         }
+      }
+      /** Restore a foreign tombstone without replacing a path or deleting it. */
+      restoreForeignTombstone(lockPath2, tombstone) {
+        try {
+          (0, import_fs130.linkSync)(tombstone, lockPath2);
+        } catch {
+        }
+      }
+      /** Remove only a lock inode positively identified as ours after create. */
+      cleanupCreatedLock(lockPath2, createdIdentity) {
+        if (createdIdentity === null) return;
+        const tombstone = `${lockPath2}.tomb.${(0, import_crypto40.randomBytes)(6).toString("hex")}`;
+        try {
+          (0, import_fs130.renameSync)(lockPath2, tombstone);
+        } catch {
+          return;
+        }
+        const movedIdentity = this.readLockIdentity(tombstone);
+        if (this.sameFileIdentity(createdIdentity, movedIdentity)) {
+          try {
+            (0, import_fs130.unlinkSync)(tombstone);
+          } catch {
+          }
+          return;
+        }
+        this.restoreForeignTombstone(lockPath2, tombstone);
       }
       /**
        * Verify the file currently at lockPath is still the exact file we hold an
@@ -88230,7 +88284,6 @@ async function runGraph(sealed, options) {
   const runId = sealed.run_id;
   const runDirHandle = resolveRunDirHandle(runsRoot, runId);
   const fence = new FileOwnershipFence(runsRoot, runId, void 0, runDirHandle);
-  const journal = new FileJournal(runsRoot, runId, runDirHandle);
   const store = new FileProjectionStore(runsRoot, runId, runDirHandle);
   const emit = (event) => {
     options.reporter?.onEvent(event);
@@ -88251,6 +88304,12 @@ async function runGraph(sealed, options) {
     };
   }
   const epoch = acquired.epoch;
+  const journal = new FileJournal(
+    runsRoot,
+    runId,
+    runDirHandle,
+    () => fence.assertEpoch(epoch)
+  );
   let phase = "startup";
   try {
     emit({ type: "run_started", run_id: runId, goal: sealed.goal });
