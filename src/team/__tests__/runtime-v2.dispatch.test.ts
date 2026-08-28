@@ -1926,6 +1926,38 @@ describe('runtime v2 startup inbox dispatch', () => {
     }
   });
 
+  it('direct cursor launch resolves the configured cursor default when env is unset', async () => {
+    cwd = await mkdtempFixture('omc-runtime-v2-cursor-config-');
+    const originalCursorModel = process.env.OMC_CURSOR_DEFAULT_MODEL;
+    const originalCursorExternal = process.env.OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL;
+    delete process.env.OMC_CURSOR_DEFAULT_MODEL;
+    delete process.env.OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL;
+    try {
+      const { startTeamV2 } = await import('../runtime-v2.js');
+
+      await startTeamV2({
+        teamName: 'dispatch-team',
+        workerCount: 1,
+        agentTypes: ['cursor'],
+        tasks: [{ subject: 'Cursor dispatch', description: 'Verify configured cursor model passthrough' }],
+        pluginConfig: {
+          externalModels: { defaults: { cursorModel: 'composer-2.5' } },
+        },
+        cwd,
+      });
+
+      expect(modelContractMocks.buildWorkerArgv).toHaveBeenCalledWith(
+        'cursor',
+        expect.objectContaining({ model: 'composer-2.5' }),
+      );
+    } finally {
+      if (originalCursorModel === undefined) delete process.env.OMC_CURSOR_DEFAULT_MODEL;
+      else process.env.OMC_CURSOR_DEFAULT_MODEL = originalCursorModel;
+      if (originalCursorExternal === undefined) delete process.env.OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL;
+      else process.env.OMC_EXTERNAL_MODELS_DEFAULT_CURSOR_MODEL = originalCursorExternal;
+    }
+  });
+
   it('direct cursor launch falls back to the legacy OMC_CURSOR_DEFAULT_MODEL', async () => {
     cwd = await mkdtempFixture('omc-runtime-v2-cursor-legacy-env-');
     const originalCursorModel = process.env.OMC_CURSOR_DEFAULT_MODEL;
