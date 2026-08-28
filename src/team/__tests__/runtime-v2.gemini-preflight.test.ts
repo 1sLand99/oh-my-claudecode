@@ -31,6 +31,7 @@ const modelContractMocks = vi.hoisted(() => ({
   isPromptModeAgent: vi.fn(() => false),
   getPromptModeArgs: vi.fn(() => []),
   resolveClaudeWorkerModel: vi.fn(() => undefined),
+  normalizeExternalModelsDefaults: vi.fn((defaults: unknown) => defaults),
   resolveDefaultWorkerModel: vi.fn(() => undefined),
   buildValidatedWorkerLaunchDescriptor: vi.fn((agentType: string, config: { model?: string; resolvedBinaryPath?: string }, appendedArgs: string[] = []) => {
     const [binary, ...args] = modelContractMocks.buildWorkerArgv(agentType, config);
@@ -70,6 +71,7 @@ vi.mock('../model-contract.js', () => ({
   isPromptModeAgent: modelContractMocks.isPromptModeAgent,
   getPromptModeArgs: modelContractMocks.getPromptModeArgs,
   resolveClaudeWorkerModel: modelContractMocks.resolveClaudeWorkerModel,
+  normalizeExternalModelsDefaults: modelContractMocks.normalizeExternalModelsDefaults,
   resolveDefaultWorkerModel: modelContractMocks.resolveDefaultWorkerModel,
   buildValidatedWorkerLaunchDescriptor: modelContractMocks.buildValidatedWorkerLaunchDescriptor,
   validateWorkerLaunchDescriptor: modelContractMocks.validateWorkerLaunchDescriptor,
