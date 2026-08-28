@@ -73,10 +73,22 @@ export function openNoFollow(
   return openSync(filePath, flags | NO_FOLLOW, mode);
 }
 
+/** Reject special files and hardlinks that escape the run-directory inode. */
+export function assertPrivateRegularFile(
+  fileDescriptor: number,
+  filePath: string,
+): void {
+  const stats = fstatSync(fileDescriptor);
+  if (!stats.isFile() || stats.nlink !== 1) {
+    throw new Error(`contained artifact is not a private regular file: ${filePath}`);
+  }
+}
+
 /** Read a runtime artifact without following a symlink at the final path. */
 export function readFileNoFollow(filePath: string): string {
   const fd = openNoFollow(filePath, fsConstants.O_RDONLY);
   try {
+    assertPrivateRegularFile(fd, filePath);
     return readFileSync(fd, "utf8");
   } finally {
     closeSync(fd);

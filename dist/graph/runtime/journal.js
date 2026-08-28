@@ -12,7 +12,7 @@ import { createHash } from "crypto";
 import { join } from "path";
 import { canonicalJson } from "../descriptor.js";
 import { resolveRunDirHandle } from "./run-dir.js";
-import { openNoFollow, readContainedFileNoFollow, withContainedPath, } from "./safe-fs.js";
+import { openNoFollow, assertPrivateRegularFile, readContainedFileNoFollow, withContainedPath, } from "./safe-fs.js";
 import { JournalCorruptionError } from "./types.js";
 const DESCRIPTOR_HASH_PATTERN = /^[a-f0-9]{64}$/;
 const JOURNAL_FINGERPRINT_PATTERN = /^[a-f0-9]{64}$/;
@@ -94,7 +94,11 @@ export class FileJournal {
         withContainedPath(runDir, "journal.jsonl", (filePath) => {
             let fd;
             try {
-                fd = openNoFollow(filePath, fsConstants.O_APPEND | fsConstants.O_CREAT | fsConstants.O_WRONLY);
+                fd = openNoFollow(filePath, fsConstants.O_APPEND |
+                    fsConstants.O_CREAT |
+                    fsConstants.O_WRONLY |
+                    (fsConstants.O_NONBLOCK ?? 0));
+                assertPrivateRegularFile(fd, filePath);
             }
             catch (error) {
                 if (error.code === "ELOOP") {

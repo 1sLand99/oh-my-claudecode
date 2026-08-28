@@ -86279,9 +86279,16 @@ function openNoFollow2(filePath, flags, mode = 384) {
   }
   return (0, import_fs128.openSync)(filePath, flags | NO_FOLLOW, mode);
 }
+function assertPrivateRegularFile(fileDescriptor, filePath) {
+  const stats = (0, import_fs128.fstatSync)(fileDescriptor);
+  if (!stats.isFile() || stats.nlink !== 1) {
+    throw new Error(`contained artifact is not a private regular file: ${filePath}`);
+  }
+}
 function readFileNoFollow2(filePath) {
   const fd = openNoFollow2(filePath, import_fs128.constants.O_RDONLY);
   try {
+    assertPrivateRegularFile(fd, filePath);
     return (0, import_fs128.readFileSync)(fd, "utf8");
   } finally {
     (0, import_fs128.closeSync)(fd);
@@ -87392,8 +87399,9 @@ var init_journal = __esm({
           try {
             fd = openNoFollow2(
               filePath,
-              import_fs129.constants.O_APPEND | import_fs129.constants.O_CREAT | import_fs129.constants.O_WRONLY
+              import_fs129.constants.O_APPEND | import_fs129.constants.O_CREAT | import_fs129.constants.O_WRONLY | (import_fs129.constants.O_NONBLOCK ?? 0)
             );
+            assertPrivateRegularFile(fd, filePath);
           } catch (error2) {
             if (error2.code === "ELOOP") {
               throw new JournalCorruptionError(

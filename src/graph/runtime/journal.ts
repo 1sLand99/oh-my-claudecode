@@ -23,6 +23,7 @@ import { resolveRunDirHandle } from "./run-dir.js";
 import type { RunDirHandle } from "./run-dir.js";
 import {
   openNoFollow,
+  assertPrivateRegularFile,
   readContainedFileNoFollow,
   withContainedPath,
 } from "./safe-fs.js";
@@ -141,8 +142,12 @@ export class FileJournal implements Journal {
       try {
         fd = openNoFollow(
           filePath,
-          fsConstants.O_APPEND | fsConstants.O_CREAT | fsConstants.O_WRONLY,
+          fsConstants.O_APPEND |
+            fsConstants.O_CREAT |
+            fsConstants.O_WRONLY |
+            (fsConstants.O_NONBLOCK ?? 0),
         );
+        assertPrivateRegularFile(fd, filePath);
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ELOOP") {
           throw new JournalCorruptionError(

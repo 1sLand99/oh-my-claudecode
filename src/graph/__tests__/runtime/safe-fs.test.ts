@@ -7,7 +7,12 @@ import {
   symlinkSync,
   unlinkSync,
   writeFileSync,
+  linkSync,
+  openSync,
+  constants as fsConstants,
+  closeSync,
 } from "fs";
+import { spawnSync } from "child_process";
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -90,6 +95,28 @@ describe("graph runtime safe filesystem", () => {
     expect(() => withContainedPathForPlatform(handle, "artifact.txt", () => undefined, "darwin"))
       .toThrow("refusing pathname fallback");
     expect(readFileSync(outside, "utf8")).toBe("outside");
+  });
+
+  it("rejects special files and hardlinks as contained artifacts", () => {
+    const { root, handle } = makeRunDir();
+    const outside = join(root, "outside.txt");
+    writeFileSync(outside, "outside");
+    linkSync(outside, join(handle.path, "artifact.txt"));
+    expect(() => readContainedFileNoFollow(handle, "artifact.txt")).toThrow(
+      "private regular file",
+    );
+
+    const fifo = join(handle.path, "pipe");
+    const result = spawnSync("mkfifo", [fifo]);
+    expect(result.status).toBe(0);
+    const readerFd = openSync(fifo, fsConstants.O_RDONLY | (fsConstants.O_NONBLOCK ?? 0));
+    const writerFd = openSync(fifo, fsConstants.O_WRONLY | (fsConstants.O_NONBLOCK ?? 0));
+    try {
+      expect(() => readContainedFileNoFollow(handle, "pipe")).toThrow();
+    } finally {
+      closeSync(writerFd);
+      closeSync(readerFd);
+    }
   });
 
   it("rejects non-Linux POSIX operations before any pathname fallback", () => {

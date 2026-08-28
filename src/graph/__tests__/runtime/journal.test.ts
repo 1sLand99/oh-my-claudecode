@@ -6,6 +6,7 @@
 import {
   mkdirSync,
   mkdtempSync,
+  linkSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -126,6 +127,20 @@ describe("FileJournal", () => {
     );
     await expect(journal.append(makeRecord(0))).rejects.toBeInstanceOf(
       JournalCorruptionError,
+    );
+    expect(readFileSync(outside, "utf8")).toBe("outside");
+  });
+
+  it("fails closed when journal.jsonl is a hardlink to an outside inode", async () => {
+    const runsRoot = makeRunsRoot();
+    const outside = join(makeRunsRoot(), "outside.jsonl");
+    writeFileSync(outside, "outside", "utf8");
+    mkdirSync(join(runsRoot, "run-1"), { recursive: true });
+    linkSync(outside, journalPath(runsRoot));
+    const journal = new FileJournal(runsRoot, "run-1");
+
+    await expect(journal.append(makeRecord(0))).rejects.toThrow(
+      "private regular file",
     );
     expect(readFileSync(outside, "utf8")).toBe("outside");
   });
