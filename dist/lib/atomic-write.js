@@ -43,6 +43,32 @@ function writeAllSync(fd, content, label) {
     }
 }
 /**
+ * Verify the unpublished generation before it can be renamed into place.
+ * The descriptor check prevents writes through a special file or a hardlink;
+ * comparing the pathname identity with the open descriptor also rejects an
+ * attacker that replaced the temporary pathname after creation.
+ */
+function verifyPrivateTempFile(fd, tempPath, label) {
+    const fdStats = fsSync.fstatSync(fd);
+    let pathStats;
+    try {
+        pathStats = fsSync.lstatSync(tempPath);
+    }
+    catch {
+        throw new Error(`${label} temporary file was replaced before rename`);
+    }
+    const isPrivateRegularSingleLink = (stats) => stats.isFile() &&
+        stats.nlink === 1 &&
+        (stats.mode & 0o777) === 0o600;
+    if (!isPrivateRegularSingleLink(fdStats) ||
+        !isPrivateRegularSingleLink(pathStats)) {
+        throw new Error(`${label} temporary file must be a private regular single-link file`);
+    }
+    if (fdStats.dev !== pathStats.dev || fdStats.ino !== pathStats.ino) {
+        throw new Error(`${label} temporary file was replaced before rename`);
+    }
+}
+/**
  * Write JSON data atomically to a file.
  * Uses temp file + atomic rename pattern to ensure durability.
  *
@@ -73,6 +99,7 @@ export async function atomicWriteJson(filePath, data) {
             }
             // Sync file data to disk before rename
             await fd.sync();
+            verifyPrivateTempFile(fd.fd, tempPath, "atomic JSON write");
         }
         finally {
             await fd.close();
@@ -124,6 +151,7 @@ export function atomicWriteSync(filePath, content) {
             writeAllSync(fd, content, "atomic write");
             // Sync file data to disk before rename
             fsSync.fsyncSync(fd);
+            verifyPrivateTempFile(fd, tempPath, "atomic write");
         }
         finally {
             fsSync.closeSync(fd);
@@ -187,6 +215,7 @@ export function atomicWriteFileSync(filePath, content) {
         writeAllSync(fd, content, "atomic write");
         // Sync file data to disk before rename
         fsSync.fsyncSync(fd);
+        verifyPrivateTempFile(fd, tempPath, "atomic write");
         // Close before rename
         fsSync.closeSync(fd);
         fd = null;
@@ -274,10 +303,13 @@ export function atomicWriteBatchSync(writes) {
     const renamedDirectories = new Set();
     try {
         for (const write of pending) {
-            const fd = fsSync.openSync(write.tempPath, "wx", write.mode ?? 0o600);
+            // Keep the unpublished generation private regardless of the requested
+            // target mode; the latter is applied only after the atomic replacement.
+            const fd = fsSync.openSync(write.tempPath, "wx", 0o600);
             try {
                 writeAllSync(fd, write.content, "atomic batch write");
                 fsSync.fsyncSync(fd);
+                verifyPrivateTempFile(fd, write.tempPath, "atomic batch write");
             }
             finally {
                 fsSync.closeSync(fd);
@@ -285,6 +317,9 @@ export function atomicWriteBatchSync(writes) {
         }
         for (const write of pending) {
             fsSync.renameSync(write.tempPath, write.path);
+            if (write.mode !== undefined && write.mode !== 0o600) {
+                fsSync.chmodSync(write.path, write.mode);
+            }
             renamedDirectories.add(write.dir);
         }
         for (const dir of renamedDirectories) {

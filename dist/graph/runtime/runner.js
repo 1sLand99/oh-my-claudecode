@@ -22,6 +22,7 @@ import { assertContainedFsSupported, readContainedFileNoFollow, withContainedPat
 import { EXIT_CODES, FenceError, JournalCorruptionError } from "./types.js";
 const DEFAULT_RUNS_ROOT_SEGMENTS = [".omc", "graph-runs"];
 const DESCRIPTOR_FILE_NAME = "descriptor.json";
+const REQUEST_FINGERPRINT_PATTERN = /^[a-f0-9]{64}$/;
 // ---------------------------------------------------------------------------
 // Deterministic synthetic identity scheme
 //
@@ -246,6 +247,20 @@ function buildReplayJoinIdentities(transition) {
 /** Folds one journal record through its scheduler transition entrypoint. */
 function foldOneRecord(descriptor, projection, record) {
     const transition = record.transition;
+    // The scheduler recomputes the request fingerprint from the replay request,
+    // but it deliberately does not consume persisted transition metadata. Keep
+    // those fields explicit at the runtime boundary so a forged envelope cannot
+    // smuggle a foreign descriptor or fingerprint version through a valid fold.
+    if (transition.descriptor_hash !== descriptor.descriptor_hash) {
+        throw new GraphSchedulerError("descriptor_mismatch", `journal record ${record.seq} transition is bound to descriptor ${transition.descriptor_hash}`);
+    }
+    if (transition.fingerprint_version !== 1) {
+        throw new GraphSchedulerError("transition_fenced", `journal record ${record.seq} has unsupported fingerprint_version ${String(transition.fingerprint_version)}`);
+    }
+    if (typeof transition.request_fingerprint !== "string" ||
+        !REQUEST_FINGERPRINT_PATTERN.test(transition.request_fingerprint)) {
+        throw new GraphSchedulerError("transition_fenced", `journal record ${record.seq} has invalid request_fingerprint metadata`);
+    }
     const { journal_fingerprint: recordedFingerprint, ...unsignedRecord } = record;
     if (recordedFingerprint !== computeJournalFingerprint(unsignedRecord)) {
         throw new GraphSchedulerError("transition_fenced", `journal record ${record.seq} fails its envelope fingerprint`);
@@ -394,6 +409,33 @@ export async function runGraph(sealed, options) {
         }
         // Replay fold: always a full fold; the snapshot is a status cache only.
         phase = "fold";
+        // A persisted descriptor establishes a run identity.  It is not valid to
+        // resume that identity from an absent/empty journal: doing so would let a
+        // caller replay the entry activations as if no history existed.  Fresh
+        // descriptors are the sole exception; their journal is created by the
+        // first committed transition below.
+        let rawJournal;
+        let journalMissing = false;
+        try {
+            rawJournal = readContainedFileNoFollow(runDirHandle, "journal.jsonl");
+        }
+        catch (error) {
+            if (error.code === "ENOENT") {
+                rawJournal = null;
+                journalMissing = true;
+            }
+            else if (error.code === "ELOOP") {
+                // Let FileJournal.readAll map symlinked journals to its normative
+                // JournalCorruptionError surface below.
+                rawJournal = null;
+            }
+            else {
+                throw error;
+            }
+        }
+        if (!descriptorIsFresh && (journalMissing || rawJournal?.length === 0)) {
+            throw new GraphSchedulerError("transition_fenced", `persisted descriptor for run ${runId} has no committed journal history`);
+        }
         const records = await journal.readAll();
         let projection = initializeGraphProjection(stored, entryActivationIds(stored));
         if (descriptorIsFresh) {
@@ -417,6 +459,9 @@ export async function runGraph(sealed, options) {
             }
             if (record.epoch < lastRecordEpoch || record.epoch > epoch) {
                 throw new GraphSchedulerError("transition_fenced", `journal record ${record.seq} carries epoch ${record.epoch} outside fenced history (last ${lastRecordEpoch}, acquired ${epoch})`);
+            }
+            if (record.transition.descriptor_hash !== record.descriptor_hash) {
+                throw new GraphSchedulerError("descriptor_mismatch", `journal record ${record.seq} transition descriptor does not match its envelope`);
             }
             lastRecordEpoch = record.epoch;
             projection = foldOneRecord(stored, projection, record);

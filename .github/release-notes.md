@@ -9,7 +9,7 @@ The npm CLI and the Claude Code marketplace/plugin are separate install tracks, 
 **CLI / runtime:**
 
 ```bash
-npm i -g oh-my-claude-sisyphus@{{VERSION}}
+npm i -g oh-my-claude-sisyphus@5.0.2
 ```
 
 **Claude Code plugin:**

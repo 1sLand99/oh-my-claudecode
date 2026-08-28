@@ -1,7 +1,20 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FileHandle } from 'fs/promises';
 
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs';
+import {
+  chmodSync,
+  existsSync,
+  linkSync,
+  mkdtempSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'fs';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
 // @ts-expect-error Hook runtime source is intentionally JavaScript-only.
@@ -164,6 +177,41 @@ describe('atomicWriteJson', () => {
     expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual({ status: 'new' });
     expect(statSync(filePath).mode & 0o777).toBe(0o600);
   });
+
+  it.each(['hardlink', 'special', 'replacement', 'permissions'])(
+    'rejects an untrusted temporary generation (%s) before rename',
+    async kind => {
+      const directory = mkdtempSync(join(tmpdir(), `atomic-write-${kind}-`));
+      directories.push(directory);
+      const filePath = join(directory, 'state.json');
+      const oldValue = { status: 'old' };
+      writeFileSync(filePath, JSON.stringify(oldValue));
+      let extraPath: string | undefined;
+
+      fsPromisesControl.writeHook = fd => {
+        const tempPath = readlinkSync(`/proc/self/fd/${fd.fd}`);
+        if (kind === 'hardlink') {
+          extraPath = `${tempPath}.link`;
+          linkSync(tempPath, extraPath);
+        } else if (kind === 'special') {
+          unlinkSync(tempPath);
+          mkdirSync(tempPath);
+        } else if (kind === 'replacement') {
+          unlinkSync(tempPath);
+          writeFileSync(tempPath, 'attacker replacement');
+        } else {
+          chmodSync(tempPath, 0o644);
+        }
+      };
+
+      await expect(atomicWriteJson(filePath, { status: 'new' })).rejects.toThrow(
+        /private regular single-link|replaced before rename/,
+      );
+
+      expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual(oldValue);
+      if (extraPath !== undefined) rmSync(extraPath, { force: true });
+    },
+  );
 
   it('propagates temp write failures without publishing a target', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'atomic-write-write-error-'));
