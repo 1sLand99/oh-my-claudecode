@@ -363,6 +363,9 @@ describe('pre-tool-use template source extension detection', () => {
       ['shell command-string heredoc is data, not a program', "bash -c 'cat >/dev/null' <<'EOF'\nrm src/app.ts\nEOF", false],
       ['non-stdin fd heredoc is data, not a program', "bash 3<<'EOF'\nrm src/app.ts\nEOF", false],
       ['shell script operand ending in a digit keeps heredoc as data', "bash verify3<<'EOF'\nrm src/app.ts\nEOF", false],
+      ['digit-prefixed quoted heredoc is data', "cat <<'123' > build.log\necho x > src/app.ts\n123", false],
+      ['digit-prefixed unquoted heredoc is data', "cat <<123 > build.log\necho x > src/app.ts\n123", false],
+      ['overridden first stdin heredoc is not the program', "bash <<'ONE' <<'TWO'\necho x > src/app.ts\nONE\ntrue\nTWO", false],
       ['named coprocess writing only a log', 'coproc worker bash verify.sh > results.log', false],
     ] as const)('stays quiet: %s', (_label, command, expectedWarning) => {
       expect(hasDelegationNotice(runPreToolUseHook(command))).toBe(expectedWarning);
@@ -387,6 +390,8 @@ describe('pre-tool-use template source extension detection', () => {
       ['subshell source write', '(echo x > src/app.ts)', true],
       ['shell -c source write', "bash -c 'echo x > src/app.ts'", true],
       ['shell heredoc program source write', "bash <<'EOF'\necho hacked > src/app.ts\nEOF", true],
+      ['final stdin heredoc is the program', "bash <<'ONE' <<'TWO'\ntrue\nONE\necho hacked > src/app.ts\nTWO", true],
+      ['digit-prefixed quoted shell heredoc is a program', "bash <<'123'\necho hacked > src/app.ts\n123", true],
       ['pipeline stdin shell program source write', "printf '%s\\n' 'echo x > src/app.ts' | bash", true],
       ['echo pipeline stdin shell program source write', "echo 'echo x > src/app.ts' | bash", true],
       ['explicit stdin pipeline shell program source write', "printf '%s\\n' 'echo x > src/app.ts' | bash -s", true],

@@ -540,60 +540,88 @@ function shellGroup(text, openIndex) {
   return { end: text.length - 1, inner: text.slice(openIndex + 1) };
 }
 
-function heredocDelimiter(line) {
+function heredocFd(prefix) {
+  const fdMatch = prefix.match(/(\d+)$/);
+  if (!fdMatch) return 0;
+  const boundary = prefix.length - fdMatch[1].length - 1;
+  if (boundary < 0) return Number(fdMatch[1]);
+  if (!/[\s;|&()]/.test(prefix[boundary])) return 0;
+  let escapes = 0;
+  for (let j = boundary - 1; j >= 0 && prefix[j] === '\\'; j -= 1) escapes += 1;
+  return escapes % 2 === 0 ? Number(fdMatch[1]) : 0;
+}
+function heredocMarkers(line) {
+  const markers = [];
   let quote = null;
   for (let i = 0; i < line.length - 1; i += 1) {
     const ch = line[i];
     if (quote) { if (ch === '\\') i += 1; else if (ch === quote) quote = null; continue; }
     if (ch === "'" || ch === '"') { quote = ch; continue; }
     if (ch === '\\') { i += 1; continue; }
-    if (ch === '#' && (i === 0 || /[\s;|&()]/.test(line[i - 1]))) return null;
+    if (ch === '#' && (i === 0 || /[\s;|&()]/.test(line[i - 1]))) break;
     if (ch !== '<' || line[i + 1] !== '<') continue;
-    const match = line.slice(i + 2).match(/^(-)?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\2/);
-    if (match) {
-      const prefix = line.slice(0, i);
-      const fdMatch = prefix.match(/(\d+)$/);
-      let fd = 0;
-      if (fdMatch) {
-        const boundary = prefix.length - fdMatch[1].length - 1;
-        if (boundary < 0) fd = Number(fdMatch[1]);
-        else if (/[\s;|&()]/.test(prefix[boundary])) {
-          let escapes = 0;
-          for (let j = boundary - 1; j >= 0 && prefix[j] === '\\'; j -= 1) escapes += 1;
-          if (escapes % 2 === 0) fd = Number(fdMatch[1]);
-        }
-      }
-      return { delimiter: match[3], stripTabs: Boolean(match[1]), fd };
+    if (line[i + 2] === '<') { i += 2; continue; }
+    let j = i + 2;
+    const stripTabs = line[j] === '-';
+    if (stripTabs) j += 1;
+    while (j < line.length && /[ \t]/.test(line[j])) j += 1;
+    if (j >= line.length) continue;
+    let delimiter = null;
+    const q = line[j];
+    if (q === "'" || q === '"') {
+      const end = line.indexOf(q, j + 1);
+      if (end < 0) continue;
+      delimiter = line.slice(j + 1, end);
+      j = end + 1;
+    } else {
+      const start = j;
+      while (j < line.length && !/[\s;&|<>()]/.test(line[j])) j += 1;
+      if (j === start) continue;
+      delimiter = line.slice(start, j).replace(/\\(.)/g, '$1');
     }
+    markers.push({ delimiter, stripTabs, fd: heredocFd(line.slice(0, i)) });
+    i = j - 1;
   }
-  return null;
+  return markers;
 }
-
-function stripHeredocBodies(command) {
-  const lines = String(command || '').split('\n'); const kept = [];
-  for (let i = 0; i < lines.length; i += 1) {
-    const marker = heredocDelimiter(lines[i]); kept.push(lines[i]);
-    if (!marker) continue;
-    while (++i < lines.length) {
-      const candidate = marker.stripTabs ? lines[i].replace(/^\t+/, '') : lines[i];
-      if (candidate === marker.delimiter) { kept.push(lines[i]); break; }
-    }
-  }
-  return kept.join('\n');
-}
-
-function heredocSections(command) {
-  const lines = String(command || '').split('\n'); const sections = [];
-  for (let i = 0; i < lines.length; i += 1) {
-    const commandLine = lines[i]; const marker = heredocDelimiter(commandLine);
-    if (!marker) continue;
+function consumeHeredocBodies(lines, start, markers) {
+  let i = start;
+  const bodies = [];
+  for (const marker of markers) {
     const body = [];
     while (++i < lines.length) {
       const candidate = marker.stripTabs ? lines[i].replace(/^\t+/, '') : lines[i];
       if (candidate === marker.delimiter) break;
       body.push(lines[i]);
     }
-    sections.push({ commandLine, body: body.join('\n'), fd: marker.fd });
+    bodies.push({ ...marker, body: body.join('\n'), delimiterLine: i < lines.length ? i : i - 1 });
+  }
+  return { bodies, end: i };
+}
+function stripHeredocBodies(command) {
+  const lines = String(command || '').split('\n'); const kept = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const markers = heredocMarkers(lines[i]); kept.push(lines[i]);
+    if (!markers.length) continue;
+    const consumed = consumeHeredocBodies(lines, i, markers);
+    for (const item of consumed.bodies) if (item.delimiterLine > i && item.delimiterLine < lines.length) kept.push(lines[item.delimiterLine]);
+    i = consumed.end;
+  }
+  return kept.join('\n');
+}
+function heredocSections(command) {
+  const lines = String(command || '').split('\n'); const sections = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const commandLine = lines[i]; const markers = heredocMarkers(commandLine);
+    if (!markers.length) continue;
+    const consumed = consumeHeredocBodies(lines, i, markers);
+    let stdin = null;
+    for (const item of consumed.bodies) {
+      if (item.fd === 0) stdin = item;
+      else sections.push({ commandLine, body: item.body, fd: item.fd });
+    }
+    if (stdin) sections.push({ commandLine, body: stdin.body, fd: 0 });
+    i = consumed.end;
   }
   return sections;
 }
