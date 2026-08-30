@@ -750,13 +750,13 @@ function heredocSections(command) {
 }
 
 function tokenizeShell(command) {
-  const tokens = []; let value = ''; let dynamic = false; let ambiguous = false; let nested = []; let quote = null; let adjacent = false; let quoted = false;
+  const tokens = []; let value = ''; let dynamic = false; let ambiguous = false; let nested = []; let quote = null; let adjacent = false; let quoted = false; let escaped = false;
   const flush = () => {
     if (value || dynamic || quote) {
-      tokens.push({ type: 'word', value, dynamic, ambiguous, nested, glued: adjacent, quoted });
+      tokens.push({ type: 'word', value, dynamic, ambiguous, nested, glued: adjacent, quoted, escaped });
       adjacent = true;
     }
-    value = ''; dynamic = false; ambiguous = false; nested = []; quoted = false;
+    value = ''; dynamic = false; ambiguous = false; nested = []; quoted = false; escaped = false;
   };
   const op = (value, kind) => { flush(); tokens.push({ type: 'op', value, kind, glued: adjacent }); adjacent = true; };
   const text = stripHeredocBodies(command);
@@ -773,7 +773,7 @@ function tokenizeShell(command) {
     }
     if (ch === "'") { quote = "'"; quoted = true; i += 1; continue; }
     if (ch === '"') { quote = '"'; quoted = true; i += 1; continue; }
-    if (ch === '\\') { if (i + 1 < text.length) value += text[i + 1]; i += 2; continue; }
+    if (ch === '\\') { if (i + 1 < text.length) { value += text[i + 1]; escaped = true; } i += 2; continue; }
     if (ch === '#' && value === '') { while (i < text.length && text[i] !== '\n') i += 1; continue; }
     if (ch === '\n') { op(';', 'sep'); adjacent = false; i += 1; continue; }
     if (/\s/.test(ch)) { flush(); adjacent = false; i += 1; continue; }
@@ -821,7 +821,7 @@ function wordsFor(segment, targets) { return segment.map((token, index) => ({ to
 function redirectIoIndices(segment) {
   const out = new Set();
   for (let i = 1; i < segment.length; i += 1) {
-    if (segment[i].type === 'op' && (segment[i].kind === 'in' || segment[i].kind === 'out') && segment[i].value !== '&>' && segment[i].glued && segment[i - 1].type === 'word' && !segment[i - 1].quoted && /^\d+$/.test(segment[i - 1].value)) out.add(i - 1);
+    if (segment[i].type === 'op' && (segment[i].kind === 'in' || segment[i].kind === 'out') && segment[i].value !== '&>' && segment[i].glued && segment[i - 1].type === 'word' && !segment[i - 1].quoted && !segment[i - 1].escaped && /^\d+$/.test(segment[i - 1].value)) out.add(i - 1);
   }
   return out;
 }
@@ -953,12 +953,8 @@ function stdoutRedirected(stage) {
     if (token.type !== 'op' || token.kind !== 'out') continue;
     if (token.value === '&>') return true;
     const prev = stage[i - 1];
-    const io = token.glued && prev?.type === 'word' && !prev.quoted && /^\d+$/.test(prev.value) ? Number(prev.value) : 1;
-    if (token.value === '>&' && io !== 1) {
-      const target = stage[i + 1];
-      if (target?.type === 'word' && /^\d+$/.test(target.value)) continue;
-      return true;
-    }
+    const io = token.glued && prev?.type === 'word' && !prev.quoted && !prev.escaped && /^\d+$/.test(prev.value) ? Number(prev.value) : 1;
+    if (token.value === '>&' && io !== 1) continue;
     if (io === 1) return true;
   }
   return false;
@@ -1118,7 +1114,9 @@ function checkPipelineProducer(stage, directory, command) {
       }
       args.push(value);
     }
-    const program = cmd.base === 'printf' ? renderPrintf(args, { gnu: words[cmd.index].token.value.includes('/') }) : args.join('\n');
+    const gnu = words[cmd.index].token.value.includes('/')
+      || words.slice(0, cmd.index).some(entry => new Set(['env', 'exec', 'nohup', 'nice', 'timeout', 'sudo']).has(shellBase(entry.token.value)));
+    const program = cmd.base === 'printf' ? renderPrintf(args, { gnu }) : args.join('\n');
     if (program === null) return true;
     return program.length > 0 && Boolean(checkBashCommand(program, directory));
   }
