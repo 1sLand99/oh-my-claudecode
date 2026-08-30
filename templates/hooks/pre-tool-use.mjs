@@ -642,7 +642,22 @@ const COMMAND_WRAPPERS = new Set(['command', 'env', 'exec', 'nohup', 'nice', 'ti
 const SHELL_COMMANDS = new Set(['sh', 'bash', 'dash', 'zsh', 'ksh', 'fish', 'ash']);
 const SHELL_RESERVED_WORDS = new Set(['if', 'then', 'elif', 'else', 'fi', 'while', 'until', 'for', 'do', 'done', 'case', 'esac', 'in', 'select', 'function', 'coproc', '{', '}', '!']);
 function shellBase(value) { const clean = String(value || '').replace(/\\/g, '/'); return clean.slice(clean.lastIndexOf('/') + 1).toLowerCase(); }
-function splitSegments(tokens) { const out = []; let segment = []; for (const token of tokens) { if (token.type === 'op' && token.kind === 'sep') { if (segment.length) out.push(segment); segment = []; } else segment.push(token); } if (segment.length) out.push(segment); return out; }
+function splitPipelineGroups(tokens) {
+  const groups = []; let stages = []; let stage = [];
+  const flushStage = () => { if (stage.length) stages.push(stage); stage = []; };
+  const flushGroup = () => { flushStage(); if (stages.length) groups.push(stages); stages = []; };
+  for (const token of tokens) {
+    if (token.type === 'op' && token.kind === 'sep') {
+      if (token.value === '|' || token.value === '|&') flushStage();
+      else flushGroup();
+    } else stage.push(token);
+  }
+  flushGroup();
+  return groups;
+}
+function sourceMutationNotice(command) {
+  return `[DELEGATION NOTICE] Bash command may modify source files: ${summarizeCommand(command)}\n\nRecommended: Delegate to executor agent instead:\n  Task(subagent_type="oh-my-claudecode:executor", model="sonnet", prompt="...")\n\nThis is a soft warning. Operation will proceed.`;
+}
 function targetIndices(segment) { const out = new Set(); for (let i = 0; i < segment.length; i += 1) if (segment[i].type === 'op' && (segment[i].kind === 'in' || segment[i].kind === 'out') && segment[i + 1]?.type === 'word') out.add(i + 1); return out; }
 function writeTarget(token, directory) { return !token || token.type !== 'word' || token.dynamic || token.ambiguous || !token.value || (isSourceFile(token.value) && !isAllowedPath(token.value, directory)); }
 function wordsFor(segment, targets) { return segment.map((token, index) => ({ token, index })).filter(entry => entry.token.type === 'word' && !targets.has(entry.index)); }
@@ -731,6 +746,69 @@ function touchOperands(tokens) {
   }
   return operands;
 }
+function truncateOperands(tokens) {
+  const operands = []; let optionsEnded = false;
+  for (let i = 0; i < tokens.length; i += 1) {
+    const token = tokens[i]; if (token.dynamic) return null;
+    if (!optionsEnded) {
+      if (token.value === '--') { optionsEnded = true; continue; }
+      if (/^(?:-r|--reference|-s|--size)$/.test(token.value)) {
+        if (!tokens[i + 1] || tokens[i + 1].dynamic) return null;
+        i += 1; continue;
+      }
+      if (/^(?:--reference|--size)=/.test(token.value)) continue;
+      if (token.value.startsWith('-') && token.value !== '-') continue;
+    }
+    operands.push(token);
+  }
+  return operands;
+}
+function shellReadsStdinProgram(segment) {
+  const ioNumberIndices = new Set();
+  for (let i = 1; i < segment.length; i += 1) {
+    if (segment[i].type === 'op' && segment[i].value.startsWith('<<') && segment[i - 1].type === 'word' && /^\d+$/.test(segment[i - 1].value)) ioNumberIndices.add(i - 1);
+  }
+  const targets = targetIndices(segment);
+  const words = wordsFor(segment, targets).filter(entry => !ioNumberIndices.has(entry.index));
+  const cmd = executable(words);
+  if (!cmd?.base || !SHELL_COMMANDS.has(cmd.base)) return false;
+  let forceStdin = false; let optionsEnded = false;
+  const shellArgs = words.slice(cmd.index + 1);
+  for (let i = 0; i < shellArgs.length; i += 1) {
+    const token = shellArgs[i].token; if (token.dynamic) return true;
+    if (!optionsEnded && token.value === '--') { optionsEnded = true; continue; }
+    if (!optionsEnded && token.value.startsWith('-') && token.value !== '-') {
+      if (token.value === '--command' || /^-[^-]*c/.test(token.value)) return false;
+      if (token.value === '--stdin' || /^-[^-]*s/.test(token.value)) forceStdin = true;
+      if (/^(?:--rcfile|--init-file|-O|-o)$/.test(token.value)) {
+        if (!shellArgs[i + 1]) return true;
+        i += 1;
+      }
+      continue;
+    }
+    return forceStdin;
+  }
+  return true;
+}
+function checkPipelineProducer(stage, directory) {
+  const targets = targetIndices(stage);
+  const words = wordsFor(stage, targets);
+  const cmd = executable(words);
+  if (!cmd?.base || (cmd.base !== 'printf' && cmd.base !== 'echo')) return false;
+  const args = []; let optionsEnded = cmd.base !== 'echo';
+  for (const entry of words.slice(cmd.index + 1)) {
+    if (entry.token.dynamic) return true;
+    const value = entry.token.value;
+    if (!optionsEnded) {
+      if (value === '--') { optionsEnded = true; continue; }
+      if (value.startsWith('-') && value !== '-') continue;
+      optionsEnded = true;
+    }
+    args.push(value);
+  }
+  const program = args.join('\n');
+  return program.length > 0 && Boolean(checkBashCommand(program, directory));
+}
 function copyInvocation(tokens, command) {
   const operands = []; let optionsEnded = false; let target = null;
   const valueOptions = command === 'cp'
@@ -795,7 +873,8 @@ function checkSegment(segment, directory) {
   if (cmd.base === 'eval') { const code = words.slice(cmd.index + 1); return code.some(entry => entry.token.dynamic) || (code.length > 0 && checkBashCommand(code.map(entry => entry.token.value).join(' '), directory)); }
   const args = argsAfter(words, cmd.index);
   if (cmd.base === 'tee') { const operands = teeOperands(words.slice(cmd.index + 1).map(entry => entry.token)); return !operands || operands.some(token => writeTarget(token, directory)); }
-  if (new Set(['rm', 'mv', 'truncate']).has(cmd.base)) return args.some(token => writeTarget(token, directory));
+  if (new Set(['rm', 'mv']).has(cmd.base)) return args.some(token => writeTarget(token, directory));
+  if (cmd.base === 'truncate') { const operands = truncateOperands(words.slice(cmd.index + 1).map(entry => entry.token)); return !operands || operands.some(token => writeTarget(token, directory)); }
   if (cmd.base === 'touch') { const operands = touchOperands(words.slice(cmd.index + 1).map(entry => entry.token)); return !operands || operands.some(token => writeTarget(token, directory)); }
   if (cmd.base === 'cp' || cmd.base === 'install') {
     const rawArgs = words.slice(cmd.index + 1).map(entry => entry.token);
@@ -830,47 +909,20 @@ function checkSegment(segment, directory) {
 
 function checkBashCommand(command, directory) {
   for (const section of heredocSections(command)) {
-    const shellConsumer = splitSegments(tokenizeShell(section.commandLine)).some(segment => {
-      if (section.fd !== 0) return false;
-      if (!segment.some(token => token.type === 'op' && token.value.startsWith('<<'))) return false;
-      const ioNumberIndices = new Set();
-      for (let i = 1; i < segment.length; i += 1) {
-        if (segment[i].type === 'op' && segment[i].value.startsWith('<<') && segment[i - 1].type === 'word' && /^\d+$/.test(segment[i - 1].value)) ioNumberIndices.add(i - 1);
-      }
-      const targets = targetIndices(segment); const words = wordsFor(segment, targets).filter(entry => !ioNumberIndices.has(entry.index)); const cmd = executable(words);
-      if (!cmd?.base || !SHELL_COMMANDS.has(cmd.base)) return false;
-      let forceStdin = false; let optionsEnded = false;
-      const shellArgs = words.slice(cmd.index + 1);
-      for (let i = 0; i < shellArgs.length; i += 1) {
-        const entry = shellArgs[i];
-        const token = entry.token; if (token.dynamic) return true;
-        if (!optionsEnded && token.value === '--') { optionsEnded = true; continue; }
-        if (!optionsEnded && token.value.startsWith('-') && token.value !== '-') {
-          if (token.value === '--command' || /^-[^-]*c/.test(token.value)) return false;
-          if (token.value === '--stdin' || /^-[^-]*s/.test(token.value)) forceStdin = true;
-          if (/^(?:--rcfile|--init-file|-O|-o)$/.test(token.value)) {
-            if (!shellArgs[i + 1]) return true;
-            i += 1;
-          }
-          continue;
-        }
-        return forceStdin;
-      }
-      return true;
-    });
-    if (shellConsumer && checkBashCommand(section.body, directory)) {
-      return `[DELEGATION NOTICE] Bash command may modify source files: ${summarizeCommand(command)}\n\nRecommended: Delegate to executor agent instead:\n  Task(subagent_type="oh-my-claudecode:executor", model="sonnet", prompt="...")\n\nThis is a soft warning. Operation will proceed.`;
-    }
+    const shellConsumer = splitPipelineGroups(tokenizeShell(section.commandLine)).some(stages => (
+      stages.some(segment => section.fd === 0
+        && segment.some(token => token.type === 'op' && token.value.startsWith('<<'))
+        && shellReadsStdinProgram(segment))
+    ));
+    if (shellConsumer && checkBashCommand(section.body, directory)) return sourceMutationNotice(command);
   }
-  const offending = splitSegments(tokenizeShell(command)).find(segment => checkSegment(segment, directory));
-
-  if (offending) {
-    return `[DELEGATION NOTICE] Bash command may modify source files: ${summarizeCommand(command)}
-
-Recommended: Delegate to executor agent instead:
-  Task(subagent_type="oh-my-claudecode:executor", model="sonnet", prompt="...")
-
-This is a soft warning. Operation will proceed.`;
+  for (const stages of splitPipelineGroups(tokenizeShell(command))) {
+    for (let i = 0; i < stages.length; i += 1) {
+      if (checkSegment(stages[i], directory)) return sourceMutationNotice(command);
+      if (i > 0 && shellReadsStdinProgram(stages[i]) && checkPipelineProducer(stages[i - 1], directory)) {
+        return sourceMutationNotice(command);
+      }
+    }
   }
   return null;
 }
