@@ -624,6 +624,7 @@ function splitSimpleCommands(line) {
       parts.push({ start, end: i, text: line.slice(start, i) });
       i += 1; start = i + 1; continue;
     }
+    if (ch === '&' && i > 0 && '<>'.includes(line[i - 1])) continue;
     if (';|&'.includes(ch)) { parts.push({ start, end: i, text: line.slice(start, i) }); start = i + 1; }
   }
   parts.push({ start, end: line.length, text: line.slice(start) });
@@ -633,19 +634,56 @@ function owningPart(line, pos) {
   return splitSimpleCommands(line).find(part => pos >= part.start && pos < part.end)
     ?? { start: 0, end: line.length, text: line };
 }
+function dupRedirects(line) {
+  const dups = [];
+  let quote = null;
+  for (let i = 0; i < line.length - 1; i += 1) {
+    const ch = line[i];
+    if (quote) { if (ch === '\\' && quote !== "'") i += 1; else if (ch === quote) quote = null; continue; }
+    if (ch === "'" || ch === '"') { quote = ch; continue; }
+    if (ch === '\\') { i += 1; continue; }
+    if (ch !== '<' || line[i + 1] !== '&') continue;
+    const prefix = line.slice(0, i);
+    const destMatch = prefix.match(/(\d+)$/);
+    const dest = destMatch ? Number(destMatch[1]) : 0;
+    const srcMatch = line.slice(i + 2).match(/^(\d+)/);
+    if (!srcMatch) continue;
+    dups.push({ pos: i, dest, src: Number(srcMatch[1]) });
+  }
+  return dups;
+}
+function applyStdin(commandLine, bodies) {
+  const events = [
+    ...bodies.map(item => ({ pos: item.pos, type: 'heredoc', item })),
+    ...dupRedirects(commandLine).map(dup => ({ ...dup, type: 'dup' })),
+  ].sort((a, b) => a.pos - b.pos);
+  const fds = new Map();
+  for (const event of events) {
+    if (event.type === 'heredoc') fds.set(event.item.fd, event.item);
+    else if (fds.has(event.src)) fds.set(event.dest, fds.get(event.src));
+  }
+  return fds.get(0) || null;
+}
 function heredocSections(command) {
   const lines = String(command || '').split('\n'); const sections = [];
   for (let i = 0; i < lines.length; i += 1) {
     const commandLine = lines[i]; const markers = heredocMarkers(commandLine);
     if (!markers.length) continue;
     const consumed = consumeHeredocBodies(lines, i, markers);
-    const stdinByOwner = new Map();
+    const byOwner = new Map();
     for (const item of consumed.bodies) {
       const owner = owningPart(commandLine, item.pos);
-      if (item.fd === 0) stdinByOwner.set(owner.start, { item, text: owner.text });
-      else sections.push({ commandLine: owner.text, body: item.body, fd: item.fd });
+      if (!byOwner.has(owner.start)) byOwner.set(owner.start, { text: owner.text, bodies: [] });
+      byOwner.get(owner.start).bodies.push(item);
     }
-    for (const { item, text } of stdinByOwner.values()) sections.push({ commandLine: text, body: item.body, fd: 0 });
+    for (const { text, bodies } of byOwner.values()) {
+      const stdin = applyStdin(text, bodies);
+      if (stdin) sections.push({ commandLine: text, body: stdin.body, fd: 0 });
+      for (const item of bodies) {
+        if (item === stdin) continue;
+        sections.push({ commandLine: text, body: item.body, fd: item.fd === 0 ? -1 : item.fd });
+      }
+    }
     i = consumed.end;
   }
   return sections;
@@ -819,7 +857,7 @@ function truncateOperands(tokens) {
 function shellReadsStdinProgram(segment) {
   const ioNumberIndices = new Set();
   for (let i = 1; i < segment.length; i += 1) {
-    if (segment[i].type === 'op' && segment[i].value.startsWith('<<') && segment[i - 1].type === 'word' && /^\d+$/.test(segment[i - 1].value)) ioNumberIndices.add(i - 1);
+    if (segment[i].type === 'op' && (segment[i].kind === 'in' || segment[i].kind === 'out') && segment[i - 1].type === 'word' && /^\d+$/.test(segment[i - 1].value)) ioNumberIndices.add(i - 1);
   }
   const targets = targetIndices(segment);
   const words = wordsFor(segment, targets).filter(entry => !ioNumberIndices.has(entry.index));
@@ -866,25 +904,38 @@ function expandPrintfEscapes(text) {
       out += String.fromCharCode(parseInt(oct || '0', 8));
       p = q - 1; continue;
     }
+    if (n === 'u' && /^[0-9a-fA-F]{4}/.test(text.slice(p + 2))) {
+      out += String.fromCharCode(parseInt(text.slice(p + 2, p + 6), 16));
+      p += 5; continue;
+    }
+    if (n === 'U' && /^[0-9a-fA-F]{8}/.test(text.slice(p + 2))) {
+      out += String.fromCodePoint(parseInt(text.slice(p + 2, p + 10), 16));
+      p += 9; continue;
+    }
     out += n; p += 1;
   }
   return out;
 }
 function parsePrintfConversion(format, p) {
-  if (format[p + 1] === '%') return { end: p + 2, kind: '%', stars: 0 };
+  if (format[p + 1] === '%') return { end: p + 2, kind: '%', stars: 0, precision: null };
   let q = p + 1;
   while (q < format.length && /[-+ #0']/.test(format[q])) q += 1;
   let stars = 0;
+  let precision = null;
   if (format[q] === '*') { stars += 1; q += 1; }
   else while (q < format.length && /\d/.test(format[q])) q += 1;
   if (format[q] === '.') {
     q += 1;
-    if (format[q] === '*') { stars += 1; q += 1; }
-    else while (q < format.length && /\d/.test(format[q])) q += 1;
+    if (format[q] === '*') { stars += 1; precision = '*'; q += 1; }
+    else {
+      const start = q;
+      while (q < format.length && /\d/.test(format[q])) q += 1;
+      precision = q === start ? 0 : Number(format.slice(start, q));
+    }
   }
   const spec = format[q];
-  if (spec === 's' || spec === 'b') return { end: q + 1, kind: spec, stars };
-  return { end: q, kind: null, stars: 0 };
+  if (spec === 's' || spec === 'b') return { end: q + 1, kind: spec, stars, precision };
+  return { end: q, kind: null, stars: 0, precision: null };
 }
 function renderPrintf(args) {
   if (args.length === 0) return null;
@@ -906,35 +957,49 @@ function renderPrintf(args) {
       const conv = parsePrintfConversion(format, p);
       if (conv.kind === null) return null;
       if (conv.kind === '%') { out += '%'; p = conv.end - 1; continue; }
-      ai += conv.stars;
-      const value = ai < rest.length ? rest[ai++] : '';
+      const starArgs = [];
+      for (let s = 0; s < conv.stars; s += 1) starArgs.push(ai < rest.length ? rest[ai++] : '0');
+      let value = ai < rest.length ? rest[ai++] : '';
       consumed = true;
-      out += conv.kind === 'b' ? expandPrintfEscapes(value) : value;
+      if (conv.kind === 'b') value = expandPrintfEscapes(value);
+      if (conv.precision !== null) {
+        const prec = conv.precision === '*' ? Number(starArgs.shift()) : conv.precision;
+        if (Number.isFinite(prec) && prec >= 0) value = value.slice(0, prec);
+      }
+      out += value;
       p = conv.end - 1;
     }
     if (!consumed || ai === start) break;
   }
   return out;
 }
-function checkPipelineProducer(stage, directory) {
+function checkPipelineProducer(stage, directory, command) {
   const targets = targetIndices(stage);
   const words = wordsFor(stage, targets);
   const cmd = executable(words);
-  if (!cmd?.base || (cmd.base !== 'printf' && cmd.base !== 'echo')) return false;
-  const args = []; let optionsEnded = cmd.base !== 'echo';
-  for (const entry of words.slice(cmd.index + 1)) {
-    if (entry.token.dynamic) return true;
-    const value = entry.token.value;
-    if (!optionsEnded) {
-      if (value === '--') { optionsEnded = true; continue; }
-      if (value.startsWith('-') && value !== '-') continue;
-      optionsEnded = true;
+  if (!cmd?.base) return false;
+  if (cmd.base === 'printf' || cmd.base === 'echo') {
+    const args = []; let optionsEnded = cmd.base !== 'echo';
+    for (const entry of words.slice(cmd.index + 1)) {
+      if (entry.token.dynamic) return true;
+      const value = entry.token.value;
+      if (!optionsEnded) {
+        if (value === '--') { optionsEnded = true; continue; }
+        if (value.startsWith('-') && value !== '-') continue;
+        optionsEnded = true;
+      }
+      args.push(value);
     }
-    args.push(value);
+    const program = cmd.base === 'printf' ? renderPrintf(args) : args.join('\n');
+    if (program === null) return true;
+    return program.length > 0 && Boolean(checkBashCommand(program, directory));
   }
-  const program = cmd.base === 'printf' ? renderPrintf(args) : args.join('\n');
-  if (program === null) return true;
-  return program.length > 0 && Boolean(checkBashCommand(program, directory));
+  if (!new Set(['cat', 'head', 'tail', 'tac']).has(cmd.base)) return false;
+  const operands = argsAfter(words, cmd.index);
+  if (operands.some(token => token.dynamic) || operands.length > 0) return false;
+  return heredocSections(command).some(section => (
+    section.fd === 0 && Boolean(checkBashCommand(section.body, directory))
+  ));
 }
 function copyInvocation(tokens, command) {
   const operands = []; let optionsEnded = false; let target = null;
@@ -1046,7 +1111,7 @@ function checkBashCommand(command, directory) {
   for (const stages of splitPipelineGroups(tokenizeShell(command))) {
     for (let i = 0; i < stages.length; i += 1) {
       if (checkSegment(stages[i], directory)) return sourceMutationNotice(command);
-      if (i > 0 && shellReadsStdinProgram(stages[i]) && checkPipelineProducer(stages[i - 1], directory)) {
+      if (i > 0 && shellReadsStdinProgram(stages[i]) && checkPipelineProducer(stages[i - 1], directory, command)) {
         return sourceMutationNotice(command);
       }
     }
