@@ -362,6 +362,7 @@ describe('pre-tool-use template source extension detection', () => {
       ['compound source write', 'echo x > notes.txt; echo y > src/app.ts', true],
       ['conditional reserved-word source write', 'if true; then sed -i s/a/b/ src/app.ts; fi', true],
       ['loop reserved-word source write', 'while true; do rm src/app.ts; done', true],
+      ['coprocess reserved-word source write', 'coproc rm -f src/app.ts', true],
       ['subshell source write', '(echo x > src/app.ts)', true],
       ['shell -c source write', "bash -c 'echo x > src/app.ts'", true],
       ['shell -c option terminator source write', "bash -c -- 'echo x > src/app.ts'", true],

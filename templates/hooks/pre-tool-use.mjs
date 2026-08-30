@@ -608,7 +608,7 @@ function tokenizeShell(command) {
 
 const COMMAND_WRAPPERS = new Set(['command', 'env', 'exec', 'nohup', 'nice', 'time', 'timeout', 'sudo']);
 const SHELL_COMMANDS = new Set(['sh', 'bash', 'dash', 'zsh', 'ksh', 'fish', 'ash']);
-const SHELL_RESERVED_WORDS = new Set(['if', 'then', 'elif', 'else', 'fi', 'while', 'until', 'for', 'do', 'done', 'case', 'esac', 'in', 'select', 'function', '{', '}', '!']);
+const SHELL_RESERVED_WORDS = new Set(['if', 'then', 'elif', 'else', 'fi', 'while', 'until', 'for', 'do', 'done', 'case', 'esac', 'in', 'select', 'function', 'coproc', '{', '}', '!']);
 function shellBase(value) { const clean = String(value || '').replace(/\\/g, '/'); return clean.slice(clean.lastIndexOf('/') + 1).toLowerCase(); }
 function splitSegments(tokens) { const out = []; let segment = []; for (const token of tokens) { if (token.type === 'op' && token.kind === 'sep') { if (segment.length) out.push(segment); segment = []; } else segment.push(token); } if (segment.length) out.push(segment); return out; }
 function targetIndices(segment) { const out = new Set(); for (let i = 0; i < segment.length; i += 1) if (segment[i].type === 'op' && (segment[i].kind === 'in' || segment[i].kind === 'out') && segment[i + 1]?.type === 'word') out.add(i + 1); return out; }
