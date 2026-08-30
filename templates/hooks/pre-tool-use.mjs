@@ -531,7 +531,7 @@ function shellGroup(text, openIndex) {
   let depth = 0; let quote = null;
   for (let i = openIndex; i < text.length; i += 1) {
     const ch = text[i];
-    if (quote) { if (ch === '\\') i += 1; else if (ch === quote) quote = null; continue; }
+    if (quote) { if (ch === '\\' && quote !== "'") i += 1; else if (ch === quote) quote = null; continue; }
     if (ch === "'" || ch === '"') { quote = ch; continue; }
     if (ch === '\\') { i += 1; continue; }
     if (ch === '(') depth += 1;
@@ -575,7 +575,7 @@ function heredocMarkers(line) {
   let arith = 0;
   for (let i = 0; i < line.length - 1; i += 1) {
     const ch = line[i];
-    if (quote) { if (ch === '\\') i += 1; else if (ch === quote) quote = null; continue; }
+    if (quote) { if (ch === '\\' && quote !== "'") i += 1; else if (ch === quote) quote = null; continue; }
     if (ch === "'" || ch === '"') { quote = ch; continue; }
     if (ch === '\\') { i += 1; continue; }
     if (ch === '#' && (i === 0 || /[\s;|&()]/.test(line[i - 1]))) break;
@@ -1111,18 +1111,18 @@ function checkPipelineProducer(stage, directory, command) {
       if (entry.token.dynamic) return true;
       const value = entry.token.value;
       if (!optionsEnded) {
-        if (value === '--') { optionsEnded = true; continue; }
+        if (cmd.base === 'printf' && value === '--') { optionsEnded = true; continue; }
         if (cmd.base === 'printf' && value.startsWith('-v')) {
           return false;
         }
-        if (value.startsWith('-') && value !== '-') continue;
+        if (value.startsWith('-') && value !== '-' && value !== '--') continue;
         optionsEnded = true;
       }
       args.push(value);
     }
     const gnu = words[cmd.index].token.value.includes('/')
       || words.slice(0, cmd.index).some(entry => new Set(['env', 'exec', 'nohup', 'nice', 'timeout', 'sudo']).has(shellBase(entry.token.value)));
-    const program = cmd.base === 'printf' ? renderPrintf(args, { gnu }) : args.join('\n');
+    const program = cmd.base === 'printf' ? renderPrintf(args, { gnu }) : args.join(' ');
     if (program === null) return true;
     return program.length > 0 && Boolean(checkBashCommand(program, directory));
   }
