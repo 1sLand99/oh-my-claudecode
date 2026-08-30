@@ -566,21 +566,24 @@ function heredocMarkers(line) {
     if (stripTabs) j += 1;
     while (j < line.length && /[ \t]/.test(line[j])) j += 1;
     if (j >= line.length) continue;
-    let delimiter = null;
-    const q = line[j];
-    if (q === "'" || q === '"') {
-      const end = line.indexOf(q, j + 1);
-      if (end < 0) continue;
-      delimiter = line.slice(j + 1, end);
-      j = end + 1;
-    } else {
-      const start = j;
-      while (j < line.length && !/[\s;&|<>()]/.test(line[j])) j += 1;
-      if (j === start) continue;
-      delimiter = line.slice(start, j).replace(/\\(.)/g, '$1');
+    let delimiter = '';
+    const start = j;
+    while (j < line.length && !/[\s;&|<>()]/.test(line[j])) {
+      const q = line[j];
+      if (q === "'" || q === '"') {
+        const end = line.indexOf(q, j + 1);
+        if (end < 0) { delimiter = ''; break; }
+        delimiter += line.slice(j + 1, end);
+        j = end + 1;
+        continue;
+      }
+      if (line[j] === '\\' && j + 1 < line.length) { delimiter += line[j + 1]; j += 2; continue; }
+      delimiter += line[j];
+      j += 1;
     }
-    markers.push({ delimiter, stripTabs, fd: heredocFd(line.slice(0, i)) });
-    i = j - 1;
+    if (!delimiter && j === start) continue;
+    markers.push({ delimiter, stripTabs, fd: heredocFd(line.slice(0, i)), pos: i });
+    i = Math.max(j, i + 1) - 1;
   }
   return markers;
 }
@@ -609,18 +612,40 @@ function stripHeredocBodies(command) {
   }
   return kept.join('\n');
 }
+function splitSimpleCommands(line) {
+  const parts = []; let start = 0; let quote = null;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (quote) { if (ch === '\\' && quote !== "'") i += 1; else if (ch === quote) quote = null; continue; }
+    if (ch === "'" || ch === '"') { quote = ch; continue; }
+    if (ch === '\\') { i += 1; continue; }
+    const two = line.slice(i, i + 2);
+    if (two === '&&' || two === '||' || two === '|&') {
+      parts.push({ start, end: i, text: line.slice(start, i) });
+      i += 1; start = i + 1; continue;
+    }
+    if (';|&'.includes(ch)) { parts.push({ start, end: i, text: line.slice(start, i) }); start = i + 1; }
+  }
+  parts.push({ start, end: line.length, text: line.slice(start) });
+  return parts;
+}
+function owningCommand(line, pos) {
+  const parts = splitSimpleCommands(line);
+  return parts.find(part => pos >= part.start && pos < part.end)?.text ?? line;
+}
 function heredocSections(command) {
   const lines = String(command || '').split('\n'); const sections = [];
   for (let i = 0; i < lines.length; i += 1) {
     const commandLine = lines[i]; const markers = heredocMarkers(commandLine);
     if (!markers.length) continue;
     const consumed = consumeHeredocBodies(lines, i, markers);
-    let stdin = null;
+    const stdinByOwner = new Map();
     for (const item of consumed.bodies) {
-      if (item.fd === 0) stdin = item;
-      else sections.push({ commandLine, body: item.body, fd: item.fd });
+      const owner = owningCommand(commandLine, item.pos);
+      if (item.fd === 0) stdinByOwner.set(owner, item);
+      else sections.push({ commandLine: owner, body: item.body, fd: item.fd });
     }
-    if (stdin) sections.push({ commandLine, body: stdin.body, fd: 0 });
+    for (const [owner, item] of stdinByOwner) sections.push({ commandLine: owner, body: item.body, fd: 0 });
     i = consumed.end;
   }
   return sections;
@@ -818,6 +843,34 @@ function shellReadsStdinProgram(segment) {
   }
   return true;
 }
+function renderPrintf(args) {
+  if (args.length === 0) return null;
+  let i = 0;
+  if (args[i] === '--') i += 1;
+  else if (args[i]?.startsWith('-') && args[i] !== '-') return null;
+  if (i >= args.length) return '';
+  const format = args[i++];
+  let out = '';
+  for (let p = 0; p < format.length; p += 1) {
+    const ch = format[p];
+    if (ch === '\\' && p + 1 < format.length) {
+      const n = format[p + 1];
+      out += n === 'n' ? '\n' : n === 't' ? '\t' : n;
+      p += 1; continue;
+    }
+    if (ch === '%' && p + 1 < format.length) {
+      const n = format[p + 1];
+      if (n === '%') { out += '%'; p += 1; continue; }
+      if (n === 's' || n === 'b') {
+        if (i >= args.length) return null;
+        out += args[i++]; p += 1; continue;
+      }
+      return null;
+    }
+    out += ch;
+  }
+  return out;
+}
 function checkPipelineProducer(stage, directory) {
   const targets = targetIndices(stage);
   const words = wordsFor(stage, targets);
@@ -834,7 +887,8 @@ function checkPipelineProducer(stage, directory) {
     }
     args.push(value);
   }
-  const program = args.join('\n');
+  const program = cmd.base === 'printf' ? renderPrintf(args) : args.join('\n');
+  if (program === null) return true;
   return program.length > 0 && Boolean(checkBashCommand(program, directory));
 }
 function copyInvocation(tokens, command) {

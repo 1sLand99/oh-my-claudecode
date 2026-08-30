@@ -366,6 +366,7 @@ describe('pre-tool-use template source extension detection', () => {
       ['digit-prefixed quoted heredoc is data', "cat <<'123' > build.log\necho x > src/app.ts\n123", false],
       ['digit-prefixed unquoted heredoc is data', "cat <<123 > build.log\necho x > src/app.ts\n123", false],
       ['overridden first stdin heredoc is not the program', "bash <<'ONE' <<'TWO'\necho x > src/app.ts\nONE\ntrue\nTWO", false],
+      ['concatenated quoted heredoc word stays data', "cat <<'1'23 > build.log\ndata\n123\necho done", false],
       ['named coprocess writing only a log', 'coproc worker bash verify.sh > results.log', false],
     ] as const)('stays quiet: %s', (_label, command, expectedWarning) => {
       expect(hasDelegationNotice(runPreToolUseHook(command))).toBe(expectedWarning);
@@ -392,6 +393,9 @@ describe('pre-tool-use template source extension detection', () => {
       ['shell heredoc program source write', "bash <<'EOF'\necho hacked > src/app.ts\nEOF", true],
       ['final stdin heredoc is the program', "bash <<'ONE' <<'TWO'\ntrue\nONE\necho hacked > src/app.ts\nTWO", true],
       ['digit-prefixed quoted shell heredoc is a program', "bash <<'123'\necho hacked > src/app.ts\n123", true],
+      ['stdin heredoc is scoped to its command', "bash <<'ONE'; cat <<'TWO'\necho hacked > src/app.ts\nONE\ntrue\nTWO", true],
+      ['printf format assembles pipeline stdin program', "printf 'echo x > %s\\n' src/app.ts | bash", true],
+      ['concatenated quoted heredoc word does not swallow following writes', "cat <<'1'23 > build.log\ndata\n123\necho hacked > src/app.ts\necho done", true],
       ['pipeline stdin shell program source write', "printf '%s\\n' 'echo x > src/app.ts' | bash", true],
       ['echo pipeline stdin shell program source write', "echo 'echo x > src/app.ts' | bash", true],
       ['explicit stdin pipeline shell program source write', "printf '%s\\n' 'echo x > src/app.ts' | bash -s", true],
