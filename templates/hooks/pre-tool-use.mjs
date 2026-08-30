@@ -1103,12 +1103,18 @@ function checkPipelineProducer(stage, directory, command) {
   const cmd = executable(words);
   if (!cmd?.base) return false;
   if (cmd.base === 'printf' || cmd.base === 'echo') {
-    const args = []; let optionsEnded = cmd.base !== 'echo';
-    for (const entry of words.slice(cmd.index + 1)) {
+    const args = [];
+    const entries = words.slice(cmd.index + 1);
+    let optionsEnded = false;
+    for (let i = 0; i < entries.length; i += 1) {
+      const entry = entries[i];
       if (entry.token.dynamic) return true;
       const value = entry.token.value;
       if (!optionsEnded) {
         if (value === '--') { optionsEnded = true; continue; }
+        if (cmd.base === 'printf' && value.startsWith('-v')) {
+          return false;
+        }
         if (value.startsWith('-') && value !== '-') continue;
         optionsEnded = true;
       }

@@ -378,6 +378,7 @@ describe('pre-tool-use template source extension detection', () => {
       ['ampersand redirect does not take an IO prefix', '2&> build.log rm src/app.ts', false],
       ['escaped IO number is a command not a redirect', '\\2>build.log rm src/app.ts', false],
       ['env printf format \\c uses GNU stop', "env printf 'true\\n\\cecho x > src/app.ts\\n' | bash", false],
+      ['printf -v writes no pipeline stdout', "printf -v var '%s\\n' 'echo x > src/app.ts' | bash", false],
       ['gnu printf format \\c stops remaining output', "/usr/bin/printf 'true\\n\\cecho x > src/app.ts\\n' | bash", false],
       ['unknown printf format escape keeps the backslash', "printf 'echo x \\> src/app.ts\\n' | bash", false],
       ['named coprocess writing only a log', 'coproc worker bash verify.sh > results.log', false],
