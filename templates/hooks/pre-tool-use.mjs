@@ -663,8 +663,7 @@ function dupRedirects(line) {
     if (ch === '\\') { i += 1; continue; }
     if (ch !== '<' || line[i + 1] !== '&') continue;
     const prefix = line.slice(0, i);
-    const destMatch = prefix.match(/(\d+)$/);
-    const dest = destMatch ? Number(destMatch[1]) : 0;
+    const dest = heredocFd(prefix);
     const srcMatch = line.slice(i + 2).match(/^[ \t]*(\d+)/);
     if (!srcMatch) continue;
     dups.push({ pos: i, dest, src: Number(srcMatch[1]) });
@@ -713,11 +712,11 @@ function heredocSections(command) {
     const byOwner = new Map();
     for (const item of consumed.bodies) {
       const owner = owningPart(commandLine, item.pos);
-      if (!byOwner.has(owner.start)) byOwner.set(owner.start, { text: owner.text, bodies: [] });
+      if (!byOwner.has(owner.start)) byOwner.set(owner.start, { text: owner.text, start: owner.start, bodies: [] });
       byOwner.get(owner.start).bodies.push(item);
     }
-    for (const { text, bodies } of byOwner.values()) {
-      const stdin = applyStdin(text, bodies);
+    for (const { text, start, bodies } of byOwner.values()) {
+      const stdin = applyStdin(text, bodies.map(item => ({ ...item, pos: item.pos - start })));
       if (stdin) sections.push({ commandLine: text, body: stdin.body, fd: 0 });
       for (const item of bodies) {
         if (item === stdin) continue;
@@ -792,6 +791,16 @@ function sourceMutationNotice(command) {
 function targetIndices(segment) { const out = new Set(); for (let i = 0; i < segment.length; i += 1) if (segment[i].type === 'op' && (segment[i].kind === 'in' || segment[i].kind === 'out') && segment[i + 1]?.type === 'word') out.add(i + 1); return out; }
 function writeTarget(token, directory) { return !token || token.type !== 'word' || token.dynamic || token.ambiguous || !token.value || (isSourceFile(token.value) && !isAllowedPath(token.value, directory)); }
 function wordsFor(segment, targets) { return segment.map((token, index) => ({ token, index })).filter(entry => entry.token.type === 'word' && !targets.has(entry.index)); }
+function redirectIoIndices(segment) {
+  const out = new Set();
+  for (let i = 1; i < segment.length; i += 1) {
+    if (segment[i].type === 'op' && (segment[i].kind === 'in' || segment[i].kind === 'out') && segment[i - 1].type === 'word' && /^\d+$/.test(segment[i - 1].value)) out.add(i - 1);
+  }
+  return out;
+}
+function commandWords(segment) {
+  return wordsFor(segment, targetIndices(segment)).filter(entry => !redirectIoIndices(segment).has(entry.index));
+}
 function consumeWrapper(words, index, base) {
   let i = index + 1;
   const takeOptionValue = () => { if (!words[i + 1] || words[i + 1].token.dynamic) return false; i += 2; return true; };
@@ -894,13 +903,32 @@ function truncateOperands(tokens) {
   }
   return operands;
 }
-function shellReadsStdinProgram(segment) {
-  const ioNumberIndices = new Set();
-  for (let i = 1; i < segment.length; i += 1) {
-    if (segment[i].type === 'op' && (segment[i].kind === 'in' || segment[i].kind === 'out') && segment[i - 1].type === 'word' && /^\d+$/.test(segment[i - 1].value)) ioNumberIndices.add(i - 1);
+function mvOperands(tokens) {
+  const operands = []; let optionsEnded = false;
+  for (let i = 0; i < tokens.length; i += 1) {
+    const token = tokens[i]; if (token.dynamic) return null;
+    if (!optionsEnded) {
+      if (token.value === '--') { optionsEnded = true; continue; }
+      if (/^(?:-S|--suffix|-t|--target-directory)$/.test(token.value)) {
+        if (!tokens[i + 1] || tokens[i + 1].dynamic) return null;
+        i += 1; continue;
+      }
+      if (/^(?:--suffix|--target-directory|--backup)=/.test(token.value)) continue;
+      if (token.value.startsWith('-') && token.value !== '-') continue;
+    }
+    operands.push(token);
   }
-  const targets = targetIndices(segment);
-  const words = wordsFor(segment, targets).filter(entry => !ioNumberIndices.has(entry.index));
+  return operands;
+}
+function isPassthroughStage(stage) {
+  const words = commandWords(stage);
+  const cmd = executable(words);
+  if (!cmd?.base || !new Set(['cat', 'head', 'tail', 'tac']).has(cmd.base)) return false;
+  const operands = argsAfter(words, cmd.index);
+  return operands.length === 0 && !operands.some(token => token.dynamic);
+}
+function shellReadsStdinProgram(segment) {
+  const words = commandWords(segment);
   const cmd = executable(words);
   if (!cmd?.base || !SHELL_COMMANDS.has(cmd.base)) return false;
   let forceStdin = false; let optionsEnded = false;
@@ -1094,7 +1122,7 @@ function checkSegment(segment, directory) {
       for (const code of token.nested || []) if (checkBashCommand(code, directory)) return true;
     }
   }
-  const words = wordsFor(segment, targets);
+  const words = commandWords(segment);
   if (words[0]?.token.value === 'coproc') {
     const unnamed = segment.filter((_, index) => index !== words[0].index);
     if (checkSegment(unnamed, directory)) return true;
@@ -1118,7 +1146,8 @@ function checkSegment(segment, directory) {
   if (cmd.base === 'eval') { const code = words.slice(cmd.index + 1); return code.some(entry => entry.token.dynamic) || (code.length > 0 && checkBashCommand(code.map(entry => entry.token.value).join(' '), directory)); }
   const args = argsAfter(words, cmd.index);
   if (cmd.base === 'tee') { const operands = teeOperands(words.slice(cmd.index + 1).map(entry => entry.token)); return !operands || operands.some(token => writeTarget(token, directory)); }
-  if (new Set(['rm', 'mv']).has(cmd.base)) return args.some(token => writeTarget(token, directory));
+  if (cmd.base === 'rm') return args.some(token => writeTarget(token, directory));
+  if (cmd.base === 'mv') { const operands = mvOperands(words.slice(cmd.index + 1).map(entry => entry.token)); return !operands || operands.some(token => writeTarget(token, directory)); }
   if (cmd.base === 'truncate') { const operands = truncateOperands(words.slice(cmd.index + 1).map(entry => entry.token)); return !operands || operands.some(token => writeTarget(token, directory)); }
   if (cmd.base === 'touch') { const operands = touchOperands(words.slice(cmd.index + 1).map(entry => entry.token)); return !operands || operands.some(token => writeTarget(token, directory)); }
   if (cmd.base === 'cp' || cmd.base === 'install') {
@@ -1164,8 +1193,11 @@ function checkBashCommand(command, directory) {
   for (const stages of splitPipelineGroups(tokenizeShell(command))) {
     for (let i = 0; i < stages.length; i += 1) {
       if (checkSegment(stages[i], directory)) return sourceMutationNotice(command);
-      if (i > 0 && shellReadsStdinProgram(stages[i]) && checkPipelineProducer(stages[i - 1], directory, command)) {
-        return sourceMutationNotice(command);
+      if (i > 0 && shellReadsStdinProgram(stages[i])) {
+        for (let j = i - 1; j >= 0; j -= 1) {
+          if (checkPipelineProducer(stages[j], directory, command)) return sourceMutationNotice(command);
+          if (!isPassthroughStage(stages[j])) break;
+        }
       }
     }
   }
