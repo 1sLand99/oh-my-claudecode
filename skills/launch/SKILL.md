@@ -39,6 +39,10 @@ Any durability claim in this skill is a claim about the files on disk, not about
 
 ## Phase 0 — Entry
 
+Before reading a supplied spec or entering Phase 1, resolve the document language. An explicit human choice in the current invocation wins; otherwise read a valid BCP-47-style tag from `CONTEXT.md` frontmatter at the exact stable key `documentLanguage`; otherwise require unanimous high-confidence inference from `CLAUDE.md` then `README.md`. A persisted bare or region-only Chinese tag is script-ambiguous and must be asked once at that authority tier, never bypassed by inference. Missing, mixed, conflicting, low-confidence, invalid-explicit, or script-ambiguous Chinese evidence requires one batched language question; do not guess. Chinese must resolve to an explicit `zh-Hans` or `zh-Hant` script tag. `zh-Hans-*` selects the Simplified companion and `zh-Hant-*` selects the Traditional companion while the full normalized tag is persisted. Persist the resolved normalized tag back to `CONTEXT.md` before any Launch-authored artifact so a fresh explicit invocation can read it without hidden conversation state. The human reads and maintains these artifacts; agents are language-agnostic.
+
+Localize prose and human-facing labels/localizable scalar values only. Paths, slash commands, flags, code fences, placeholders, frontmatter keys and machine-semantic values, YAML/JSON keys, lifecycle tokens (`plan`, `execute`, `review`, `verify`), status enums (`pending`, `in_progress`, `completed`, `failed`, `ready-for-agent`), IDs, ticket `blockedBy`, public Team `blocked_by`, and all parser/control tokens remain byte-for-byte stable. Reference language companions are mutually exclusive: emit exactly one selected rendering, never bilingual duplicate headings or labels.
+
 - Brief self-check before anything else: does the brief name an objective, a scope boundary, and non-goals? If two or more are missing, say so and ask for one sharpening pass — running the pipeline on a soft brief converts ambiguity into confident-looking output.
 - Spec path supplied → read it, jump to Phase 2.
 - Mission brief → Phase 1.
