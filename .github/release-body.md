@@ -15,6 +15,8 @@ v5.1.0 is the minor release from the published v5.0.2 baseline through the exact
 
 Release validation covers exact-head version consistency, metadata/projection/inventory verification, focused changed-feature tests, lint, typecheck, the full test suite, build, plugin shipping verification, package pack/install/CLI version smoke, upgrade validation, and protected GitHub checks. The release process must not treat any failing or unavailable validation as passing evidence.
 
+The final release head is bound to the protected repository owner through the base-owned generated-artifact authorization workflow.
+
 ### Install / Update
 
 The npm CLI and the Claude Code marketplace/plugin are separate install tracks. Update whichever track you use; update both when both are installed.
