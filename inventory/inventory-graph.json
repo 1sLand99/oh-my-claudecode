@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "5bacbf808698ab299a7136fad342b3a9eb95a096",
-    "sourceSha256": "e15f897a64cd53482148fb09fc0a673f05a2e7935a6f828ee15592c122b6236b",
+    "head": "2da44c7bafcd8dd7c36978a652c2ac54560d79c6",
+    "sourceSha256": "e4fd5f93539e58d5be30a83a2a49d41b841bc66d4b56916e238c39107e23da9e",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "5bacbf808698ab299a7136fad342b3a9eb95a096",
-  "sourceSha256": "e15f897a64cd53482148fb09fc0a673f05a2e7935a6f828ee15592c122b6236b",
+  "head": "2da44c7bafcd8dd7c36978a652c2ac54560d79c6",
+  "sourceSha256": "e4fd5f93539e58d5be30a83a2a49d41b841bc66d4b56916e238c39107e23da9e",
   "counts": {
     "public": {
       "skills": 35,
@@ -43783,6 +43783,11 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/__tests__/context-usage.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/daemon-module-path.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -53554,6 +53559,11 @@
       },
       {
         "from": "src/graph/__tests__/runtime/journal.test.ts",
+        "to": "src/graph/runtime/fence.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/journal.test.ts",
         "to": "src/graph/runtime/journal.ts",
         "kind": "imports"
       },
@@ -53764,6 +53774,11 @@
       },
       {
         "from": "src/graph/__tests__/runtime/safe-fs.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/safe-fs.test.ts",
         "to": "external:fs",
         "kind": "imports"
       },
@@ -53810,6 +53825,11 @@
       {
         "from": "src/graph/__tests__/runtime/store.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/graph/__tests__/runtime/store.test.ts",
+        "to": "src/graph/runtime/fence.ts",
         "kind": "imports"
       },
       {
@@ -54078,11 +54098,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/graph/runtime/run-dir.ts",
-        "to": "src/lib/atomic-write.ts",
-        "kind": "imports"
-      },
-      {
         "from": "src/graph/runtime/runner.ts",
         "to": "external:path",
         "kind": "imports"
@@ -54191,6 +54206,11 @@
         "from": "src/graph/runtime/store.ts",
         "to": "src/lib/atomic-write.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/graph/runtime/store.ts",
+        "to": "src/lib/atomic-write.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/graph/runtime/types.ts",
@@ -76750,11 +76770,11 @@
     ],
     "stats": {
       "nodeCount": 6866,
-      "edgeCount": 7222,
-      "importEdgeCount": 5932,
+      "edgeCount": 7226,
+      "importEdgeCount": 5935,
       "registerEdgeCount": 56
     }
   },
   "inventorySha256": "f5ea9ebf29ba491f17b39431660e07f71eb3d78399d481c1c2b00fc34cf2ab50",
-  "manifestSha256": "ce81384daa431e7fe24d0966ddbdf62dd1bcaf1291beb6ef6c68ad62bd8f669b"
+  "manifestSha256": "b8c4c36ca2e846f9f53b4b8b268a715ed732a4866ae00b4278cad9851f743602"
 }

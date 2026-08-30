@@ -24,12 +24,18 @@ export interface FileOwnershipFenceOptions {
     readonly staleGraceMs?: number;
     /** Test-only interlock used to deterministically exercise takeover races. */
     readonly beforeTakeoverRename?: () => void;
+    /** Test-only interlock used to deterministically exercise release races. */
+    readonly beforeReleaseRename?: () => void;
+    /** Test-only interlock used to exercise failed-create cleanup races. */
+    readonly beforeEpochPersist?: () => void;
 }
 export declare class FileOwnershipFence implements OwnershipFence {
     private readonly runsRoot;
     private readonly runId?;
     private readonly staleGraceMs;
     private readonly beforeTakeoverRename?;
+    private readonly beforeReleaseRename?;
+    private readonly beforeEpochPersist?;
     private handle?;
     /** fd of the held lock file while we own the run; null otherwise. */
     private fd;
@@ -61,7 +67,14 @@ export declare class FileOwnershipFence implements OwnershipFence {
     private readPayload;
     private readLockIdentity;
     private sameLockIdentity;
-    private pathExists;
+    private sameFileIdentity;
+    private identityFromFd;
+    /** Restore a foreign tombstone without replacing a path or deleting it. */
+    private restoreForeignTombstone;
+    /** A failed foreign restoration leaves a tombstone that must block takeover. */
+    private hasOrphanedTombstone;
+    /** Remove only a lock inode positively identified as ours after create. */
+    private cleanupCreatedLock;
     /**
      * Verify the file currently at lockPath is still the exact file we hold an
      * fd for: same inode and size (fstatSync on our held fd vs lstatSync on the

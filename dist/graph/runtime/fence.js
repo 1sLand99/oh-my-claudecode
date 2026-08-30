@@ -17,7 +17,7 @@
  *   sidecar has seen, so resume after release keeps advancing past journal
  *   history instead of restarting at 1.
  */
-import { closeSync, constants as fsConstants, fstatSync, lstatSync, mkdirSync, renameSync, unlinkSync, writeSync, } from "fs";
+import { closeSync, constants as fsConstants, fstatSync, linkSync, lstatSync, mkdirSync, readdirSync, renameSync, unlinkSync, writeSync, } from "fs";
 import { randomBytes } from "crypto";
 import { dirname, join } from "path";
 import { atomicWriteFileSync } from "../../lib/atomic-write.js";
@@ -74,6 +74,8 @@ export class FileOwnershipFence {
     runId;
     staleGraceMs;
     beforeTakeoverRename;
+    beforeReleaseRename;
+    beforeEpochPersist;
     handle;
     /** fd of the held lock file while we own the run; null otherwise. */
     fd = null;
@@ -89,6 +91,8 @@ export class FileOwnershipFence {
         this.runId = runId;
         this.staleGraceMs = options?.staleGraceMs ?? DEFAULT_STALE_GRACE_MS;
         this.beforeTakeoverRename = options?.beforeTakeoverRename;
+        this.beforeReleaseRename = options?.beforeReleaseRename;
+        this.beforeEpochPersist = options?.beforeEpochPersist;
         this.handle = runDirHandle;
     }
     runDir() {
@@ -110,9 +114,16 @@ export class FileOwnershipFence {
         let candidateEpoch = 1;
         // Each iteration makes progress toward either acquisition or a
         // live-holder busy. The sidecar ceiling is re-read every iteration
-        // because a concurrent racer may have persisted a higher epoch between
+        // concurrent racer may have persisted a higher epoch between
         // our attempts.
         for (;;) {
+            if (this.hasOrphanedTombstone(directoryPath)) {
+                // A contender must never create a new lock while a moved foreign
+                // inode has no live name. The owner performing the restoration may
+                // still be in flight, so report the same fail-closed busy outcome as
+                // any other concurrent takeover rather than racing it.
+                return { outcome: "busy" };
+            }
             const ceiling = readSidecarCeiling(epochFilePath);
             if (ceiling === Number.MAX_SAFE_INTEGER) {
                 throw new Error("owner.epoch has no representable successor");
@@ -149,6 +160,11 @@ export class FileOwnershipFence {
                 return { outcome: "busy" };
             }
             const staleIdentity = this.readLockIdentity(lockPath);
+            if (staleIdentity === null) {
+                // The path disappeared or became unreadable after the staleness
+                // check.  Do not rename an object we cannot positively identify.
+                continue;
+            }
             this.beforeTakeoverRename?.();
             // Takeover step: atomic rename to a unique tombstone. Exactly one
             // racer wins; losers observe ENOENT/EEXIST/EPERM here and retry (AC-6).
@@ -166,22 +182,13 @@ export class FileOwnershipFence {
             // extra tombstone link and never adopt/delete its ownership.
             const movedIdentity = this.readLockIdentity(tombstone);
             if (!this.sameLockIdentity(staleIdentity, movedIdentity)) {
-                try {
-                    if (!this.pathExists(lockPath)) {
-                        renameSync(tombstone, lockPath);
-                    }
-                    else {
-                        unlinkSync(tombstone);
-                    }
-                }
-                catch {
-                    try {
-                        unlinkSync(tombstone);
-                    }
-                    catch {
-                        // Best effort cleanup of the foreign tombstone link.
-                    }
-                }
+                // The object we moved was not the stale lock we inspected.  It is a
+                // foreign owner's lock; never unlink it and never overwrite a path
+                // that may have been recreated by another writer.  A no-replace hard
+                // link restores the live name when it is still absent.  Leaving the
+                // unique tombstone behind is intentional when restoration races: it
+                // is safer than deleting a foreign lock to tidy up our own name.
+                this.restoreForeignTombstone(lockPath, tombstone);
                 continue;
             }
             // We exclusively own the tombstone now: read the old epoch from it.
@@ -245,11 +252,13 @@ export class FileOwnershipFence {
         // Identity check before any mutation: the file at the lock path must
         // still be OUR held file. A stale holder must never rename away a
         // replacement owner's lock planted at the same path.
-        if (!this.holdsLiveLockFile(lockPath)) {
+        const heldIdentity = this.readLockIdentity(lockPath);
+        if (heldIdentity === null || !this.holdsLiveLockFile(lockPath)) {
             // We no longer own the run; leave whatever is there untouched.
             this.clearHeld();
             return false;
         }
+        this.beforeReleaseRename?.();
         const tombstone = `${lockPath}.tomb.${randomBytes(6).toString("hex")}`;
         try {
             renameSync(lockPath, tombstone);
@@ -261,6 +270,19 @@ export class FileOwnershipFence {
                 return false;
             }
             throw error;
+        }
+        const movedIdentity = this.readLockIdentity(tombstone);
+        if (!this.sameLockIdentity(heldIdentity, movedIdentity)) {
+            // The live path changed after our identity check.  We moved a foreign
+            // lock, so restore it without replacement and do not delete its only
+            // directory entry.  The held fd is closed below; ownership is lost.
+            try {
+                this.restoreForeignTombstone(lockPath, tombstone);
+            }
+            finally {
+                this.clearHeld();
+            }
+            return false;
         }
         this.clearHeld();
         try {
@@ -297,20 +319,18 @@ export class FileOwnershipFence {
                 timestamp: Date.now(),
             };
             writeSync(fd, JSON.stringify(payload), null, "utf8");
+            this.beforeEpochPersist?.();
             // Persist epoch continuity while we still hold exclusive ownership of
             // the just-created lock (temp+rename inside; failure cleans up below).
             atomicWriteFileSync(epochFilePath, String(epoch));
         }
         catch (error) {
+            const createdIdentity = this.identityFromFd(fd);
             closeSync(fd);
-            // We exclusively created this file moments ago; removing our own
-            // partial write is not a read-then-unlink of a foreign lock.
-            try {
-                unlinkSync(lockPath);
-            }
-            catch {
-                // Best effort.
-            }
+            // The path may have been replaced while writing the payload or
+            // persisting owner.epoch.  Move-then-identify cleanup removes only the
+            // inode we created; a replacement is restored/no-replace preserved.
+            this.cleanupCreatedLock(lockPath, createdIdentity);
             throw error;
         }
         return fd;
@@ -343,6 +363,7 @@ export class FileOwnershipFence {
         try {
             const stats = lstatNoFollow(lockPath);
             return {
+                dev: stats.dev,
                 ino: stats.ino,
                 size: stats.size,
                 mtimeMs: stats.mtimeMs,
@@ -358,23 +379,95 @@ export class FileOwnershipFence {
             return false;
         const leftPayload = left.payload;
         const rightPayload = right.payload;
-        return (left.ino === right.ino &&
+        return (left.dev === right.dev &&
+            left.ino === right.ino &&
             left.size === right.size &&
             left.mtimeMs === right.mtimeMs &&
             leftPayload?.pid === rightPayload?.pid &&
             leftPayload?.epoch === rightPayload?.epoch &&
             leftPayload?.timestamp === rightPayload?.timestamp);
     }
-    pathExists(path) {
+    sameFileIdentity(left, right) {
+        return (left !== null &&
+            right !== null &&
+            left.dev === right.dev &&
+            left.ino === right.ino);
+    }
+    identityFromFd(fd) {
         try {
-            lstatNoFollow(path);
-            return true;
+            const stats = fstatSync(fd);
+            return {
+                dev: stats.dev,
+                ino: stats.ino,
+                size: stats.size,
+                mtimeMs: stats.mtimeMs,
+                payload: null,
+            };
+        }
+        catch {
+            return null;
+        }
+    }
+    /** Restore a foreign tombstone without replacing a path or deleting it. */
+    restoreForeignTombstone(lockPath, tombstone) {
+        try {
+            // linkSync never replaces an existing destination.  If it races with a
+            // new owner, keep both entries rather than unlinking the foreign inode.
+            linkSync(tombstone, lockPath);
+            unlinkSync(tombstone);
         }
         catch (error) {
-            if (error.code === "ELOOP")
-                throw error;
-            return false;
+            if (error.code === "EEXIST") {
+                // A concurrent owner already restored/planted the live path. Only
+                // remove our tombstone when it is the same inode; never hide a
+                // distinct foreign lock behind an orphaned alias.
+                const liveIdentity = this.readLockIdentity(lockPath);
+                const tombstoneIdentity = this.readLockIdentity(tombstone);
+                if (this.sameLockIdentity(liveIdentity, tombstoneIdentity)) {
+                    unlinkSync(tombstone);
+                    return;
+                }
+                throw new Error("foreign lock restoration raced with another inode");
+            }
+            // Never continue acquisition with an orphaned foreign lock. The
+            // tombstone remains durable for an operator/recovery process to repair.
+            throw new Error(`foreign lock tombstone could not be restored: ${String(error.message ?? error)}`);
         }
+    }
+    /** A failed foreign restoration leaves a tombstone that must block takeover. */
+    hasOrphanedTombstone(directoryPath) {
+        try {
+            return readdirSync(directoryPath).some((entry) => entry.startsWith(`${LOCK_FILE_NAME}.tomb.`));
+        }
+        catch (error) {
+            if (error.code === "ENOENT")
+                return false;
+            throw error;
+        }
+    }
+    /** Remove only a lock inode positively identified as ours after create. */
+    cleanupCreatedLock(lockPath, createdIdentity) {
+        if (createdIdentity === null)
+            return;
+        const tombstone = `${lockPath}.tomb.${randomBytes(6).toString("hex")}`;
+        try {
+            renameSync(lockPath, tombstone);
+        }
+        catch {
+            // The path vanished or another writer owns it; do not mutate anything.
+            return;
+        }
+        const movedIdentity = this.readLockIdentity(tombstone);
+        if (this.sameFileIdentity(createdIdentity, movedIdentity)) {
+            try {
+                unlinkSync(tombstone);
+            }
+            catch {
+                // Best effort cleanup of our own tombstone.
+            }
+            return;
+        }
+        this.restoreForeignTombstone(lockPath, tombstone);
     }
     /**
      * Verify the file currently at lockPath is still the exact file we hold an

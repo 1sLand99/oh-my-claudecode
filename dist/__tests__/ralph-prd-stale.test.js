@@ -3,7 +3,7 @@ import { execFileSync } from 'child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, utimesSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { detectStalePrd, formatStalePrdWarning, getSessionEndStalePrdWarning, reconcileStalePrd, reconcileStalePrdForStartup, runObservableCheck, PRD_RECONCILIATION_AUDIT_FILENAME, DEFAULT_STALE_PRD_AFTER_MS, readPrd, writePrd, getPrdStatus, shouldCompleteByPrd, ensurePrdForStartup, getRalphContext, writeRalphState, createRalphLoopHook, getSessionPrdPath, getStoryGoverningCriteriaRevision, getPrdRevision, } from '../hooks/ralph/index.js';
+import { detectStalePrd, formatStalePrdWarning, getSessionEndStalePrdWarning, reconcileStalePrd, reconcileStalePrdForStartup, runObservableCheck, PRD_RECONCILIATION_AUDIT_FILENAME, DEFAULT_STALE_PRD_AFTER_MS, readPrd, writePrd, getPrdStatus, shouldCompleteByPrd, ensurePrdForStartup, getRalphContext, writeRalphState, createRalphLoopHook, getSessionPrdPath, } from '../hooks/ralph/index.js';
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -95,7 +95,7 @@ describe('Ralph PRD Stale-State Detection & Reconciliation (#3669)', () => {
                 },
             },
         });
-        expect(writePrd(testDir, prdWithChecks, undefined, getPrdRevision(readPrd(testDir)))).toBe(true);
+        expect(writePrd(testDir, prdWithChecks)).toBe(true);
         backdatePrd(testDir);
         const detection = detectStalePrd(testDir);
         expect(detection?.stale).toBe(true);
@@ -236,7 +236,7 @@ describe('Ralph PRD Stale-State Detection & Reconciliation (#3669)', () => {
         expect(dead?.stalePointers.join(' ')).toContain('no longer exists');
         expect(formatStalePrdWarning(dead)).toContain('no longer exists');
         const mergedBranchPrd = makePrd({ branchName: 'feature/landed' });
-        expect(writePrd(testDir, mergedBranchPrd, undefined, getPrdRevision(readPrd(testDir)))).toBe(true);
+        expect(writePrd(testDir, mergedBranchPrd)).toBe(true);
         const merged = detectStalePrd(testDir);
         expect(merged?.stale).toBe(true);
         expect(merged?.stalePointers.join(' ')).toContain('already merged');
@@ -260,11 +260,6 @@ describe('Ralph PRD Stale-State Detection & Reconciliation (#3669)', () => {
                 { id: 'US-002', title: 'Done', description: '', acceptanceCriteria: [], priority: 2, passes: true, architectVerified: true },
             ],
         });
-        for (const story of prd.userStories) {
-            const revision = getStoryGoverningCriteriaRevision(story);
-            story.completionCriteriaRevision = revision;
-            story.architectVerificationCriteriaRevision = revision;
-        }
         expect(writePrd(testDir, prd, 'session-step8')).toBe(true);
         expect(getSessionEndStalePrdWarning(testDir, 'session-step8')).toBeNull();
         expect(detectStalePrd(testDir, 'session-step8')?.stale).toBe(false);

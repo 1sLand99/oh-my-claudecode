@@ -7,12 +7,12 @@
  * validation happens at the scheduler replay fold; epoch ownership fencing is
  * a runner-level concern (OwnershipFence).
  */
-import { closeSync, constants as fsConstants, fsyncSync, writeSync, } from "fs";
+import { closeSync, constants as fsConstants, fstatSync, ftruncateSync, fsyncSync, writeSync, } from "fs";
 import { createHash } from "crypto";
 import { join } from "path";
 import { canonicalJson } from "../descriptor.js";
 import { resolveRunDirHandle } from "./run-dir.js";
-import { openNoFollow, readContainedFileNoFollow, withContainedPath, } from "./safe-fs.js";
+import { openNoFollow, assertPrivateRegularFile, readContainedFileNoFollow, withContainedPath, } from "./safe-fs.js";
 import { JournalCorruptionError } from "./types.js";
 const DESCRIPTOR_HASH_PATTERN = /^[a-f0-9]{64}$/;
 const JOURNAL_FINGERPRINT_PATTERN = /^[a-f0-9]{64}$/;
@@ -63,18 +63,25 @@ export class FileJournal {
     runsRoot;
     runId;
     handle;
+    assertOwnership;
     /**
      * The frozen `Journal` interface is run-scoped but carries no run id, so an
      * instance must be bound to one run. `runId` is optional only to keep the
      * brief's `new FileJournal(runsRoot)` signature constructible; unbound
-     * instances fail closed on use.
+     * instances fail closed on use.  An optional ownership callback binds each
+     * append to the writer's lease epoch.
      */
-    constructor(runsRoot, runId, runDirHandle) {
+    constructor(runsRoot, runId, runDirHandle, assertOwnership) {
         this.runsRoot = runsRoot;
         this.runId = runId;
         this.handle = runDirHandle;
+        this.assertOwnership = assertOwnership;
     }
     async append(record) {
+        return this.appendInternal(record, this.assertOwnership);
+    }
+    async appendInternal(record, assertOwnership) {
+        assertOwnership?.();
         const runDir = this.runDir();
         const unsignedRecord = { ...record };
         delete unsignedRecord.journal_fingerprint;
@@ -87,7 +94,11 @@ export class FileJournal {
         withContainedPath(runDir, "journal.jsonl", (filePath) => {
             let fd;
             try {
-                fd = openNoFollow(filePath, fsConstants.O_APPEND | fsConstants.O_CREAT | fsConstants.O_WRONLY);
+                fd = openNoFollow(filePath, fsConstants.O_APPEND |
+                    fsConstants.O_CREAT |
+                    fsConstants.O_WRONLY |
+                    (fsConstants.O_NONBLOCK ?? 0));
+                assertPrivateRegularFile(fd, filePath);
             }
             catch (error) {
                 if (error.code === "ELOOP") {
@@ -96,8 +107,36 @@ export class FileJournal {
                 throw error;
             }
             try {
-                writeSync(fd, line);
-                fsyncSync(fd);
+                const initialSize = fstatSync(fd).size;
+                assertOwnership?.();
+                let writeCompleted = false;
+                try {
+                    writeSync(fd, line);
+                    writeCompleted = true;
+                    fsyncSync(fd);
+                    // This is the publication boundary.  If ownership was lost while
+                    // the write/fsync was in flight, remove only our suffix through the
+                    // original fd before allowing the stale transition to escape.
+                    assertOwnership?.();
+                }
+                catch (error) {
+                    if (writeCompleted) {
+                        try {
+                            const size = fstatSync(fd).size;
+                            const expectedSize = initialSize + Buffer.byteLength(line);
+                            if (size === expectedSize) {
+                                ftruncateSync(fd, initialSize);
+                                fsyncSync(fd);
+                            }
+                        }
+                        catch {
+                            // If another writer appended to this inode, or the descriptor
+                            // became unusable, leave the durable suffix for fail-closed
+                            // replay rather than truncating unrelated data.
+                        }
+                    }
+                    throw error;
+                }
             }
             finally {
                 closeSync(fd);

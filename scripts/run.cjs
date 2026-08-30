@@ -530,7 +530,12 @@ if (require.main === module) {
       } else {
         const sessionEndManifestHook = resolveTrustedSessionEndTarget(resolution, extraArgs);
         if (sessionEndManifestHook) {
-          const timeoutMs = Math.min(resolveGenericTimeoutMs(sessionEndManifestHook), 300);
+          const requestedTestTimeout = process.env.NODE_ENV === 'test'
+            ? Number(process.env.OMC_SESSION_END_TEST_FOREGROUND_TIMEOUT_MS)
+            : NaN;
+          const timeoutMs = Number.isFinite(requestedTestTimeout) && requestedTestTimeout > 0
+            ? Math.min(resolveGenericTimeoutMs(sessionEndManifestHook), requestedTestTimeout)
+            : Math.min(resolveGenericTimeoutMs(sessionEndManifestHook), 300);
           runWorker(resolution.targetPath, sessionEndManifestHook, timeoutMs).then(status => {
             process.exitCode = status;
           });

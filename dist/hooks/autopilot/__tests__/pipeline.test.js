@@ -19,9 +19,10 @@ describe("Pipeline Types", () => {
             qa: true,
         });
     });
-    it("should define only the surviving ultrapilot deprecation alias", () => {
-        expect(DEPRECATED_MODE_ALIASES).not.toHaveProperty("ultrawork");
+    it("should define deprecation aliases for ultrawork and ultrapilot", () => {
+        expect(DEPRECATED_MODE_ALIASES).toHaveProperty("ultrawork");
         expect(DEPRECATED_MODE_ALIASES).toHaveProperty("ultrapilot");
+        expect(DEPRECATED_MODE_ALIASES.ultrawork.config.execution).toBe("team");
         expect(DEPRECATED_MODE_ALIASES.ultrapilot.config.execution).toBe("team");
     });
 });
@@ -159,11 +160,11 @@ describe("resolvePipelineConfig", () => {
         expect(config.planning).toBe("ralplan"); // unchanged
     });
     it("should apply deprecated mode aliases", () => {
-        const config = resolvePipelineConfig(undefined, "ultrapilot");
+        const config = resolvePipelineConfig(undefined, "ultrawork");
         expect(config.execution).toBe("team");
     });
     it("should let user overrides win over deprecated aliases", () => {
-        const config = resolvePipelineConfig({ execution: "solo" }, "ultrapilot");
+        const config = resolvePipelineConfig({ execution: "solo" }, "ultrawork");
         expect(config.execution).toBe("solo");
     });
     it("should return defaults for unknown deprecated modes", () => {
@@ -172,8 +173,9 @@ describe("resolvePipelineConfig", () => {
     });
 });
 describe("getDeprecationWarning", () => {
-    it("should not alias removed ultrawork", () => {
-        expect(getDeprecationWarning("ultrawork")).toBeNull();
+    it("should return warning for ultrawork", () => {
+        const warning = getDeprecationWarning("ultrawork");
+        expect(warning).toContain("deprecated");
     });
     it("should return warning for ultrapilot", () => {
         const warning = getDeprecationWarning("ultrapilot");
@@ -269,7 +271,7 @@ describe("Pipeline Orchestrator (with state)", () => {
             expect(tracking.stages[2].status).toBe("skipped"); // ralph skipped
         });
         it("should handle deprecated mode names", () => {
-            const state = initPipeline(testDir, "test", undefined, undefined, undefined, "ultrapilot");
+            const state = initPipeline(testDir, "test", undefined, undefined, undefined, "ultrawork");
             const tracking = readPipelineTracking(state);
             expect(tracking.pipelineConfig.execution).toBe("team");
         });

@@ -340,6 +340,35 @@ describe('scaleUp launch config', () => {
     );
   });
 
+  it('preserves an external configured route when an older team has no routing-role metadata', async () => {
+    modelContractMocks.resolveDefaultWorkerModel.mockReturnValue('gemini-config-model');
+    modelContractMocks.buildWorkerArgv.mockReturnValue(['/usr/bin/gemini', '--model', 'gemini-snapshot-model']);
+    config = makeConfig({
+      resolved_routing: {
+        executor: {
+          primary: { provider: 'gemini', model: 'gemini-snapshot-model', agent: 'executor' },
+          fallback: { provider: 'claude', model: '', agent: 'executor' },
+        },
+      } as TeamConfig['resolved_routing'],
+      resolved_routing_roles: undefined,
+    });
+
+    const result = await scaleUp(
+      'demo-team',
+      1,
+      'codex',
+      [{ subject: 'demo', description: 'demo task', owner: 'worker-1', role: 'executor' }],
+      cwd,
+      { OMC_TEAM_SCALING_ENABLED: '1' } as NodeJS.ProcessEnv,
+    );
+
+    expect(result).toMatchObject({ ok: true });
+    expect(modelContractMocks.buildWorkerArgv).toHaveBeenCalledWith(
+      'gemini',
+      expect.objectContaining({ model: 'gemini-snapshot-model' }),
+    );
+  });
+
   it('does not adopt a newly introduced environment default after an empty snapshot', async () => {
     modelContractMocks.resolveDefaultWorkerModel.mockReturnValue(undefined);
     modelContractMocks.buildWorkerArgv.mockReturnValue(['/usr/bin/cursor']);

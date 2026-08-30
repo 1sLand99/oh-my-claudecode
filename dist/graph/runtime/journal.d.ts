@@ -19,14 +19,17 @@ export declare class FileJournal implements Journal {
     private readonly runsRoot;
     private readonly runId?;
     private readonly handle?;
+    private readonly assertOwnership?;
     /**
      * The frozen `Journal` interface is run-scoped but carries no run id, so an
      * instance must be bound to one run. `runId` is optional only to keep the
      * brief's `new FileJournal(runsRoot)` signature constructible; unbound
-     * instances fail closed on use.
+     * instances fail closed on use.  An optional ownership callback binds each
+     * append to the writer's lease epoch.
      */
-    constructor(runsRoot: string, runId?: string, runDirHandle?: RunDirHandle);
+    constructor(runsRoot: string, runId?: string, runDirHandle?: RunDirHandle, assertOwnership?: () => void);
     append(record: JournalAppendRecord): Promise<void>;
+    private appendInternal;
     private runDir;
     readAll(): Promise<readonly JournalRecord[]>;
 }

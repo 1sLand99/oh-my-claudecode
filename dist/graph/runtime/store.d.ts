@@ -20,7 +20,7 @@ export declare class FileProjectionStore implements ProjectionStore {
     private readonly handle?;
     constructor(runsRoot: string, runId: string, runDirHandle?: RunDirHandle);
     private runDir;
-    save(envelope: ProjectionSnapshotEnvelope): Promise<void>;
+    save(envelope: ProjectionSnapshotEnvelope, assertOwnership?: () => void): Promise<void>;
     load(): Promise<ProjectionSnapshotEnvelope | null>;
 }
 //# sourceMappingURL=store.d.ts.map
