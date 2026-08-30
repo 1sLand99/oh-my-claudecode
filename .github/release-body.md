@@ -17,6 +17,8 @@ Release validation covers exact-head version consistency, metadata/projection/in
 
 Exact-head review fixes cover legacy team-routing snapshots, explicit task-role gating, target-directory copy semantics, and host-platform temporary-path enforcement.
 
+CI release-gate hardening also retains strict local timing limits while bounding GitHub-hosted process startup and filesystem scheduler noise.
+
 The final release head is bound to the current exact protected repository owner through the base-owned generated-artifact authorization workflow.
 
 ### Install / Update
