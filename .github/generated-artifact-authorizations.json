@@ -13520,13 +13520,13 @@
     {
       "pullNumber": 3912,
       "targetRef": "main",
-      "mergeBaseSha": "5efd21e099e9e71c6c942dcffb167af31ceaa09c",
-      "headSha": "8a3eef3730cb87b2d882c9d30c63ccca1c6746c9",
+      "mergeBaseSha": "8b6b9f23c1b53785a53ca156f6cc9c264a952306",
+      "headSha": "7e4e17d4023568bf7874b8d203318b5c50e0e09a",
       "owner": "Yeachan-Heo",
       "expiresAt": "2026-09-29T00:00:00.000Z",
       "generatedDelta": {
         "count": 36,
-        "sha256": "88e136fe03b321475946776b4e386429eca26d3c6158e67d9511383d849d88dd"
+        "sha256": "41f46a7ecfe4bda9b0046f04ee3db1fa1d0fbcb528db9232488811a1d04028c3"
       },
       "generatedFiles": [
         {
@@ -13712,7 +13712,7 @@
         {
           "status": "modified",
           "filename": "dist/team/scaling.js",
-          "sha": "0845db37100c14a3ce6bcd832658a46395867633",
+          "sha": "3a8e227929da88eb449ac84e0b59029eb14e3f90",
           "previousFilename": null
         },
         {
