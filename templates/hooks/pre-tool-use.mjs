@@ -629,9 +629,9 @@ function splitSimpleCommands(line) {
   parts.push({ start, end: line.length, text: line.slice(start) });
   return parts;
 }
-function owningCommand(line, pos) {
-  const parts = splitSimpleCommands(line);
-  return parts.find(part => pos >= part.start && pos < part.end)?.text ?? line;
+function owningPart(line, pos) {
+  return splitSimpleCommands(line).find(part => pos >= part.start && pos < part.end)
+    ?? { start: 0, end: line.length, text: line };
 }
 function heredocSections(command) {
   const lines = String(command || '').split('\n'); const sections = [];
@@ -641,11 +641,11 @@ function heredocSections(command) {
     const consumed = consumeHeredocBodies(lines, i, markers);
     const stdinByOwner = new Map();
     for (const item of consumed.bodies) {
-      const owner = owningCommand(commandLine, item.pos);
-      if (item.fd === 0) stdinByOwner.set(owner, item);
-      else sections.push({ commandLine: owner, body: item.body, fd: item.fd });
+      const owner = owningPart(commandLine, item.pos);
+      if (item.fd === 0) stdinByOwner.set(owner.start, { item, text: owner.text });
+      else sections.push({ commandLine: owner.text, body: item.body, fd: item.fd });
     }
-    for (const [owner, item] of stdinByOwner) sections.push({ commandLine: owner, body: item.body, fd: 0 });
+    for (const { item, text } of stdinByOwner.values()) sections.push({ commandLine: text, body: item.body, fd: 0 });
     i = consumed.end;
   }
   return sections;
@@ -843,6 +843,18 @@ function shellReadsStdinProgram(segment) {
   }
   return true;
 }
+function expandPrintfEscapes(text) {
+  let out = '';
+  for (let p = 0; p < text.length; p += 1) {
+    if (text[p] === '\\' && p + 1 < text.length) {
+      const n = text[p + 1];
+      out += n === 'n' ? '\n' : n === 't' ? '\t' : n;
+      p += 1; continue;
+    }
+    out += text[p];
+  }
+  return out;
+}
 function renderPrintf(args) {
   if (args.length === 0) return null;
   let i = 0;
@@ -850,24 +862,35 @@ function renderPrintf(args) {
   else if (args[i]?.startsWith('-') && args[i] !== '-') return null;
   if (i >= args.length) return '';
   const format = args[i++];
+  const rest = args.slice(i);
+  const conversions = /%[sb]/.test(format.replace(/%%/g, ''));
+  if (!conversions) return expandPrintfEscapes(format);
   let out = '';
-  for (let p = 0; p < format.length; p += 1) {
-    const ch = format[p];
-    if (ch === '\\' && p + 1 < format.length) {
-      const n = format[p + 1];
-      out += n === 'n' ? '\n' : n === 't' ? '\t' : n;
-      p += 1; continue;
-    }
-    if (ch === '%' && p + 1 < format.length) {
-      const n = format[p + 1];
-      if (n === '%') { out += '%'; p += 1; continue; }
-      if (n === 's' || n === 'b') {
-        if (i >= args.length) return null;
-        out += args[i++]; p += 1; continue;
+  let ai = 0;
+  let passes = 0;
+  while ((ai < rest.length || passes === 0) && passes < 256) {
+    passes += 1;
+    const start = ai;
+    for (let p = 0; p < format.length; p += 1) {
+      const ch = format[p];
+      if (ch === '\\' && p + 1 < format.length) {
+        const n = format[p + 1];
+        out += n === 'n' ? '\n' : n === 't' ? '\t' : n;
+        p += 1; continue;
       }
-      return null;
+      if (ch === '%' && p + 1 < format.length) {
+        const n = format[p + 1];
+        if (n === '%') { out += '%'; p += 1; continue; }
+        if (n === 's' || n === 'b') {
+          const value = ai < rest.length ? rest[ai++] : '';
+          out += n === 'b' ? expandPrintfEscapes(value) : value;
+          p += 1; continue;
+        }
+        return null;
+      }
+      out += ch;
     }
-    out += ch;
+    if (ai === start) break;
   }
   return out;
 }
