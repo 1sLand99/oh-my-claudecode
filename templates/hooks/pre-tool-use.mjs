@@ -846,12 +846,27 @@ function shellReadsStdinProgram(segment) {
 function expandPrintfEscapes(text) {
   let out = '';
   for (let p = 0; p < text.length; p += 1) {
-    if (text[p] === '\\' && p + 1 < text.length) {
-      const n = text[p + 1];
-      out += n === 'n' ? '\n' : n === 't' ? '\t' : n;
-      p += 1; continue;
+    if (text[p] !== '\\' || p + 1 >= text.length) { out += text[p]; continue; }
+    const n = text[p + 1];
+    if (n === 'c') break;
+    if (n === 'n') { out += '\n'; p += 1; continue; }
+    if (n === 't') { out += '\t'; p += 1; continue; }
+    if (n === 'x') {
+      let hex = '';
+      let q = p + 2;
+      while (q < text.length && hex.length < 2 && /[0-9a-fA-F]/.test(text[q])) hex += text[q++];
+      if (!hex) { out += 'x'; p += 1; continue; }
+      out += String.fromCharCode(parseInt(hex, 16));
+      p = q - 1; continue;
     }
-    out += text[p];
+    if (n === '0') {
+      let oct = '';
+      let q = p + 2;
+      while (q < text.length && oct.length < 3 && /[0-7]/.test(text[q])) oct += text[q++];
+      out += String.fromCharCode(parseInt(oct || '0', 8));
+      p = q - 1; continue;
+    }
+    out += n; p += 1;
   }
   return out;
 }

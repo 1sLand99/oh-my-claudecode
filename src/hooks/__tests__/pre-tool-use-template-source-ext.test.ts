@@ -396,6 +396,8 @@ describe('pre-tool-use template source extension detection', () => {
       ['stdin heredoc is scoped to its command', "bash <<'ONE'; cat <<'TWO'\necho hacked > src/app.ts\nONE\ntrue\nTWO", true],
       ['printf format assembles pipeline stdin program', "printf 'echo x > %s\\n' src/app.ts | bash", true],
       ['printf %b expands argument escapes into a stdin program', "printf '%b' 'true\\necho x > src/app.ts\\n' | bash", true],
+      ['printf %b expands octal argument escapes into a stdin program', "printf '%b' 'true\\012echo x > src/app.ts\\012' | bash", true],
+      ['printf %b expands hex argument escapes into a stdin program', "printf '%b' 'true\\x0aecho x > src/app.ts\\x0a' | bash", true],
       ['printf reuses format for remaining stdin program args', "printf '%s\\n' true 'echo x > src/app.ts' | bash", true],
       ['duplicate-text stdin heredoc owners stay distinct', "bash <<'EOF';bash <<'EOF'\necho hacked > src/app.ts\nEOF\ntrue\nEOF", true],
       ['concatenated quoted heredoc word does not swallow following writes', "cat <<'1'23 > build.log\ndata\n123\necho hacked > src/app.ts\necho done", true],
