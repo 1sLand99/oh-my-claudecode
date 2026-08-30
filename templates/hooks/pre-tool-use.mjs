@@ -605,7 +605,11 @@ function heredocMarkers(line) {
         let k = j + 1;
         let closed = false;
         while (k < line.length) {
-          if (line[k] === '\\' && k + 1 < line.length) { inner += line[k + 1]; k += 2; continue; }
+          if (line[k] === '\\' && k + 1 < line.length) {
+            const n = line[k + 1];
+            inner += '$`"\\\n'.includes(n) ? n : `\\${n}`;
+            k += 2; continue;
+          }
           if (line[k] === '"') { closed = true; k += 1; break; }
           inner += line[k]; k += 1;
         }
@@ -746,13 +750,13 @@ function heredocSections(command) {
 }
 
 function tokenizeShell(command) {
-  const tokens = []; let value = ''; let dynamic = false; let ambiguous = false; let nested = []; let quote = null; let adjacent = false;
+  const tokens = []; let value = ''; let dynamic = false; let ambiguous = false; let nested = []; let quote = null; let adjacent = false; let quoted = false;
   const flush = () => {
     if (value || dynamic || quote) {
-      tokens.push({ type: 'word', value, dynamic, ambiguous, nested, glued: adjacent });
+      tokens.push({ type: 'word', value, dynamic, ambiguous, nested, glued: adjacent, quoted });
       adjacent = true;
     }
-    value = ''; dynamic = false; ambiguous = false; nested = [];
+    value = ''; dynamic = false; ambiguous = false; nested = []; quoted = false;
   };
   const op = (value, kind) => { flush(); tokens.push({ type: 'op', value, kind, glued: adjacent }); adjacent = true; };
   const text = stripHeredocBodies(command);
@@ -767,8 +771,8 @@ function tokenizeShell(command) {
       if (ch === '$') { value += ch; dynamic = true; i += 1; continue; }
       value += ch; i += 1; continue;
     }
-    if (ch === "'") { quote = "'"; i += 1; continue; }
-    if (ch === '"') { quote = '"'; i += 1; continue; }
+    if (ch === "'") { quote = "'"; quoted = true; i += 1; continue; }
+    if (ch === '"') { quote = '"'; quoted = true; i += 1; continue; }
     if (ch === '\\') { if (i + 1 < text.length) value += text[i + 1]; i += 2; continue; }
     if (ch === '#' && value === '') { while (i < text.length && text[i] !== '\n') i += 1; continue; }
     if (ch === '\n') { op(';', 'sep'); adjacent = false; i += 1; continue; }
@@ -817,7 +821,7 @@ function wordsFor(segment, targets) { return segment.map((token, index) => ({ to
 function redirectIoIndices(segment) {
   const out = new Set();
   for (let i = 1; i < segment.length; i += 1) {
-    if (segment[i].type === 'op' && (segment[i].kind === 'in' || segment[i].kind === 'out') && segment[i].glued && segment[i - 1].type === 'word' && /^\d+$/.test(segment[i - 1].value)) out.add(i - 1);
+    if (segment[i].type === 'op' && (segment[i].kind === 'in' || segment[i].kind === 'out') && segment[i].value !== '&>' && segment[i].glued && segment[i - 1].type === 'word' && !segment[i - 1].quoted && /^\d+$/.test(segment[i - 1].value)) out.add(i - 1);
   }
   return out;
 }
@@ -943,11 +947,27 @@ function mvOperands(tokens) {
   }
   return operands;
 }
+function stdoutRedirected(stage) {
+  for (let i = 0; i < stage.length; i += 1) {
+    const token = stage[i];
+    if (token.type !== 'op' || token.kind !== 'out') continue;
+    if (token.value === '&>') return true;
+    const prev = stage[i - 1];
+    const io = token.glued && prev?.type === 'word' && !prev.quoted && /^\d+$/.test(prev.value) ? Number(prev.value) : 1;
+    if (token.value === '>&' && io !== 1) {
+      const target = stage[i + 1];
+      if (target?.type === 'word' && /^\d+$/.test(target.value)) continue;
+      return true;
+    }
+    if (io === 1) return true;
+  }
+  return false;
+}
 function isPassthroughStage(stage) {
   const words = commandWords(stage);
   const cmd = executable(words);
   if (cmd?.base !== 'cat') return false;
-  if (stage.some(token => token.type === 'op' && token.kind === 'out')) return false;
+  if (stdoutRedirected(stage)) return false;
   const operands = argsAfter(words, cmd.index);
   return operands.length === 0 && !operands.some(token => token.dynamic);
 }
@@ -1007,7 +1027,7 @@ function expandPrintfEscapes(text, { stop = false } = {}) {
       out += String.fromCodePoint(parseInt(text.slice(p + 2, p + 10), 16));
       p += 9; continue;
     }
-    out += n; p += 1;
+    out += `\\${n}`; p += 1;
   }
   return { text: out, stop: false };
 }
@@ -1032,13 +1052,14 @@ function parsePrintfConversion(format, p) {
   if (spec === 's' || spec === 'b') return { end: q + 1, kind: spec, stars, precision };
   return { end: q, kind: null, stars: 0, precision: null };
 }
-function renderPrintf(args) {
+function renderPrintf(args, { gnu = false } = {}) {
   if (args.length === 0) return null;
   let i = 0;
   if (args[i] === '--') i += 1;
   else if (args[i]?.startsWith('-') && args[i] !== '-') return null;
   if (i >= args.length) return '';
-  const formatExp = expandPrintfEscapes(args[i++]);
+  const formatExp = expandPrintfEscapes(args[i++], { stop: gnu });
+  if (formatExp.stop) return formatExp.text;
   const format = formatExp.text;
   const rest = args.slice(i);
   let out = '';
@@ -1097,7 +1118,7 @@ function checkPipelineProducer(stage, directory, command) {
       }
       args.push(value);
     }
-    const program = cmd.base === 'printf' ? renderPrintf(args) : args.join('\n');
+    const program = cmd.base === 'printf' ? renderPrintf(args, { gnu: words[cmd.index].token.value.includes('/') }) : args.join('\n');
     if (program === null) return true;
     return program.length > 0 && Boolean(checkBashCommand(program, directory));
   }
