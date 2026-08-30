@@ -15,6 +15,8 @@ v5.1.0 is the minor release from the published v5.0.2 baseline through the exact
 
 Release validation covers exact-head version consistency, metadata/projection/inventory verification, focused changed-feature tests, lint, typecheck, the full test suite, build, plugin shipping verification, package pack/install/CLI version smoke, upgrade validation, and protected GitHub checks. The release process must not treat any failing or unavailable validation as passing evidence.
 
+Exact-head review fixes cover legacy team-routing snapshots, explicit task-role gating, target-directory copy semantics, and host-platform temporary-path enforcement.
+
 The final release head is bound to the current exact protected repository owner through the base-owned generated-artifact authorization workflow.
 
 ### Install / Update
