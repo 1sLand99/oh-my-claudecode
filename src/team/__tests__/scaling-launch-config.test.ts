@@ -309,6 +309,32 @@ describe('scaleUp launch config', () => {
     );
   });
 
+  it('preserves Claude model environment when external defaults are empty', async () => {
+    modelContractMocks.resolveDefaultWorkerModel.mockReturnValue('claude-env-model');
+    modelContractMocks.buildWorkerArgv.mockReturnValue(['/usr/bin/claude', '--model', 'claude-env-model']);
+    config = makeConfig({ external_models_defaults: {} });
+    const env = {
+      OMC_TEAM_SCALING_ENABLED: '1',
+      ANTHROPIC_MODEL: 'claude-env-model',
+    } as NodeJS.ProcessEnv;
+
+    const result = await scaleUp(
+      'demo-team',
+      1,
+      'claude',
+      [{ subject: 'demo', description: 'demo task' }],
+      cwd,
+      env,
+    );
+
+    expect(result).toMatchObject({ ok: true });
+    expect(modelContractMocks.resolveDefaultWorkerModel).toHaveBeenCalledWith('claude', env, {});
+    expect(modelContractMocks.buildWorkerArgv).toHaveBeenCalledWith(
+      'claude',
+      expect.objectContaining({ model: 'claude-env-model' }),
+    );
+  });
+
   it('does not apply the implicit Claude snapshot to an explicitly typed external worker', async () => {
     modelContractMocks.resolveDefaultWorkerModel.mockReturnValue('codex-config-model');
     modelContractMocks.buildWorkerArgv.mockReturnValue(['/usr/bin/codex', '--model', 'codex-config-model']);

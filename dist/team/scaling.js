@@ -470,7 +470,6 @@ export async function scaleUpOwned(teamName, count, agentType, tasks, cwd, env =
                 const hasLegacyConfiguredRoute = config.resolved_routing_roles === undefined && resolvedRoute !== undefined;
                 const hasConfiguredRoute = canonical !== null
                     && (config.resolved_routing_roles?.includes(canonical) === true || hasLegacyConfiguredRoute);
-                const scaleEnv = config.external_models_defaults === undefined ? env : {};
                 const routedPair = canonical && hasExplicitOwnedRole && (hasConfiguredRoute || workerAgentType === 'claude')
                     ? resolvedRoute
                     : undefined;
@@ -482,12 +481,14 @@ export async function scaleUpOwned(teamName, count, agentType, tasks, cwd, env =
                         workerModel = primary.model;
                     }
                     if (!workerModel) {
-                        workerModel = resolveDefaultWorkerModel(workerAgentType, scaleEnv, config.external_models_defaults);
+                        const modelEnv = workerAgentType === 'claude' || config.external_models_defaults === undefined ? env : {};
+                        workerModel = resolveDefaultWorkerModel(workerAgentType, modelEnv, config.external_models_defaults);
                     }
                 }
                 else {
                     // Honor provider-specific default-model resolution for non-routed workers.
-                    workerModel = resolveDefaultWorkerModel(workerAgentType, scaleEnv, config.external_models_defaults);
+                    const modelEnv = workerAgentType === 'claude' || config.external_models_defaults === undefined ? env : {};
+                    workerModel = resolveDefaultWorkerModel(workerAgentType, modelEnv, config.external_models_defaults);
                 }
                 let launchBinary;
                 try {

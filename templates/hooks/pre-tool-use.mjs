@@ -568,6 +568,22 @@ function stripHeredocBodies(command) {
   return kept.join('\n');
 }
 
+function heredocSections(command) {
+  const lines = String(command || '').split('\n'); const sections = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const commandLine = lines[i]; const marker = heredocDelimiter(commandLine);
+    if (!marker) continue;
+    const body = [];
+    while (++i < lines.length) {
+      const candidate = marker.stripTabs ? lines[i].replace(/^\t+/, '') : lines[i];
+      if (candidate === marker.delimiter) break;
+      body.push(lines[i]);
+    }
+    sections.push({ commandLine, body: body.join('\n') });
+  }
+  return sections;
+}
+
 function tokenizeShell(command) {
   const tokens = []; let value = ''; let dynamic = false; let ambiguous = false; let nested = []; let quote = null;
   const flush = () => { if (value || dynamic || quote) tokens.push({ type: 'word', value, dynamic, ambiguous, nested }); value = ''; dynamic = false; ambiguous = false; nested = []; };
@@ -631,6 +647,7 @@ function consumeWrapper(words, index, base) {
     if (base === 'sudo' && /^(?:-u|-g|-h|-p|-C|-T|-r|-t)$/.test(value)) { if (!takeOptionValue()) return null; continue; }
     if (base === 'sudo' && /^(?:--user|--group|--host|--prompt|--close-from|--command-timeout|--role|--type)$/.test(value)) { if (!takeOptionValue()) return null; continue; }
     if (base === 'sudo' && /^(?:--user|--group|--host|--prompt|--close-from|--command-timeout|--role|--type)=/.test(value)) { i += 1; continue; }
+    if (base === 'sudo' && /^--preserve-env=/.test(value)) { i += 1; continue; }
     if (base === 'sudo' && /^(?:-A|-b|-E|-e|-H|-K|-k|-n|-P|-S|-V|-v|--askpass|--background|--preserve-env|--edit|--set-home|--remove-timestamp|--reset-timestamp|--non-interactive|--stdin|--validate)$/.test(value)) { i += 1; continue; }
     if (base === 'env' && /^(?:-u|--unset|-C|--chdir)$/.test(value)) { if (!takeOptionValue()) return null; continue; }
     if (base === 'env' && /^(?:--unset|--chdir)=/.test(value)) { i += 1; continue; }
@@ -683,6 +700,51 @@ function teeOperands(tokens) {
   }
   return operands;
 }
+function touchOperands(tokens) {
+  const operands = []; let optionsEnded = false;
+  for (let i = 0; i < tokens.length; i += 1) {
+    const token = tokens[i]; if (token.dynamic) return null;
+    if (!optionsEnded) {
+      if (token.value === '--') { optionsEnded = true; continue; }
+      if (/^(?:-r|--reference|-d|--date|-t)$/.test(token.value)) {
+        if (!tokens[i + 1] || tokens[i + 1].dynamic) return null;
+        i += 1; continue;
+      }
+      if (/^(?:--reference|--date|--time)=/.test(token.value)) continue;
+      if (token.value.startsWith('-') && token.value !== '-') continue;
+    }
+    operands.push(token);
+  }
+  return operands;
+}
+function copyInvocation(tokens, command) {
+  const operands = []; let optionsEnded = false; let target = null;
+  const valueOptions = command === 'cp'
+    ? new Set(['-S', '--suffix'])
+    : new Set(['-m', '--mode', '-o', '--owner', '-g', '--group', '--strip-program', '-S', '--suffix']);
+  for (let i = 0; i < tokens.length; i += 1) {
+    const token = tokens[i]; if (token.dynamic) return null;
+    if (!optionsEnded) {
+      if (token.value === '--') { optionsEnded = true; continue; }
+      if (token.value === '-t' || token.value === '--target-directory') {
+        if (!tokens[i + 1] || tokens[i + 1].dynamic) return null;
+        target = tokens[++i]; continue;
+      }
+      if (token.value.startsWith('--target-directory=')) {
+        target = { ...token, value: token.value.slice('--target-directory='.length) };
+        continue;
+      }
+      if (valueOptions.has(token.value)) {
+        if (!tokens[i + 1] || tokens[i + 1].dynamic) return null;
+        i += 1; continue;
+      }
+      if (/^(?:--suffix|--mode|--owner|--group|--strip-program|--backup)=/.test(token.value)) continue;
+      if (token.value.startsWith('-') && token.value !== '-') continue;
+    }
+    operands.push(token);
+  }
+  return { operands, target };
+}
 function checkSegment(segment, directory) {
   const targets = targetIndices(segment);
   for (let i = 0; i < segment.length; i += 1) {
@@ -719,48 +781,50 @@ function checkSegment(segment, directory) {
   if (cmd.base === 'eval') { const code = words.slice(cmd.index + 1); return code.some(entry => entry.token.dynamic) || (code.length > 0 && checkBashCommand(code.map(entry => entry.token.value).join(' '), directory)); }
   const args = argsAfter(words, cmd.index);
   if (cmd.base === 'tee') { const operands = teeOperands(words.slice(cmd.index + 1).map(entry => entry.token)); return !operands || operands.some(token => writeTarget(token, directory)); }
-  if (new Set(['rm', 'mv', 'touch', 'truncate']).has(cmd.base)) return args.some(token => writeTarget(token, directory));
+  if (new Set(['rm', 'mv', 'truncate']).has(cmd.base)) return args.some(token => writeTarget(token, directory));
+  if (cmd.base === 'touch') { const operands = touchOperands(words.slice(cmd.index + 1).map(entry => entry.token)); return !operands || operands.some(token => writeTarget(token, directory)); }
   if (cmd.base === 'cp' || cmd.base === 'install') {
     const rawArgs = words.slice(cmd.index + 1).map(entry => entry.token);
-    const targetDir = rawArgs.findIndex(token => token.value === '-t' || token.value === '--target-directory');
-    if (targetDir >= 0) {
-      const target = rawArgs[targetDir + 1];
-      if (!target || writeTarget(target, directory)) return true;
-      return rawArgs.slice(targetDir + 2)
-        .filter(token => token.value === '--' || !token.value.startsWith('-'))
-        .filter(token => token.value !== '--')
-        .some(source => writeTarget({ ...source, value: path.join(target.value, path.basename(source.value)) }, directory));
+    const invocation = copyInvocation(rawArgs, cmd.base); if (!invocation) return true;
+    if (invocation.target) {
+      if (writeTarget(invocation.target, directory)) return true;
+      return invocation.operands.some(source => writeTarget({ ...source, value: path.join(invocation.target.value, path.basename(source.value)) }, directory));
     }
-    const joinedTargetDir = rawArgs.find(token => token.value.startsWith('--target-directory='));
-    if (joinedTargetDir) {
-      const target = { ...joinedTargetDir, value: joinedTargetDir.value.slice('--target-directory='.length) };
-      if (writeTarget(target, directory)) return true;
-      return rawArgs
-        .filter(token => token !== joinedTargetDir && (token.value === '--' || !token.value.startsWith('-')))
-        .filter(token => token.value !== '--')
-        .some(source => writeTarget({ ...source, value: path.join(target.value, path.basename(source.value)) }, directory));
-    }
-    const destination = args.at(-1);
+    const destination = invocation.operands.at(-1);
     if (destination && !destination.dynamic && !destination.ambiguous) {
       const absoluteDestination = path.resolve(directory || process.cwd(), destination.value);
       let directoryDestination = destination.value.endsWith('/') || destination.value.endsWith('\\');
       try { directoryDestination ||= statSync(absoluteDestination).isDirectory(); } catch { /* missing destinations are handled as files */ }
       if (directoryDestination) {
-        return args.slice(0, -1).some(source => writeTarget({ ...source, value: path.join(destination.value, path.basename(source.value)) }, directory));
+        return invocation.operands.slice(0, -1).some(source => writeTarget({ ...source, value: path.join(destination.value, path.basename(source.value)) }, directory));
       }
     }
-    return writeTarget(args.at(-1), directory);
+    return writeTarget(destination, directory);
   }
   if (cmd.base === 'sed' || cmd.base === 'perl') {
     const commandArgs = words.slice(cmd.index + 1);
     if (commandArgs.some(entry => entry.token.dynamic)) return true;
-    const inPlace = commandArgs.some(entry => entry.token.value === '--in-place' || entry.token.value.startsWith('--in-place=') || /^-[^-]*[iI]/.test(entry.token.value));
+    const inPlace = commandArgs.some(entry => {
+      const value = entry.token.value;
+      if (value === '--in-place' || value.startsWith('--in-place=')) return true;
+      return cmd.base === 'perl' ? !value.startsWith('-I') && /^-[^-]*i/.test(value) : /^-[^-]*[iI]/.test(value);
+    });
     if (inPlace) return args.filter(token => !/^(?:s|y|tr)[/#]/.test(token.value)).some(token => writeTarget(token, directory));
   }
   return false;
 }
 
 function checkBashCommand(command, directory) {
+  for (const section of heredocSections(command)) {
+    const shellConsumer = splitSegments(tokenizeShell(section.commandLine)).some(segment => {
+      if (!segment.some(token => token.type === 'op' && token.value.startsWith('<<'))) return false;
+      const targets = targetIndices(segment); const cmd = executable(wordsFor(segment, targets));
+      return Boolean(cmd?.base && SHELL_COMMANDS.has(cmd.base));
+    });
+    if (shellConsumer && checkBashCommand(section.body, directory)) {
+      return `[DELEGATION NOTICE] Bash command may modify source files: ${summarizeCommand(command)}\n\nRecommended: Delegate to executor agent instead:\n  Task(subagent_type="oh-my-claudecode:executor", model="sonnet", prompt="...")\n\nThis is a soft warning. Operation will proceed.`;
+    }
+  }
   const offending = splitSegments(tokenizeShell(command)).find(segment => checkSegment(segment, directory));
 
   if (offending) {
