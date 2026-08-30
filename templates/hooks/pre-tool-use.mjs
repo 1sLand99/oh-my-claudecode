@@ -550,7 +550,10 @@ function heredocDelimiter(line) {
     if (ch === '#' && (i === 0 || /[\s;|&()]/.test(line[i - 1]))) return null;
     if (ch !== '<' || line[i + 1] !== '<') continue;
     const match = line.slice(i + 2).match(/^(-)?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\2/);
-    if (match) return { delimiter: match[3], stripTabs: Boolean(match[1]) };
+    if (match) {
+      const fdMatch = line.slice(0, i).match(/(\d+)$/);
+      return { delimiter: match[3], stripTabs: Boolean(match[1]), fd: fdMatch ? Number(fdMatch[1]) : 0 };
+    }
   }
   return null;
 }
@@ -579,7 +582,7 @@ function heredocSections(command) {
       if (candidate === marker.delimiter) break;
       body.push(lines[i]);
     }
-    sections.push({ commandLine, body: body.join('\n') });
+    sections.push({ commandLine, body: body.join('\n'), fd: marker.fd });
   }
   return sections;
 }
@@ -817,16 +820,27 @@ function checkSegment(segment, directory) {
 function checkBashCommand(command, directory) {
   for (const section of heredocSections(command)) {
     const shellConsumer = splitSegments(tokenizeShell(section.commandLine)).some(segment => {
+      if (section.fd !== 0) return false;
       if (!segment.some(token => token.type === 'op' && token.value.startsWith('<<'))) return false;
-      const targets = targetIndices(segment); const words = wordsFor(segment, targets); const cmd = executable(words);
+      const ioNumberIndices = new Set();
+      for (let i = 1; i < segment.length; i += 1) {
+        if (segment[i].type === 'op' && segment[i].value.startsWith('<<') && segment[i - 1].type === 'word' && /^\d+$/.test(segment[i - 1].value)) ioNumberIndices.add(i - 1);
+      }
+      const targets = targetIndices(segment); const words = wordsFor(segment, targets).filter(entry => !ioNumberIndices.has(entry.index)); const cmd = executable(words);
       if (!cmd?.base || !SHELL_COMMANDS.has(cmd.base)) return false;
       let forceStdin = false; let optionsEnded = false;
-      for (const entry of words.slice(cmd.index + 1)) {
+      const shellArgs = words.slice(cmd.index + 1);
+      for (let i = 0; i < shellArgs.length; i += 1) {
+        const entry = shellArgs[i];
         const token = entry.token; if (token.dynamic) return true;
         if (!optionsEnded && token.value === '--') { optionsEnded = true; continue; }
         if (!optionsEnded && token.value.startsWith('-') && token.value !== '-') {
           if (token.value === '--command' || /^-[^-]*c/.test(token.value)) return false;
           if (token.value === '--stdin' || /^-[^-]*s/.test(token.value)) forceStdin = true;
+          if (/^(?:--rcfile|--init-file|-O|-o)$/.test(token.value)) {
+            if (!shellArgs[i + 1]) return true;
+            i += 1;
+          }
           continue;
         }
         return forceStdin;
