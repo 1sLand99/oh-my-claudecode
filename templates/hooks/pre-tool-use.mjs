@@ -572,12 +572,16 @@ function heredocFd(prefix) {
 function heredocMarkers(line) {
   const markers = [];
   let quote = null;
+  let arith = 0;
   for (let i = 0; i < line.length - 1; i += 1) {
     const ch = line[i];
     if (quote) { if (ch === '\\') i += 1; else if (ch === quote) quote = null; continue; }
     if (ch === "'" || ch === '"') { quote = ch; continue; }
     if (ch === '\\') { i += 1; continue; }
     if (ch === '#' && (i === 0 || /[\s;|&()]/.test(line[i - 1]))) break;
+    if (ch === '(' && line[i + 1] === '(') { arith += 1; i += 1; continue; }
+    if (arith > 0 && ch === ')' && line[i + 1] === ')') { arith -= 1; i += 1; continue; }
+    if (arith > 0) continue;
     if (ch !== '<' || line[i + 1] !== '<') continue;
     if (line[i + 2] === '<') { i += 2; continue; }
     let j = i + 2;
@@ -589,11 +593,25 @@ function heredocMarkers(line) {
     const start = j;
     while (j < line.length && !/[\s;&|<>()]/.test(line[j])) {
       const q = line[j];
-      if (q === "'" || q === '"') {
-        const end = line.indexOf(q, j + 1);
+      if (q === "'") {
+        const end = line.indexOf("'", j + 1);
         if (end < 0) { delimiter = ''; break; }
         delimiter += line.slice(j + 1, end);
         j = end + 1;
+        continue;
+      }
+      if (q === '"') {
+        let inner = '';
+        let k = j + 1;
+        let closed = false;
+        while (k < line.length) {
+          if (line[k] === '\\' && k + 1 < line.length) { inner += line[k + 1]; k += 2; continue; }
+          if (line[k] === '"') { closed = true; k += 1; break; }
+          inner += line[k]; k += 1;
+        }
+        if (!closed) { delimiter = ''; break; }
+        delimiter += inner;
+        j = k;
         continue;
       }
       if (line[j] === '\\' && j + 1 < line.length) { delimiter += line[j + 1]; j += 2; continue; }
@@ -626,7 +644,6 @@ function stripHeredocBodies(command) {
     const markers = heredocMarkers(lines[i]); kept.push(lines[i]);
     if (!markers.length) continue;
     const consumed = consumeHeredocBodies(lines, i, markers);
-    for (const item of consumed.bodies) if (item.delimiterLine > i && item.delimiterLine < lines.length) kept.push(lines[item.delimiterLine]);
     i = consumed.end;
   }
   return kept.join('\n');
@@ -729,9 +746,15 @@ function heredocSections(command) {
 }
 
 function tokenizeShell(command) {
-  const tokens = []; let value = ''; let dynamic = false; let ambiguous = false; let nested = []; let quote = null;
-  const flush = () => { if (value || dynamic || quote) tokens.push({ type: 'word', value, dynamic, ambiguous, nested }); value = ''; dynamic = false; ambiguous = false; nested = []; };
-  const op = (value, kind) => { flush(); tokens.push({ type: 'op', value, kind }); };
+  const tokens = []; let value = ''; let dynamic = false; let ambiguous = false; let nested = []; let quote = null; let adjacent = false;
+  const flush = () => {
+    if (value || dynamic || quote) {
+      tokens.push({ type: 'word', value, dynamic, ambiguous, nested, glued: adjacent });
+      adjacent = true;
+    }
+    value = ''; dynamic = false; ambiguous = false; nested = [];
+  };
+  const op = (value, kind) => { flush(); tokens.push({ type: 'op', value, kind, glued: adjacent }); adjacent = true; };
   const text = stripHeredocBodies(command);
   for (let i = 0; i < text.length;) {
     const ch = text[i];
@@ -748,8 +771,8 @@ function tokenizeShell(command) {
     if (ch === '"') { quote = '"'; i += 1; continue; }
     if (ch === '\\') { if (i + 1 < text.length) value += text[i + 1]; i += 2; continue; }
     if (ch === '#' && value === '') { while (i < text.length && text[i] !== '\n') i += 1; continue; }
-    if (ch === '\n') { op(';', 'sep'); i += 1; continue; }
-    if (/\s/.test(ch)) { flush(); i += 1; continue; }
+    if (ch === '\n') { op(';', 'sep'); adjacent = false; i += 1; continue; }
+    if (/\s/.test(ch)) { flush(); adjacent = false; i += 1; continue; }
     if (ch === '$' && text[i + 1] === '(') { const g = shellGroup(text, i + 1); value += text.slice(i, g.end + 1); dynamic = true; nested.push(g.inner); i = g.end + 1; continue; }
     if ((ch === '<' || ch === '>') && text[i + 1] === '(') { const g = shellGroup(text, i + 1); value += text.slice(i, g.end + 1); dynamic = true; nested.push(g.inner); i = g.end + 1; continue; }
     if (ch === '`') { const end = text.indexOf('`', i + 1); value += text.slice(i, end < 0 ? text.length : end + 1); dynamic = true; if (end >= 0) nested.push(text.slice(i + 1, end)); i = end < 0 ? text.length : end + 1; continue; }
@@ -794,7 +817,7 @@ function wordsFor(segment, targets) { return segment.map((token, index) => ({ to
 function redirectIoIndices(segment) {
   const out = new Set();
   for (let i = 1; i < segment.length; i += 1) {
-    if (segment[i].type === 'op' && (segment[i].kind === 'in' || segment[i].kind === 'out') && segment[i - 1].type === 'word' && /^\d+$/.test(segment[i - 1].value)) out.add(i - 1);
+    if (segment[i].type === 'op' && (segment[i].kind === 'in' || segment[i].kind === 'out') && segment[i].glued && segment[i - 1].type === 'word' && /^\d+$/.test(segment[i - 1].value)) out.add(i - 1);
   }
   return out;
 }
@@ -923,7 +946,8 @@ function mvOperands(tokens) {
 function isPassthroughStage(stage) {
   const words = commandWords(stage);
   const cmd = executable(words);
-  if (!cmd?.base || !new Set(['cat', 'head', 'tail', 'tac']).has(cmd.base)) return false;
+  if (cmd?.base !== 'cat') return false;
+  if (stage.some(token => token.type === 'op' && token.kind === 'out')) return false;
   const operands = argsAfter(words, cmd.index);
   return operands.length === 0 && !operands.some(token => token.dynamic);
 }
@@ -949,12 +973,15 @@ function shellReadsStdinProgram(segment) {
   }
   return true;
 }
-function expandPrintfEscapes(text) {
+function expandPrintfEscapes(text, { stop = false } = {}) {
   let out = '';
   for (let p = 0; p < text.length; p += 1) {
     if (text[p] !== '\\' || p + 1 >= text.length) { out += text[p]; continue; }
     const n = text[p + 1];
-    if (n === 'c') return { text: out, stop: true };
+    if (n === 'c') {
+      if (stop) return { text: out, stop: true };
+      out += '\\c'; p += 1; continue;
+    }
     if (n === 'n') { out += '\n'; p += 1; continue; }
     if (n === 't') { out += '\t'; p += 1; continue; }
     if (n === 'x') {
@@ -1012,7 +1039,6 @@ function renderPrintf(args) {
   else if (args[i]?.startsWith('-') && args[i] !== '-') return null;
   if (i >= args.length) return '';
   const formatExp = expandPrintfEscapes(args[i++]);
-  if (formatExp.stop) return formatExp.text;
   const format = formatExp.text;
   const rest = args.slice(i);
   let out = '';
@@ -1032,7 +1058,7 @@ function renderPrintf(args) {
       let value = ai < rest.length ? rest[ai++] : '';
       consumed = true;
       if (conv.kind === 'b') {
-        const expanded = expandPrintfEscapes(value);
+        const expanded = expandPrintfEscapes(value, { stop: true });
         value = expanded.text;
         if (conv.precision !== null) {
           const prec = conv.precision === '*' ? Number(starArgs.shift()) : conv.precision;

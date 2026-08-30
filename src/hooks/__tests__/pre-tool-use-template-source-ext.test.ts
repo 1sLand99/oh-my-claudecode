@@ -372,6 +372,8 @@ describe('pre-tool-use template source extension detection', () => {
       ['later file redirect overrides fd0 heredoc', "bash <<'EOF' </dev/null\necho x > src/app.ts\nEOF", false],
       ['later here-string overrides fd0 heredoc', "bash <<'EOF' <<<'true'\necho x > src/app.ts\nEOF", false],
       ['printf %b \\c stops remaining format arguments', "printf '%b%s' 'true\\c' 'echo x > src/app.ts' | bash", false],
+      ['spaced IO number is a command not a redirect', '2 > build.log rm src/app.ts', false],
+      ['redirected cat is not a pipeline passthrough', "printf '%s\\n' 'echo x > src/app.ts' | cat > build.log | bash", false],
       ['named coprocess writing only a log', 'coproc worker bash verify.sh > results.log', false],
     ] as const)('stays quiet: %s', (_label, command, expectedWarning) => {
       expect(hasDelegationNotice(runPreToolUseHook(command))).toBe(expectedWarning);
@@ -417,6 +419,9 @@ describe('pre-tool-use template source extension detection', () => {
       ['concatenated quoted heredoc word does not swallow following writes', "cat <<'1'23 > build.log\ndata\n123\necho hacked > src/app.ts\necho done", true],
       ['pipeline stdin shell program source write', "printf '%s\\n' 'echo x > src/app.ts' | bash", true],
       ['leading IO number is not the executable', '2>/dev/null sed -i s/a/b/ src/app.ts', true],
+      ['arithmetic shift is not a heredoc', '(( x = 1 << 2 )); echo x > src/app.ts', true],
+      ['escaped quote in double-quoted heredoc delimiter', "cat <<\"E\\\"OF\" > build.log\ndata\nE\"OF\necho x > src/app.ts", true],
+      ['bash printf format \\\\c does not stop output', "printf 'true\\n\\cecho x > src/app.ts\\n' | bash", true],
       ['arg suffix is not a destination fd for stdin dup', "bash 4<<'EOF' -s arg3<&4\necho x > src/app.ts\nEOF", true],
       ['heredoc dup after a long preceding command', "printf '%s' 123456789012345678901234567890 > build.log; bash 3<<'EOF' 0<&3\necho x > src/app.ts\nEOF", true],
       ['literal program through an intermediary cat stage', "printf '%s\\n' 'echo x > src/app.ts' | cat | bash", true],
