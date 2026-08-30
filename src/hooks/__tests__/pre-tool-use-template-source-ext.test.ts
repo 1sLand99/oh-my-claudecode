@@ -360,8 +360,11 @@ describe('pre-tool-use template source extension detection', () => {
       ['tee supported option before dash-prefixed source', 'printf x | tee -a -- -generated.ts', true],
       ['tee ambiguous dynamic option', 'printf x | tee "$TEE_OPTION" build.log', true],
       ['compound source write', 'echo x > notes.txt; echo y > src/app.ts', true],
+      ['conditional reserved-word source write', 'if true; then sed -i s/a/b/ src/app.ts; fi', true],
+      ['loop reserved-word source write', 'while true; do rm src/app.ts; done', true],
       ['subshell source write', '(echo x > src/app.ts)', true],
       ['shell -c source write', "bash -c 'echo x > src/app.ts'", true],
+      ['shell -c option terminator source write', "bash -c -- 'echo x > src/app.ts'", true],
       ['shell -c dynamic code', 'bash -c "$CODE"', true],
       ['shell dynamic option before quoted code', "bash $FLAG 'echo x > src/app.ts'", true],
       ['dynamic shell executable', "$SHELL -c 'echo x > src/app.ts'", true],
@@ -375,6 +378,7 @@ describe('pre-tool-use template source extension detection', () => {
       ['process substitution output target', 'echo x > >(tee src/app.ts)', true],
       ['process substitution nested source write', 'cat < <(echo x > src/app.ts)', true],
       ['rm source target', 'rm -f src/app.ts', true],
+      ['rm dash-prefixed source after end-of-options', 'rm -- -generated.ts', true],
       ['mv source target', 'mv src/app.ts results.txt', true],
       ['cp source destination', 'cp src/input.txt src/app.ts', true],
       ['cp target-directory source operand', 'cp -t src generated.ts', true],
@@ -385,8 +389,10 @@ describe('pre-tool-use template source extension detection', () => {
       ['install dynamic joined target-directory', 'install --target-directory="$DEST" input.txt', true],
       ['install source destination', 'install src/input.txt src/app.ts', true],
       ['touch source target', 'touch src/app.ts', true],
+      ['touch dash-prefixed source after end-of-options', 'touch -- -generated.ts', true],
       ['truncate source target', 'truncate -s 0 src/app.ts', true],
       ['in-place sed source target', 'sed -i s/a/b/ src/app.ts', true],
+      ['in-place sed dash-prefixed source after end-of-options', 'sed -i s/a/b/ -- -generated.ts', true],
       ['in-place sed attached backup suffix', "sed -ibak 's/a/b/' src/app.ts", true],
       ['in-place sed dotted backup suffix', "sed -i.bak 's/a/b/' src/app.ts", true],
       ['in-place sed long backup suffix', "sed --in-place=bak 's/a/b/' src/app.ts", true],
@@ -405,6 +411,16 @@ describe('pre-tool-use template source extension detection', () => {
       ['commented heredoc marker cannot hide following mutation', ': # <<EOF\nrm src/app.ts', true],
     ] as const)('warns: %s', (_label, command, expectedWarning) => {
       expect(hasDelegationNotice(runPreToolUseHook(command))).toBe(expectedWarning);
+    });
+
+    it.each(['cp', 'install'])('warns when %s writes a source basename into an existing directory', command => {
+      const project = mkdtempSync(join(tmpdir(), `omc-${command}-directory-`));
+      mkdirSync(join(project, 'build'), { recursive: true });
+      try {
+        expect(hasDelegationNotice(runPreToolUseHook(`${command} src/input.ts build/`, project))).toBe(true);
+      } finally {
+        rmSync(project, { recursive: true, force: true });
+      }
     });
   });
 });

@@ -7,7 +7,7 @@
 
 import * as path from 'path';
 import { dirname } from 'path';
-import { existsSync, readdirSync, mkdirSync, writeFileSync, renameSync, readFileSync, realpathSync } from 'fs';
+import { existsSync, readdirSync, mkdirSync, writeFileSync, renameSync, readFileSync, realpathSync, statSync } from 'fs';
 import { execFileSync } from 'child_process';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { homedir, tmpdir } from 'os';
@@ -608,6 +608,7 @@ function tokenizeShell(command) {
 
 const COMMAND_WRAPPERS = new Set(['command', 'env', 'exec', 'nohup', 'nice', 'time', 'timeout', 'sudo']);
 const SHELL_COMMANDS = new Set(['sh', 'bash', 'dash', 'zsh', 'ksh', 'fish', 'ash']);
+const SHELL_RESERVED_WORDS = new Set(['if', 'then', 'elif', 'else', 'fi', 'while', 'until', 'for', 'do', 'done', 'case', 'esac', 'in', 'select', 'function', '{', '}', '!']);
 function shellBase(value) { const clean = String(value || '').replace(/\\/g, '/'); return clean.slice(clean.lastIndexOf('/') + 1).toLowerCase(); }
 function splitSegments(tokens) { const out = []; let segment = []; for (const token of tokens) { if (token.type === 'op' && token.kind === 'sep') { if (segment.length) out.push(segment); segment = []; } else segment.push(token); } if (segment.length) out.push(segment); return out; }
 function targetIndices(segment) { const out = new Set(); for (let i = 0; i < segment.length; i += 1) if (segment[i].type === 'op' && (segment[i].kind === 'in' || segment[i].kind === 'out') && segment[i + 1]?.type === 'word') out.add(i + 1); return out; }
@@ -650,13 +651,23 @@ function executable(words) {
     const token = words[i].token; if (token.dynamic) return { index: i, base: null };
     if (token.value.includes('=') && !token.value.startsWith('-')) { i += 1; continue; }
     const base = shellBase(token.value);
+    if (SHELL_RESERVED_WORDS.has(base)) { i += 1; continue; }
     if (!COMMAND_WRAPPERS.has(base)) return { index: i, base };
     const consumed = consumeWrapper(words, i, base); if (!consumed) return { index: i, base: null };
     i = consumed.index;
   }
   return null;
 }
-function argsAfter(words, start) { return words.slice(start + 1).map(entry => entry.token).filter(token => token.value !== '--' && !token.value.startsWith('-')); }
+function argsAfter(words, start) {
+  const args = []; let optionsEnded = false;
+  for (const entry of words.slice(start + 1)) {
+    const token = entry.token;
+    if (!optionsEnded && token.value === '--') { optionsEnded = true; continue; }
+    if (!optionsEnded && token.value.startsWith('-')) continue;
+    args.push(token);
+  }
+  return args;
+}
 function teeOperands(tokens) {
   const operands = []; let optionsEnded = false;
   for (const token of tokens) {
@@ -688,7 +699,11 @@ function checkSegment(segment, directory) {
     const shellArgs = words.slice(cmd.index + 1);
     if (shellArgs.some(entry => entry.token.dynamic)) return true;
     const flag = shellArgs.findIndex(entry => entry.token.value === '--command' || /^-[^-]*c/.test(entry.token.value));
-    if (flag >= 0) { const code = shellArgs[flag + 1]?.token; return !code || checkBashCommand(code.value, directory); }
+    if (flag >= 0) {
+      const codeIndex = shellArgs[flag + 1]?.token.value === '--' ? flag + 2 : flag + 1;
+      const code = shellArgs[codeIndex]?.token;
+      return !code || checkBashCommand(code.value, directory);
+    }
   }
   if (cmd.base === 'eval') { const code = words.slice(cmd.index + 1); return code.some(entry => entry.token.dynamic) || (code.length > 0 && checkBashCommand(code.map(entry => entry.token.value).join(' '), directory)); }
   const args = argsAfter(words, cmd.index);
@@ -702,6 +717,15 @@ function checkSegment(segment, directory) {
     if (joinedTargetDir) {
       const target = { ...joinedTargetDir, value: joinedTargetDir.value.slice('--target-directory='.length) };
       return writeTarget(target, directory) || args.some(token => writeTarget(token, directory));
+    }
+    const destination = args.at(-1);
+    if (destination && !destination.dynamic && !destination.ambiguous) {
+      const absoluteDestination = path.resolve(directory || process.cwd(), destination.value);
+      let directoryDestination = destination.value.endsWith('/') || destination.value.endsWith('\\');
+      try { directoryDestination ||= statSync(absoluteDestination).isDirectory(); } catch { /* missing destinations are handled as files */ }
+      if (directoryDestination) {
+        return args.slice(0, -1).some(source => writeTarget({ ...source, value: path.join(destination.value, path.basename(source.value)) }, directory));
+      }
     }
     return writeTarget(args.at(-1), directory);
   }
