@@ -818,8 +818,20 @@ function checkBashCommand(command, directory) {
   for (const section of heredocSections(command)) {
     const shellConsumer = splitSegments(tokenizeShell(section.commandLine)).some(segment => {
       if (!segment.some(token => token.type === 'op' && token.value.startsWith('<<'))) return false;
-      const targets = targetIndices(segment); const cmd = executable(wordsFor(segment, targets));
-      return Boolean(cmd?.base && SHELL_COMMANDS.has(cmd.base));
+      const targets = targetIndices(segment); const words = wordsFor(segment, targets); const cmd = executable(words);
+      if (!cmd?.base || !SHELL_COMMANDS.has(cmd.base)) return false;
+      let forceStdin = false; let optionsEnded = false;
+      for (const entry of words.slice(cmd.index + 1)) {
+        const token = entry.token; if (token.dynamic) return true;
+        if (!optionsEnded && token.value === '--') { optionsEnded = true; continue; }
+        if (!optionsEnded && token.value.startsWith('-') && token.value !== '-') {
+          if (token.value === '--command' || /^-[^-]*c/.test(token.value)) return false;
+          if (token.value === '--stdin' || /^-[^-]*s/.test(token.value)) forceStdin = true;
+          continue;
+        }
+        return forceStdin;
+      }
+      return true;
     });
     if (shellConsumer && checkBashCommand(section.body, directory)) {
       return `[DELEGATION NOTICE] Bash command may modify source files: ${summarizeCommand(command)}\n\nRecommended: Delegate to executor agent instead:\n  Task(subagent_type="oh-my-claudecode:executor", model="sonnet", prompt="...")\n\nThis is a soft warning. Operation will proceed.`;

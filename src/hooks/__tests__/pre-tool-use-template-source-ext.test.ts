@@ -352,6 +352,8 @@ describe('pre-tool-use template source extension detection', () => {
       ['read-only sed with -n', "sed -n -e 's/foo/bar/p' src/app.ts", false],
       ['comment containing redirect syntax', 'printf x > build.log # > src/app.ts', false],
       ['heredoc body containing redirect syntax', "cat <<'EOF' > build.log\n> src/app.ts\nEOF", false],
+      ['shell script heredoc is data, not a program', "bash verify.sh <<'EOF'\nrm src/app.ts\nEOF", false],
+      ['shell command-string heredoc is data, not a program', "bash -c 'cat >/dev/null' <<'EOF'\nrm src/app.ts\nEOF", false],
       ['named coprocess writing only a log', 'coproc worker bash verify.sh > results.log', false],
     ] as const)('stays quiet: %s', (_label, command, expectedWarning) => {
       expect(hasDelegationNotice(runPreToolUseHook(command))).toBe(expectedWarning);
@@ -376,6 +378,7 @@ describe('pre-tool-use template source extension detection', () => {
       ['subshell source write', '(echo x > src/app.ts)', true],
       ['shell -c source write', "bash -c 'echo x > src/app.ts'", true],
       ['shell heredoc program source write', "bash <<'EOF'\necho hacked > src/app.ts\nEOF", true],
+      ['explicit stdin shell heredoc source write', "bash -s <<'EOF'\necho hacked > src/app.ts\nEOF", true],
       ['shell -c option terminator source write', "bash -c -- 'echo x > src/app.ts'", true],
       ['shell -c dynamic code', 'bash -c "$CODE"', true],
       ['shell dynamic option before quoted code', "bash $FLAG 'echo x > src/app.ts'", true],
