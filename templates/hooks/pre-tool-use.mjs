@@ -870,42 +870,49 @@ function expandPrintfEscapes(text) {
   }
   return out;
 }
+function parsePrintfConversion(format, p) {
+  if (format[p + 1] === '%') return { end: p + 2, kind: '%', stars: 0 };
+  let q = p + 1;
+  while (q < format.length && /[-+ #0']/.test(format[q])) q += 1;
+  let stars = 0;
+  if (format[q] === '*') { stars += 1; q += 1; }
+  else while (q < format.length && /\d/.test(format[q])) q += 1;
+  if (format[q] === '.') {
+    q += 1;
+    if (format[q] === '*') { stars += 1; q += 1; }
+    else while (q < format.length && /\d/.test(format[q])) q += 1;
+  }
+  const spec = format[q];
+  if (spec === 's' || spec === 'b') return { end: q + 1, kind: spec, stars };
+  return { end: q, kind: null, stars: 0 };
+}
 function renderPrintf(args) {
   if (args.length === 0) return null;
   let i = 0;
   if (args[i] === '--') i += 1;
   else if (args[i]?.startsWith('-') && args[i] !== '-') return null;
   if (i >= args.length) return '';
-  const format = args[i++];
+  const format = expandPrintfEscapes(args[i++]);
   const rest = args.slice(i);
-  const conversions = /%[sb]/.test(format.replace(/%%/g, ''));
-  if (!conversions) return expandPrintfEscapes(format);
   let out = '';
   let ai = 0;
   let passes = 0;
   while ((ai < rest.length || passes === 0) && passes < 256) {
     passes += 1;
     const start = ai;
+    let consumed = false;
     for (let p = 0; p < format.length; p += 1) {
-      const ch = format[p];
-      if (ch === '\\' && p + 1 < format.length) {
-        const n = format[p + 1];
-        out += n === 'n' ? '\n' : n === 't' ? '\t' : n;
-        p += 1; continue;
-      }
-      if (ch === '%' && p + 1 < format.length) {
-        const n = format[p + 1];
-        if (n === '%') { out += '%'; p += 1; continue; }
-        if (n === 's' || n === 'b') {
-          const value = ai < rest.length ? rest[ai++] : '';
-          out += n === 'b' ? expandPrintfEscapes(value) : value;
-          p += 1; continue;
-        }
-        return null;
-      }
-      out += ch;
+      if (format[p] !== '%') { out += format[p]; continue; }
+      const conv = parsePrintfConversion(format, p);
+      if (conv.kind === null) return null;
+      if (conv.kind === '%') { out += '%'; p = conv.end - 1; continue; }
+      ai += conv.stars;
+      const value = ai < rest.length ? rest[ai++] : '';
+      consumed = true;
+      out += conv.kind === 'b' ? expandPrintfEscapes(value) : value;
+      p = conv.end - 1;
     }
-    if (ai === start) break;
+    if (!consumed || ai === start) break;
   }
   return out;
 }
