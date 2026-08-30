@@ -7,9 +7,10 @@
 
 import * as path from 'path';
 import { dirname } from 'path';
-import { existsSync, readdirSync, mkdirSync, writeFileSync, renameSync, readFileSync } from 'fs';
+import { existsSync, readdirSync, mkdirSync, writeFileSync, renameSync, readFileSync, realpathSync } from 'fs';
+import { execFileSync } from 'child_process';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { homedir } from 'os';
+import { homedir, tmpdir } from 'os';
 import { getClaudeConfigDir } from './lib/config-dir.mjs';
 import { isSkillVisibleToUser } from './lib/skill-entitlements.mjs';
 
@@ -380,12 +381,109 @@ const SOURCE_EXTENSIONS = new Set([
   '.sh', '.bash', '.zsh',
 ]);
 
-function isAllowedPath(filePath) {
+const TEMP_ROOTS = ['/tmp', '/private/tmp', '/var/tmp', '/private/var/tmp'];
+const TEMP_VARS = ['TMPDIR', 'TMP', 'TEMP'];
+const WINDOWS_TEMP = [/^[a-z]:\/windows\/temp(?:\/|$)/i, /^[a-z]:\/users\/[^/]+\/appdata\/local\/temp(?:\/|$)/i];
+
+function portablePath(value) {
+  const input = String(value || '').trim().replace(/\\/g, '/');
+  if (/^[a-z]:(?:\/|$)/i.test(input)) return `${input[0].toUpperCase()}:${path.posix.normalize(`/${input.slice(3)}`)}`;
+  const unc = input.match(/^\/\/([^/]+)\/([^/]+)(?:\/(.*))?$/);
+  if (unc) {
+    const rest = unc[3] ? path.posix.normalize(`/${unc[3]}`).slice(1) : '';
+    return `//${unc[1]}/${unc[2]}${rest ? `/${rest}` : ''}`;
+  }
+  return path.posix.normalize(input);
+}
+function absolutePortable(value) {
+  const clean = portablePath(value);
+  return clean.startsWith('/') || /^[a-z]:\//i.test(clean) ? clean : portablePath(path.resolve(value));
+}
+function isWindowsPath(value) { return /^([a-z]:\/|\/\/)/i.test(portablePath(value)); }
+function isAbsolutePath(value) { return portablePath(value).startsWith('/') || /^[a-z]:\//i.test(portablePath(value)); }
+function withinPath(target, root) {
+  const t = portablePath(target), r = portablePath(root);
+  if (!isAbsolutePath(t) || !isAbsolutePath(r)) return false;
+  const fold = isWindowsPath(t) || isWindowsPath(r);
+  const a = fold ? t.toLowerCase() : t, b = fold ? r.toLowerCase() : r;
+  return a === b || a.startsWith(b.endsWith('/') ? b : `${b}/`);
+}
+function canonicalPath(value) {
+  const clean = portablePath(value);
+  if (!isAbsolutePath(clean) || isWindowsPath(clean) !== (process.platform === 'win32')) return clean;
+  const raw = String(value); const parsed = path.parse(raw); const parts = raw.slice(parsed.root.length).split(path.sep);
+  let resolved = parsed.root;
+  for (let i = 0; i < parts.length; i += 1) {
+    const part = parts[i];
+    if (!part || part === '.') continue;
+    if (part === '..') { resolved = path.dirname(resolved); continue; }
+    const candidate = path.join(resolved, part);
+    try { resolved = realpathSync(candidate); }
+    catch { return portablePath(path.resolve(resolved, ...parts.slice(i))); }
+  }
+  return portablePath(resolved);
+}
+function nearestGitRoot(directory) {
+  let probe = canonicalPath(absolutePortable(directory));
+  if (!isAbsolutePath(probe) || isWindowsPath(probe) !== (process.platform === 'win32')) return null;
+  try {
+    const root = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      cwd: probe,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      windowsHide: true,
+      timeout: 5000,
+    }).trim();
+    if (root) return canonicalPath(root);
+  } catch { /* fall back to bounded ancestor probing */ }
+  while (true) {
+    if (existsSync(path.join(probe, '.git'))) return probe;
+    const parent = path.dirname(probe); if (parent === probe) return null; probe = parent;
+  }
+}
+function projectRoots(directory) {
+  const start = absolutePortable(directory || process.cwd()), git = nearestGitRoot(start);
+  return [...new Set([start, git].filter(Boolean))];
+}
+function hasGitAncestor(value) {
+  if (!isAbsolutePath(value) || isWindowsPath(value) !== (process.platform === 'win32')) return false;
+  let probe = path.dirname(canonicalPath(value));
+  while (true) {
+    try { if (existsSync(path.join(probe, '.git'))) return true; } catch { return true; }
+    const parent = path.dirname(probe); if (parent === probe) return false; probe = parent;
+  }
+}
+function approvedTempRoots() {
+  const roots = [...TEMP_ROOTS, ...TEMP_VARS.map(name => process.env[name]).filter(Boolean)];
+  try { roots.push(tmpdir()); } catch { /* use fixed roots */ }
+  return [...new Set(roots.map(portablePath).filter(value => isAbsolutePath(value) && value !== '/' && !/^[a-z]:\/$/i.test(value)))];
+}
+function isTempOrScratchpadPath(filePath, directory) {
+  const target = portablePath(filePath);
+  if (!filePath || !isAbsolutePath(target)) return false;
+  const canonical = canonicalPath(filePath), roots = projectRoots(directory);
+  if (roots.some(root => withinPath(target, root) || withinPath(canonical, canonicalPath(root))) || hasGitAncestor(canonical)) return false;
+  const temps = approvedTempRoots(), canonicalTemps = temps.map(canonicalPath);
+  const lexical = temps.some(root => withinPath(target, root)) || WINDOWS_TEMP.some(pattern => pattern.test(target));
+  const resolved = canonicalTemps.some(root => withinPath(canonical, root)) || WINDOWS_TEMP.some(pattern => pattern.test(canonical));
+  return lexical && resolved;
+}
+
+function isAllowedPath(filePath, directory) {
   if (!filePath) return true;
-  // Normalize path: convert backslashes, resolve . and .. segments, ensure forward slashes
-  const clean = path.normalize(filePath.replace(/\\/g, '/')).replace(/\\/g, '/');
+  const clean = portablePath(filePath);
   if (clean.startsWith('../') || clean === '..') return false;
-  return ALLOWED_PATH_PATTERNS.some(pattern => pattern.test(clean));
+  if (ALLOWED_PATH_PATTERNS.some(pattern => pattern.test(clean))) return true;
+  if (isTempOrScratchpadPath(filePath, directory)) return true;
+  if (isAbsolutePath(clean)) {
+    if (withinPath(clean, absolutePortable(getClaudeConfigDir()))) return true;
+    for (const root of projectRoots(directory)) {
+      if (!withinPath(clean, root)) continue;
+      const rel = clean.slice(portablePath(root).length).replace(/^\/+/, '');
+      return ALLOWED_PATH_PATTERNS.some(pattern => pattern.test(rel));
+    }
+  }
+  return false;
 }
 
 function isSourceFile(filePath) {
@@ -394,19 +492,6 @@ function isSourceFile(filePath) {
   return SOURCE_EXTENSIONS.has(ext);
 }
 
-// Patterns that indicate file modification in bash commands
-const FILE_MODIFY_PATTERNS = [
-  /sed\s+-i/,
-  />\s*[^&]/,
-  />>/,
-  /tee\s+/,
-  /cat\s+.*>\s*/,
-  /echo\s+.*>\s*/,
-  /printf\s+.*>\s*/,
-];
-
-// Source file pattern for command inspection
-const SOURCE_EXT_PATTERN = /\.(ts|tsx|js|jsx|mjs|cjs|py|pyw|go|rs|java|kt|scala|c|cpp|cc|h|hpp|rb|php|svelte|vue|graphql|gql|sh|bash|zsh)(?!\w)/i;
 const WORKER_BLOCKED_TMUX_PATTERN = /\btmux\s+(split-window|new-session|new-window|join-pane)\b/i;
 const WORKER_BLOCKED_TEAM_CLI_PATTERN = /\bom[cx]\s+team\b(?!\s+api\b)/i;
 const WORKER_BLOCKED_SKILL_PATTERN = /\$(team|autopilot|ralph)\b/i;
@@ -429,16 +514,6 @@ function workerCommandViolation(command) {
   return null;
 }
 
-// Redirects to /dev/* are not writes. The generic `>` rule already excludes
-// them, but the cat/echo/printf rules use an unanchored `.*>`, so a trailing
-// `2>/dev/null` on a read-only command satisfies them.
-const DEV_REDIRECT_PATTERN = /\d*>&?\s*\d*\s*\/dev\/(null|stderr|stdout)\b/g;
-const FD_DUP_PATTERN = /\d+>&\d+/g;
-
-// A pipeline is a sequence of independent commands. Only the segment that
-// performs the write can be the one touching a source file.
-const PIPELINE_SPLIT_PATTERN = /(?:&&|\|\||;|\|)/;
-
 // The notice stays in the transcript and is re-sent on every later turn, so a
 // heredoc or generated command would keep paying for its whole body.
 const NOTICE_COMMAND_MAX = 200;
@@ -450,19 +525,197 @@ function summarizeCommand(command) {
     : text;
 }
 
-function checkBashCommand(command) {
-  const probe = String(command || '')
-    .replace(DEV_REDIRECT_PATTERN, ' ')
-    .replace(FD_DUP_PATTERN, ' ');
+function shellGroup(text, openIndex) {
+  let depth = 0; let quote = null;
+  for (let i = openIndex; i < text.length; i += 1) {
+    const ch = text[i];
+    if (quote) { if (ch === '\\') i += 1; else if (ch === quote) quote = null; continue; }
+    if (ch === "'" || ch === '"') { quote = ch; continue; }
+    if (ch === '\\') { i += 1; continue; }
+    if (ch === '(') depth += 1;
+    else if (ch === ')' && --depth === 0) return { end: i, inner: text.slice(openIndex + 1, i) };
+  }
+  return { end: text.length - 1, inner: text.slice(openIndex + 1) };
+}
 
-  // The write and the source-file mention must land in the SAME segment,
-  // otherwise `echo hi > notes.txt; grep x app.ts` reads as a source edit.
-  const offending = probe
-    .split(PIPELINE_SPLIT_PATTERN)
-    .find(segment =>
-      FILE_MODIFY_PATTERNS.some(pattern => pattern.test(segment)) &&
-      SOURCE_EXT_PATTERN.test(segment)
-    );
+function heredocDelimiter(line) {
+  let quote = null;
+  for (let i = 0; i < line.length - 1; i += 1) {
+    const ch = line[i];
+    if (quote) { if (ch === '\\') i += 1; else if (ch === quote) quote = null; continue; }
+    if (ch === "'" || ch === '"') { quote = ch; continue; }
+    if (ch === '\\') { i += 1; continue; }
+    if (ch === '#' && (i === 0 || /[\s;|&()]/.test(line[i - 1]))) return null;
+    if (ch !== '<' || line[i + 1] !== '<') continue;
+    const match = line.slice(i + 2).match(/^(-)?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\2/);
+    if (match) return { delimiter: match[3], stripTabs: Boolean(match[1]) };
+  }
+  return null;
+}
+
+function stripHeredocBodies(command) {
+  const lines = String(command || '').split('\n'); const kept = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const marker = heredocDelimiter(lines[i]); kept.push(lines[i]);
+    if (!marker) continue;
+    while (++i < lines.length) {
+      const candidate = marker.stripTabs ? lines[i].replace(/^\t+/, '') : lines[i];
+      if (candidate === marker.delimiter) { kept.push(lines[i]); break; }
+    }
+  }
+  return kept.join('\n');
+}
+
+function tokenizeShell(command) {
+  const tokens = []; let value = ''; let dynamic = false; let ambiguous = false; let nested = []; let quote = null;
+  const flush = () => { if (value || dynamic || quote) tokens.push({ type: 'word', value, dynamic, ambiguous, nested }); value = ''; dynamic = false; ambiguous = false; nested = []; };
+  const op = (value, kind) => { flush(); tokens.push({ type: 'op', value, kind }); };
+  const text = stripHeredocBodies(command);
+  for (let i = 0; i < text.length;) {
+    const ch = text[i];
+    if (quote === "'") { if (ch === "'") quote = null; else value += ch; i += 1; continue; }
+    if (quote === '"') {
+      if (ch === '"') { quote = null; i += 1; continue; }
+      if (ch === '\\') { if (i + 1 < text.length) value += text[i + 1]; i += 2; continue; }
+      if (ch === '$' && text[i + 1] === '(') { const g = shellGroup(text, i + 1); value += text.slice(i, g.end + 1); dynamic = true; nested.push(g.inner); i = g.end + 1; continue; }
+      if (ch === '`') { const end = text.indexOf('`', i + 1); value += text.slice(i, end < 0 ? text.length : end + 1); dynamic = true; if (end >= 0) nested.push(text.slice(i + 1, end)); i = end < 0 ? text.length : end + 1; continue; }
+      if (ch === '$') { value += ch; dynamic = true; i += 1; continue; }
+      value += ch; i += 1; continue;
+    }
+    if (ch === "'") { quote = "'"; i += 1; continue; }
+    if (ch === '"') { quote = '"'; i += 1; continue; }
+    if (ch === '\\') { if (i + 1 < text.length) value += text[i + 1]; i += 2; continue; }
+    if (ch === '#' && value === '') { while (i < text.length && text[i] !== '\n') i += 1; continue; }
+    if (ch === '\n') { op(';', 'sep'); i += 1; continue; }
+    if (/\s/.test(ch)) { flush(); i += 1; continue; }
+    if (ch === '$' && text[i + 1] === '(') { const g = shellGroup(text, i + 1); value += text.slice(i, g.end + 1); dynamic = true; nested.push(g.inner); i = g.end + 1; continue; }
+    if ((ch === '<' || ch === '>') && text[i + 1] === '(') { const g = shellGroup(text, i + 1); value += text.slice(i, g.end + 1); dynamic = true; nested.push(g.inner); i = g.end + 1; continue; }
+    if (ch === '`') { const end = text.indexOf('`', i + 1); value += text.slice(i, end < 0 ? text.length : end + 1); dynamic = true; if (end >= 0) nested.push(text.slice(i + 1, end)); i = end < 0 ? text.length : end + 1; continue; }
+    if (ch === '$') { value += ch; dynamic = true; i += 1; continue; }
+    if ('*?[]{}'.includes(ch)) ambiguous = true;
+    const two = text.slice(i, i + 2), three = text.slice(i, i + 3);
+    if (three === '<<<') { op(three, 'in'); i += 3; }
+    else if (two === '>>' || two === '>&' || two === '&>' || two === '>|' || two === '<>') { op(two, 'out'); i += 2; }
+    else if (two === '<<' || two === '<&') { op(two, 'in'); i += 2; }
+    else if (two === '&&' || two === '||' || two === '|&') { op(two, 'sep'); i += 2; }
+    else if (ch === '>') { op(ch, 'out'); i += 1; }
+    else if (ch === '<') { op(ch, 'in'); i += 1; }
+    else if ('|;&()'.includes(ch)) { op(ch, 'sep'); i += 1; }
+    else { value += ch; i += 1; }
+  }
+  flush(); return tokens;
+}
+
+const COMMAND_WRAPPERS = new Set(['command', 'env', 'exec', 'nohup', 'nice', 'time', 'timeout', 'sudo']);
+const SHELL_COMMANDS = new Set(['sh', 'bash', 'dash', 'zsh', 'ksh', 'fish', 'ash']);
+function shellBase(value) { const clean = String(value || '').replace(/\\/g, '/'); return clean.slice(clean.lastIndexOf('/') + 1).toLowerCase(); }
+function splitSegments(tokens) { const out = []; let segment = []; for (const token of tokens) { if (token.type === 'op' && token.kind === 'sep') { if (segment.length) out.push(segment); segment = []; } else segment.push(token); } if (segment.length) out.push(segment); return out; }
+function targetIndices(segment) { const out = new Set(); for (let i = 0; i < segment.length; i += 1) if (segment[i].type === 'op' && (segment[i].kind === 'in' || segment[i].kind === 'out') && segment[i + 1]?.type === 'word') out.add(i + 1); return out; }
+function writeTarget(token, directory) { return !token || token.type !== 'word' || token.dynamic || token.ambiguous || !token.value || (isSourceFile(token.value) && !isAllowedPath(token.value, directory)); }
+function wordsFor(segment, targets) { return segment.map((token, index) => ({ token, index })).filter(entry => entry.token.type === 'word' && !targets.has(entry.index)); }
+function consumeWrapper(words, index, base) {
+  let i = index + 1;
+  const takeOptionValue = () => { if (!words[i + 1] || words[i + 1].token.dynamic) return false; i += 2; return true; };
+  while (i < words.length) {
+    const token = words[i].token; if (token.dynamic) return null;
+    const value = token.value;
+    if (value === '--') { i += 1; break; }
+    if (base === 'env' && value.includes('=') && !value.startsWith('-')) { i += 1; continue; }
+    if (!value.startsWith('-') || value === '-') break;
+    if (base === 'timeout' && /^(?:-k|--kill-after|-s|--signal)$/.test(value)) { if (!takeOptionValue()) return null; continue; }
+    if (base === 'timeout' && /^(?:--kill-after|--signal)=/.test(value)) { i += 1; continue; }
+    if (base === 'timeout' && /^(?:--foreground|--preserve-status|--verbose)$/.test(value)) { i += 1; continue; }
+    if (base === 'sudo' && /^(?:-u|-g|-h|-p|-C|-T|-r|-t)$/.test(value)) { if (!takeOptionValue()) return null; continue; }
+    if (base === 'sudo' && /^(?:--user|--group|--host|--prompt|--close-from|--command-timeout|--role|--type)$/.test(value)) { if (!takeOptionValue()) return null; continue; }
+    if (base === 'sudo' && /^(?:--user|--group|--host|--prompt|--close-from|--command-timeout|--role|--type)=/.test(value)) { i += 1; continue; }
+    if (base === 'sudo' && /^(?:-A|-b|-E|-e|-H|-K|-k|-n|-P|-S|-V|-v|--askpass|--background|--preserve-env|--edit|--set-home|--remove-timestamp|--reset-timestamp|--non-interactive|--stdin|--validate)$/.test(value)) { i += 1; continue; }
+    if (base === 'env' && /^(?:-u|--unset|-C|--chdir)$/.test(value)) { if (!takeOptionValue()) return null; continue; }
+    if (base === 'env' && /^(?:--unset|--chdir)=/.test(value)) { i += 1; continue; }
+    if (base === 'env' && /^(?:-i|--ignore-environment|-0|--null)$/.test(value)) { i += 1; continue; }
+    if (base === 'exec' && value === '-a') { if (!takeOptionValue()) return null; continue; }
+    if (base === 'exec' && /^(?:-c|-l)$/.test(value)) { i += 1; continue; }
+    if (base === 'nice' && /^(?:-n|--adjustment)$/.test(value)) { if (!takeOptionValue()) return null; continue; }
+    if (base === 'nice' && /^--adjustment=/.test(value)) { i += 1; continue; }
+    if (base === 'command' && /^(?:-p|-v|-V)$/.test(value)) { i += 1; continue; }
+    if (base === 'nohup' && /^(?:--help|--version)$/.test(value)) return { index: words.length, base: null };
+    if (base === 'time' && /^(?:-p|--portability)$/.test(value)) { i += 1; continue; }
+    return null;
+  }
+  if (base === 'timeout') { if (!words[i] || words[i].token.dynamic) return null; i += 1; }
+  return { index: i };
+}
+function executable(words) {
+  let i = 0;
+  while (i < words.length) {
+    const token = words[i].token; if (token.dynamic) return { index: i, base: null };
+    if (token.value.includes('=') && !token.value.startsWith('-')) { i += 1; continue; }
+    const base = shellBase(token.value);
+    if (!COMMAND_WRAPPERS.has(base)) return { index: i, base };
+    const consumed = consumeWrapper(words, i, base); if (!consumed) return { index: i, base: null };
+    i = consumed.index;
+  }
+  return null;
+}
+function argsAfter(words, start) { return words.slice(start + 1).map(entry => entry.token).filter(token => token.value !== '--' && !token.value.startsWith('-')); }
+function teeOperands(tokens) {
+  const operands = []; let optionsEnded = false;
+  for (const token of tokens) {
+    if (token.dynamic) return null;
+    if (!optionsEnded) {
+      if (token.value === '--') { optionsEnded = true; continue; }
+      if (/^-[aip]+$/.test(token.value) || /^(?:--append|--ignore-interrupts|--output-error(?:=.*)?|--help|--version)$/.test(token.value)) continue;
+      if (token.value.startsWith('-') && token.value !== '-') return null;
+    }
+    operands.push(token);
+  }
+  return operands;
+}
+function checkSegment(segment, directory) {
+  const targets = targetIndices(segment);
+  for (let i = 0; i < segment.length; i += 1) {
+    const token = segment[i]; if (token.type !== 'op' || token.kind !== 'out') continue;
+    const target = segment[i + 1]; if (token.value === '>&' && target?.type === 'word' && /^(?:\d+|-)$/.test(target.value)) continue;
+    if (writeTarget(target, directory)) return true;
+  }
+  for (const token of segment) {
+    if (token.type === 'word') {
+      for (const code of token.nested || []) if (checkBashCommand(code, directory)) return true;
+    }
+  }
+  const words = wordsFor(segment, targets);
+  const cmd = executable(words); if (!cmd) return false; if (!cmd.base) return true;
+  if (SHELL_COMMANDS.has(cmd.base)) {
+    const shellArgs = words.slice(cmd.index + 1);
+    if (shellArgs.some(entry => entry.token.dynamic)) return true;
+    const flag = shellArgs.findIndex(entry => entry.token.value === '--command' || /^-[^-]*c/.test(entry.token.value));
+    if (flag >= 0) { const code = shellArgs[flag + 1]?.token; return !code || checkBashCommand(code.value, directory); }
+  }
+  if (cmd.base === 'eval') { const code = words.slice(cmd.index + 1); return code.some(entry => entry.token.dynamic) || (code.length > 0 && checkBashCommand(code.map(entry => entry.token.value).join(' '), directory)); }
+  const args = argsAfter(words, cmd.index);
+  if (cmd.base === 'tee') { const operands = teeOperands(words.slice(cmd.index + 1).map(entry => entry.token)); return !operands || operands.some(token => writeTarget(token, directory)); }
+  if (new Set(['rm', 'mv', 'touch', 'truncate']).has(cmd.base)) return args.some(token => writeTarget(token, directory));
+  if (cmd.base === 'cp' || cmd.base === 'install') {
+    const rawArgs = words.slice(cmd.index + 1).map(entry => entry.token);
+    const targetDir = rawArgs.findIndex(token => token.value === '-t' || token.value === '--target-directory');
+    if (targetDir >= 0) return !rawArgs[targetDir + 1] || writeTarget(rawArgs[targetDir + 1], directory) || args.some(token => writeTarget(token, directory));
+    const joinedTargetDir = rawArgs.find(token => token.value.startsWith('--target-directory='));
+    if (joinedTargetDir) {
+      const target = { ...joinedTargetDir, value: joinedTargetDir.value.slice('--target-directory='.length) };
+      return writeTarget(target, directory) || args.some(token => writeTarget(token, directory));
+    }
+    return writeTarget(args.at(-1), directory);
+  }
+  if (cmd.base === 'sed' || cmd.base === 'perl') {
+    const commandArgs = words.slice(cmd.index + 1);
+    if (commandArgs.some(entry => entry.token.dynamic)) return true;
+    const inPlace = commandArgs.some(entry => entry.token.value === '--in-place' || entry.token.value.startsWith('--in-place=') || /^-[^-]*[iI]/.test(entry.token.value));
+    if (inPlace) return args.filter(token => !/^(?:s|y|tr)[/#]/.test(token.value)).some(token => writeTarget(token, directory));
+  }
+  return false;
+}
+
+function checkBashCommand(command, directory) {
+  const offending = splitSegments(tokenizeShell(command)).find(segment => checkSegment(segment, directory));
 
   if (offending) {
     return `[DELEGATION NOTICE] Bash command may modify source files: ${summarizeCommand(command)}
@@ -489,6 +742,7 @@ async function main() {
   // Extract tool name (handle both cases)
   const toolName = data.tool_name || data.toolName || '';
   const worker = teamWorkerIdentity();
+  const directory = data.cwd || data.directory || data.tool_input?.cwd || data.toolInput?.cwd || data.tool_input?.directory || data.toolInput?.directory || process.cwd();
 
   if (worker) {
     if (toolName === 'Task' || toolName === 'task') {
@@ -525,7 +779,7 @@ async function main() {
         return;
       }
     }
-    const warning = checkBashCommand(command);
+    const warning = checkBashCommand(command, directory);
     if (warning) {
       console.log(JSON.stringify({
         continue: true,
@@ -543,7 +797,6 @@ async function main() {
   // Skill-vs-agent guard: deny bundled Skill identifiers before Claude Code's
   // native Task/Agent boundary while leaving real agents untouched.
   if (toolName === 'Task' || toolName === 'Agent') {
-    const directory = data.cwd || data.directory || process.cwd();
     const toolInput = data.tool_input || data.toolInput || {};
     const skillAgentDeny = evaluateSkillAsAgentCall(toolName, toolInput, directory);
     if (skillAgentDeny) {
@@ -556,7 +809,6 @@ async function main() {
   // Writes skill-active-state.json so the persistent-mode Stop hook can
   // prevent premature session termination while a skill is executing.
   if (toolName === 'Skill' || toolName === 'skill') {
-    const directory = data.cwd || data.directory || process.cwd();
     const sessionId = data.sessionId || data.session_id || data.sessionid || '';
     const toolInput = data.tool_input || data.toolInput || {};
     const skillName = getInvokedSkillName(toolInput);
@@ -582,7 +834,7 @@ async function main() {
   }
 
   // Check if allowed path
-  if (isAllowedPath(filePath)) {
+  if (isAllowedPath(filePath, directory)) {
     console.log(JSON.stringify({ continue: true, suppressOutput: true }));
     return;
   }
