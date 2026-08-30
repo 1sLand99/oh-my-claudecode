@@ -344,6 +344,7 @@ describe('pre-tool-use template source extension detection', () => {
       ['read-only sed with -n', "sed -n -e 's/foo/bar/p' src/app.ts", false],
       ['comment containing redirect syntax', 'printf x > build.log # > src/app.ts', false],
       ['heredoc body containing redirect syntax', "cat <<'EOF' > build.log\n> src/app.ts\nEOF", false],
+      ['named coprocess writing only a log', 'coproc worker bash verify.sh > results.log', false],
     ] as const)('stays quiet: %s', (_label, command, expectedWarning) => {
       expect(hasDelegationNotice(runPreToolUseHook(command))).toBe(expectedWarning);
     });
@@ -363,6 +364,7 @@ describe('pre-tool-use template source extension detection', () => {
       ['conditional reserved-word source write', 'if true; then sed -i s/a/b/ src/app.ts; fi', true],
       ['loop reserved-word source write', 'while true; do rm src/app.ts; done', true],
       ['coprocess reserved-word source write', 'coproc rm -f src/app.ts', true],
+      ['named coprocess source write', 'coproc worker rm -f src/app.ts', true],
       ['subshell source write', '(echo x > src/app.ts)', true],
       ['shell -c source write', "bash -c 'echo x > src/app.ts'", true],
       ['shell -c option terminator source write', "bash -c -- 'echo x > src/app.ts'", true],

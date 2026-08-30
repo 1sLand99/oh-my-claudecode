@@ -694,6 +694,15 @@ function checkSegment(segment, directory) {
     }
   }
   const words = wordsFor(segment, targets);
+  if (words[0]?.token.value === 'coproc') {
+    const unnamed = segment.filter((_, index) => index !== words[0].index);
+    if (checkSegment(unnamed, directory)) return true;
+    if (words[1]) {
+      const named = segment.filter((_, index) => index !== words[0].index && index !== words[1].index);
+      if (checkSegment(named, directory)) return true;
+    }
+    return false;
+  }
   const cmd = executable(words); if (!cmd) return false; if (!cmd.base) return true;
   if (SHELL_COMMANDS.has(cmd.base)) {
     const shellArgs = words.slice(cmd.index + 1);
