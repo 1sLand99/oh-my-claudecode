@@ -355,6 +355,7 @@ describe('pre-tool-use template source extension detection', () => {
       ['shell script heredoc is data, not a program', "bash verify.sh <<'EOF'\nrm src/app.ts\nEOF", false],
       ['shell command-string heredoc is data, not a program', "bash -c 'cat >/dev/null' <<'EOF'\nrm src/app.ts\nEOF", false],
       ['non-stdin fd heredoc is data, not a program', "bash 3<<'EOF'\nrm src/app.ts\nEOF", false],
+      ['shell script operand ending in a digit keeps heredoc as data', "bash verify3<<'EOF'\nrm src/app.ts\nEOF", false],
       ['named coprocess writing only a log', 'coproc worker bash verify.sh > results.log', false],
     ] as const)('stays quiet: %s', (_label, command, expectedWarning) => {
       expect(hasDelegationNotice(runPreToolUseHook(command))).toBe(expectedWarning);
@@ -384,6 +385,7 @@ describe('pre-tool-use template source extension detection', () => {
       ['shell rcfile option still reads heredoc program', "bash --rcfile /tmp/rc <<'EOF'\necho hacked > src/app.ts\nEOF", true],
       ['shell shopt option still reads heredoc program', "bash -O extglob <<'EOF'\necho hacked > src/app.ts\nEOF", true],
       ['shell option value still reads heredoc program', "bash -o posix <<'EOF'\necho hacked > src/app.ts\nEOF", true],
+      ['shell stdin program with digit-suffixed argument still recurses', "bash -s arg3<<'EOF'\necho hacked > src/app.ts\nEOF", true],
       ['shell -c option terminator source write', "bash -c -- 'echo x > src/app.ts'", true],
       ['shell -c dynamic code', 'bash -c "$CODE"', true],
       ['shell dynamic option before quoted code', "bash $FLAG 'echo x > src/app.ts'", true],

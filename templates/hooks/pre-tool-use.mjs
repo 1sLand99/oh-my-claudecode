@@ -551,7 +551,7 @@ function heredocDelimiter(line) {
     if (ch !== '<' || line[i + 1] !== '<') continue;
     const match = line.slice(i + 2).match(/^(-)?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\2/);
     if (match) {
-      const fdMatch = line.slice(0, i).match(/(\d+)$/);
+      const fdMatch = line.slice(0, i).match(/(?:^|[\s;|&()])(\d+)$/);
       return { delimiter: match[3], stripTabs: Boolean(match[1]), fd: fdMatch ? Number(fdMatch[1]) : 0 };
     }
   }
