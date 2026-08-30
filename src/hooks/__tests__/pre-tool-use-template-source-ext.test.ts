@@ -383,6 +383,7 @@ describe('pre-tool-use template source extension detection', () => {
       ['unknown printf format escape keeps the backslash', "printf 'echo x \\> src/app.ts\\n' | bash", false],
       ['echo -- is data not end-of-options', "echo -- 'rm src/app.ts' | bash", false],
       ['single-quoted backslash does not hide a later data heredoc', "printf '%s' '\\' > build.log; cat <<EOF > build.log\necho x > src/app.ts\nEOF", false],
+      ['unrecognized echo option stays output data', 'echo -x rm src/app.ts | bash', false],
       ['named coprocess writing only a log', 'coproc worker bash verify.sh > results.log', false],
     ] as const)('stays quiet: %s', (_label, command, expectedWarning) => {
       expect(hasDelegationNotice(runPreToolUseHook(command))).toBe(expectedWarning);
@@ -439,6 +440,8 @@ describe('pre-tool-use template source extension detection', () => {
       ['literal program through an intermediary cat stage', "printf '%s\\n' 'echo x > src/app.ts' | cat | bash", true],
       ['echo pipeline stdin shell program source write', "echo 'echo x > src/app.ts' | bash", true],
       ['echo joins arguments with spaces for recursive scan', 'echo rm src/app.ts | bash', true],
+      ['ANSI-C apostrophe in command substitution still scans rm', "echo \"$(printf '%s' $'x\\')' \\'; rm src/app.ts)\" > build.log", true],
+      ['ANSI-C quoted text is not a heredoc marker', "printf '%s' $'x\\' <<EOF' \\' > build.log\nrm src/app.ts", true],
       ['explicit stdin pipeline shell program source write', "printf '%s\\n' 'echo x > src/app.ts' | bash -s", true],
       ['explicit stdin shell heredoc source write', "bash -s <<'EOF'\necho hacked > src/app.ts\nEOF", true],
       ['explicit fd zero shell heredoc source write', "bash 0<<'EOF'\necho hacked > src/app.ts\nEOF", true],

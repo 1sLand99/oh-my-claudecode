@@ -526,13 +526,32 @@ function summarizeCommand(command) {
     ? `${text.slice(0, NOTICE_COMMAND_MAX)}… (${text.length} chars)`
     : text;
 }
+function advanceQuote(quote, ch, next) {
+  if (quote === "$'") {
+    if (ch === '\\' && next !== undefined) return { quote, consume: 2 };
+    if (ch === "'") return { quote: null, consume: 1 };
+    return { quote, consume: 1 };
+  }
+  if (quote === "'") {
+    if (ch === "'") return { quote: null, consume: 1 };
+    return { quote, consume: 1 };
+  }
+  if (quote === '"') {
+    if (ch === '\\' && next !== undefined) return { quote, consume: 2 };
+    if (ch === '"') return { quote: null, consume: 1 };
+    return { quote, consume: 1 };
+  }
+  if (ch === '$' && next === "'") return { quote: "$'", consume: 2 };
+  if (ch === "'" || ch === '"') return { quote: ch, consume: 1 };
+  return null;
+}
 
 function shellGroup(text, openIndex) {
   let depth = 0; let quote = null;
   for (let i = openIndex; i < text.length; i += 1) {
     const ch = text[i];
-    if (quote) { if (ch === '\\' && quote !== "'") i += 1; else if (ch === quote) quote = null; continue; }
-    if (ch === "'" || ch === '"') { quote = ch; continue; }
+    const q = advanceQuote(quote, ch, text[i + 1]);
+    if (q) { quote = q.quote; i += q.consume - 1; continue; }
     if (ch === '\\') { i += 1; continue; }
     if (ch === '(') depth += 1;
     else if (ch === ')' && --depth === 0) return { end: i, inner: text.slice(openIndex + 1, i) };
@@ -547,12 +566,18 @@ function joinContinuedLines(text) {
   for (let i = 0; i < s.length; i += 1) {
     const ch = s[i];
     if (quote === "'") { if (ch === "'") quote = null; out += ch; continue; }
+    if (quote === "$'") {
+      if (ch === '\\' && i + 1 < s.length) { out += s[i] + s[i + 1]; i += 1; continue; }
+      if (ch === "'") quote = null;
+      out += ch; continue;
+    }
     if (quote === '"') {
       if (ch === '\\' && s[i + 1] === '\n') { i += 1; continue; }
       if (ch === '\\' && i + 1 < s.length) { out += ch + s[i + 1]; i += 1; continue; }
       if (ch === '"') quote = null;
       out += ch; continue;
     }
+    if (ch === '$' && s[i + 1] === "'") { quote = "$'"; out += ch + s[i + 1]; i += 1; continue; }
     if (ch === "'" || ch === '"') { quote = ch; out += ch; continue; }
     if (ch === '\\' && s[i + 1] === '\n') { i += 1; continue; }
     out += ch;
@@ -575,8 +600,8 @@ function heredocMarkers(line) {
   let arith = 0;
   for (let i = 0; i < line.length - 1; i += 1) {
     const ch = line[i];
-    if (quote) { if (ch === '\\' && quote !== "'") i += 1; else if (ch === quote) quote = null; continue; }
-    if (ch === "'" || ch === '"') { quote = ch; continue; }
+    const q = advanceQuote(quote, ch, line[i + 1]);
+    if (q) { quote = q.quote; i += q.consume - 1; continue; }
     if (ch === '\\') { i += 1; continue; }
     if (ch === '#' && (i === 0 || /[\s;|&()]/.test(line[i - 1]))) break;
     if (ch === '(' && line[i + 1] === '(') { arith += 1; i += 1; continue; }
@@ -656,8 +681,8 @@ function splitSimpleCommands(line) {
   const parts = []; let start = 0; let quote = null;
   for (let i = 0; i < line.length; i += 1) {
     const ch = line[i];
-    if (quote) { if (ch === '\\' && quote !== "'") i += 1; else if (ch === quote) quote = null; continue; }
-    if (ch === "'" || ch === '"') { quote = ch; continue; }
+    const q = advanceQuote(quote, ch, line[i + 1]);
+    if (q) { quote = q.quote; i += q.consume - 1; continue; }
     if (ch === '\\') { i += 1; continue; }
     const two = line.slice(i, i + 2);
     if (two === '&&' || two === '||' || two === '|&') {
@@ -679,8 +704,8 @@ function dupRedirects(line) {
   let quote = null;
   for (let i = 0; i < line.length - 1; i += 1) {
     const ch = line[i];
-    if (quote) { if (ch === '\\' && quote !== "'") i += 1; else if (ch === quote) quote = null; continue; }
-    if (ch === "'" || ch === '"') { quote = ch; continue; }
+    const q = advanceQuote(quote, ch, line[i + 1]);
+    if (q) { quote = q.quote; i += q.consume - 1; continue; }
     if (ch === '\\') { i += 1; continue; }
     if (ch !== '<' || line[i + 1] !== '&') continue;
     const prefix = line.slice(0, i);
@@ -696,8 +721,8 @@ function stdinOverrideRedirects(line) {
   let quote = null;
   for (let i = 0; i < line.length; i += 1) {
     const ch = line[i];
-    if (quote) { if (ch === '\\' && quote !== "'") i += 1; else if (ch === quote) quote = null; continue; }
-    if (ch === "'" || ch === '"') { quote = ch; continue; }
+    const q = advanceQuote(quote, ch, line[i + 1]);
+    if (q) { quote = q.quote; i += q.consume - 1; continue; }
     if (ch === '\\') { i += 1; continue; }
     const three = line.slice(i, i + 3);
     const two = line.slice(i, i + 2);
@@ -762,6 +787,11 @@ function tokenizeShell(command) {
   const text = stripHeredocBodies(command);
   for (let i = 0; i < text.length;) {
     const ch = text[i];
+    if (quote === "$'") {
+      if (ch === '\\' && i + 1 < text.length) { value += text[i + 1]; i += 2; continue; }
+      if (ch === "'") { quote = null; i += 1; continue; }
+      value += ch; i += 1; continue;
+    }
     if (quote === "'") { if (ch === "'") quote = null; else value += ch; i += 1; continue; }
     if (quote === '"') {
       if (ch === '"') { quote = null; i += 1; continue; }
@@ -771,6 +801,7 @@ function tokenizeShell(command) {
       if (ch === '$') { value += ch; dynamic = true; i += 1; continue; }
       value += ch; i += 1; continue;
     }
+    if (ch === '$' && text[i + 1] === "'") { quote = "$'"; quoted = true; i += 2; continue; }
     if (ch === "'") { quote = "'"; quoted = true; i += 1; continue; }
     if (ch === '"') { quote = '"'; quoted = true; i += 1; continue; }
     if (ch === '\\') { if (i + 1 < text.length) { value += text[i + 1]; escaped = true; } i += 2; continue; }
@@ -1115,7 +1146,8 @@ function checkPipelineProducer(stage, directory, command) {
         if (cmd.base === 'printf' && value.startsWith('-v')) {
           return false;
         }
-        if (value.startsWith('-') && value !== '-' && value !== '--') continue;
+        if (cmd.base === 'echo' && /^-[neE]+$/.test(value)) continue;
+        if (cmd.base === 'printf' && value.startsWith('-') && value !== '-' && value !== '--') continue;
         optionsEnded = true;
       }
       args.push(value);
