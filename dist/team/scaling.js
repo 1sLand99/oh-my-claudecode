@@ -14,14 +14,14 @@ import { mkdir, readFile, rm } from 'fs/promises';
 import { existsSync } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import { tmuxSpawn } from '../cli/tmux-utils.js';
-import { buildWorkerArgv, clearResolvedPathCache, getWorkerEnv as getModelWorkerEnv, resolveClaudeWorkerModel, assertHeadlessSupported, resolveValidatedBinaryPath, validateWorkerLaunchDescriptor, } from './model-contract.js';
+import { buildWorkerArgv, clearResolvedPathCache, getWorkerEnv as getModelWorkerEnv, resolveDefaultWorkerModel, assertHeadlessSupported, resolveValidatedBinaryPath, validateWorkerLaunchDescriptor, } from './model-contract.js';
 import { CANONICAL_TEAM_ROLES } from '../shared/types.js';
 import { normalizeDelegationRole } from '../features/delegation-routing/types.js';
 import { routeTaskToRole } from './role-router.js';
 import { teamReadConfig, teamWriteWorkerIdentity, teamReadWorkerStatus, teamAppendEvent, writeAtomic, } from './team-ops.js';
 import { withScalingLock, migrateTeamConfigRevision, readRevisionedTeamConfig, saveTeamConfigAtRevision } from './monitor.js';
 import { adoptWorkerPaneOwnership, sanitizeName, getWorkerLiveness, killOwnedWorkerPane, spawnOwnedWorkerInPane, waitForPaneReady, } from './tmux-session.js';
-import { TeamPaths, absPath } from './state-paths.js';
+import { TeamPaths, absPath, teamStateRoot as resolveTeamStateRoot } from './state-paths.js';
 import { writeWorkerOverlay } from './worker-bootstrap.js';
 import { ensureWorkerWorktree, installWorktreeRootAgents, prepareWorkerWorktreeForRemoval, removeWorkerWorktree, restoreWorktreeRootAgents, } from './git-worktree.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
@@ -231,7 +231,7 @@ export async function scaleUpOwned(teamName, count, agentType, tasks, cwd, env =
             const released = await releaseScaleUpReservation().catch(() => false);
             return { ok: false, error: released ? 'team_mutation_busy' : 'scale_up_fence_release_failed' };
         }
-        const teamStateRoot = config.team_state_root ?? `${leaderCwd}/.omc/state/team/${sanitized}`;
+        const teamStateRoot = config.team_state_root ?? resolveTeamStateRoot(leaderCwd, sanitized);
         const worktreeMode = config.worktree_mode ?? 'disabled';
         // Resolve the monotonic worker index counter
         let nextIndex = config.next_worker_index ?? (currentCount + 1);
@@ -466,7 +466,9 @@ export async function scaleUpOwned(teamName, count, agentType, tasks, cwd, env =
                 // from an explicit `task.role` (user opt-in). Pre-patch semantics: callers
                 // passing `--agent-type codex` stay on codex regardless of task text.
                 const hasExplicitOwnedRole = ownedRoles.length === 1;
-                const routedPair = hasExplicitOwnedRole && canonical
+                const hasConfiguredRoute = canonical !== null && config.resolved_routing_roles?.includes(canonical) === true;
+                const scaleEnv = config.external_models_defaults === undefined ? env : {};
+                const routedPair = canonical && (hasConfiguredRoute || (hasExplicitOwnedRole && workerAgentType === 'claude'))
                     ? config.resolved_routing?.[canonical]
                     : undefined;
                 if (routedPair) {
@@ -476,10 +478,13 @@ export async function scaleUpOwned(teamName, count, agentType, tasks, cwd, env =
                         workerAgentType = primaryProvider;
                         workerModel = primary.model;
                     }
+                    if (!workerModel) {
+                        workerModel = resolveDefaultWorkerModel(workerAgentType, scaleEnv, config.external_models_defaults);
+                    }
                 }
-                else if (cliAgentType === 'claude') {
-                    // Honor Bedrock/Vertex default-model resolution for non-routed claude workers.
-                    workerModel = resolveClaudeWorkerModel(env);
+                else {
+                    // Honor provider-specific default-model resolution for non-routed workers.
+                    workerModel = resolveDefaultWorkerModel(workerAgentType, scaleEnv, config.external_models_defaults);
                 }
                 let launchBinary;
                 try {

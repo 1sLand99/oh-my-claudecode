@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "a02c57610668e7298e75574dc219d405f411e8bc",
-    "sourceSha256": "5ea7e65cc0d308e4253e99e8031ba0352d9a130e6d8120030c65456821aaa055",
+    "head": "5bacbf808698ab299a7136fad342b3a9eb95a096",
+    "sourceSha256": "e15f897a64cd53482148fb09fc0a673f05a2e7935a6f828ee15592c122b6236b",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "a02c57610668e7298e75574dc219d405f411e8bc",
-  "sourceSha256": "5ea7e65cc0d308e4253e99e8031ba0352d9a130e6d8120030c65456821aaa055",
+  "head": "5bacbf808698ab299a7136fad342b3a9eb95a096",
+  "sourceSha256": "e15f897a64cd53482148fb09fc0a673f05a2e7935a6f828ee15592c122b6236b",
   "counts": {
     "public": {
       "skills": 35,
@@ -32,9 +32,9 @@
       "total": 1332
     },
     "generated": {
-      "distFiles": 4955,
+      "distFiles": 4981,
       "bridgeFiles": 9,
-      "total": 4964
+      "total": 4990
     },
     "prompt": {
       "promptLikeFiles": 62
@@ -2212,6 +2212,8 @@
       "dist/cli/commands/wait.d.ts.map",
       "dist/cli/commands/wait.js",
       "dist/cli/commands/wait.js.map",
+      "dist/cli/graph.d.ts",
+      "dist/cli/graph.js",
       "dist/cli/hud-watch.d.ts",
       "dist/cli/hud-watch.d.ts.map",
       "dist/cli/hud-watch.js",
@@ -2577,6 +2579,30 @@
       "dist/graph/index.d.ts.map",
       "dist/graph/index.js",
       "dist/graph/index.js.map",
+      "dist/graph/runtime/approval.d.ts",
+      "dist/graph/runtime/approval.js",
+      "dist/graph/runtime/executors/agent.d.ts",
+      "dist/graph/runtime/executors/agent.js",
+      "dist/graph/runtime/executors/authority.d.ts",
+      "dist/graph/runtime/executors/authority.js",
+      "dist/graph/runtime/executors/command.d.ts",
+      "dist/graph/runtime/executors/command.js",
+      "dist/graph/runtime/fence.d.ts",
+      "dist/graph/runtime/fence.js",
+      "dist/graph/runtime/journal.d.ts",
+      "dist/graph/runtime/journal.js",
+      "dist/graph/runtime/progress.d.ts",
+      "dist/graph/runtime/progress.js",
+      "dist/graph/runtime/run-dir.d.ts",
+      "dist/graph/runtime/run-dir.js",
+      "dist/graph/runtime/runner.d.ts",
+      "dist/graph/runtime/runner.js",
+      "dist/graph/runtime/safe-fs.d.ts",
+      "dist/graph/runtime/safe-fs.js",
+      "dist/graph/runtime/store.d.ts",
+      "dist/graph/runtime/store.js",
+      "dist/graph/runtime/types.d.ts",
+      "dist/graph/runtime/types.js",
       "dist/graph/scheduler.d.ts",
       "dist/graph/scheduler.d.ts.map",
       "dist/graph/scheduler.js",
@@ -14200,6 +14226,16 @@
         "path": "dist/cli/commands/wait.js.map"
       },
       {
+        "id": "dist/cli/graph.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/graph.d.ts"
+      },
+      {
+        "id": "dist/cli/graph.js",
+        "kind": "generated-dist",
+        "path": "dist/cli/graph.js"
+      },
+      {
         "id": "dist/cli/hud-watch.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/hud-watch.d.ts"
@@ -16023,6 +16059,126 @@
         "id": "dist/graph/index.js.map",
         "kind": "generated-dist",
         "path": "dist/graph/index.js.map"
+      },
+      {
+        "id": "dist/graph/runtime/approval.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/approval.d.ts"
+      },
+      {
+        "id": "dist/graph/runtime/approval.js",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/approval.js"
+      },
+      {
+        "id": "dist/graph/runtime/executors/agent.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/executors/agent.d.ts"
+      },
+      {
+        "id": "dist/graph/runtime/executors/agent.js",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/executors/agent.js"
+      },
+      {
+        "id": "dist/graph/runtime/executors/authority.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/executors/authority.d.ts"
+      },
+      {
+        "id": "dist/graph/runtime/executors/authority.js",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/executors/authority.js"
+      },
+      {
+        "id": "dist/graph/runtime/executors/command.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/executors/command.d.ts"
+      },
+      {
+        "id": "dist/graph/runtime/executors/command.js",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/executors/command.js"
+      },
+      {
+        "id": "dist/graph/runtime/fence.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/fence.d.ts"
+      },
+      {
+        "id": "dist/graph/runtime/fence.js",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/fence.js"
+      },
+      {
+        "id": "dist/graph/runtime/journal.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/journal.d.ts"
+      },
+      {
+        "id": "dist/graph/runtime/journal.js",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/journal.js"
+      },
+      {
+        "id": "dist/graph/runtime/progress.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/progress.d.ts"
+      },
+      {
+        "id": "dist/graph/runtime/progress.js",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/progress.js"
+      },
+      {
+        "id": "dist/graph/runtime/run-dir.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/run-dir.d.ts"
+      },
+      {
+        "id": "dist/graph/runtime/run-dir.js",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/run-dir.js"
+      },
+      {
+        "id": "dist/graph/runtime/runner.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/runner.d.ts"
+      },
+      {
+        "id": "dist/graph/runtime/runner.js",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/runner.js"
+      },
+      {
+        "id": "dist/graph/runtime/safe-fs.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/safe-fs.d.ts"
+      },
+      {
+        "id": "dist/graph/runtime/safe-fs.js",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/safe-fs.js"
+      },
+      {
+        "id": "dist/graph/runtime/store.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/store.d.ts"
+      },
+      {
+        "id": "dist/graph/runtime/store.js",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/store.js"
+      },
+      {
+        "id": "dist/graph/runtime/types.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/types.d.ts"
+      },
+      {
+        "id": "dist/graph/runtime/types.js",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/types.js"
       },
       {
         "id": "dist/graph/scheduler.d.ts",
@@ -76593,12 +76749,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6840,
+      "nodeCount": 6866,
       "edgeCount": 7222,
       "importEdgeCount": 5932,
       "registerEdgeCount": 56
     }
   },
   "inventorySha256": "f5ea9ebf29ba491f17b39431660e07f71eb3d78399d481c1c2b00fc34cf2ab50",
-  "manifestSha256": "ef67e39a9e99974251b2ce67056d9798eea44a05a9c932d9e9a8f4b23daf98a3"
+  "manifestSha256": "ce81384daa431e7fe24d0966ddbdf62dd1bcaf1291beb6ef6c68ad62bd8f669b"
 }
