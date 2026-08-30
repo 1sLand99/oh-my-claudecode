@@ -551,8 +551,19 @@ function heredocDelimiter(line) {
     if (ch !== '<' || line[i + 1] !== '<') continue;
     const match = line.slice(i + 2).match(/^(-)?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\2/);
     if (match) {
-      const fdMatch = line.slice(0, i).match(/(?:^|[\s;|&()])(\d+)$/);
-      return { delimiter: match[3], stripTabs: Boolean(match[1]), fd: fdMatch ? Number(fdMatch[1]) : 0 };
+      const prefix = line.slice(0, i);
+      const fdMatch = prefix.match(/(\d+)$/);
+      let fd = 0;
+      if (fdMatch) {
+        const boundary = prefix.length - fdMatch[1].length - 1;
+        if (boundary < 0) fd = Number(fdMatch[1]);
+        else if (/[\s;|&()]/.test(prefix[boundary])) {
+          let escapes = 0;
+          for (let j = boundary - 1; j >= 0 && prefix[j] === '\\'; j -= 1) escapes += 1;
+          if (escapes % 2 === 0) fd = Number(fdMatch[1]);
+        }
+      }
+      return { delimiter: match[3], stripTabs: Boolean(match[1]), fd };
     }
   }
   return null;
