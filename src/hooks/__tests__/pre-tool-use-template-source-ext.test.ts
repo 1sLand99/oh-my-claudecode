@@ -367,6 +367,10 @@ describe('pre-tool-use template source extension detection', () => {
       ['digit-prefixed unquoted heredoc is data', "cat <<123 > build.log\necho x > src/app.ts\n123", false],
       ['overridden first stdin heredoc is not the program', "bash <<'ONE' <<'TWO'\necho x > src/app.ts\nONE\ntrue\nTWO", false],
       ['concatenated quoted heredoc word stays data', "cat <<'1'23 > build.log\ndata\n123\necho done", false],
+      ['backslash-newline continues unquoted heredoc delimiter', "cat <<EO\\\nF > build.log\necho x > src/app.ts\nEOF", false],
+      ['later file redirect overrides fd0 heredoc', "bash <<'EOF' </dev/null\necho x > src/app.ts\nEOF", false],
+      ['later here-string overrides fd0 heredoc', "bash <<'EOF' <<<'true'\necho x > src/app.ts\nEOF", false],
+      ['printf %b \\c stops remaining format arguments', "printf '%b%s' 'true\\c' 'echo x > src/app.ts' | bash", false],
       ['named coprocess writing only a log', 'coproc worker bash verify.sh > results.log', false],
     ] as const)('stays quiet: %s', (_label, command, expectedWarning) => {
       expect(hasDelegationNotice(runPreToolUseHook(command))).toBe(expectedWarning);

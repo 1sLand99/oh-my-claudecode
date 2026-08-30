@@ -540,6 +540,25 @@ function shellGroup(text, openIndex) {
   return { end: text.length - 1, inner: text.slice(openIndex + 1) };
 }
 
+function joinContinuedLines(text) {
+  let out = '';
+  let quote = null;
+  const s = String(text || '');
+  for (let i = 0; i < s.length; i += 1) {
+    const ch = s[i];
+    if (quote === "'") { if (ch === "'") quote = null; out += ch; continue; }
+    if (quote === '"') {
+      if (ch === '\\' && s[i + 1] === '\n') { i += 1; continue; }
+      if (ch === '\\' && i + 1 < s.length) { out += ch + s[i + 1]; i += 1; continue; }
+      if (ch === '"') quote = null;
+      out += ch; continue;
+    }
+    if (ch === "'" || ch === '"') { quote = ch; out += ch; continue; }
+    if (ch === '\\' && s[i + 1] === '\n') { i += 1; continue; }
+    out += ch;
+  }
+  return out;
+}
 function heredocFd(prefix) {
   const fdMatch = prefix.match(/(\d+)$/);
   if (!fdMatch) return 0;
@@ -602,7 +621,7 @@ function consumeHeredocBodies(lines, start, markers) {
   return { bodies, end: i };
 }
 function stripHeredocBodies(command) {
-  const lines = String(command || '').split('\n'); const kept = [];
+  const lines = joinContinuedLines(command).split('\n'); const kept = [];
   for (let i = 0; i < lines.length; i += 1) {
     const markers = heredocMarkers(lines[i]); kept.push(lines[i]);
     if (!markers.length) continue;
@@ -652,20 +671,41 @@ function dupRedirects(line) {
   }
   return dups;
 }
+function stdinOverrideRedirects(line) {
+  const events = [];
+  let quote = null;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (quote) { if (ch === '\\' && quote !== "'") i += 1; else if (ch === quote) quote = null; continue; }
+    if (ch === "'" || ch === '"') { quote = ch; continue; }
+    if (ch === '\\') { i += 1; continue; }
+    const three = line.slice(i, i + 3);
+    const two = line.slice(i, i + 2);
+    if (three === '<<<') {
+      events.push({ pos: i, type: 'override', dest: heredocFd(line.slice(0, i)) });
+      i += 2; continue;
+    }
+    if (two === '<<' || two === '<&') { i += 1; continue; }
+    if (ch === '<') events.push({ pos: i, type: 'override', dest: heredocFd(line.slice(0, i)) });
+  }
+  return events;
+}
 function applyStdin(commandLine, bodies) {
   const events = [
     ...bodies.map(item => ({ pos: item.pos, type: 'heredoc', item })),
     ...dupRedirects(commandLine).map(dup => ({ ...dup, type: 'dup' })),
+    ...stdinOverrideRedirects(commandLine),
   ].sort((a, b) => a.pos - b.pos);
   const fds = new Map();
   for (const event of events) {
     if (event.type === 'heredoc') fds.set(event.item.fd, event.item);
-    else if (fds.has(event.src)) fds.set(event.dest, fds.get(event.src));
+    else if (event.type === 'dup' && fds.has(event.src)) fds.set(event.dest, fds.get(event.src));
+    else if (event.type === 'override') fds.set(event.dest, null);
   }
   return fds.get(0) || null;
 }
 function heredocSections(command) {
-  const lines = String(command || '').split('\n'); const sections = [];
+  const lines = joinContinuedLines(command).split('\n'); const sections = [];
   for (let i = 0; i < lines.length; i += 1) {
     const commandLine = lines[i]; const markers = heredocMarkers(commandLine);
     if (!markers.length) continue;
@@ -886,7 +926,7 @@ function expandPrintfEscapes(text) {
   for (let p = 0; p < text.length; p += 1) {
     if (text[p] !== '\\' || p + 1 >= text.length) { out += text[p]; continue; }
     const n = text[p + 1];
-    if (n === 'c') break;
+    if (n === 'c') return { text: out, stop: true };
     if (n === 'n') { out += '\n'; p += 1; continue; }
     if (n === 't') { out += '\t'; p += 1; continue; }
     if (n === 'x') {
@@ -914,7 +954,7 @@ function expandPrintfEscapes(text) {
     }
     out += n; p += 1;
   }
-  return out;
+  return { text: out, stop: false };
 }
 function parsePrintfConversion(format, p) {
   if (format[p + 1] === '%') return { end: p + 2, kind: '%', stars: 0, precision: null };
@@ -943,7 +983,9 @@ function renderPrintf(args) {
   if (args[i] === '--') i += 1;
   else if (args[i]?.startsWith('-') && args[i] !== '-') return null;
   if (i >= args.length) return '';
-  const format = expandPrintfEscapes(args[i++]);
+  const formatExp = expandPrintfEscapes(args[i++]);
+  if (formatExp.stop) return formatExp.text;
+  const format = formatExp.text;
   const rest = args.slice(i);
   let out = '';
   let ai = 0;
@@ -961,7 +1003,18 @@ function renderPrintf(args) {
       for (let s = 0; s < conv.stars; s += 1) starArgs.push(ai < rest.length ? rest[ai++] : '0');
       let value = ai < rest.length ? rest[ai++] : '';
       consumed = true;
-      if (conv.kind === 'b') value = expandPrintfEscapes(value);
+      if (conv.kind === 'b') {
+        const expanded = expandPrintfEscapes(value);
+        value = expanded.text;
+        if (conv.precision !== null) {
+          const prec = conv.precision === '*' ? Number(starArgs.shift()) : conv.precision;
+          if (Number.isFinite(prec) && prec >= 0) value = value.slice(0, prec);
+        }
+        out += value;
+        if (expanded.stop) return out;
+        p = conv.end - 1;
+        continue;
+      }
       if (conv.precision !== null) {
         const prec = conv.precision === '*' ? Number(starArgs.shift()) : conv.precision;
         if (Number.isFinite(prec) && prec >= 0) value = value.slice(0, prec);
