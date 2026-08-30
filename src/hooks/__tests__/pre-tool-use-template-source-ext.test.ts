@@ -119,8 +119,8 @@ describe('pre-tool-use template source extension detection', () => {
       ['/tmp/project2/src/app.ts', '/tmp/project', true],
       ['/tmpfoo/src/app.ts', '/home/project', false],
       ['scratchpad/src/app.ts', '/home/project', false],
-      ['C:\\Windows\\Temp\\fixture.ts', '/home/project', true],
-      ['C:\\Users\\alice\\AppData\\Local\\Temp\\fixture.ts', '/home/project', true],
+      ['C:\\Windows\\Temp\\fixture.ts', '/home/project', process.platform === 'win32'],
+      ['C:\\Users\\alice\\AppData\\Local\\Temp\\fixture.ts', '/home/project', process.platform === 'win32'],
       ['\\\\server\\share\\fixture.ts', '/home/project', false],
     ] as const)('matches for %s from %s', (filePath, cwd, expected) => {
       expect(isAllowedPath(filePath, cwd)).toBe(expected);
@@ -131,13 +131,14 @@ describe('pre-tool-use template source extension detection', () => {
     });
 
     it('allows an explicitly configured UNC temp root but not an arbitrary UNC share', () => {
+      const hostIsWindows = process.platform === 'win32';
       const env = { TMP: '\\\\server\\share\\Temp' };
       const allowed = '\\\\server\\share\\Temp\\fixture.ts';
       const rejected = '\\\\server\\share\\Other\\fixture.ts';
       const previousTmp = process.env.TMP;
       process.env.TMP = env.TMP;
       try {
-        expect(isAllowedPath(allowed, '/home/project')).toBe(true);
+        expect(isAllowedPath(allowed, '/home/project')).toBe(hostIsWindows);
         expect(isAllowedPath(rejected, '/home/project')).toBe(false);
       } finally {
         if (previousTmp === undefined) delete process.env.TMP;
@@ -145,7 +146,7 @@ describe('pre-tool-use template source extension detection', () => {
       }
 
       const output = runPreToolUseHookRaw('Write', { file_path: allowed }, '/home/project', env);
-      expect(hasDelegationNotice(output)).toBe(false);
+      expect(hasDelegationNotice(output)).toBe(!hostIsWindows);
       expect(hasDelegationNotice(runPreToolUseHookRaw('Write', { file_path: rejected }, '/home/project', env))).toBe(true);
     });
 
@@ -338,6 +339,8 @@ describe('pre-tool-use template source extension detection', () => {
       ['env wrapper with literal script log write', 'env -i bash verify.sh > results.txt', false],
       ['copy source into a log file', 'cp src/input.ts results.txt', false],
       ['install source into a log file', 'install src/input.ts results.txt', false],
+      ['copy source into an explicit temp target directory', 'cp -t /tmp src/app.ts', false],
+      ['install source into an explicit temp target directory', 'install --target-directory=/tmp src/app.ts', false],
       ['non-in-place perl read', "perl -e 'print' src/input.ts", false],
       ['read-only sed with --quiet', "sed --quiet -e '/foo/p' src/app.ts", false],
       ['read-only sed with --silent', "sed --silent -e '/foo/p' src/app.ts", false],

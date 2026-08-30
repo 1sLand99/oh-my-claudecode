@@ -461,11 +461,13 @@ function approvedTempRoots() {
 function isTempOrScratchpadPath(filePath, directory) {
   const target = portablePath(filePath);
   if (!filePath || !isAbsolutePath(target)) return false;
+  const hostIsWindows = process.platform === 'win32';
+  if (isWindowsPath(target) !== hostIsWindows) return false;
   const canonical = canonicalPath(filePath), roots = projectRoots(directory);
   if (roots.some(root => withinPath(target, root) || withinPath(canonical, canonicalPath(root))) || hasGitAncestor(canonical)) return false;
   const temps = approvedTempRoots(), canonicalTemps = temps.map(canonicalPath);
-  const lexical = temps.some(root => withinPath(target, root)) || WINDOWS_TEMP.some(pattern => pattern.test(target));
-  const resolved = canonicalTemps.some(root => withinPath(canonical, root)) || WINDOWS_TEMP.some(pattern => pattern.test(canonical));
+  const lexical = temps.some(root => withinPath(target, root)) || (hostIsWindows && WINDOWS_TEMP.some(pattern => pattern.test(target)));
+  const resolved = canonicalTemps.some(root => withinPath(canonical, root)) || (hostIsWindows && WINDOWS_TEMP.some(pattern => pattern.test(canonical)));
   return lexical && resolved;
 }
 
@@ -721,11 +723,22 @@ function checkSegment(segment, directory) {
   if (cmd.base === 'cp' || cmd.base === 'install') {
     const rawArgs = words.slice(cmd.index + 1).map(entry => entry.token);
     const targetDir = rawArgs.findIndex(token => token.value === '-t' || token.value === '--target-directory');
-    if (targetDir >= 0) return !rawArgs[targetDir + 1] || writeTarget(rawArgs[targetDir + 1], directory) || args.some(token => writeTarget(token, directory));
+    if (targetDir >= 0) {
+      const target = rawArgs[targetDir + 1];
+      if (!target || writeTarget(target, directory)) return true;
+      return rawArgs.slice(targetDir + 2)
+        .filter(token => token.value === '--' || !token.value.startsWith('-'))
+        .filter(token => token.value !== '--')
+        .some(source => writeTarget({ ...source, value: path.join(target.value, path.basename(source.value)) }, directory));
+    }
     const joinedTargetDir = rawArgs.find(token => token.value.startsWith('--target-directory='));
     if (joinedTargetDir) {
       const target = { ...joinedTargetDir, value: joinedTargetDir.value.slice('--target-directory='.length) };
-      return writeTarget(target, directory) || args.some(token => writeTarget(token, directory));
+      if (writeTarget(target, directory)) return true;
+      return rawArgs
+        .filter(token => token !== joinedTargetDir && (token.value === '--' || !token.value.startsWith('-')))
+        .filter(token => token.value !== '--')
+        .some(source => writeTarget({ ...source, value: path.join(target.value, path.basename(source.value)) }, directory));
     }
     const destination = args.at(-1);
     if (destination && !destination.dynamic && !destination.ambiguous) {

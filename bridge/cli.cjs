@@ -105814,11 +105814,13 @@ function approvedTempRoots() {
 function isTempOrScratchpadPath(filePath, directory) {
   const target = portablePath(filePath);
   if (!filePath || !isAbsolutePath(target)) return false;
+  const hostIsWindows = process.platform === "win32";
+  if (isWindowsPath(target) !== hostIsWindows) return false;
   const canonical = canonicalPath(filePath), roots = projectRoots(directory);
   if (roots.some((root2) => withinPath(target, root2) || withinPath(canonical, canonicalPath(root2))) || hasGitAncestor(canonical)) return false;
   const temps = approvedTempRoots(), canonicalTemps = temps.map(canonicalPath);
-  const lexical = temps.some((root2) => withinPath(target, root2)) || WINDOWS_TEMP.some((pattern) => pattern.test(target));
-  const resolved = canonicalTemps.some((root2) => withinPath(canonical, root2)) || WINDOWS_TEMP.some((pattern) => pattern.test(canonical));
+  const lexical = temps.some((root2) => withinPath(target, root2)) || hostIsWindows && WINDOWS_TEMP.some((pattern) => pattern.test(target));
+  const resolved = canonicalTemps.some((root2) => withinPath(canonical, root2)) || hostIsWindows && WINDOWS_TEMP.some((pattern) => pattern.test(canonical));
   return lexical && resolved;
 }
 function isAllowedPath(filePath, directory) {

@@ -531,13 +531,11 @@ export async function scaleUpOwned(
       // passing `--agent-type codex` stay on codex regardless of task text.
       const hasExplicitOwnedRole = ownedRoles.length === 1;
       const resolvedRoute = canonical === null ? undefined : config.resolved_routing?.[canonical];
-      const hasLegacyConfiguredExternalRoute = config.resolved_routing_roles === undefined
-        && resolvedRoute?.primary.provider !== undefined
-        && resolvedRoute.primary.provider !== 'claude';
+      const hasLegacyConfiguredRoute = config.resolved_routing_roles === undefined && resolvedRoute !== undefined;
       const hasConfiguredRoute = canonical !== null
-        && (config.resolved_routing_roles?.includes(canonical) === true || hasLegacyConfiguredExternalRoute);
+        && (config.resolved_routing_roles?.includes(canonical) === true || hasLegacyConfiguredRoute);
       const scaleEnv = config.external_models_defaults === undefined ? env : {};
-      const routedPair = canonical && (hasConfiguredRoute || (hasExplicitOwnedRole && workerAgentType === 'claude'))
+      const routedPair = canonical && hasExplicitOwnedRole && (hasConfiguredRoute || workerAgentType === 'claude')
         ? resolvedRoute
         : undefined;
       if (routedPair) {

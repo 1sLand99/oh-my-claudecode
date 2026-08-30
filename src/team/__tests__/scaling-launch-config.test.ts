@@ -369,6 +369,63 @@ describe('scaleUp launch config', () => {
     );
   });
 
+  it('preserves a Claude configured route when an older team has no routing-role metadata', async () => {
+    modelContractMocks.buildWorkerArgv.mockReturnValue(['/usr/bin/claude', '--model', 'legacy-claude-model']);
+    config = makeConfig({
+      resolved_routing: {
+        executor: {
+          primary: { provider: 'claude', model: 'legacy-claude-model', agent: 'executor' },
+          fallback: { provider: 'claude', model: 'legacy-claude-model', agent: 'executor' },
+        },
+      } as TeamConfig['resolved_routing'],
+      resolved_routing_roles: undefined,
+    });
+
+    const result = await scaleUp(
+      'demo-team',
+      1,
+      'codex',
+      [{ subject: 'demo', description: 'demo task', owner: 'worker-1', role: 'executor' }],
+      cwd,
+      { OMC_TEAM_SCALING_ENABLED: '1' } as NodeJS.ProcessEnv,
+    );
+
+    expect(result).toMatchObject({ ok: true });
+    expect(modelContractMocks.buildWorkerArgv).toHaveBeenCalledWith(
+      'claude',
+      expect.objectContaining({ model: 'legacy-claude-model' }),
+    );
+  });
+
+  it('keeps the caller provider when the owned task has no explicit role', async () => {
+    modelContractMocks.resolveDefaultWorkerModel.mockReturnValue('codex-config-model');
+    modelContractMocks.buildWorkerArgv.mockReturnValue(['/usr/bin/codex', '--model', 'codex-config-model']);
+    config = makeConfig({
+      resolved_routing: {
+        executor: {
+          primary: { provider: 'gemini', model: 'gemini-snapshot-model', agent: 'executor' },
+          fallback: { provider: 'claude', model: '', agent: 'executor' },
+        },
+      } as TeamConfig['resolved_routing'],
+      resolved_routing_roles: ['executor'],
+    });
+
+    const result = await scaleUp(
+      'demo-team',
+      1,
+      'codex',
+      [{ subject: 'implement the executor task', description: 'write code', owner: 'worker-1' }],
+      cwd,
+      { OMC_TEAM_SCALING_ENABLED: '1' } as NodeJS.ProcessEnv,
+    );
+
+    expect(result).toMatchObject({ ok: true });
+    expect(modelContractMocks.buildWorkerArgv).toHaveBeenCalledWith(
+      'codex',
+      expect.objectContaining({ model: 'codex-config-model' }),
+    );
+  });
+
   it('does not adopt a newly introduced environment default after an empty snapshot', async () => {
     modelContractMocks.resolveDefaultWorkerModel.mockReturnValue(undefined);
     modelContractMocks.buildWorkerArgv.mockReturnValue(['/usr/bin/cursor']);
