@@ -646,7 +646,7 @@ function dupRedirects(line) {
     const prefix = line.slice(0, i);
     const destMatch = prefix.match(/(\d+)$/);
     const dest = destMatch ? Number(destMatch[1]) : 0;
-    const srcMatch = line.slice(i + 2).match(/^(\d+)/);
+    const srcMatch = line.slice(i + 2).match(/^[ \t]*(\d+)/);
     if (!srcMatch) continue;
     dups.push({ pos: i, dest, src: Number(srcMatch[1]) });
   }

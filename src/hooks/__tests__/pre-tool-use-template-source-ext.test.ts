@@ -403,6 +403,7 @@ describe('pre-tool-use template source extension detection', () => {
       ['printf long unicode format escape assembles redirect', "printf 'echo x \\U0000003e %s\\n' src/app.ts | bash", true],
       ['heredoc producer piped into a stdin shell', "cat <<'EOF' | bash\necho x > src/app.ts\nEOF", true],
       ['nonzero heredoc duplicated onto stdin is a program', "bash 3<<'EOF' 0<&3\necho x > src/app.ts\nEOF", true],
+      ['spaced dup source fd still transfers stdin', "bash 3<<'EOF' 0<& 3\necho x > src/app.ts\nEOF", true],
       ['printf %b expands argument escapes into a stdin program', "printf '%b' 'true\\necho x > src/app.ts\\n' | bash", true],
       ['printf %b expands octal argument escapes into a stdin program', "printf '%b' 'true\\012echo x > src/app.ts\\012' | bash", true],
       ['printf %b expands hex argument escapes into a stdin program', "printf '%b' 'true\\x0aecho x > src/app.ts\\x0a' | bash", true],
