@@ -396,6 +396,7 @@ describe('pre-tool-use template source extension detection', () => {
       ['invalid printf option produces no stdout program', "printf -x 'rm src/app.ts' | bash", false],
       ['echo -E does not expand escapes into a stdin program', "echo -E 'true\\nrm src/app.ts' | bash", false],
       ['invalid plus option after -c is not a program', "bash -c +z 'rm src/app.ts'", false],
+      ['plus-D after -c dumps strings and does not run the command', "bash -c +D 'rm src/app.ts'", false],
       ['named coprocess writing only a log', 'coproc worker bash verify.sh > results.log', false],
     ] as const)('stays quiet: %s', (_label, command, expectedWarning) => {
       expect(hasDelegationNotice(runPreToolUseHook(command))).toBe(expectedWarning);

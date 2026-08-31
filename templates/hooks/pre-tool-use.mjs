@@ -1438,7 +1438,8 @@ function checkSegment(segment, directory) {
             if (!shellArgs[codeIndex + 1]) return true;
             codeIndex += 2; continue;
           }
-          if (/^[+-][abefhkmnptuvxBCEHPTcilsD]+$/.test(value) || /^(?:--norc|--noprofile|--posix|--restricted|--verbose|--debugger)$/.test(value)) {
+          if (/^[+-]D$/.test(value) || /^(?:--dump-strings|--dump-po-strings)$/.test(value)) return false;
+          if (/^[+-][abefhkmnptuvxBCEHPTcils]+$/.test(value) || /^(?:--norc|--noprofile|--posix|--restricted|--verbose|--debugger)$/.test(value)) {
             codeIndex += 1; continue;
           }
           if (value.startsWith('-') || value.startsWith('+')) return false;
