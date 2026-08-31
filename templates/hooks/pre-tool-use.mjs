@@ -644,6 +644,25 @@ function heredocMarkers(line) {
         continue;
       }
       if (line[j] === '\\' && j + 1 < line.length) { delimiter += line[j + 1]; j += 2; continue; }
+      if (q === '$' && line[j + 1] === "'") {
+        let inner = '';
+        let k = j + 2;
+        let closed = false;
+        while (k < line.length) {
+          if (line[k] === '\\' && k + 1 < line.length) {
+            const got = decodeAnsiCEscape(line, k);
+            inner += got.value;
+            k = got.end;
+            continue;
+          }
+          if (line[k] === "'") { closed = true; k += 1; break; }
+          inner += line[k]; k += 1;
+        }
+        if (!closed) { delimiter = ''; break; }
+        delimiter += inner;
+        j = k;
+        continue;
+      }
       delimiter += line[j];
       j += 1;
     }
@@ -788,7 +807,7 @@ function tokenizeShell(command) {
   for (let i = 0; i < text.length;) {
     const ch = text[i];
     if (quote === "$'") {
-      if (ch === '\\' && i + 1 < text.length) { value += text[i + 1]; i += 2; continue; }
+      if (ch === '\\' && i + 1 < text.length) { const got = decodeAnsiCEscape(text, i); value += got.value; i = got.end; continue; }
       if (ch === "'") { quote = null; i += 1; continue; }
       value += ch; i += 1; continue;
     }
@@ -1019,6 +1038,48 @@ function shellReadsStdinProgram(segment) {
     return forceStdin;
   }
   return true;
+}
+function decodeAnsiCEscape(text, p) {
+  if (text[p] !== '\\' || p + 1 >= text.length) return { value: text[p], end: p + 1 };
+  const n = text[p + 1];
+  if (n === 'n') return { value: '\n', end: p + 2 };
+  if (n === 't') return { value: '\t', end: p + 2 };
+  if (n === 'r') return { value: '\r', end: p + 2 };
+  if (n === 'a') return { value: '\x07', end: p + 2 };
+  if (n === 'b') return { value: '\b', end: p + 2 };
+  if (n === 'f') return { value: '\f', end: p + 2 };
+  if (n === 'v') return { value: '\v', end: p + 2 };
+  if (n === 'e' || n === 'E') return { value: '\x1b', end: p + 2 };
+  if (n === 'x') {
+    let hex = '';
+    let q = p + 2;
+    while (q < text.length && hex.length < 2 && /[0-9a-fA-F]/.test(text[q])) hex += text[q++];
+    if (!hex) return { value: 'x', end: p + 2 };
+    return { value: String.fromCharCode(parseInt(hex, 16)), end: q };
+  }
+  if (/[0-7]/.test(n)) {
+    let oct = n;
+    let q = p + 2;
+    while (q < text.length && oct.length < 3 && /[0-7]/.test(text[q])) oct += text[q++];
+    return { value: String.fromCharCode(parseInt(oct, 8)), end: q };
+  }
+  if (n === 'u' && /^[0-9a-fA-F]{4}/.test(text.slice(p + 2))) {
+    return { value: String.fromCharCode(parseInt(text.slice(p + 2, p + 6), 16)), end: p + 6 };
+  }
+  if (n === 'U' && /^[0-9a-fA-F]{8}/.test(text.slice(p + 2))) {
+    return { value: String.fromCodePoint(parseInt(text.slice(p + 2, p + 10), 16)), end: p + 10 };
+  }
+  return { value: n, end: p + 2 };
+}
+function decodeAnsiC(text) {
+  let out = '';
+  for (let p = 0; p < text.length; ) {
+    if (text[p] !== '\\') { out += text[p]; p += 1; continue; }
+    const got = decodeAnsiCEscape(text, p);
+    out += got.value;
+    p = got.end;
+  }
+  return out;
 }
 function expandPrintfEscapes(text, { stop = false } = {}) {
   let out = '';
