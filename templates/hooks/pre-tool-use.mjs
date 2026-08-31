@@ -1119,38 +1119,74 @@ function isPassthroughStage(stage) {
   if (cmd?.base !== 'cat') return false;
   if (stdoutRedirected(stage)) return false;
   const operands = argsAfter(words, cmd.index);
-  return operands.length === 0 && !operands.some(token => token.dynamic);
+  return !operands.some(token => token.dynamic)
+    && (operands.length === 0 || (operands.length === 1 && operands[0].value === '-'));
 }
-function shellArgsHaveNoexec(shellArgs) {
-  let seenCommand = false;
-  for (let i = 0; i < shellArgs.length; i += 1) {
+function parseShellInvocation(shellArgs) {
+  let noexec = false;
+  const applySet = (value) => {
+    const plus = value.startsWith('+');
+    if (value.slice(1).includes('n')) noexec = !plus;
+  };
+  let i = 0;
+  const skipValueOpt = (value, next, filenameOk) => {
+    if (!next) return 'missing';
+    if (!filenameOk && (next.startsWith('-') || next.startsWith('+'))) return 'invalid';
+    if (value === '-o' && next === 'noexec') noexec = true;
+    if (value === '+o' && next === 'noexec') noexec = false;
+    return 'ok';
+  };
+  const skipPostC = () => {
+    if (shellArgs[i]?.token.value === '--') { i += 1; return 'ok'; }
+    while (i < shellArgs.length) {
+      const value = shellArgs[i].token.value;
+      const next = shellArgs[i + 1]?.token.value;
+      if (value === '--') { i += 1; break; }
+      if (value === '-' || value === '+') break;
+      if (value === '--rcfile' || value === '--init-file') {
+        const got = skipValueOpt(value, next, true); if (got !== 'ok') return got; i += 2; continue;
+      }
+      if (value === '-O' || value === '+O' || value === '-o' || value === '+o') {
+        const got = skipValueOpt(value, next, false); if (got !== 'ok') return got; i += 2; continue;
+      }
+      if (/^[+-]D$/.test(value) || /^(?:--dump-strings|--dump-po-strings)$/.test(value)) return 'invalid';
+      if (/^[+-][abefhkmnptuvxBCEHPTcils]+$/.test(value)) { applySet(value); i += 1; continue; }
+      if (/^(?:--norc|--noprofile|--posix|--restricted|--verbose|--debugger)$/.test(value)) { i += 1; continue; }
+      if (value.startsWith('-') || value.startsWith('+')) return 'invalid';
+      break;
+    }
+    return 'ok';
+  };
+  while (i < shellArgs.length) {
     const value = shellArgs[i].token.value;
     const next = shellArgs[i + 1]?.token.value;
-    if (value === '--') {
-      if (seenCommand) return false;
-      continue;
+    if (value === '--') break;
+    if (value === '--rcfile' || value === '--init-file') {
+      const got = skipValueOpt(value, next, true); if (got !== 'ok') return { invalid: true, noexec, codeIndex: -1 };
+      i += 2; continue;
     }
-    if (value === '-o' && next === 'noexec') return true;
-    if (/^-[abefhkmnptuvxBCEHPTcils]*n[abefhkmnptuvxBCEHPTcils]*$/.test(value)) return true;
-    if (value === '--command' || (/^-[^-]*c/.test(value) && !value.startsWith('--'))) {
-      seenCommand = true;
-      continue;
+    if (value === '-O' || value === '+O' || value === '-o' || value === '+o') {
+      const got = skipValueOpt(value, next, false); if (got !== 'ok') return { invalid: true, noexec, codeIndex: -1 };
+      i += 2; continue;
     }
-    const takesValue = /^(?:--rcfile|--init-file|-O|-o|\+O|\+o)$/.test(value);
-    const isFlag = /^[+-][abefhkmnptuvxBCEHPTcilsD]+$/.test(value)
-      || /^(?:--norc|--noprofile|--posix|--restricted|--verbose|--debugger|--dump-strings|--dump-po-strings|--stdin)$/.test(value)
-      || takesValue;
-    if (isFlag) {
-      if (takesValue) {
-        if (!next || next.startsWith('-') || next.startsWith('+')) return true;
-        i += 1;
-      }
-      continue;
+    if (value === '--command' || /^-[abefhkmnptuvxBCEHPTcils]*c[abefhkmnptuvxBCEHPTcils]*$/.test(value)) {
+      if (value !== '--command') applySet(value);
+      i += 1;
+      const got = skipPostC();
+      if (got !== 'ok') return { invalid: true, noexec, codeIndex: -1 };
+      return { invalid: false, noexec, codeIndex: i };
     }
-    if (seenCommand) return false;
+    if (/^[+-][abefhkmnptuvxBCEHPTcils]+$/.test(value)) { applySet(value); i += 1; continue; }
+    if (/^[+-]D$/.test(value) || /^(?:--dump-strings|--dump-po-strings)$/.test(value)) return { invalid: true, noexec, codeIndex: -1 };
+    if (/^(?:--norc|--noprofile|--posix|--restricted|--verbose|--debugger|--stdin)$/.test(value)) { i += 1; continue; }
+    if (value.startsWith('-') && value !== '-') return { invalid: true, noexec, codeIndex: -1 };
     break;
   }
-  return false;
+  return { invalid: false, noexec, codeIndex: -1 };
+}
+function shellArgsHaveNoexec(shellArgs) {
+  const invocation = parseShellInvocation(shellArgs);
+  return invocation.invalid || invocation.noexec;
 }
 function shellReadsStdinProgram(segment) {
   const words = commandWords(segment);
@@ -1467,31 +1503,10 @@ function checkSegment(segment, directory) {
   if (SHELL_COMMANDS.has(cmd.base)) {
     const shellArgs = words.slice(cmd.index + 1);
     if (shellArgs.some(entry => entry.token.dynamic)) return true;
-    if (shellArgsHaveNoexec(shellArgs)) return false;
-    const flag = shellArgs.findIndex(entry => entry.token.value === '--command' || /^-[^-]*c/.test(entry.token.value));
-    if (flag >= 0) {
-      let codeIndex = flag + 1;
-      if (shellArgs[codeIndex]?.token.value === '--') codeIndex += 1;
-      else {
-        while (codeIndex < shellArgs.length) {
-          const value = shellArgs[codeIndex].token.value;
-          if (value === '--') { codeIndex += 1; break; }
-          if (value === '-' || value === '+') break;
-          if (/^(?:--rcfile|--init-file|-O|-o|\+O|\+o)$/.test(value)) {
-            if (!shellArgs[codeIndex + 1]) return true;
-            const next = shellArgs[codeIndex + 1].token.value;
-            if (next.startsWith('-') || next.startsWith('+')) return false;
-            codeIndex += 2; continue;
-          }
-          if (/^[+-]D$/.test(value) || /^(?:--dump-strings|--dump-po-strings)$/.test(value)) return false;
-          if (/^[+-][abefhkmnptuvxBCEHPTcils]+$/.test(value) || /^(?:--norc|--noprofile|--posix|--restricted|--verbose|--debugger)$/.test(value)) {
-            codeIndex += 1; continue;
-          }
-          if (value.startsWith('-') || value.startsWith('+')) return false;
-          break;
-        }
-      }
-      const code = shellArgs[codeIndex]?.token;
+    const invocation = parseShellInvocation(shellArgs);
+    if (invocation.invalid || invocation.noexec) return false;
+    if (invocation.codeIndex >= 0) {
+      const code = shellArgs[invocation.codeIndex]?.token;
       return !code || checkBashCommand(code.value, directory);
     }
   }
