@@ -1137,11 +1137,11 @@ function isPassthroughStage(stage) {
     const value = entry.token.value;
     if (!optionsEnded) {
       if (value === '--') { optionsEnded = true; continue; }
-      if (/^-[u]+$/.test(value) || value === '-') continue;
+      if (/^-[u]+$/.test(value) || value === '-' || value === '/dev/null') continue;
       if (value.startsWith('-') && value !== '-') return false;
       return false;
     }
-    if (value === '-') continue;
+    if (value === '-' || value === '/dev/null') continue;
     return false;
   }
   return true;
@@ -1462,13 +1462,22 @@ function checkPipelineProducer(stage, directory, command) {
   const raw = words.slice(cmd.index + 1).map(entry => entry.token);
   const operands = cmd.base === 'cat' || cmd.base === 'tac' ? argsAfter(words, cmd.index) : headTailOperands(raw);
   if (!operands || operands.some(token => token.dynamic) || operands.length > 0) return !operands;
-  if ((cmd.base === 'head' || cmd.base === 'tail') && raw.some(token => /^(?:-n|--lines|-c|--bytes)$/.test(token.value) || /^-[nc][0-9]+/.test(token.value) || /^(?:--lines|--bytes)=/.test(token.value))) return true;
+  if ((cmd.base === 'head' || cmd.base === 'tail') && raw.some(token => /^(?:-n|--lines|-c|--bytes)$/.test(token.value) || /^-[nc][+-]?[0-9]+/.test(token.value) || /^(?:--lines|--bytes)=/.test(token.value))) return true;
+  let hereWord = null;
   for (let k = 0; k < stage.length; k += 1) {
-    if (stage[k].type !== 'op' || stage[k].value !== '<<<') continue;
-    const word = stage[k + 1];
-    if (word?.dynamic) return true;
-    if (word?.type === 'word' && checkBashCommand(word.value, directory)) return true;
+    const token = stage[k];
+    if (token.type !== 'op' || token.kind !== 'in') continue;
+    const prev = stage[k - 1];
+    const io = token.glued && prev?.type === 'word' && !prev.quoted && !prev.escaped && /^\d+$/.test(prev.value) ? Number(prev.value) : 0;
+    if (io !== 0) continue;
+    if (token.value === '<<<') {
+      hereWord = stage[k + 1];
+      continue;
+    }
+    hereWord = null;
   }
+  if (hereWord?.dynamic) return true;
+  if (hereWord?.type === 'word' && checkBashCommand(hereWord.value, directory)) return true;
   return heredocSections(command).some(section => (
     section.fd === 0 && Boolean(checkBashCommand(section.body, directory))
   ));
