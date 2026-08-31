@@ -1113,24 +1113,38 @@ function stdoutRedirected(stage) {
   }
   return false;
 }
+function stdinRedirected(stage) {
+  for (let i = 0; i < stage.length; i += 1) {
+    const token = stage[i];
+    if (token.type !== 'op' || token.kind !== 'in') continue;
+    const prev = stage[i - 1];
+    const io = token.glued && prev?.type === 'word' && !prev.quoted && !prev.escaped && /^\d+$/.test(prev.value) ? Number(prev.value) : 0;
+    if (io === 0) return true;
+  }
+  return false;
+}
 function isPassthroughStage(stage) {
   const words = commandWords(stage);
   const cmd = executable(words);
   if (cmd?.base !== 'cat') return false;
-  if (stdoutRedirected(stage)) return false;
+  if (stdoutRedirected(stage) || stdinRedirected(stage)) return false;
   let optionsEnded = false;
+  let sawStdin = false;
+  let sawFile = false;
   for (const entry of words.slice(cmd.index + 1)) {
     if (entry.token.dynamic) return false;
     const value = entry.token.value;
     if (!optionsEnded) {
       if (value === '--') { optionsEnded = true; continue; }
-      if (value === '-' || /^-[u]+$/.test(value)) continue;
-      return false;
+      if (/^-[u]+$/.test(value)) continue;
+      if (value === '-') { sawStdin = true; continue; }
+      if (value.startsWith('-') && value !== '-') return false;
+      sawFile = true; continue;
     }
-    if (value === '-') continue;
-    return false;
+    if (value === '-') { sawStdin = true; continue; }
+    sawFile = true;
   }
-  return true;
+  return sawStdin || !sawFile;
 }
 function parseShellInvocation(shellArgs) {
   let noexec = false;
