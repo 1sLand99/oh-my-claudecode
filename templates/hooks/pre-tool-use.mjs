@@ -796,7 +796,7 @@ function heredocSections(command) {
 function tokenizeShell(command) {
   const tokens = []; let value = ''; let dynamic = false; let ambiguous = false; let nested = []; let quote = null; let adjacent = false; let quoted = false; let escaped = false;
   const flush = () => {
-    if (value || dynamic || quote) {
+    if (value || dynamic || quote || quoted) {
       tokens.push({ type: 'word', value, dynamic, ambiguous, nested, glued: adjacent, quoted, escaped });
       adjacent = true;
     }

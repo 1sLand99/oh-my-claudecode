@@ -386,6 +386,7 @@ describe('pre-tool-use template source extension detection', () => {
       ['unrecognized echo option stays output data', 'echo -x rm src/app.ts | bash', false],
       ['unsupported ANSI-C escape keeps the backslash', "echo $'echo x \\> src/app.ts' | bash", false],
       ['double-quoted nonspecial backslash is not a source path', 'rm "src/app.\\ts"', false],
+      ['NUL-truncated empty -c argument is not the next word', "bash -c $'\\c@junk' 'rm src/app.ts'", false],
       ['named coprocess writing only a log', 'coproc worker bash verify.sh > results.log', false],
     ] as const)('stays quiet: %s', (_label, command, expectedWarning) => {
       expect(hasDelegationNotice(runPreToolUseHook(command))).toBe(expectedWarning);
@@ -452,6 +453,7 @@ describe('pre-tool-use template source extension detection', () => {
       ['out-of-range ANSI-C \\U does not abort later rm', "printf '%s' $'\\UFFFFFFFF' > build.log; rm src/app.ts", true],
       ['ANSI-C \\cJ inserts a newline into a pipeline program', "echo $'true\\cJrm src/app.ts' | bash", true],
       ['ANSI-C NUL from \\c@ truncates the operand', "rm $'src/app.ts\\c@junk'", true],
+      ['NUL-truncated ANSI-C heredoc delimiter still terminates', "cat <<$'EOF\\c@junk' > build.log\ndata\nEOF\nrm src/app.ts", true],
       ['explicit stdin shell heredoc source write', "bash -s <<'EOF'\necho hacked > src/app.ts\nEOF", true],
       ['explicit fd zero shell heredoc source write', "bash 0<<'EOF'\necho hacked > src/app.ts\nEOF", true],
       ['shell rcfile option still reads heredoc program', "bash --rcfile /tmp/rc <<'EOF'\necho hacked > src/app.ts\nEOF", true],
