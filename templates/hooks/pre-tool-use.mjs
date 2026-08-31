@@ -923,7 +923,7 @@ function tokenizeShell(command) {
   flush(); return tokens;
 }
 
-const COMMAND_WRAPPERS = new Set(['command', 'env', 'exec', 'nohup', 'nice', 'time', 'timeout', 'sudo']);
+const COMMAND_WRAPPERS = new Set(['command', 'env', 'exec', 'nohup', 'nice', 'time', 'timeout', 'sudo', 'builtin']);
 const SHELL_COMMANDS = new Set(['sh', 'bash', 'dash', 'zsh', 'ksh', 'fish', 'ash']);
 const SHELL_RESERVED_WORDS = new Set(['if', 'then', 'elif', 'else', 'fi', 'while', 'until', 'for', 'do', 'done', 'case', 'esac', 'in', 'select', 'function', 'coproc', '{', '}', '!']);
 function shellBase(value) { const clean = String(value || '').replace(/\\/g, '/'); return clean.slice(clean.lastIndexOf('/') + 1).toLowerCase(); }
@@ -1114,6 +1114,15 @@ function isPassthroughStage(stage) {
   const operands = argsAfter(words, cmd.index);
   return operands.length === 0 && !operands.some(token => token.dynamic);
 }
+function shellArgsHaveNoexec(shellArgs) {
+  for (let i = 0; i < shellArgs.length; i += 1) {
+    const value = shellArgs[i].token.value;
+    if (value === '--') break;
+    if (value === '-o' && shellArgs[i + 1]?.token.value === 'noexec') return true;
+    if (/^-[abefhkmnptuvxBCEHPTcils]*n[abefhkmnptuvxBCEHPTcils]*$/.test(value)) return true;
+  }
+  return false;
+}
 function shellReadsStdinProgram(segment) {
   const words = commandWords(segment);
   const cmd = executable(words);
@@ -1123,10 +1132,14 @@ function shellReadsStdinProgram(segment) {
   for (let i = 0; i < shellArgs.length; i += 1) {
     const token = shellArgs[i].token; if (token.dynamic) return true;
     if (!optionsEnded && token.value === '--') { optionsEnded = true; continue; }
-    if (!optionsEnded && token.value.startsWith('-') && token.value !== '-') {
+    if (!optionsEnded && token.value !== '-' && token.value !== '+' && (token.value.startsWith('-') || /^[+][A-Za-z]/.test(token.value))) {
+      if (/^[+-]D$/.test(token.value) || /^(?:--dump-strings|--dump-po-strings)$/.test(token.value)) return false;
+      if (/^-[abefhkmnptuvxBCEHPTcils]*n[abefhkmnptuvxBCEHPTcils]*$/.test(token.value)) return false;
+      if (token.value === '-o' && shellArgs[i + 1]?.token.value === 'noexec') return false;
+      if (/^[+][A-Za-z]/.test(token.value) && !/^[+][abefhkmnptuvxBCEHPTcils]+$/.test(token.value) && token.value !== '+O' && token.value !== '+o') return false;
       if (token.value === '--command' || /^-[^-]*c/.test(token.value)) return false;
       if (token.value === '--stdin' || /^-[^-]*s/.test(token.value)) forceStdin = true;
-      if (/^(?:--rcfile|--init-file|-O|-o)$/.test(token.value)) {
+      if (/^(?:--rcfile|--init-file|-O|-o|\+O|\+o)$/.test(token.value)) {
         if (!shellArgs[i + 1]) return true;
         i += 1;
       }
@@ -1425,6 +1438,7 @@ function checkSegment(segment, directory) {
   if (SHELL_COMMANDS.has(cmd.base)) {
     const shellArgs = words.slice(cmd.index + 1);
     if (shellArgs.some(entry => entry.token.dynamic)) return true;
+    if (shellArgsHaveNoexec(shellArgs)) return false;
     const flag = shellArgs.findIndex(entry => entry.token.value === '--command' || /^-[^-]*c/.test(entry.token.value));
     if (flag >= 0) {
       let codeIndex = flag + 1;
