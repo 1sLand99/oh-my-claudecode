@@ -1432,7 +1432,7 @@ function effectiveFd0HereString(stage) {
         if (match) {
           const src = Number(match[1]);
           fds.set(io, fds.get(src) || unknown);
-          if (target.value.endsWith('-')) fds.delete(src);
+          if (target.value.endsWith('-') && src !== io) fds.delete(src);
           continue;
         }
       }
