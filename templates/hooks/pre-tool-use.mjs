@@ -659,7 +659,7 @@ function heredocMarkers(line) {
           inner += line[k]; k += 1;
         }
         if (!closed) { delimiter = ''; break; }
-        delimiter += inner;
+        delimiter += truncateAtNul(inner);
         j = k;
         continue;
       }
@@ -808,7 +808,7 @@ function tokenizeShell(command) {
     const ch = text[i];
     if (quote === "$'") {
       if (ch === '\\' && i + 1 < text.length) { const got = decodeAnsiCEscape(text, i); value += got.value; i = got.end; continue; }
-      if (ch === "'") { quote = null; i += 1; continue; }
+      if (ch === "'") { quote = null; value = truncateAtNul(value); i += 1; continue; }
       value += ch; i += 1; continue;
     }
     if (quote === "'") { if (ch === "'") quote = null; else value += ch; i += 1; continue; }
@@ -1042,6 +1042,10 @@ function shellReadsStdinProgram(segment) {
     return forceStdin;
   }
   return true;
+}
+function truncateAtNul(text) {
+  const nul = text.indexOf('\0');
+  return nul < 0 ? text : text.slice(0, nul);
 }
 function decodeAnsiCEscape(text, p) {
   if (text[p] !== '\\' || p + 1 >= text.length) return { value: text[p], end: p + 1 };

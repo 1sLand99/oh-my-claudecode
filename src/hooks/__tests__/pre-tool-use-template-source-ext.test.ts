@@ -451,6 +451,7 @@ describe('pre-tool-use template source extension detection', () => {
       ['short ANSI-C \\u escape decodes a redirect', "echo $'echo x \\u3e src/app.ts' | bash", true],
       ['out-of-range ANSI-C \\U does not abort later rm', "printf '%s' $'\\UFFFFFFFF' > build.log; rm src/app.ts", true],
       ['ANSI-C \\cJ inserts a newline into a pipeline program', "echo $'true\\cJrm src/app.ts' | bash", true],
+      ['ANSI-C NUL from \\c@ truncates the operand', "rm $'src/app.ts\\c@junk'", true],
       ['explicit stdin shell heredoc source write', "bash -s <<'EOF'\necho hacked > src/app.ts\nEOF", true],
       ['explicit fd zero shell heredoc source write', "bash 0<<'EOF'\necho hacked > src/app.ts\nEOF", true],
       ['shell rcfile option still reads heredoc program', "bash --rcfile /tmp/rc <<'EOF'\necho hacked > src/app.ts\nEOF", true],
