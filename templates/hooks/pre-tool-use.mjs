@@ -814,7 +814,11 @@ function tokenizeShell(command) {
     if (quote === "'") { if (ch === "'") quote = null; else value += ch; i += 1; continue; }
     if (quote === '"') {
       if (ch === '"') { quote = null; i += 1; continue; }
-      if (ch === '\\') { if (i + 1 < text.length) value += text[i + 1]; i += 2; continue; }
+      if (ch === '\\' && i + 1 < text.length) {
+        const n = text[i + 1];
+        if ('$`"\\\n'.includes(n)) { value += n; i += 2; continue; }
+        value += ch; i += 1; continue;
+      }
       if (ch === '$' && text[i + 1] === '(') { const g = shellGroup(text, i + 1); value += text.slice(i, g.end + 1); dynamic = true; nested.push(g.inner); i = g.end + 1; continue; }
       if (ch === '`') { const end = text.indexOf('`', i + 1); value += text.slice(i, end < 0 ? text.length : end + 1); dynamic = true; if (end >= 0) nested.push(text.slice(i + 1, end)); i = end < 0 ? text.length : end + 1; continue; }
       if (ch === '$') { value += ch; dynamic = true; i += 1; continue; }
@@ -1050,6 +1054,11 @@ function decodeAnsiCEscape(text, p) {
   if (n === 'f') return { value: '\f', end: p + 2 };
   if (n === 'v') return { value: '\v', end: p + 2 };
   if (n === 'e' || n === 'E') return { value: '\x1b', end: p + 2 };
+  if (n === 'c') {
+    if (p + 2 >= text.length) return { value: '\\c', end: p + 2 };
+    const x = text[p + 2];
+    return { value: x === '?' ? '\x7f' : String.fromCharCode(x.charCodeAt(0) & 0x1f), end: p + 3 };
+  }
   if (n === 'x') {
     let hex = '';
     let q = p + 2;
