@@ -5,22 +5,22 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "5efd21e099e9e71c6c942dcffb167af31ceaa09c",
-    "sourceSha256": "647113ba07a1f00fc1bc626a45cb6aba4479db2503c4f16482d66c80790c5f0f",
+    "head": "74ffe7c030e568b0563e81d693080553aa4831fc",
+    "sourceSha256": "1bb9d106527a6977fd11bd14357b27275eca85bce8fb6332ec2f01f382dccdbb",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "5efd21e099e9e71c6c942dcffb167af31ceaa09c",
-  "sourceSha256": "647113ba07a1f00fc1bc626a45cb6aba4479db2503c4f16482d66c80790c5f0f",
+  "head": "74ffe7c030e568b0563e81d693080553aa4831fc",
+  "sourceSha256": "1bb9d106527a6977fd11bd14357b27275eca85bce8fb6332ec2f01f382dccdbb",
   "counts": {
     "public": {
-      "skills": 32,
+      "skills": 35,
       "commands": 21,
       "workflows": 8,
       "agents": 20,
-      "total": 81
+      "total": 84
     },
     "internal": {
       "hookFiles": 295,
@@ -28,18 +28,18 @@
       "toolFiles": 60,
       "libFiles": 37,
       "templateHooks": 21,
-      "srcFiles": 1309,
-      "total": 1330
+      "srcFiles": 1311,
+      "total": 1332
     },
     "generated": {
-      "distFiles": 4968,
+      "distFiles": 4981,
       "bridgeFiles": 9,
-      "total": 4977
+      "total": 4990
     },
     "prompt": {
       "promptLikeFiles": 62
     },
-    "skills": 32,
+    "skills": 35,
     "commands": 21,
     "hookFiles": 295,
     "workflows": 8,
@@ -57,10 +57,13 @@
       "debug",
       "deep-interview",
       "deepinit",
+      "drydock",
       "execute",
       "external-context",
       "graph",
       "hud",
+      "launch",
+      "minimal-code-discipline",
       "omc-doctor",
       "omc-setup",
       "plan",
@@ -2209,6 +2212,7 @@
       "dist/cli/commands/wait.d.ts.map",
       "dist/cli/commands/wait.js",
       "dist/cli/commands/wait.js.map",
+      "dist/cli/graph.d.ts",
       "dist/cli/graph.js",
       "dist/cli/hud-watch.d.ts",
       "dist/cli/hud-watch.d.ts.map",
@@ -2575,17 +2579,29 @@
       "dist/graph/index.d.ts.map",
       "dist/graph/index.js",
       "dist/graph/index.js.map",
+      "dist/graph/runtime/approval.d.ts",
       "dist/graph/runtime/approval.js",
+      "dist/graph/runtime/executors/agent.d.ts",
       "dist/graph/runtime/executors/agent.js",
+      "dist/graph/runtime/executors/authority.d.ts",
       "dist/graph/runtime/executors/authority.js",
+      "dist/graph/runtime/executors/command.d.ts",
       "dist/graph/runtime/executors/command.js",
+      "dist/graph/runtime/fence.d.ts",
       "dist/graph/runtime/fence.js",
+      "dist/graph/runtime/journal.d.ts",
       "dist/graph/runtime/journal.js",
+      "dist/graph/runtime/progress.d.ts",
       "dist/graph/runtime/progress.js",
+      "dist/graph/runtime/run-dir.d.ts",
       "dist/graph/runtime/run-dir.js",
+      "dist/graph/runtime/runner.d.ts",
       "dist/graph/runtime/runner.js",
+      "dist/graph/runtime/safe-fs.d.ts",
       "dist/graph/runtime/safe-fs.js",
+      "dist/graph/runtime/store.d.ts",
       "dist/graph/runtime/store.js",
+      "dist/graph/runtime/types.d.ts",
       "dist/graph/runtime/types.js",
       "dist/graph/scheduler.d.ts",
       "dist/graph/scheduler.d.ts.map",
@@ -14210,6 +14226,11 @@
         "path": "dist/cli/commands/wait.js.map"
       },
       {
+        "id": "dist/cli/graph.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/cli/graph.d.ts"
+      },
+      {
         "id": "dist/cli/graph.js",
         "kind": "generated-dist",
         "path": "dist/cli/graph.js"
@@ -16040,9 +16061,19 @@
         "path": "dist/graph/index.js.map"
       },
       {
+        "id": "dist/graph/runtime/approval.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/approval.d.ts"
+      },
+      {
         "id": "dist/graph/runtime/approval.js",
         "kind": "generated-dist",
         "path": "dist/graph/runtime/approval.js"
+      },
+      {
+        "id": "dist/graph/runtime/executors/agent.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/executors/agent.d.ts"
       },
       {
         "id": "dist/graph/runtime/executors/agent.js",
@@ -16050,9 +16081,19 @@
         "path": "dist/graph/runtime/executors/agent.js"
       },
       {
+        "id": "dist/graph/runtime/executors/authority.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/executors/authority.d.ts"
+      },
+      {
         "id": "dist/graph/runtime/executors/authority.js",
         "kind": "generated-dist",
         "path": "dist/graph/runtime/executors/authority.js"
+      },
+      {
+        "id": "dist/graph/runtime/executors/command.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/executors/command.d.ts"
       },
       {
         "id": "dist/graph/runtime/executors/command.js",
@@ -16060,9 +16101,19 @@
         "path": "dist/graph/runtime/executors/command.js"
       },
       {
+        "id": "dist/graph/runtime/fence.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/fence.d.ts"
+      },
+      {
         "id": "dist/graph/runtime/fence.js",
         "kind": "generated-dist",
         "path": "dist/graph/runtime/fence.js"
+      },
+      {
+        "id": "dist/graph/runtime/journal.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/journal.d.ts"
       },
       {
         "id": "dist/graph/runtime/journal.js",
@@ -16070,9 +16121,19 @@
         "path": "dist/graph/runtime/journal.js"
       },
       {
+        "id": "dist/graph/runtime/progress.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/progress.d.ts"
+      },
+      {
         "id": "dist/graph/runtime/progress.js",
         "kind": "generated-dist",
         "path": "dist/graph/runtime/progress.js"
+      },
+      {
+        "id": "dist/graph/runtime/run-dir.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/run-dir.d.ts"
       },
       {
         "id": "dist/graph/runtime/run-dir.js",
@@ -16080,9 +16141,19 @@
         "path": "dist/graph/runtime/run-dir.js"
       },
       {
+        "id": "dist/graph/runtime/runner.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/runner.d.ts"
+      },
+      {
         "id": "dist/graph/runtime/runner.js",
         "kind": "generated-dist",
         "path": "dist/graph/runtime/runner.js"
+      },
+      {
+        "id": "dist/graph/runtime/safe-fs.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/safe-fs.d.ts"
       },
       {
         "id": "dist/graph/runtime/safe-fs.js",
@@ -16090,9 +16161,19 @@
         "path": "dist/graph/runtime/safe-fs.js"
       },
       {
+        "id": "dist/graph/runtime/store.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/store.d.ts"
+      },
+      {
         "id": "dist/graph/runtime/store.js",
         "kind": "generated-dist",
         "path": "dist/graph/runtime/store.js"
+      },
+      {
+        "id": "dist/graph/runtime/types.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/graph/runtime/types.d.ts"
       },
       {
         "id": "dist/graph/runtime/types.js",
@@ -32250,6 +32331,11 @@
         "path": "docs/shared/verification-tiers.md"
       },
       {
+        "id": "docs/shipyard.md",
+        "kind": "other",
+        "path": "docs/shipyard.md"
+      },
+      {
         "id": "docs/ultragoal.md",
         "kind": "other",
         "path": "docs/ultragoal.md"
@@ -33380,6 +33466,11 @@
         "path": "skills/deepinit/SKILL.md"
       },
       {
+        "id": "skills/drydock/SKILL.md",
+        "kind": "skill",
+        "path": "skills/drydock/SKILL.md"
+      },
+      {
         "id": "skills/execute/SKILL.md",
         "kind": "skill",
         "path": "skills/execute/SKILL.md"
@@ -33398,6 +33489,16 @@
         "id": "skills/hud/SKILL.md",
         "kind": "skill",
         "path": "skills/hud/SKILL.md"
+      },
+      {
+        "id": "skills/launch/SKILL.md",
+        "kind": "skill",
+        "path": "skills/launch/SKILL.md"
+      },
+      {
+        "id": "skills/minimal-code-discipline/SKILL.md",
+        "kind": "skill",
+        "path": "skills/minimal-code-discipline/SKILL.md"
       },
       {
         "id": "skills/omc-doctor/SKILL.md",
@@ -34833,6 +34934,16 @@
         "id": "src/__tests__/shared-state-locking.test.ts",
         "kind": "src",
         "path": "src/__tests__/shared-state-locking.test.ts"
+      },
+      {
+        "id": "src/__tests__/shipyard-seed-locale.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/shipyard-seed-locale.test.ts"
+      },
+      {
+        "id": "src/__tests__/shipyard-skills.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/shipyard-skills.test.ts"
       },
       {
         "id": "src/__tests__/skill-entitlements-cross-surface.test.ts",
@@ -42782,6 +42893,11 @@
         "kind": "registers"
       },
       {
+        "from": "skills/drydock/SKILL.md",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "registers"
+      },
+      {
         "from": "skills/execute/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
@@ -42798,6 +42914,16 @@
       },
       {
         "from": "skills/hud/SKILL.md",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "registers"
+      },
+      {
+        "from": "skills/launch/SKILL.md",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "registers"
+      },
+      {
+        "from": "skills/minimal-code-discipline/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
       },
@@ -48199,6 +48325,81 @@
       {
         "from": "src/__tests__/shared-state-locking.test.ts",
         "to": "src/interop/shared-state.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-seed-locale.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-seed-locale.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-seed-locale.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-seed-locale.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-seed-locale.test.ts",
+        "to": "src/hooks/learner/loader.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-seed-locale.test.ts",
+        "to": "src/hooks/learner/parser.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-skills.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-skills.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-skills.test.ts",
+        "to": "external:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-skills.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-skills.test.ts",
+        "to": "src/hooks/learner/loader.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-skills.test.ts",
+        "to": "src/hooks/learner/parser.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-skills.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-skills.test.ts",
+        "to": "src/team/api-interop.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/shipyard-skills.test.ts",
+        "to": "src/team/contracts.ts",
         "kind": "imports"
       },
       {
@@ -54328,6 +54529,16 @@
       },
       {
         "from": "src/hooks/__tests__/pre-tool-use-template-source-ext.test.ts",
+        "to": "external:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/__tests__/pre-tool-use-template-source-ext.test.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/__tests__/pre-tool-use-template-source-ext.test.ts",
         "to": "external:path",
         "kind": "imports"
       },
@@ -54339,6 +54550,11 @@
       {
         "from": "src/hooks/__tests__/pre-tool-use-template-source-ext.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/__tests__/pre-tool-use-template-source-ext.test.ts",
+        "to": "src/hooks/omc-orchestrator/index.ts",
         "kind": "imports"
       },
       {
@@ -57428,6 +57644,11 @@
       },
       {
         "from": "src/hooks/omc-orchestrator/index.ts",
+        "to": "external:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hooks/omc-orchestrator/index.ts",
         "to": "external:path",
         "kind": "imports"
       },
@@ -57464,11 +57685,6 @@
       {
         "from": "src/hooks/omc-orchestrator/index.ts",
         "to": "src/utils/config-dir.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/hooks/omc-orchestrator/index.ts",
-        "to": "src/utils/paths.ts",
         "kind": "imports"
       },
       {
@@ -71753,6 +71969,11 @@
       },
       {
         "from": "src/team/model-contract.ts",
+        "to": "src/shared/types.ts",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/team/model-contract.ts",
         "to": "src/team/team-name.ts",
         "kind": "imports"
       },
@@ -75913,6 +76134,11 @@
       },
       {
         "from": "templates/hooks/pre-tool-use.mjs",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "templates/hooks/pre-tool-use.mjs",
         "to": "external:fs",
         "kind": "imports"
       },
@@ -76543,12 +76769,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6847,
-      "edgeCount": 7203,
-      "importEdgeCount": 5916,
-      "registerEdgeCount": 53
+      "nodeCount": 6866,
+      "edgeCount": 7226,
+      "importEdgeCount": 5935,
+      "registerEdgeCount": 56
     }
   },
-  "inventorySha256": "105c63a2ed379d8c3bf6b66c30853f3dce437799afe24b2c22ca6a8d79503eb8",
-  "manifestSha256": "5e367a3f243bdbcb0c3be8616cd39eb8f3622626625c8321e6ea972626e24e92"
+  "inventorySha256": "f5ea9ebf29ba491f17b39431660e07f71eb3d78399d481c1c2b00fc34cf2ab50",
+  "manifestSha256": "ac2537fb9dc25d5cb4934a9741affe6f96fd6a367cbb62665c3122207a70bcb7"
 }

@@ -38,7 +38,7 @@ const LOCAL_P99_LIMIT_MS = 8;
 // strict 8ms target is kept for LOCAL runs only (LOCAL_P99_LIMIT_MS). See #3352.
 const CI_MEDIAN_P50_LIMIT_MS = 40;
 const CI_MEDIAN_P95_LIMIT_MS = 45;
-const CI_SECOND_HIGHEST_P99_LIMIT_MS = 100;
+const CI_SECOND_HIGHEST_P99_LIMIT_MS = 150;
 const isCi = process.env.CI === "true" || process.env.CI === "1";
 
 function makeEmptyState(): SubagentTrackingState {

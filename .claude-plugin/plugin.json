@@ -1,6 +1,6 @@
 {
   "name": "oh-my-claudecode",
-  "version": "5.0.2",
+  "version": "5.1.0",
   "description": "Multi-agent orchestration system for Claude Code",
   "author": {
     "name": "oh-my-claudecode contributors"
@@ -25,10 +25,13 @@
     "./skills/debug/",
     "./skills/deep-interview/",
     "./skills/deepinit/",
+    "./skills/drydock/",
     "./skills/execute/",
     "./skills/external-context/",
     "./skills/graph/",
     "./skills/hud/",
+    "./skills/launch/",
+    "./skills/minimal-code-discipline/",
     "./skills/omc-doctor/",
     "./skills/omc-setup/",
     "./skills/plan/",
