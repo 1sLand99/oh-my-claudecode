@@ -717,6 +717,19 @@ function heredocMarkers(line) {
         j = k;
         continue;
       }
+      if (q === '$' && line[j + 1] === '(') {
+        const g = shellGroup(line, j + 1);
+        delimiter += line.slice(j, g.end + 1);
+        j = g.end + 1;
+        continue;
+      }
+      if (q === '`') {
+        const end = findClosingBacktick(line, j);
+        if (end < 0) { delimiter = ''; break; }
+        delimiter += line.slice(j, end + 1);
+        j = end + 1;
+        continue;
+      }
       delimiter += line[j];
       j += 1;
     }
@@ -1340,7 +1353,8 @@ function checkPipelineProducer(stage, directory, command) {
           })()
         : args.join(' ');
     if (program === null) return true;
-    return program.length > 0 && Boolean(checkBashCommand(program, directory));
+    const scanned = program.replace(/\0/g, '');
+    return scanned.length > 0 && Boolean(checkBashCommand(scanned, directory));
   }
   if (!new Set(['cat', 'head', 'tail', 'tac']).has(cmd.base)) return false;
   const raw = words.slice(cmd.index + 1).map(entry => entry.token);
@@ -1412,8 +1426,9 @@ function checkSegment(segment, directory) {
         while (codeIndex < shellArgs.length) {
           const value = shellArgs[codeIndex].token.value;
           if (value === '--') { codeIndex += 1; break; }
-          if (value === '-' || !value.startsWith('-')) break;
-          if (/^(?:--rcfile|--init-file|-O|-o)$/.test(value)) {
+          if (value === '-' || value === '+') break;
+          if (!value.startsWith('-') && !/^[+][A-Za-z]/.test(value)) break;
+          if (/^(?:--rcfile|--init-file|-O|-o|\+O|\+o)$/.test(value)) {
             if (!shellArgs[codeIndex + 1]) return true;
             codeIndex += 2; continue;
           }
