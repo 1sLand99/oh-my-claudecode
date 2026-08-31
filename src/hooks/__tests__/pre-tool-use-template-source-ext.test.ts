@@ -403,6 +403,7 @@ describe('pre-tool-use template source extension detection', () => {
       ['path-qualified printf is not a shell builtin', "builtin /usr/bin/printf '%s\\n' 'rm src/app.ts' | bash", false],
       ['invalid -O argument aborts before -c', "bash -O -n -c 'rm src/app.ts'", false],
       ['script operand then -c is not a command string', "bash /dev/null -c 'rm src/app.ts'", false],
+      ['cat -n -- - is not a byte-preserving passthrough', "printf '%s\\n' 'rm src/app.ts' | cat -n -- - | bash", false],
       ['named coprocess writing only a log', 'coproc worker bash verify.sh > results.log', false],
     ] as const)('stays quiet: %s', (_label, command, expectedWarning) => {
       expect(hasDelegationNotice(runPreToolUseHook(command))).toBe(expectedWarning);

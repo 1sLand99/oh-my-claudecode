@@ -1118,9 +1118,13 @@ function isPassthroughStage(stage) {
   const cmd = executable(words);
   if (cmd?.base !== 'cat') return false;
   if (stdoutRedirected(stage)) return false;
-  const operands = argsAfter(words, cmd.index);
-  return !operands.some(token => token.dynamic)
-    && (operands.length === 0 || (operands.length === 1 && operands[0].value === '-'));
+  for (const entry of words.slice(cmd.index + 1)) {
+    if (entry.token.dynamic) return false;
+    const value = entry.token.value;
+    if (value === '--' || value === '-') continue;
+    return false;
+  }
+  return true;
 }
 function parseShellInvocation(shellArgs) {
   let noexec = false;
