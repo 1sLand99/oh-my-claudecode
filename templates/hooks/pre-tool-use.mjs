@@ -965,8 +965,8 @@ function consumeWrapper(words, index, base) {
     if (base === 'builtin') {
       if (value === '--') i += 1;
       if (!words[i]) return { index: words.length, base: ':' };
-      const nextBase = shellBase(words[i].token.value);
-      if (nextBase === 'printf' || nextBase === 'echo') return { index: i };
+      const name = words[i].token.value;
+      if (name === 'printf' || name === 'echo' || name === 'command') return { index: i };
       return { index: words.length, base: ':' };
     }
     if (value === '--') { i += 1; break; }
@@ -1141,7 +1141,10 @@ function shellArgsHaveNoexec(shellArgs) {
       || /^(?:--norc|--noprofile|--posix|--restricted|--verbose|--debugger|--dump-strings|--dump-po-strings|--stdin)$/.test(value)
       || takesValue;
     if (isFlag) {
-      if (takesValue) i += 1;
+      if (takesValue) {
+        if (!next || next.startsWith('-') || next.startsWith('+')) return true;
+        i += 1;
+      }
       continue;
     }
     if (seenCommand) return false;
@@ -1476,6 +1479,8 @@ function checkSegment(segment, directory) {
           if (value === '-' || value === '+') break;
           if (/^(?:--rcfile|--init-file|-O|-o|\+O|\+o)$/.test(value)) {
             if (!shellArgs[codeIndex + 1]) return true;
+            const next = shellArgs[codeIndex + 1].token.value;
+            if (next.startsWith('-') || next.startsWith('+')) return false;
             codeIndex += 2; continue;
           }
           if (/^[+-]D$/.test(value) || /^(?:--dump-strings|--dump-po-strings)$/.test(value)) return false;
