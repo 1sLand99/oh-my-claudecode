@@ -1103,6 +1103,7 @@ function expandPrintfEscapes(text, { stop = false } = {}) {
   for (let p = 0; p < text.length; p += 1) {
     if (text[p] !== '\\' || p + 1 >= text.length) { out += text[p]; continue; }
     const n = text[p + 1];
+    if (n === '\\') { out += '\\'; p += 1; continue; }
     if (n === 'c') {
       if (stop) return { text: out, stop: true };
       out += '\\c'; p += 1; continue;
@@ -1129,7 +1130,8 @@ function expandPrintfEscapes(text, { stop = false } = {}) {
       p += 5; continue;
     }
     if (n === 'U' && /^[0-9a-fA-F]{8}/.test(text.slice(p + 2))) {
-      out += String.fromCodePoint(parseInt(text.slice(p + 2, p + 10), 16));
+      const cp = parseInt(text.slice(p + 2, p + 10), 16);
+      if (Number.isFinite(cp) && cp <= 0x10FFFF) out += String.fromCodePoint(cp);
       p += 9; continue;
     }
     out += `\\${n}`; p += 1;
