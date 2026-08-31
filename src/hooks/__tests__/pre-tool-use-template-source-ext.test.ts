@@ -404,6 +404,7 @@ describe('pre-tool-use template source extension detection', () => {
       ['invalid -O argument aborts before -c', "bash -O -n -c 'rm src/app.ts'", false],
       ['script operand then -c is not a command string', "bash /dev/null -c 'rm src/app.ts'", false],
       ['cat -n -- - is not a byte-preserving passthrough', "printf '%s\\n' 'rm src/app.ts' | cat -n -- - | bash", false],
+      ['second -- after option delimiter is a cat filename', "printf '%s\\n' 'rm src/app.ts' | cat -- -- | bash", false],
       ['named coprocess writing only a log', 'coproc worker bash verify.sh > results.log', false],
     ] as const)('stays quiet: %s', (_label, command, expectedWarning) => {
       expect(hasDelegationNotice(runPreToolUseHook(command))).toBe(expectedWarning);
@@ -496,6 +497,7 @@ describe('pre-tool-use template source extension detection', () => {
       ['dash-prefixed rcfile is a filename operand', "bash --rcfile -foo -c 'rm src/app.ts'", true],
       ['later +n clears noexec', "bash -n +n -c 'rm src/app.ts'", true],
       ['cat -- - is a stdin passthrough', "printf '%s\\n' 'rm src/app.ts' | cat -- - | bash", true],
+      ['cat -u -- - is a byte-preserving passthrough', "printf '%s\\n' 'rm src/app.ts' | cat -u -- - | bash", true],
       ['executing long option --noediting still runs -c', "bash --noediting -c 'rm src/app.ts'", true],
       ['stdin -n +n clears noexec', "printf '%s\\n' 'rm src/app.ts' | bash -n +n", true],
       ['explicit stdin shell heredoc source write', "bash -s <<'EOF'\necho hacked > src/app.ts\nEOF", true],

@@ -1118,10 +1118,16 @@ function isPassthroughStage(stage) {
   const cmd = executable(words);
   if (cmd?.base !== 'cat') return false;
   if (stdoutRedirected(stage)) return false;
+  let optionsEnded = false;
   for (const entry of words.slice(cmd.index + 1)) {
     if (entry.token.dynamic) return false;
     const value = entry.token.value;
-    if (value === '--' || value === '-') continue;
+    if (!optionsEnded) {
+      if (value === '--') { optionsEnded = true; continue; }
+      if (value === '-' || /^-[u]+$/.test(value)) continue;
+      return false;
+    }
+    if (value === '-') continue;
     return false;
   }
   return true;
