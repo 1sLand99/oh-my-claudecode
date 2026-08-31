@@ -394,6 +394,7 @@ describe('pre-tool-use template source extension detection', () => {
       ['command -v does not unwrap rm', 'command -v rm src/app.ts', false],
       ['command -V does not unwrap rm', 'command -V rm src/app.ts', false],
       ['invalid printf option produces no stdout program', "printf -x 'rm src/app.ts' | bash", false],
+      ['echo -E does not expand escapes into a stdin program', "echo -E 'true\\nrm src/app.ts' | bash", false],
       ['named coprocess writing only a log', 'coproc worker bash verify.sh > results.log', false],
     ] as const)('stays quiet: %s', (_label, command, expectedWarning) => {
       expect(hasDelegationNotice(runPreToolUseHook(command))).toBe(expectedWarning);
@@ -466,6 +467,9 @@ describe('pre-tool-use template source extension detection', () => {
       ['bash -c then -x still executes the command string', "bash -c -x 'rm src/app.ts'", true],
       ['head -n 1 heredoc still forwards stdin to bash', "head -n 1 <<'EOF' | bash\nrm src/app.ts\ntrue\nEOF", true],
       ['here-string is a shell stdin program', "bash <<< 'rm src/app.ts'", true],
+      ['echo -e expands newline into a stdin program', "echo -e 'true\\nrm src/app.ts' | bash", true],
+      ['escaped backtick does not close command substitution', "echo \"`echo \\\\\\`; rm src/app.ts`\" > build.log", true],
+      ['locale-quoted heredoc delimiter still terminates', 'cat <<$"EOF" > build.log\ndata\nEOF\nrm src/app.ts', true],
       ['explicit stdin shell heredoc source write', "bash -s <<'EOF'\necho hacked > src/app.ts\nEOF", true],
       ['explicit fd zero shell heredoc source write', "bash 0<<'EOF'\necho hacked > src/app.ts\nEOF", true],
       ['shell rcfile option still reads heredoc program', "bash --rcfile /tmp/rc <<'EOF'\necho hacked > src/app.ts\nEOF", true],

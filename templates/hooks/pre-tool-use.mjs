@@ -558,6 +558,22 @@ function shellGroup(text, openIndex) {
   }
   return { end: text.length - 1, inner: text.slice(openIndex + 1) };
 }
+function findClosingBacktick(text, open) {
+  let quote = null;
+  for (let i = open + 1; i < text.length; i += 1) {
+    const ch = text[i];
+    if (quote === "'") { if (ch === "'") quote = null; continue; }
+    if (quote === '"') {
+      if (ch === '\\' && i + 1 < text.length) { i += 1; continue; }
+      if (ch === '"') quote = null;
+      continue;
+    }
+    if (ch === '\\' && i + 1 < text.length) { i += 1; continue; }
+    if (ch === "'" || ch === '"') { quote = ch; continue; }
+    if (ch === '`') return i;
+  }
+  return -1;
+}
 
 function hasUnquotedTrailingBackslash(line) {
   let quote = null;
@@ -666,6 +682,25 @@ function heredocMarkers(line) {
         continue;
       }
       if (line[j] === '\\' && j + 1 < line.length) { delimiter += line[j + 1]; j += 2; continue; }
+      if (q === '$' && line[j + 1] === '"') {
+        quoted = true;
+        let inner = '';
+        let k = j + 2;
+        let closed = false;
+        while (k < line.length) {
+          if (line[k] === '\\' && k + 1 < line.length) {
+            const n = line[k + 1];
+            inner += '$`"\\\n'.includes(n) ? n : `\\${n}`;
+            k += 2; continue;
+          }
+          if (line[k] === '"') { closed = true; k += 1; break; }
+          inner += line[k]; k += 1;
+        }
+        if (!closed) { delimiter = ''; break; }
+        delimiter += inner;
+        j = k;
+        continue;
+      }
       if (q === '$' && line[j + 1] === "'") {
         quoted = true;
         let inner = '';
@@ -843,7 +878,7 @@ function tokenizeShell(command) {
         value += ch; i += 1; continue;
       }
       if (ch === '$' && text[i + 1] === '(') { const g = shellGroup(text, i + 1); value += text.slice(i, g.end + 1); dynamic = true; nested.push(g.inner); i = g.end + 1; continue; }
-      if (ch === '`') { const end = text.indexOf('`', i + 1); value += text.slice(i, end < 0 ? text.length : end + 1); dynamic = true; if (end >= 0) nested.push(text.slice(i + 1, end)); i = end < 0 ? text.length : end + 1; continue; }
+      if (ch === '`') { const end = findClosingBacktick(text, i); value += text.slice(i, end < 0 ? text.length : end + 1); dynamic = true; if (end >= 0) nested.push(text.slice(i + 1, end)); i = end < 0 ? text.length : end + 1; continue; }
       if (ch === '$') { value += ch; dynamic = true; i += 1; continue; }
       value += ch; i += 1; continue;
     }
@@ -856,7 +891,7 @@ function tokenizeShell(command) {
     if (/\s/.test(ch)) { flush(); adjacent = false; i += 1; continue; }
     if (ch === '$' && text[i + 1] === '(') { const g = shellGroup(text, i + 1); value += text.slice(i, g.end + 1); dynamic = true; nested.push(g.inner); i = g.end + 1; continue; }
     if ((ch === '<' || ch === '>') && text[i + 1] === '(') { const g = shellGroup(text, i + 1); value += text.slice(i, g.end + 1); dynamic = true; nested.push(g.inner); i = g.end + 1; continue; }
-    if (ch === '`') { const end = text.indexOf('`', i + 1); value += text.slice(i, end < 0 ? text.length : end + 1); dynamic = true; if (end >= 0) nested.push(text.slice(i + 1, end)); i = end < 0 ? text.length : end + 1; continue; }
+    if (ch === '`') { const end = findClosingBacktick(text, i); value += text.slice(i, end < 0 ? text.length : end + 1); dynamic = true; if (end >= 0) nested.push(text.slice(i + 1, end)); i = end < 0 ? text.length : end + 1; continue; }
     if (ch === '$') { value += ch; dynamic = true; i += 1; continue; }
     if ('*?[]{}'.includes(ch)) ambiguous = true;
     const two = text.slice(i, i + 2), three = text.slice(i, i + 3);
@@ -1260,6 +1295,7 @@ function checkPipelineProducer(stage, directory, command) {
     const args = [];
     const entries = words.slice(cmd.index + 1);
     let optionsEnded = false;
+    let echoExpand = false;
     for (let i = 0; i < entries.length; i += 1) {
       const entry = entries[i];
       if (entry.token.dynamic) return true;
@@ -1269,7 +1305,13 @@ function checkPipelineProducer(stage, directory, command) {
         if (cmd.base === 'printf' && value.startsWith('-v')) {
           return false;
         }
-        if (cmd.base === 'echo' && /^-[neE]+$/.test(value)) continue;
+        if (cmd.base === 'echo' && /^-[neE]+$/.test(value)) {
+          for (const flag of value.slice(1)) {
+            if (flag === 'e') echoExpand = true;
+            if (flag === 'E') echoExpand = false;
+          }
+          continue;
+        }
         if (cmd.base === 'printf' && value.startsWith('-') && value !== '-' && value !== '--') return false;
         optionsEnded = true;
       }
@@ -1277,7 +1319,11 @@ function checkPipelineProducer(stage, directory, command) {
     }
     const gnu = words[cmd.index].token.value.includes('/')
       || words.slice(0, cmd.index).some(entry => new Set(['env', 'exec', 'nohup', 'nice', 'timeout', 'sudo']).has(shellBase(entry.token.value)));
-    const program = cmd.base === 'printf' ? renderPrintf(args, { gnu }) : args.join(' ');
+    const program = cmd.base === 'printf'
+      ? renderPrintf(args, { gnu })
+      : echoExpand
+        ? args.map(arg => expandPrintfEscapes(arg).text).join(' ')
+        : args.join(' ');
     if (program === null) return true;
     return program.length > 0 && Boolean(checkBashCommand(program, directory));
   }
