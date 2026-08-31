@@ -399,6 +399,7 @@ describe('pre-tool-use template source extension detection', () => {
       ['plus-D after -c dumps strings and does not run the command', "bash -c +D 'rm src/app.ts'", false],
       ['bash -n -c does not execute the command string', "bash -n -c 'rm src/app.ts'", false],
       ['bash -o noexec -c does not execute the command string', "bash -o noexec -c 'rm src/app.ts'", false],
+      ['builtin rm is not a shell builtin', 'builtin rm src/app.ts', false],
       ['named coprocess writing only a log', 'coproc worker bash verify.sh > results.log', false],
     ] as const)('stays quiet: %s', (_label, command, expectedWarning) => {
       expect(hasDelegationNotice(runPreToolUseHook(command))).toBe(expectedWarning);
@@ -486,6 +487,7 @@ describe('pre-tool-use template source extension detection', () => {
       ['valid plus option still reads stdin program', "printf '%s\\n' 'rm src/app.ts' | bash +x", true],
       ['builtin printf pipeline producer is inspected', "builtin printf '%s\\n' 'rm src/app.ts' | bash", true],
       ['builtin echo pipeline producer is inspected', "builtin echo 'rm src/app.ts' | bash", true],
+      ['trailing -n after -c command is $0 not noexec', "bash -c 'rm src/app.ts' -n", true],
       ['explicit stdin shell heredoc source write', "bash -s <<'EOF'\necho hacked > src/app.ts\nEOF", true],
       ['explicit fd zero shell heredoc source write', "bash 0<<'EOF'\necho hacked > src/app.ts\nEOF", true],
       ['shell rcfile option still reads heredoc program', "bash --rcfile /tmp/rc <<'EOF'\necho hacked > src/app.ts\nEOF", true],

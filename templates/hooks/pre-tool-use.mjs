@@ -962,6 +962,13 @@ function consumeWrapper(words, index, base) {
   while (i < words.length) {
     const token = words[i].token; if (token.dynamic) return null;
     const value = token.value;
+    if (base === 'builtin') {
+      if (value === '--') i += 1;
+      if (!words[i]) return { index: words.length, base: ':' };
+      const nextBase = shellBase(words[i].token.value);
+      if (nextBase === 'printf' || nextBase === 'echo') return { index: i };
+      return { index: words.length, base: ':' };
+    }
     if (value === '--') { i += 1; break; }
     if (base === 'env' && value.includes('=') && !value.startsWith('-')) { i += 1; continue; }
     if (!value.startsWith('-') || value === '-') break;
@@ -1115,11 +1122,30 @@ function isPassthroughStage(stage) {
   return operands.length === 0 && !operands.some(token => token.dynamic);
 }
 function shellArgsHaveNoexec(shellArgs) {
+  let seenCommand = false;
   for (let i = 0; i < shellArgs.length; i += 1) {
     const value = shellArgs[i].token.value;
-    if (value === '--') break;
-    if (value === '-o' && shellArgs[i + 1]?.token.value === 'noexec') return true;
+    const next = shellArgs[i + 1]?.token.value;
+    if (value === '--') {
+      if (seenCommand) return false;
+      continue;
+    }
+    if (value === '-o' && next === 'noexec') return true;
     if (/^-[abefhkmnptuvxBCEHPTcils]*n[abefhkmnptuvxBCEHPTcils]*$/.test(value)) return true;
+    if (value === '--command' || (/^-[^-]*c/.test(value) && !value.startsWith('--'))) {
+      seenCommand = true;
+      continue;
+    }
+    const takesValue = /^(?:--rcfile|--init-file|-O|-o|\+O|\+o)$/.test(value);
+    const isFlag = /^[+-][abefhkmnptuvxBCEHPTcilsD]+$/.test(value)
+      || /^(?:--norc|--noprofile|--posix|--restricted|--verbose|--debugger|--dump-strings|--dump-po-strings|--stdin)$/.test(value)
+      || takesValue;
+    if (isFlag) {
+      if (takesValue) i += 1;
+      continue;
+    }
+    if (seenCommand) return false;
+    break;
   }
   return false;
 }
