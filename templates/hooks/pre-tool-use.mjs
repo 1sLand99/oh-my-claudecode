@@ -1063,13 +1063,17 @@ function decodeAnsiCEscape(text, p) {
     while (q < text.length && oct.length < 3 && /[0-7]/.test(text[q])) oct += text[q++];
     return { value: String.fromCharCode(parseInt(oct, 8)), end: q };
   }
-  if (n === 'u' && /^[0-9a-fA-F]{4}/.test(text.slice(p + 2))) {
-    return { value: String.fromCharCode(parseInt(text.slice(p + 2, p + 6), 16)), end: p + 6 };
+  if (n === 'u' || n === 'U') {
+    const max = n === 'u' ? 4 : 8;
+    let hex = '';
+    let q = p + 2;
+    while (q < text.length && hex.length < max && /[0-9a-fA-F]/.test(text[q])) hex += text[q++];
+    if (!hex) return { value: `\\${n}`, end: p + 2 };
+    const cp = parseInt(hex, 16);
+    if (!Number.isFinite(cp) || cp > 0x10FFFF) return { value: '', end: q };
+    return { value: String.fromCodePoint(cp), end: q };
   }
-  if (n === 'U' && /^[0-9a-fA-F]{8}/.test(text.slice(p + 2))) {
-    return { value: String.fromCodePoint(parseInt(text.slice(p + 2, p + 10), 16)), end: p + 10 };
-  }
-  return { value: n, end: p + 2 };
+  return { value: `\\${n}`, end: p + 2 };
 }
 function decodeAnsiC(text) {
   let out = '';

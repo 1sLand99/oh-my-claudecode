@@ -384,6 +384,7 @@ describe('pre-tool-use template source extension detection', () => {
       ['echo -- is data not end-of-options', "echo -- 'rm src/app.ts' | bash", false],
       ['single-quoted backslash does not hide a later data heredoc', "printf '%s' '\\' > build.log; cat <<EOF > build.log\necho x > src/app.ts\nEOF", false],
       ['unrecognized echo option stays output data', 'echo -x rm src/app.ts | bash', false],
+      ['unsupported ANSI-C escape keeps the backslash', "echo $'echo x \\> src/app.ts' | bash", false],
       ['named coprocess writing only a log', 'coproc worker bash verify.sh > results.log', false],
     ] as const)('stays quiet: %s', (_label, command, expectedWarning) => {
       expect(hasDelegationNotice(runPreToolUseHook(command))).toBe(expectedWarning);
@@ -446,6 +447,8 @@ describe('pre-tool-use template source extension detection', () => {
       ['ANSI-C quoted heredoc delimiter is decoded', "cat <<$'EOF' > build.log\ndata\nEOF\nrm src/app.ts", true],
       ['ANSI-C encoded operand still deletes the source file', "rm $'src/app.\\x74s'", true],
       ['ANSI-C encoded redirect in echo program', "echo $'echo x \\x3e src/app.ts' | bash", true],
+      ['short ANSI-C \\u escape decodes a redirect', "echo $'echo x \\u3e src/app.ts' | bash", true],
+      ['out-of-range ANSI-C \\U does not abort later rm', "printf '%s' $'\\UFFFFFFFF' > build.log; rm src/app.ts", true],
       ['explicit stdin shell heredoc source write', "bash -s <<'EOF'\necho hacked > src/app.ts\nEOF", true],
       ['explicit fd zero shell heredoc source write', "bash 0<<'EOF'\necho hacked > src/app.ts\nEOF", true],
       ['shell rcfile option still reads heredoc program', "bash --rcfile /tmp/rc <<'EOF'\necho hacked > src/app.ts\nEOF", true],
