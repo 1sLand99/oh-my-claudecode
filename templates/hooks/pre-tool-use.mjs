@@ -1427,12 +1427,16 @@ function effectiveFd0HereString(stage) {
         fds.set(io, unknown);
         continue;
       }
-      if (target?.type === 'word' && /^\d+$/.test(target.value)) {
-        const src = Number(target.value);
-        fds.set(io, fds.get(src) || unknown);
-      } else {
-        fds.set(io, { kind: 'file' });
+      if (target?.type === 'word') {
+        const match = target.value.match(/^(\d+)-?$/);
+        if (match) {
+          const src = Number(match[1]);
+          fds.set(io, fds.get(src) || unknown);
+          if (target.value.endsWith('-')) fds.delete(src);
+          continue;
+        }
       }
+      fds.set(io, { kind: 'file' });
       continue;
     }
     fds.set(io, { kind: 'file' });

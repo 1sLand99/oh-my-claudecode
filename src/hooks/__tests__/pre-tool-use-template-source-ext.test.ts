@@ -514,6 +514,7 @@ describe('pre-tool-use template source extension detection', () => {
       ['here-string restored through fd duplication', "cat <<< 'rm src/app.ts' 3<&0 0<&3 | bash", true],
       ['direct-shell later here-string overrides stdin redirect', "bash < /dev/null <<< 'rm src/app.ts'", true],
       ['saved pipeline stdin restored after here-string', "printf '%s\\n' 'rm src/app.ts' | cat 3<&0 <<< 'echo safe' 0<&3 | bash", true],
+      ['saved pipeline stdin restored by moving fd', "printf '%s\\n' 'rm src/app.ts' | cat 3<&0 <<< 'echo safe' 0<&3- | bash", true],
       ['dynamic duplication target is scanned conservatively', "fd=0; cat <<< 'rm src/app.ts' 0<&$fd | bash", true],
       ['executing long option --noediting still runs -c', "bash --noediting -c 'rm src/app.ts'", true],
       ['stdin -n +n clears noexec', "printf '%s\\n' 'rm src/app.ts' | bash -n +n", true],
