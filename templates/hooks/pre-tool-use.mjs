@@ -870,7 +870,7 @@ function sourceMutationNotice(command) {
   return `[DELEGATION NOTICE] Bash command may modify source files: ${summarizeCommand(command)}\n\nRecommended: Delegate to executor agent instead:\n  Task(subagent_type="oh-my-claudecode:executor", model="sonnet", prompt="...")\n\nThis is a soft warning. Operation will proceed.`;
 }
 function targetIndices(segment) { const out = new Set(); for (let i = 0; i < segment.length; i += 1) if (segment[i].type === 'op' && (segment[i].kind === 'in' || segment[i].kind === 'out') && segment[i + 1]?.type === 'word') out.add(i + 1); return out; }
-function writeTarget(token, directory) { return !token || token.type !== 'word' || token.dynamic || token.ambiguous || !token.value || (isSourceFile(token.value) && !isAllowedPath(token.value, directory)); }
+function writeTarget(token, directory) { return !token || token.type !== 'word' || token.dynamic || token.ambiguous || Boolean(token.value) && isSourceFile(token.value) && !isAllowedPath(token.value, directory); }
 function wordsFor(segment, targets) { return segment.map((token, index) => ({ token, index })).filter(entry => entry.token.type === 'word' && !targets.has(entry.index)); }
 function redirectIoIndices(segment) {
   const out = new Set();

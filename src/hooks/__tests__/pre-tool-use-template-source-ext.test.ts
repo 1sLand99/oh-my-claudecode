@@ -387,6 +387,7 @@ describe('pre-tool-use template source extension detection', () => {
       ['unsupported ANSI-C escape keeps the backslash', "echo $'echo x \\> src/app.ts' | bash", false],
       ['double-quoted nonspecial backslash is not a source path', 'rm "src/app.\\ts"', false],
       ['NUL-truncated empty -c argument is not the next word', "bash -c $'\\c@junk' 'rm src/app.ts'", false],
+      ['empty quoted redirect target is invalid not a source write', "echo x > '' rm src/app.ts", false],
       ['named coprocess writing only a log', 'coproc worker bash verify.sh > results.log', false],
     ] as const)('stays quiet: %s', (_label, command, expectedWarning) => {
       expect(hasDelegationNotice(runPreToolUseHook(command))).toBe(expectedWarning);
