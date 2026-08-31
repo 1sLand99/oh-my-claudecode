@@ -559,30 +559,50 @@ function shellGroup(text, openIndex) {
   return { end: text.length - 1, inner: text.slice(openIndex + 1) };
 }
 
-function joinContinuedLines(text) {
-  let out = '';
+function hasUnquotedTrailingBackslash(line) {
   let quote = null;
-  const s = String(text || '');
-  for (let i = 0; i < s.length; i += 1) {
-    const ch = s[i];
-    if (quote === "'") { if (ch === "'") quote = null; out += ch; continue; }
-    if (quote === "$'") {
-      if (ch === '\\' && i + 1 < s.length) { out += s[i] + s[i + 1]; i += 1; continue; }
-      if (ch === "'") quote = null;
-      out += ch; continue;
+  for (let i = 0; i < line.length; i += 1) {
+    const q = advanceQuote(quote, line[i], line[i + 1]);
+    if (q) { quote = q.quote; i += q.consume - 1; continue; }
+    if (line[i] === '\\') {
+      if (i + 1 >= line.length) return quote === null;
+      i += 1;
     }
-    if (quote === '"') {
-      if (ch === '\\' && s[i + 1] === '\n') { i += 1; continue; }
-      if (ch === '\\' && i + 1 < s.length) { out += ch + s[i + 1]; i += 1; continue; }
-      if (ch === '"') quote = null;
-      out += ch; continue;
-    }
-    if (ch === '$' && s[i + 1] === "'") { quote = "$'"; out += ch + s[i + 1]; i += 1; continue; }
-    if (ch === "'" || ch === '"') { quote = ch; out += ch; continue; }
-    if (ch === '\\' && s[i + 1] === '\n') { i += 1; continue; }
-    out += ch;
   }
-  return out;
+  return false;
+}
+function quotedHeredocBodyLines(lines) {
+  const skip = new Set();
+  for (let i = 0; i < lines.length; i += 1) {
+    const markers = heredocMarkers(lines[i]);
+    if (!markers.length) continue;
+    let lineIndex = i;
+    for (const marker of markers) {
+      while (++lineIndex < lines.length) {
+        const candidate = marker.stripTabs ? lines[lineIndex].replace(/^\t+/, '') : lines[lineIndex];
+        if (candidate === marker.delimiter) break;
+        if (marker.quoted) skip.add(lineIndex);
+      }
+    }
+    i = lineIndex;
+  }
+  return skip;
+}
+function joinContinuedLines(text) {
+  const lines = String(text || '').split('\n');
+  const quotedBody = quotedHeredocBodyLines(lines);
+  const out = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    let line = lines[i];
+    if (!quotedBody.has(i)) {
+      while (hasUnquotedTrailingBackslash(line) && i + 1 < lines.length && !quotedBody.has(i + 1)) {
+        line = `${line.slice(0, -1)}${lines[i + 1]}`;
+        i += 1;
+      }
+    }
+    out.push(line);
+  }
+  return out.join('\n');
 }
 function heredocFd(prefix) {
   const fdMatch = prefix.match(/(\d+)$/);
@@ -614,11 +634,12 @@ function heredocMarkers(line) {
     if (stripTabs) j += 1;
     while (j < line.length && /[ \t]/.test(line[j])) j += 1;
     if (j >= line.length) continue;
-    let delimiter = '';
+    let delimiter = ''; let quoted = false;
     const start = j;
     while (j < line.length && !/[\s;&|<>()]/.test(line[j])) {
       const q = line[j];
       if (q === "'") {
+        quoted = true;
         const end = line.indexOf("'", j + 1);
         if (end < 0) { delimiter = ''; break; }
         delimiter += line.slice(j + 1, end);
@@ -626,6 +647,7 @@ function heredocMarkers(line) {
         continue;
       }
       if (q === '"') {
+        quoted = true;
         let inner = '';
         let k = j + 1;
         let closed = false;
@@ -645,6 +667,7 @@ function heredocMarkers(line) {
       }
       if (line[j] === '\\' && j + 1 < line.length) { delimiter += line[j + 1]; j += 2; continue; }
       if (q === '$' && line[j + 1] === "'") {
+        quoted = true;
         let inner = '';
         let k = j + 2;
         let closed = false;
@@ -667,7 +690,7 @@ function heredocMarkers(line) {
       j += 1;
     }
     if (!delimiter && j === start) continue;
-    markers.push({ delimiter, stripTabs, fd: heredocFd(line.slice(0, i)), pos: i });
+    markers.push({ delimiter, stripTabs, fd: heredocFd(line.slice(0, i)), pos: i, quoted });
     i = Math.max(j, i + 1) - 1;
   }
   return markers;
@@ -906,13 +929,32 @@ function consumeWrapper(words, index, base) {
     if (base === 'exec' && /^(?:-c|-l)$/.test(value)) { i += 1; continue; }
     if (base === 'nice' && /^(?:-n|--adjustment)$/.test(value)) { if (!takeOptionValue()) return null; continue; }
     if (base === 'nice' && /^--adjustment=/.test(value)) { i += 1; continue; }
-    if (base === 'command' && /^(?:-p|-v|-V)$/.test(value)) { i += 1; continue; }
+    if (base === 'command' && /^(?:-v|-V)$/.test(value)) return { index: words.length, base: ':' };
+    if (base === 'command' && value === '-p') { i += 1; continue; }
     if (base === 'nohup' && /^(?:--help|--version)$/.test(value)) return { index: words.length, base: null };
     if (base === 'time' && /^(?:-p|--portability)$/.test(value)) { i += 1; continue; }
     return null;
   }
   if (base === 'timeout') { if (!words[i] || words[i].token.dynamic) return null; i += 1; }
   return { index: i };
+}
+function headTailOperands(tokens) {
+  const operands = []; let optionsEnded = false;
+  for (let i = 0; i < tokens.length; i += 1) {
+    const token = tokens[i]; if (token.dynamic) return null;
+    if (!optionsEnded) {
+      if (token.value === '--') { optionsEnded = true; continue; }
+      if (/^(?:--lines|--bytes)=/.test(token.value)) continue;
+      if (/^(?:-n|--lines|-c|--bytes)$/.test(token.value)) {
+        if (!tokens[i + 1] || tokens[i + 1].dynamic) return null;
+        i += 1; continue;
+      }
+      if (/^-[nc][0-9]+/.test(token.value)) continue;
+      if (token.value.startsWith('-') && token.value !== '-') continue;
+    }
+    operands.push(token);
+  }
+  return operands;
 }
 function executable(words) {
   let i = 0;
@@ -1130,8 +1172,9 @@ function expandPrintfEscapes(text, { stop = false } = {}) {
       p += 5; continue;
     }
     if (n === 'U' && /^[0-9a-fA-F]{8}/.test(text.slice(p + 2))) {
+      const raw = text.slice(p, p + 10);
       const cp = parseInt(text.slice(p + 2, p + 10), 16);
-      if (Number.isFinite(cp) && cp <= 0x10FFFF) out += String.fromCodePoint(cp);
+      out += Number.isFinite(cp) && cp <= 0x10FFFF ? String.fromCodePoint(cp) : raw;
       p += 9; continue;
     }
     out += `\\${n}`; p += 1;
@@ -1227,7 +1270,7 @@ function checkPipelineProducer(stage, directory, command) {
           return false;
         }
         if (cmd.base === 'echo' && /^-[neE]+$/.test(value)) continue;
-        if (cmd.base === 'printf' && value.startsWith('-') && value !== '-' && value !== '--') continue;
+        if (cmd.base === 'printf' && value.startsWith('-') && value !== '-' && value !== '--') return false;
         optionsEnded = true;
       }
       args.push(value);
@@ -1239,8 +1282,9 @@ function checkPipelineProducer(stage, directory, command) {
     return program.length > 0 && Boolean(checkBashCommand(program, directory));
   }
   if (!new Set(['cat', 'head', 'tail', 'tac']).has(cmd.base)) return false;
-  const operands = argsAfter(words, cmd.index);
-  if (operands.some(token => token.dynamic) || operands.length > 0) return false;
+  const raw = words.slice(cmd.index + 1).map(entry => entry.token);
+  const operands = cmd.base === 'cat' || cmd.base === 'tac' ? argsAfter(words, cmd.index) : headTailOperands(raw);
+  if (!operands || operands.some(token => token.dynamic) || operands.length > 0) return !operands;
   return heredocSections(command).some(section => (
     section.fd === 0 && Boolean(checkBashCommand(section.body, directory))
   ));
@@ -1301,7 +1345,20 @@ function checkSegment(segment, directory) {
     if (shellArgs.some(entry => entry.token.dynamic)) return true;
     const flag = shellArgs.findIndex(entry => entry.token.value === '--command' || /^-[^-]*c/.test(entry.token.value));
     if (flag >= 0) {
-      const codeIndex = shellArgs[flag + 1]?.token.value === '--' ? flag + 2 : flag + 1;
+      let codeIndex = flag + 1;
+      if (shellArgs[codeIndex]?.token.value === '--') codeIndex += 1;
+      else {
+        while (codeIndex < shellArgs.length) {
+          const value = shellArgs[codeIndex].token.value;
+          if (value === '--') { codeIndex += 1; break; }
+          if (value === '-' || !value.startsWith('-')) break;
+          if (/^(?:--rcfile|--init-file|-O|-o)$/.test(value)) {
+            if (!shellArgs[codeIndex + 1]) return true;
+            codeIndex += 2; continue;
+          }
+          codeIndex += 1;
+        }
+      }
       const code = shellArgs[codeIndex]?.token;
       return !code || checkBashCommand(code.value, directory);
     }
@@ -1356,6 +1413,14 @@ function checkBashCommand(command, directory) {
   for (const stages of splitPipelineGroups(tokenizeShell(command))) {
     for (let i = 0; i < stages.length; i += 1) {
       if (checkSegment(stages[i], directory)) return sourceMutationNotice(command);
+      if (shellReadsStdinProgram(stages[i])) {
+        for (let k = 0; k < stages[i].length; k += 1) {
+          if (stages[i][k].type !== 'op' || stages[i][k].value !== '<<<') continue;
+          const word = stages[i][k + 1];
+          if (word?.dynamic) return sourceMutationNotice(command);
+          if (word?.type === 'word' && checkBashCommand(word.value, directory)) return sourceMutationNotice(command);
+        }
+      }
       if (i > 0 && shellReadsStdinProgram(stages[i])) {
         for (let j = i - 1; j >= 0; j -= 1) {
           if (checkPipelineProducer(stages[j], directory, command)) return sourceMutationNotice(command);

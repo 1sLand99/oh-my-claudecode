@@ -389,6 +389,11 @@ describe('pre-tool-use template source extension detection', () => {
       ['NUL-truncated empty -c argument is not the next word', "bash -c $'\\c@junk' 'rm src/app.ts'", false],
       ['empty quoted redirect target is invalid not a source write', "echo x > '' rm src/app.ts", false],
       ['printf %b doubled backslash keeps escaped redirect', "printf '%b' 'echo x \\\\> src/app.ts\\n' | bash", false],
+      ['gnu printf invalid \\U is not a reconstructed rm', "/usr/bin/printf '\\UFFFFFFFFrm src/app.ts\\n' | bash", false],
+      ['builtin printf over-max \\U is not a reconstructed rm', "printf '\\U00110000rm src/app.ts\\n' | bash", false],
+      ['command -v does not unwrap rm', 'command -v rm src/app.ts', false],
+      ['command -V does not unwrap rm', 'command -V rm src/app.ts', false],
+      ['invalid printf option produces no stdout program', "printf -x 'rm src/app.ts' | bash", false],
       ['named coprocess writing only a log', 'coproc worker bash verify.sh > results.log', false],
     ] as const)('stays quiet: %s', (_label, command, expectedWarning) => {
       expect(hasDelegationNotice(runPreToolUseHook(command))).toBe(expectedWarning);
@@ -457,6 +462,10 @@ describe('pre-tool-use template source extension detection', () => {
       ['ANSI-C NUL from \\c@ truncates the operand', "rm $'src/app.ts\\c@junk'", true],
       ['NUL-truncated ANSI-C heredoc delimiter still terminates', "cat <<$'EOF\\c@junk' > build.log\ndata\nEOF\nrm src/app.ts", true],
       ['invalid printf \\U does not abort later rm', "printf '\\UFFFFFFFF'; rm src/app.ts", true],
+      ['quoted heredoc body backslash is not a line continuation', "cat <<'EOF' > build.log\ndata\\\nEOF\nrm src/app.ts", true],
+      ['bash -c then -x still executes the command string', "bash -c -x 'rm src/app.ts'", true],
+      ['head -n 1 heredoc still forwards stdin to bash', "head -n 1 <<'EOF' | bash\nrm src/app.ts\ntrue\nEOF", true],
+      ['here-string is a shell stdin program', "bash <<< 'rm src/app.ts'", true],
       ['explicit stdin shell heredoc source write', "bash -s <<'EOF'\necho hacked > src/app.ts\nEOF", true],
       ['explicit fd zero shell heredoc source write', "bash 0<<'EOF'\necho hacked > src/app.ts\nEOF", true],
       ['shell rcfile option still reads heredoc program', "bash --rcfile /tmp/rc <<'EOF'\necho hacked > src/app.ts\nEOF", true],
