@@ -519,6 +519,8 @@ describe('pre-tool-use template source extension detection', () => {
       ['dynamic duplication target is scanned conservatively', "fd=0; cat <<< 'rm src/app.ts' 0<&$fd | bash", true],
       ['executing long option --noediting still runs -c', "bash --noediting -c 'rm src/app.ts'", true],
       ['stdin -n +n clears noexec', "printf '%s\\n' 'rm src/app.ts' | bash -n +n", true],
+      ['lone dash is bash stdin like --', "bash - <<'EOF'\nrm src/app.ts\nEOF", true],
+      ['pipeline into lone dash bash', "printf '%s\\n' 'rm src/app.ts' | bash -", true],
       ['explicit stdin shell heredoc source write', "bash -s <<'EOF'\necho hacked > src/app.ts\nEOF", true],
       ['explicit fd zero shell heredoc source write', "bash 0<<'EOF'\necho hacked > src/app.ts\nEOF", true],
       ['shell rcfile option still reads heredoc program', "bash --rcfile /tmp/rc <<'EOF'\necho hacked > src/app.ts\nEOF", true],

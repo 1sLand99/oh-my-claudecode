@@ -1190,7 +1190,7 @@ function parseShellInvocation(shellArgs) {
   while (i < shellArgs.length) {
     const value = shellArgs[i].token.value;
     const next = shellArgs[i + 1]?.token.value;
-    if (value === '--') return { invalid: false, noexec, codeIndex: -1, readsStdin: forceStdin || i + 1 >= shellArgs.length };
+    if (value === '--' || value === '-') return { invalid: false, noexec, codeIndex: -1, readsStdin: forceStdin || i + 1 >= shellArgs.length };
     if (value === '--rcfile' || value === '--init-file') {
       const got = skipValueOpt(value, next, true); if (got !== 'ok') return { invalid: true, noexec, codeIndex: -1, readsStdin: false };
       i += 2; continue;
