@@ -1408,6 +1408,31 @@ function renderPrintf(args, { gnu = false } = {}) {
   }
   return out;
 }
+function effectiveFd0HereString(stage) {
+  const fds = new Map();
+  for (let k = 0; k < stage.length; k += 1) {
+    const token = stage[k];
+    if (token.type !== 'op' || token.kind !== 'in') continue;
+    const prev = stage[k - 1];
+    const io = token.glued && prev?.type === 'word' && !prev.quoted && !prev.escaped && /^\d+$/.test(prev.value) ? Number(prev.value) : 0;
+    if (token.value === '<<<') {
+      fds.set(io, stage[k + 1] || null);
+      continue;
+    }
+    if (token.value === '<&') {
+      const target = stage[k + 1];
+      if (target?.type === 'word' && /^\d+$/.test(target.value)) {
+        const src = Number(target.value);
+        fds.set(io, fds.has(src) ? fds.get(src) : null);
+      } else {
+        fds.set(io, null);
+      }
+      continue;
+    }
+    fds.set(io, null);
+  }
+  return fds.get(0) || null;
+}
 function checkPipelineProducer(stage, directory, command) {
   const targets = targetIndices(stage);
   const words = wordsFor(stage, targets);
@@ -1461,21 +1486,7 @@ function checkPipelineProducer(stage, directory, command) {
   if (!new Set(['cat', 'head', 'tail', 'tac']).has(cmd.base)) return false;
   const raw = words.slice(cmd.index + 1).map(entry => entry.token);
   const operands = cmd.base === 'cat' || cmd.base === 'tac' ? argsAfter(words, cmd.index) : headTailOperands(raw);
-  let hereWord = null;
-  for (let k = 0; k < stage.length; k += 1) {
-    const token = stage[k];
-    if (token.type !== 'op' || token.kind !== 'in') continue;
-    const prev = stage[k - 1];
-    const io = token.glued && prev?.type === 'word' && !prev.quoted && !prev.escaped && /^\d+$/.test(prev.value) ? Number(prev.value) : 0;
-    if (io !== 0) continue;
-    if (token.value === '<<<') {
-      hereWord = stage[k + 1];
-      continue;
-    }
-    const target = stage[k + 1];
-    if (token.value === '<&' && target?.type === 'word' && target.value === '0') continue;
-    hereWord = null;
-  }
+  const hereWord = effectiveFd0HereString(stage);
   if (hereWord?.dynamic) return true;
   if (hereWord?.type === 'word' && checkBashCommand(hereWord.value, directory)) return true;
   if (!operands || operands.some(token => token.dynamic) || operands.length > 0) return !operands;
@@ -1596,12 +1607,9 @@ function checkBashCommand(command, directory) {
     for (let i = 0; i < stages.length; i += 1) {
       if (checkSegment(stages[i], directory)) return sourceMutationNotice(command);
       if (shellReadsStdinProgram(stages[i])) {
-        for (let k = 0; k < stages[i].length; k += 1) {
-          if (stages[i][k].type !== 'op' || stages[i][k].value !== '<<<') continue;
-          const word = stages[i][k + 1];
-          if (word?.dynamic) return sourceMutationNotice(command);
-          if (word?.type === 'word' && checkBashCommand(word.value, directory)) return sourceMutationNotice(command);
-        }
+        const word = effectiveFd0HereString(stages[i]);
+        if (word?.dynamic) return sourceMutationNotice(command);
+        if (word?.type === 'word' && checkBashCommand(word.value, directory)) return sourceMutationNotice(command);
       }
       if (i > 0 && shellReadsStdinProgram(stages[i])) {
         for (let j = i - 1; j >= 0; j -= 1) {

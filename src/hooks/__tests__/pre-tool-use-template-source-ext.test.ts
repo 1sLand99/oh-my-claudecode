@@ -410,6 +410,7 @@ describe('pre-tool-use template source extension detection', () => {
       ['suffix file after stdin operand is not a transparent cat', "printf '%s' 'rm src/app.ts' | cat - /etc/hosts | bash", false],
       ['later missing file after stdin operand is not modeled as passthrough', "printf '%s\\n' 'rm src/app.ts' | cat - -- -- | bash", false],
       ['here-string then stdin redirect is not the effective program', "cat <<< 'rm src/app.ts' < /dev/null | bash", false],
+      ['direct-shell here-string then stdin redirect is not the program', "bash <<< 'rm src/app.ts' < /dev/null", false],
       ['named coprocess writing only a log', 'coproc worker bash verify.sh > results.log', false],
     ] as const)('stays quiet: %s', (_label, command, expectedWarning) => {
       expect(hasDelegationNotice(runPreToolUseHook(command))).toBe(expectedWarning);
@@ -510,6 +511,8 @@ describe('pre-tool-use template source extension detection', () => {
       ['byte-neutral /dev/null cat operand still forwards stdin', "printf '%s\\n' 'rm src/app.ts' | cat - /dev/null | bash", true],
       ['later here-string overrides earlier stdin redirect', "cat < /dev/null <<< 'rm src/app.ts' | bash", true],
       ['here-string survives fd-zero self-duplication', "cat <<< 'rm src/app.ts' 0<&0 | bash", true],
+      ['here-string restored through fd duplication', "cat <<< 'rm src/app.ts' 3<&0 0<&3 | bash", true],
+      ['direct-shell later here-string overrides stdin redirect', "bash < /dev/null <<< 'rm src/app.ts'", true],
       ['executing long option --noediting still runs -c', "bash --noediting -c 'rm src/app.ts'", true],
       ['stdin -n +n clears noexec', "printf '%s\\n' 'rm src/app.ts' | bash -n +n", true],
       ['explicit stdin shell heredoc source write', "bash -s <<'EOF'\necho hacked > src/app.ts\nEOF", true],
