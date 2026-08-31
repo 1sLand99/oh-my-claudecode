@@ -1132,23 +1132,19 @@ function isPassthroughStage(stage) {
   if (cmd?.base !== 'cat') return false;
   if (stdoutRedirected(stage) || stdinRedirected(stage)) return false;
   let optionsEnded = false;
-  let sawStdin = false;
-  let sawFile = false;
-  let fileBeforeStdin = false;
   for (const entry of words.slice(cmd.index + 1)) {
     if (entry.token.dynamic) return false;
     const value = entry.token.value;
     if (!optionsEnded) {
       if (value === '--') { optionsEnded = true; continue; }
-      if (/^-[u]+$/.test(value)) continue;
-      if (value === '-') { sawStdin = true; continue; }
+      if (/^-[u]+$/.test(value) || value === '-') continue;
       if (value.startsWith('-') && value !== '-') return false;
-      sawFile = true; if (!sawStdin) fileBeforeStdin = true; continue;
+      return false;
     }
-    if (value === '-') { sawStdin = true; continue; }
-    sawFile = true; if (!sawStdin) fileBeforeStdin = true;
+    if (value === '-') continue;
+    return false;
   }
-  return !fileBeforeStdin && (sawStdin || !sawFile);
+  return true;
 }
 function parseShellInvocation(shellArgs) {
   let noexec = false;
@@ -1466,6 +1462,13 @@ function checkPipelineProducer(stage, directory, command) {
   const raw = words.slice(cmd.index + 1).map(entry => entry.token);
   const operands = cmd.base === 'cat' || cmd.base === 'tac' ? argsAfter(words, cmd.index) : headTailOperands(raw);
   if (!operands || operands.some(token => token.dynamic) || operands.length > 0) return !operands;
+  if ((cmd.base === 'head' || cmd.base === 'tail') && raw.some(token => /^(?:-n|--lines|-c|--bytes)$/.test(token.value) || /^-[nc][0-9]+/.test(token.value) || /^(?:--lines|--bytes)=/.test(token.value))) return true;
+  for (let k = 0; k < stage.length; k += 1) {
+    if (stage[k].type !== 'op' || stage[k].value !== '<<<') continue;
+    const word = stage[k + 1];
+    if (word?.dynamic) return true;
+    if (word?.type === 'word' && checkBashCommand(word.value, directory)) return true;
+  }
   return heredocSections(command).some(section => (
     section.fd === 0 && Boolean(checkBashCommand(section.body, directory))
   ));

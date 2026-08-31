@@ -407,6 +407,8 @@ describe('pre-tool-use template source extension detection', () => {
       ['second -- after option delimiter is a cat filename', "printf '%s\\n' 'rm src/app.ts' | cat -- -- | bash", false],
       ['cat -u with stdin redirect is not pipeline passthrough', "printf '%s\\n' 'rm src/app.ts' | cat -u < /etc/hosts | bash", false],
       ['prefix file before stdin operand is not a transparent cat', "printf '%s\\n' 'rm src/app.ts' | cat /etc/hosts - | bash", false],
+      ['suffix file after stdin operand is not a transparent cat', "printf '%s' 'rm src/app.ts' | cat - /etc/hosts | bash", false],
+      ['later missing file after stdin operand is not modeled as passthrough', "printf '%s\\n' 'rm src/app.ts' | cat - -- -- | bash", false],
       ['named coprocess writing only a log', 'coproc worker bash verify.sh > results.log', false],
     ] as const)('stays quiet: %s', (_label, command, expectedWarning) => {
       expect(hasDelegationNotice(runPreToolUseHook(command))).toBe(expectedWarning);
@@ -500,8 +502,9 @@ describe('pre-tool-use template source extension detection', () => {
       ['later +n clears noexec', "bash -n +n -c 'rm src/app.ts'", true],
       ['cat -- - is a stdin passthrough', "printf '%s\\n' 'rm src/app.ts' | cat -- - | bash", true],
       ['cat -u -- - is a byte-preserving passthrough', "printf '%s\\n' 'rm src/app.ts' | cat -u -- - | bash", true],
-      ['cat forwards stdin operand before a later missing file', "printf '%s\\n' 'rm src/app.ts' | cat - -- -- | bash", true],
       ['no-op 0<&0 keeps pipeline stdin on cat', "printf '%s\\n' 'rm src/app.ts' | cat -u 0<&0 | bash", true],
+      ['head -c slices stdin before the shell program', "head -c 13 <<'EOF' | bash\nrm src/app.tsJUNK\nEOF", true],
+      ['cat here-string feeds a pipeline program', "cat <<< 'rm src/app.ts' | bash", true],
       ['executing long option --noediting still runs -c', "bash --noediting -c 'rm src/app.ts'", true],
       ['stdin -n +n clears noexec', "printf '%s\\n' 'rm src/app.ts' | bash -n +n", true],
       ['explicit stdin shell heredoc source write', "bash -s <<'EOF'\necho hacked > src/app.ts\nEOF", true],
