@@ -1130,7 +1130,7 @@ function isPassthroughStage(stage) {
   const words = commandWords(stage);
   const cmd = executable(words);
   if (cmd?.base !== 'cat') return false;
-  if (stdoutRedirected(stage) || stdinRedirected(stage)) return false;
+  if (stdoutRedirected(stage) || effectiveFd0HereString(stage).kind !== 'pipeline') return false;
   let optionsEnded = false;
   for (const entry of words.slice(cmd.index + 1)) {
     if (entry.token.dynamic) return false;
@@ -1409,29 +1409,35 @@ function renderPrintf(args, { gnu = false } = {}) {
   return out;
 }
 function effectiveFd0HereString(stage) {
-  const fds = new Map();
+  const pipeline = { kind: 'pipeline' };
+  const unknown = { kind: 'unknown' };
+  const fds = new Map([[0, pipeline]]);
   for (let k = 0; k < stage.length; k += 1) {
     const token = stage[k];
     if (token.type !== 'op' || token.kind !== 'in') continue;
     const prev = stage[k - 1];
     const io = token.glued && prev?.type === 'word' && !prev.quoted && !prev.escaped && /^\d+$/.test(prev.value) ? Number(prev.value) : 0;
     if (token.value === '<<<') {
-      fds.set(io, stage[k + 1] || null);
+      fds.set(io, { kind: 'here', word: stage[k + 1] || null });
       continue;
     }
     if (token.value === '<&') {
       const target = stage[k + 1];
+      if (target?.dynamic) {
+        fds.set(io, unknown);
+        continue;
+      }
       if (target?.type === 'word' && /^\d+$/.test(target.value)) {
         const src = Number(target.value);
-        fds.set(io, fds.has(src) ? fds.get(src) : null);
+        fds.set(io, fds.get(src) || unknown);
       } else {
-        fds.set(io, null);
+        fds.set(io, { kind: 'file' });
       }
       continue;
     }
-    fds.set(io, null);
+    fds.set(io, { kind: 'file' });
   }
-  return fds.get(0) || null;
+  return fds.get(0) || pipeline;
 }
 function checkPipelineProducer(stage, directory, command) {
   const targets = targetIndices(stage);
@@ -1486,9 +1492,12 @@ function checkPipelineProducer(stage, directory, command) {
   if (!new Set(['cat', 'head', 'tail', 'tac']).has(cmd.base)) return false;
   const raw = words.slice(cmd.index + 1).map(entry => entry.token);
   const operands = cmd.base === 'cat' || cmd.base === 'tac' ? argsAfter(words, cmd.index) : headTailOperands(raw);
-  const hereWord = effectiveFd0HereString(stage);
-  if (hereWord?.dynamic) return true;
-  if (hereWord?.type === 'word' && checkBashCommand(hereWord.value, directory)) return true;
+  const here = effectiveFd0HereString(stage);
+  if (here.kind === 'unknown') return true;
+  if (here.kind === 'here') {
+    if (here.word?.dynamic) return true;
+    if (here.word?.type === 'word' && checkBashCommand(here.word.value, directory)) return true;
+  }
   if (!operands || operands.some(token => token.dynamic) || operands.length > 0) return !operands;
   if ((cmd.base === 'head' || cmd.base === 'tail') && raw.some(token => /^(?:-n|--lines|-c|--bytes)$/.test(token.value) || /^-[nc][+-]?[0-9]+/.test(token.value) || /^(?:--lines|--bytes)=/.test(token.value))) return true;
   return heredocSections(command).some(section => (
@@ -1607,9 +1616,12 @@ function checkBashCommand(command, directory) {
     for (let i = 0; i < stages.length; i += 1) {
       if (checkSegment(stages[i], directory)) return sourceMutationNotice(command);
       if (shellReadsStdinProgram(stages[i])) {
-        const word = effectiveFd0HereString(stages[i]);
-        if (word?.dynamic) return sourceMutationNotice(command);
-        if (word?.type === 'word' && checkBashCommand(word.value, directory)) return sourceMutationNotice(command);
+        const here = effectiveFd0HereString(stages[i]);
+        if (here.kind === 'unknown') return sourceMutationNotice(command);
+        if (here.kind === 'here') {
+          if (here.word?.dynamic) return sourceMutationNotice(command);
+          if (here.word?.type === 'word' && checkBashCommand(here.word.value, directory)) return sourceMutationNotice(command);
+        }
       }
       if (i > 0 && shellReadsStdinProgram(stages[i])) {
         for (let j = i - 1; j >= 0; j -= 1) {
