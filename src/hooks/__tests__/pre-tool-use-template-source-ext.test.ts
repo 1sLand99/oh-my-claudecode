@@ -478,6 +478,8 @@ describe('pre-tool-use template source extension detection', () => {
       ['bash -c plus-option still executes the command string', "bash -c +x 'rm src/app.ts'", true],
       ['unexpanded dollar-paren heredoc delimiter still terminates', "cat <<$(printf EOF) > build.log\ndata\n$(printf EOF)\nrm src/app.ts", true],
       ['nested parameter expansion in dollar-paren delimiter still terminates', "cat <<$(echo ${x-)}) > build.log\ndata\n$(echo ${x-)})\nrm src/app.ts", true],
+      ['literal brace in parameter default does not swallow delimiter', "cat <<$(echo ${x:-{}) > build.log\ndata\n$(echo ${x:-{})\nrm src/app.ts", true],
+      ['bash -c plus-i still executes the command string', "bash -c +i 'rm src/app.ts'", true],
       ['explicit stdin shell heredoc source write', "bash -s <<'EOF'\necho hacked > src/app.ts\nEOF", true],
       ['explicit fd zero shell heredoc source write', "bash 0<<'EOF'\necho hacked > src/app.ts\nEOF", true],
       ['shell rcfile option still reads heredoc program', "bash --rcfile /tmp/rc <<'EOF'\necho hacked > src/app.ts\nEOF", true],

@@ -555,8 +555,7 @@ function shellGroup(text, openIndex) {
     if (ch === '\\') { i += 1; continue; }
     if (ch === '$' && text[i + 1] === '{') { brace += 1; i += 1; continue; }
     if (brace > 0) {
-      if (ch === '{') brace += 1;
-      else if (ch === '}') brace -= 1;
+      if (ch === '}') brace -= 1;
       else if (ch === '(') depth += 1;
       else if (ch === ')' && depth > 1) depth -= 1;
       continue;
@@ -1439,7 +1438,7 @@ function checkSegment(segment, directory) {
             if (!shellArgs[codeIndex + 1]) return true;
             codeIndex += 2; continue;
           }
-          if (/^[+-][abefhkmnptuvxBCEHPT]+$/.test(value) || /^-[cilsD]$/.test(value) || /^(?:--norc|--noprofile|--posix|--restricted|--verbose|--debugger)$/.test(value)) {
+          if (/^[+-][abefhkmnptuvxBCEHPTcilsD]+$/.test(value) || /^(?:--norc|--noprofile|--posix|--restricted|--verbose|--debugger)$/.test(value)) {
             codeIndex += 1; continue;
           }
           if (value.startsWith('-') || value.startsWith('+')) return false;
