@@ -547,12 +547,20 @@ function advanceQuote(quote, ch, next) {
 }
 
 function shellGroup(text, openIndex) {
-  let depth = 0; let quote = null;
+  let depth = 0; let quote = null; let brace = 0;
   for (let i = openIndex; i < text.length; i += 1) {
     const ch = text[i];
     const q = advanceQuote(quote, ch, text[i + 1]);
     if (q) { quote = q.quote; i += q.consume - 1; continue; }
     if (ch === '\\') { i += 1; continue; }
+    if (ch === '$' && text[i + 1] === '{') { brace += 1; i += 1; continue; }
+    if (brace > 0) {
+      if (ch === '{') brace += 1;
+      else if (ch === '}') brace -= 1;
+      else if (ch === '(') depth += 1;
+      else if (ch === ')' && depth > 1) depth -= 1;
+      continue;
+    }
     if (ch === '(') depth += 1;
     else if (ch === ')' && --depth === 0) return { end: i, inner: text.slice(openIndex + 1, i) };
   }
@@ -1427,12 +1435,15 @@ function checkSegment(segment, directory) {
           const value = shellArgs[codeIndex].token.value;
           if (value === '--') { codeIndex += 1; break; }
           if (value === '-' || value === '+') break;
-          if (!value.startsWith('-') && !/^[+][A-Za-z]/.test(value)) break;
           if (/^(?:--rcfile|--init-file|-O|-o|\+O|\+o)$/.test(value)) {
             if (!shellArgs[codeIndex + 1]) return true;
             codeIndex += 2; continue;
           }
-          codeIndex += 1;
+          if (/^[+-][abefhkmnptuvxBCEHPT]+$/.test(value) || /^-[cilsD]$/.test(value) || /^(?:--norc|--noprofile|--posix|--restricted|--verbose|--debugger)$/.test(value)) {
+            codeIndex += 1; continue;
+          }
+          if (value.startsWith('-') || value.startsWith('+')) return false;
+          break;
         }
       }
       const code = shellArgs[codeIndex]?.token;

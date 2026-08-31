@@ -395,6 +395,7 @@ describe('pre-tool-use template source extension detection', () => {
       ['command -V does not unwrap rm', 'command -V rm src/app.ts', false],
       ['invalid printf option produces no stdout program', "printf -x 'rm src/app.ts' | bash", false],
       ['echo -E does not expand escapes into a stdin program', "echo -E 'true\\nrm src/app.ts' | bash", false],
+      ['invalid plus option after -c is not a program', "bash -c +z 'rm src/app.ts'", false],
       ['named coprocess writing only a log', 'coproc worker bash verify.sh > results.log', false],
     ] as const)('stays quiet: %s', (_label, command, expectedWarning) => {
       expect(hasDelegationNotice(runPreToolUseHook(command))).toBe(expectedWarning);
@@ -476,6 +477,7 @@ describe('pre-tool-use template source extension detection', () => {
       ['echo -e Unicode NUL does not hide following rm', "echo -e '\\u0rm src/app.ts' | bash", true],
       ['bash -c plus-option still executes the command string', "bash -c +x 'rm src/app.ts'", true],
       ['unexpanded dollar-paren heredoc delimiter still terminates', "cat <<$(printf EOF) > build.log\ndata\n$(printf EOF)\nrm src/app.ts", true],
+      ['nested parameter expansion in dollar-paren delimiter still terminates', "cat <<$(echo ${x-)}) > build.log\ndata\n$(echo ${x-)})\nrm src/app.ts", true],
       ['explicit stdin shell heredoc source write', "bash -s <<'EOF'\necho hacked > src/app.ts\nEOF", true],
       ['explicit fd zero shell heredoc source write', "bash 0<<'EOF'\necho hacked > src/app.ts\nEOF", true],
       ['shell rcfile option still reads heredoc program', "bash --rcfile /tmp/rc <<'EOF'\necho hacked > src/app.ts\nEOF", true],
