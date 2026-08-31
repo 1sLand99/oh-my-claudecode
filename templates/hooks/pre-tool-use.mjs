@@ -562,14 +562,10 @@ function findClosingBacktick(text, open) {
   let quote = null;
   for (let i = open + 1; i < text.length; i += 1) {
     const ch = text[i];
-    if (quote === "'") { if (ch === "'") quote = null; continue; }
-    if (quote === '"') {
-      if (ch === '\\' && i + 1 < text.length) { i += 1; continue; }
-      if (ch === '"') quote = null;
-      continue;
-    }
+    const q = advanceQuote(quote, ch, text[i + 1]);
+    if (q) { quote = q.quote; i += q.consume - 1; continue; }
+    if (quote) continue;
     if (ch === '\\' && i + 1 < text.length) { i += 1; continue; }
-    if (ch === "'" || ch === '"') { quote = ch; continue; }
     if (ch === '`') return i;
   }
   return -1;
@@ -1175,7 +1171,7 @@ function decodeAnsiC(text) {
   }
   return out;
 }
-function expandPrintfEscapes(text, { stop = false } = {}) {
+function expandPrintfEscapes(text, { stop = false, echo = false } = {}) {
   let out = '';
   for (let p = 0; p < text.length; p += 1) {
     if (text[p] !== '\\' || p + 1 >= text.length) { out += text[p]; continue; }
@@ -1200,6 +1196,17 @@ function expandPrintfEscapes(text, { stop = false } = {}) {
       let q = p + 2;
       while (q < text.length && oct.length < 3 && /[0-7]/.test(text[q])) oct += text[q++];
       out += String.fromCharCode(parseInt(oct || '0', 8));
+      p = q - 1; continue;
+    }
+    if (echo && (n === 'u' || n === 'U')) {
+      const max = n === 'u' ? 4 : 8;
+      let hex = '';
+      let q = p + 2;
+      while (q < text.length && hex.length < max && /[0-9a-fA-F]/.test(text[q])) hex += text[q++];
+      if (!hex) { out += `\\${n}`; p += 1; continue; }
+      const cp = parseInt(hex, 16);
+      if (Number.isFinite(cp) && cp <= 0x10FFFF) out += String.fromCodePoint(cp);
+      else out += text.slice(p, q);
       p = q - 1; continue;
     }
     if (n === 'u' && /^[0-9a-fA-F]{4}/.test(text.slice(p + 2))) {
@@ -1322,7 +1329,15 @@ function checkPipelineProducer(stage, directory, command) {
     const program = cmd.base === 'printf'
       ? renderPrintf(args, { gnu })
       : echoExpand
-        ? args.map(arg => expandPrintfEscapes(arg).text).join(' ')
+        ? (() => {
+            const parts = [];
+            for (const arg of args) {
+              const expanded = expandPrintfEscapes(arg, { stop: true, echo: true });
+              parts.push(expanded.text);
+              if (expanded.stop) break;
+            }
+            return parts.join(' ');
+          })()
         : args.join(' ');
     if (program === null) return true;
     return program.length > 0 && Boolean(checkBashCommand(program, directory));
