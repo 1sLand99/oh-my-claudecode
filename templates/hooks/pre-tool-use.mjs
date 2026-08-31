@@ -1461,8 +1461,6 @@ function checkPipelineProducer(stage, directory, command) {
   if (!new Set(['cat', 'head', 'tail', 'tac']).has(cmd.base)) return false;
   const raw = words.slice(cmd.index + 1).map(entry => entry.token);
   const operands = cmd.base === 'cat' || cmd.base === 'tac' ? argsAfter(words, cmd.index) : headTailOperands(raw);
-  if (!operands || operands.some(token => token.dynamic) || operands.length > 0) return !operands;
-  if ((cmd.base === 'head' || cmd.base === 'tail') && raw.some(token => /^(?:-n|--lines|-c|--bytes)$/.test(token.value) || /^-[nc][+-]?[0-9]+/.test(token.value) || /^(?:--lines|--bytes)=/.test(token.value))) return true;
   let hereWord = null;
   for (let k = 0; k < stage.length; k += 1) {
     const token = stage[k];
@@ -1474,10 +1472,14 @@ function checkPipelineProducer(stage, directory, command) {
       hereWord = stage[k + 1];
       continue;
     }
+    const target = stage[k + 1];
+    if (token.value === '<&' && target?.type === 'word' && target.value === '0') continue;
     hereWord = null;
   }
   if (hereWord?.dynamic) return true;
   if (hereWord?.type === 'word' && checkBashCommand(hereWord.value, directory)) return true;
+  if (!operands || operands.some(token => token.dynamic) || operands.length > 0) return !operands;
+  if ((cmd.base === 'head' || cmd.base === 'tail') && raw.some(token => /^(?:-n|--lines|-c|--bytes)$/.test(token.value) || /^-[nc][+-]?[0-9]+/.test(token.value) || /^(?:--lines|--bytes)=/.test(token.value))) return true;
   return heredocSections(command).some(section => (
     section.fd === 0 && Boolean(checkBashCommand(section.body, directory))
   ));
