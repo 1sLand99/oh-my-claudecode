@@ -495,6 +495,8 @@ describe('pre-tool-use template source extension detection', () => {
       ['dash-prefixed rcfile is a filename operand', "bash --rcfile -foo -c 'rm src/app.ts'", true],
       ['later +n clears noexec', "bash -n +n -c 'rm src/app.ts'", true],
       ['cat -- - is a stdin passthrough', "printf '%s\\n' 'rm src/app.ts' | cat -- - | bash", true],
+      ['executing long option --noediting still runs -c', "bash --noediting -c 'rm src/app.ts'", true],
+      ['stdin -n +n clears noexec', "printf '%s\\n' 'rm src/app.ts' | bash -n +n", true],
       ['explicit stdin shell heredoc source write', "bash -s <<'EOF'\necho hacked > src/app.ts\nEOF", true],
       ['explicit fd zero shell heredoc source write', "bash 0<<'EOF'\necho hacked > src/app.ts\nEOF", true],
       ['shell rcfile option still reads heredoc program', "bash --rcfile /tmp/rc <<'EOF'\necho hacked > src/app.ts\nEOF", true],

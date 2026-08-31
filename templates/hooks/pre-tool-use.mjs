@@ -1124,9 +1124,12 @@ function isPassthroughStage(stage) {
 }
 function parseShellInvocation(shellArgs) {
   let noexec = false;
+  let forceStdin = false;
   const applySet = (value) => {
     const plus = value.startsWith('+');
-    if (value.slice(1).includes('n')) noexec = !plus;
+    const letters = value.slice(1);
+    if (letters.includes('n')) noexec = !plus;
+    if (!plus && letters.includes('s')) forceStdin = true;
   };
   let i = 0;
   const skipValueOpt = (value, next, filenameOk) => {
@@ -1151,7 +1154,10 @@ function parseShellInvocation(shellArgs) {
       }
       if (/^[+-]D$/.test(value) || /^(?:--dump-strings|--dump-po-strings)$/.test(value)) return 'invalid';
       if (/^[+-][abefhkmnptuvxBCEHPTcils]+$/.test(value)) { applySet(value); i += 1; continue; }
-      if (/^(?:--norc|--noprofile|--posix|--restricted|--verbose|--debugger)$/.test(value)) { i += 1; continue; }
+      if (/^(?:--norc|--noprofile|--posix|--restricted|--verbose|--debugger|--debug|--stdin|--noediting|--login|--pretty-print)$/.test(value)) {
+        if (value === '--stdin') forceStdin = true;
+        i += 1; continue;
+      }
       if (value.startsWith('-') || value.startsWith('+')) return 'invalid';
       break;
     }
@@ -1160,29 +1166,32 @@ function parseShellInvocation(shellArgs) {
   while (i < shellArgs.length) {
     const value = shellArgs[i].token.value;
     const next = shellArgs[i + 1]?.token.value;
-    if (value === '--') break;
+    if (value === '--') return { invalid: false, noexec, codeIndex: -1, readsStdin: forceStdin || i + 1 >= shellArgs.length };
     if (value === '--rcfile' || value === '--init-file') {
-      const got = skipValueOpt(value, next, true); if (got !== 'ok') return { invalid: true, noexec, codeIndex: -1 };
+      const got = skipValueOpt(value, next, true); if (got !== 'ok') return { invalid: true, noexec, codeIndex: -1, readsStdin: false };
       i += 2; continue;
     }
     if (value === '-O' || value === '+O' || value === '-o' || value === '+o') {
-      const got = skipValueOpt(value, next, false); if (got !== 'ok') return { invalid: true, noexec, codeIndex: -1 };
+      const got = skipValueOpt(value, next, false); if (got !== 'ok') return { invalid: true, noexec, codeIndex: -1, readsStdin: false };
       i += 2; continue;
     }
     if (value === '--command' || /^-[abefhkmnptuvxBCEHPTcils]*c[abefhkmnptuvxBCEHPTcils]*$/.test(value)) {
       if (value !== '--command') applySet(value);
       i += 1;
       const got = skipPostC();
-      if (got !== 'ok') return { invalid: true, noexec, codeIndex: -1 };
-      return { invalid: false, noexec, codeIndex: i };
+      if (got !== 'ok') return { invalid: true, noexec, codeIndex: -1, readsStdin: false };
+      return { invalid: false, noexec, codeIndex: i, readsStdin: false };
     }
     if (/^[+-][abefhkmnptuvxBCEHPTcils]+$/.test(value)) { applySet(value); i += 1; continue; }
-    if (/^[+-]D$/.test(value) || /^(?:--dump-strings|--dump-po-strings)$/.test(value)) return { invalid: true, noexec, codeIndex: -1 };
-    if (/^(?:--norc|--noprofile|--posix|--restricted|--verbose|--debugger|--stdin)$/.test(value)) { i += 1; continue; }
-    if (value.startsWith('-') && value !== '-') return { invalid: true, noexec, codeIndex: -1 };
-    break;
+    if (/^[+-]D$/.test(value) || /^(?:--dump-strings|--dump-po-strings|--help|--version)$/.test(value)) return { invalid: true, noexec, codeIndex: -1, readsStdin: false };
+    if (/^(?:--norc|--noprofile|--posix|--restricted|--verbose|--debugger|--debug|--stdin|--noediting|--login|--pretty-print)$/.test(value)) {
+      if (value === '--stdin') forceStdin = true;
+      i += 1; continue;
+    }
+    if (value.startsWith('-') && value !== '-') return { invalid: true, noexec, codeIndex: -1, readsStdin: false };
+    return { invalid: false, noexec, codeIndex: -1, readsStdin: forceStdin };
   }
-  return { invalid: false, noexec, codeIndex: -1 };
+  return { invalid: false, noexec, codeIndex: -1, readsStdin: true };
 }
 function shellArgsHaveNoexec(shellArgs) {
   const invocation = parseShellInvocation(shellArgs);
@@ -1192,27 +1201,11 @@ function shellReadsStdinProgram(segment) {
   const words = commandWords(segment);
   const cmd = executable(words);
   if (!cmd?.base || !SHELL_COMMANDS.has(cmd.base)) return false;
-  let forceStdin = false; let optionsEnded = false;
   const shellArgs = words.slice(cmd.index + 1);
-  for (let i = 0; i < shellArgs.length; i += 1) {
-    const token = shellArgs[i].token; if (token.dynamic) return true;
-    if (!optionsEnded && token.value === '--') { optionsEnded = true; continue; }
-    if (!optionsEnded && token.value !== '-' && token.value !== '+' && (token.value.startsWith('-') || /^[+][A-Za-z]/.test(token.value))) {
-      if (/^[+-]D$/.test(token.value) || /^(?:--dump-strings|--dump-po-strings)$/.test(token.value)) return false;
-      if (/^-[abefhkmnptuvxBCEHPTcils]*n[abefhkmnptuvxBCEHPTcils]*$/.test(token.value)) return false;
-      if (token.value === '-o' && shellArgs[i + 1]?.token.value === 'noexec') return false;
-      if (/^[+][A-Za-z]/.test(token.value) && !/^[+][abefhkmnptuvxBCEHPTcils]+$/.test(token.value) && token.value !== '+O' && token.value !== '+o') return false;
-      if (token.value === '--command' || /^-[^-]*c/.test(token.value)) return false;
-      if (token.value === '--stdin' || /^-[^-]*s/.test(token.value)) forceStdin = true;
-      if (/^(?:--rcfile|--init-file|-O|-o|\+O|\+o)$/.test(token.value)) {
-        if (!shellArgs[i + 1]) return true;
-        i += 1;
-      }
-      continue;
-    }
-    return forceStdin;
-  }
-  return true;
+  if (shellArgs.some(entry => entry.token.dynamic)) return true;
+  const invocation = parseShellInvocation(shellArgs);
+  if (invocation.invalid || invocation.noexec || invocation.codeIndex >= 0) return false;
+  return invocation.readsStdin;
 }
 function truncateAtNul(text) {
   const nul = text.indexOf('\0');
