@@ -307,16 +307,25 @@ function processIdentityMatches(pid, expectedIdentity) {
 function reapTree(child, childIdentity) {
   // Identity-safe reap: verify the PID still belongs to the child we spawned
   // before killing its process group. If the PID was reused by the OS after
-  // the child exited, processIdentityMatches returns false and we skip the
-  // kill entirely, relying on child.unref() for fail-open exit.
-  if (childIdentity && !processIdentityMatches(child.pid, childIdentity)) return;
+  // the child exited, processIdentityMatches returns false.
+  //
+  // If the leader is already gone (ESRCH) — e.g. it exited on EPIPE after we
+  // destroyed protocol pipes — still kill the original process group. A
+  // detached spawn uses pid as pgid; grandchildren in that group would
+  // otherwise survive (#3920 POSIX timeout ordering).
+  if (!Number.isInteger(child.pid) || child.pid <= 0) return;
+  const leaderAlive = !childIdentity || processIdentityMatches(child.pid, childIdentity);
+  if (childIdentity && !leaderAlive) {
+    if (process.platform === 'win32') return;
+    try { process.kill(-child.pid, 'SIGKILL'); } catch { /* group already empty */ }
+    return;
+  }
   if (process.platform === 'win32') {
     // Protocol stdout/stderr are owned by run.cjs pipes, so a descendant that
     // outlives this process cannot retain Claude Code's handles (#3920).
     // Do not spawnSync here: Node waits for the killer even after its timeout,
     // which can hold the runner past the declared host fuse. Fire-and-forget
     // taskkill with stdio ignored after protocol detach is the fail-open path.
-    if (!Number.isInteger(child.pid) || child.pid <= 0) return;
     try {
       const killer = spawn('taskkill', ['/T', '/F', '/PID', String(child.pid)], {
         windowsHide: true,
@@ -390,6 +399,8 @@ function createProtocolSink() {
   const discarded = { stdout: false, stderr: false };
   const sources = { stdout: new Set(), stderr: new Set() };
   let installed = false;
+  let pendingWrites = 0;
+  let uninstallRequested = false;
   const onStdoutError = (error) => handleDestError('stdout', process.stdout, error);
   const onStderrError = (error) => handleDestError('stderr', process.stderr, error);
 
@@ -411,13 +422,18 @@ function createProtocolSink() {
     process.stderr.on('error', onStderrError);
   }
 
-  function uninstall() {
-    if (!installed) return;
+  function flushUninstall() {
+    if (!uninstallRequested || pendingWrites > 0 || !installed) return;
     installed = false;
     process.stdout.removeListener('error', onStdoutError);
     process.stderr.removeListener('error', onStderrError);
     // Process-lifetime closed-dest guards remain so a late write callback
     // EPIPE after finish() cannot crash the runner.
+  }
+
+  function uninstall() {
+    uninstallRequested = true;
+    flushUninstall();
   }
 
   function write(dest, data) {
@@ -428,6 +444,7 @@ function createProtocolSink() {
       discarded[name] = true;
       return Promise.resolve();
     }
+    pendingWrites += 1;
     return new Promise((resolve) => {
       let settled = false;
       const done = () => {
@@ -435,17 +452,18 @@ function createProtocolSink() {
         settled = true;
         resolve();
       };
-      const timer = setTimeout(done, PROTOCOL_STDIO_SETTLE_MS);
-      try {
-        dest.write(data, (error) => {
-          if (error) handleDestError(name, dest, error);
-          clearTimeout(timer);
-          done();
-        });
-      } catch (error) {
-        handleDestError(name, dest, error);
+      const completeWrite = (error) => {
+        pendingWrites = Math.max(0, pendingWrites - 1);
+        if (error) handleDestError(name, dest, error);
         clearTimeout(timer);
         done();
+        flushUninstall();
+      };
+      const timer = setTimeout(done, PROTOCOL_STDIO_SETTLE_MS);
+      try {
+        dest.write(data, (error) => completeWrite(error));
+      } catch (error) {
+        completeWrite(error);
       }
     });
   }
@@ -609,16 +627,14 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
       if (terminal) return;
       terminal = true;
       detachHandlers();
-      // Close protocol handles and fail-open before tree reap. A stalled
-      // taskkill must not keep Claude Code blocked on EOF past the host fuse.
+      // Reap the tree first while the group leader is still alive. Destroying
+      // protocol pipes can EPIPE-exit the leader; awaiting diagnostics before
+      // reap then fails the identity check and orphans grandchildren.
+      reapTree(child, childIdentity);
       detachProtocolStdio(child);
       releaseGenericChild(child);
-      // Settle the diagnostic write while dest error handlers are still
-      // installed; EPIPE from a closed stderr consumer must not crash after
-      // uninstall. sink.write is itself bounded.
       void writeTimeoutDiagnostic(targetPath, manifestHook, timeoutMs, sink).then(() => {
         finish(0);
-        reapTree(child, childIdentity);
       });
     }, timeoutMs);
 

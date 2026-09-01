@@ -9,6 +9,7 @@ const RUN_CJS_PATH = join(process.cwd(), 'scripts', 'run.cjs');
 const HUNG_PARENT = join(process.cwd(), 'src', '__tests__', 'fixtures', 'hung-hooks', 'hung-parent.cjs');
 const DETACHED_ORPHAN = join(process.cwd(), 'src', '__tests__', 'fixtures', 'hung-hooks', 'detached-stdout-orphan.cjs');
 const SUCCESS_ORPHAN = join(process.cwd(), 'src', '__tests__', 'fixtures', 'hung-hooks', 'success-parent-stdout-orphan.cjs');
+const EPIPE_EXIT_PARENT = join(process.cwd(), 'src', '__tests__', 'fixtures', 'hung-hooks', 'epipe-exit-parent.cjs');
 
 function killIfAlive(pid: number | undefined): void {
   if (!pid) return;
@@ -396,6 +397,68 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
       expect(code).toBe(0);
       expect(Date.now() - startedAt).toBeLessThan(2000);
     } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+  it('fail-opens when a paused stderr consumer closes after the timeout diagnostic is queued', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'omc-stdio-paused-err-'));
+    try {
+      const pluginRoot = join(directory, 'plugin');
+      const target = writePluginHook(pluginRoot, 'hang-hook.cjs', 'setInterval(() => {}, 1e9);', 1);
+      const startedAt = Date.now();
+      const runner = spawn(process.execPath, [RUN_CJS_PATH, target], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot },
+        windowsHide: true,
+      });
+      runner.stderr.pause();
+      const exitPromise = new Promise<number | null>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('runner hung after delayed stderr close')), 2000);
+        runner.once('exit', status => {
+          clearTimeout(timer);
+          resolve(status);
+        });
+      });
+      const innerMs = runCjs.resolveGenericTimeoutMs({ timeoutMs: 1000, event: 'PostToolUse' });
+      await new Promise(resolve => setTimeout(resolve, innerMs + 50));
+      if (runner.exitCode === null) runner.stderr.destroy();
+      const code = await exitPromise;
+      expect(code).toBe(0);
+      expect(Date.now() - startedAt).toBeLessThan(2000);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('reaps grandchildren when the hook leader exits on protocol EPIPE at timeout', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'omc-stdio-epipe-reap-'));
+    const pidfile = join(directory, 'grandchild.pid');
+    const previousPidfile = process.env.OMC_TEST_PIDFILE;
+    let grandchildPid: number | undefined;
+    process.env.OMC_TEST_PIDFILE = pidfile;
+    const innerMs = 1500;
+    const outerMs = 3000;
+    try {
+      const startedAt = Date.now();
+      let deadline: NodeJS.Timeout | undefined;
+      const status = await Promise.race([
+        runCjs.runGenericChild(EPIPE_EXIT_PARENT, [], innerMs, null),
+        new Promise<never>((_, reject) => {
+          deadline = setTimeout(
+            () => reject(new Error(`epipe-exit parent exceeded ${outerMs}ms outer deadline`)),
+            outerMs,
+          );
+        }),
+      ]).finally(() => clearTimeout(deadline));
+      expect(status).toBe(0);
+      expect(Date.now() - startedAt).toBeLessThan(outerMs);
+      grandchildPid = Number(readFileSync(pidfile, 'utf8'));
+      expect(grandchildPid).toBeGreaterThan(0);
+      await waitForDeath(grandchildPid);
+    } finally {
+      if (previousPidfile === undefined) delete process.env.OMC_TEST_PIDFILE;
+      else process.env.OMC_TEST_PIDFILE = previousPidfile;
+      killIfAlive(grandchildPid);
       rmSync(directory, { recursive: true, force: true });
     }
   });
