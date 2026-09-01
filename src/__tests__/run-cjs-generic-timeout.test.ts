@@ -164,7 +164,13 @@ describe('run.cjs generic hook timeout supervisor', () => {
       writeFileSync(signalExit, "process.kill(process.pid, 'SIGKILL');");
 
       await expect(withWatchdog(runCjs.runGenericChild(numericExit, [], 2000, null))).resolves.toBe(3);
-      await expect(withWatchdog(runCjs.runGenericChild(signalExit, [], 2000, null))).resolves.toBe(0);
+      // POSIX SIGKILL reports a null exit code (fail-open 0). Windows Node
+      // terminates with a numeric status instead of a POSIX signal.
+      if (process.platform === 'win32') {
+        await expect(withWatchdog(runCjs.runGenericChild(signalExit, [], 2000, null))).resolves.toBe(1);
+      } else {
+        await expect(withWatchdog(runCjs.runGenericChild(signalExit, [], 2000, null))).resolves.toBe(0);
+      }
       const originalExecPath = process.execPath;
       Object.defineProperty(process, 'execPath', { configurable: true, value: join(directory, 'missing-node') });
       try {

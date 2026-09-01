@@ -344,6 +344,13 @@ function detachProtocolStdio(child) {
   for (const [stream, dest] of [[child.stdout, process.stdout], [child.stderr, process.stderr]]) {
     if (!stream) continue;
     try { stream.unpipe(dest); } catch { /* already detached */ }
+    try {
+      if (typeof stream.pause === 'function') stream.pause();
+      if (typeof stream.read === 'function' && dest && !dest.destroyed) {
+        let chunk;
+        while ((chunk = stream.read()) !== null) dest.write(chunk);
+      }
+    } catch { /* remaining buffered bytes are best-effort */ }
     try { stream.destroy(); } catch { /* already destroyed */ }
   }
 }
@@ -483,7 +490,12 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
       if (terminal) return;
       terminal = true;
       detachHandlers();
+      // Drain then close even on a clean hook exit. A detached descendant that
+      // inherited the child's stdout/stderr keeps the pipe readableEnded=false;
+      // leaving the forwarders attached would pin process.stdout and wedge EOF
+      // (#3920 success-path hang, outer harness timeout 124).
       void settleProtocolStdio(child).then(() => {
+        releaseGenericChild(child);
         resolve(typeof code === 'number' ? code : 0);
       });
     });

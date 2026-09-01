@@ -8,6 +8,7 @@ const runCjs = require('../../scripts/run.cjs');
 const RUN_CJS_PATH = join(process.cwd(), 'scripts', 'run.cjs');
 const HUNG_PARENT = join(process.cwd(), 'src', '__tests__', 'fixtures', 'hung-hooks', 'hung-parent.cjs');
 const DETACHED_ORPHAN = join(process.cwd(), 'src', '__tests__', 'fixtures', 'hung-hooks', 'detached-stdout-orphan.cjs');
+const SUCCESS_ORPHAN = join(process.cwd(), 'src', '__tests__', 'fixtures', 'hung-hooks', 'success-parent-stdout-orphan.cjs');
 
 function killIfAlive(pid: number | undefined): void {
   if (!pid) return;
@@ -87,17 +88,20 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
     expect(runCjs.resolveGenericTimeoutMs(null, 'linux')).toBe(59500);
   });
 
-  it('closes protocol stdout when the runner exits even if a detached descendant still lives', async () => {
+  it('closes protocol stdout when the runner times out even if a detached descendant still lives', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'omc-stdio-eof-'));
     const pidfile = join(directory, 'orphan.pid');
     let orphanPid: number | undefined;
     const pluginRoot = join(directory, 'plugin');
+    const declaredSec = 3;
+    const declaredMs = declaredSec * 1000;
     const target = writePluginHook(
       pluginRoot,
       'orphan-hook.cjs',
       readFileSync(DETACHED_ORPHAN, 'utf8'),
-      3,
+      declaredSec,
     );
+    const startedAt = Date.now();
     const runner = spawn(process.execPath, [RUN_CJS_PATH, target], {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, OMC_TEST_PIDFILE: pidfile, CLAUDE_PLUGIN_ROOT: pluginRoot },
@@ -113,18 +117,23 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
       runner.stderr.on('data', chunk => { stderr += chunk; });
       runner.stdout.on('end', () => { stdoutEnded = true; });
 
-      await waitForFile(pidfile);
+      await waitForFile(pidfile, declaredMs);
       orphanPid = Number(readFileSync(pidfile, 'utf8'));
       expect(orphanPid).toBeGreaterThan(0);
 
+      const remainingMs = Math.max(1, declaredMs - (Date.now() - startedAt));
       const exitCode = await new Promise<number | null>((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('run.cjs did not exit after inner timeout')), 5000);
+        const timer = setTimeout(
+          () => reject(new Error(`run.cjs exceeded declared ${declaredMs}ms outer budget`)),
+          remainingMs,
+        );
         runner.once('exit', code => {
           clearTimeout(timer);
           resolve(code);
         });
       });
       expect(exitCode).toBe(0);
+      expect(Date.now() - startedAt).toBeLessThan(declaredMs);
       await new Promise(resolve => setTimeout(resolve, 50));
       expect(stdoutEnded).toBe(true);
       expect(stdout).toContain('hook-ready');
@@ -134,6 +143,59 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
       try {
         process.kill(orphanPid, 0);
         // Detached grandchild may still be alive; protocol EOF must not depend on it.
+      } catch (error: unknown) {
+        expect((error as NodeJS.ErrnoException).code).toBe('ESRCH');
+      }
+    } finally {
+      killIfAlive(orphanPid);
+      try { runner.kill('SIGKILL'); } catch { /* already gone */ }
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('closes protocol stdout after a successful hook exit even if a detached descendant still lives', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'omc-stdio-success-eof-'));
+    const pidfile = join(directory, 'orphan.pid');
+    let orphanPid: number | undefined;
+    const startedAt = Date.now();
+    const runner = spawn(process.execPath, [RUN_CJS_PATH, SUCCESS_ORPHAN], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, OMC_TEST_PIDFILE: pidfile },
+      windowsHide: true,
+    });
+    try {
+      let stdout = '';
+      let stderr = '';
+      let stdoutEnded = false;
+      runner.stdout.setEncoding('utf8');
+      runner.stderr.setEncoding('utf8');
+      runner.stdout.on('data', chunk => { stdout += chunk; });
+      runner.stderr.on('data', chunk => { stderr += chunk; });
+      runner.stdout.on('end', () => { stdoutEnded = true; });
+
+      const exitCode = await new Promise<number | null>((resolve, reject) => {
+        const timer = setTimeout(
+          () => reject(new Error('run.cjs hung after successful hook exit with a live detached descendant')),
+          2000,
+        );
+        runner.once('exit', code => {
+          clearTimeout(timer);
+          resolve(code);
+        });
+      });
+      expect(exitCode).toBe(0);
+      expect(Date.now() - startedAt).toBeLessThan(2000);
+      await new Promise(resolve => setTimeout(resolve, 50));
+      expect(stdoutEnded).toBe(true);
+      expect(stdout).toContain('hook-ok');
+      expect(stderr).toContain('hook-err');
+      expect(stderr).not.toMatch(/timed out after \d+ms/);
+
+      await waitForFile(pidfile, 2000);
+      orphanPid = Number(readFileSync(pidfile, 'utf8'));
+      expect(orphanPid).toBeGreaterThan(0);
+      try {
+        process.kill(orphanPid, 0);
       } catch (error: unknown) {
         expect((error as NodeJS.ErrnoException).code).toBe('ESRCH');
       }

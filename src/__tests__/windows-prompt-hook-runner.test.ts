@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 const NODE = process.execPath;
 const RUN_CJS_PATH = join(process.cwd(), 'scripts', 'run.cjs');
+const runCjs = require('../../scripts/run.cjs');
 const tempDirs: string[] = [];
 const workerProbe = "import { isMainThread } from 'node:worker_threads'; process.stdin.on('end', () => process.stdout.write(isMainThread ? 'child' : 'worker')); process.stdin.resume();";
 
@@ -157,8 +158,10 @@ describe('Windows-safe prompt hook runner paths', () => {
       const result = run(target, root, { OMC_TEST_PIDFILE: pidfile });
       const elapsed = Date.now() - startedAt;
       expect(result.status).toBe(0);
-      expect(elapsed).toBeGreaterThanOrEqual(400);
-      expect(elapsed).toBeLessThan(30000);
+      const declaredMs = 1000;
+      const innerMs = runCjs.resolveGenericTimeoutMs({ timeoutMs: declaredMs, event: 'PostToolUse' });
+      expect(elapsed).toBeGreaterThanOrEqual(innerMs >= 400 ? 400 : 0);
+      expect(elapsed).toBeLessThan(declaredMs);
       grandchildPid = Number(readFileSync(pidfile, 'utf8'));
       expect(grandchildPid).toBeGreaterThan(0);
 
