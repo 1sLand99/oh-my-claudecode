@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "ef106d29bd036cc399fefb39d267acd6e39dca82",
-    "sourceSha256": "4e3608275536d11e53f6a63462f8756bfc0beee8401ffe212419cbdfabca499e",
+    "head": "c569f75b30bdb8ab30653eba0efdafce5a2c7e43",
+    "sourceSha256": "aaae762befc6349f050d2dc2590c87f6d56fbc68b4690558fb8c713a913fb349",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "ef106d29bd036cc399fefb39d267acd6e39dca82",
-  "sourceSha256": "4e3608275536d11e53f6a63462f8756bfc0beee8401ffe212419cbdfabca499e",
+  "head": "c569f75b30bdb8ab30653eba0efdafce5a2c7e43",
+  "sourceSha256": "aaae762befc6349f050d2dc2590c87f6d56fbc68b4690558fb8c713a913fb349",
   "counts": {
     "public": {
       "skills": 35,
@@ -28,8 +28,8 @@
       "toolFiles": 60,
       "libFiles": 37,
       "templateHooks": 21,
-      "srcFiles": 1314,
-      "total": 1335
+      "srcFiles": 1315,
+      "total": 1336
     },
     "generated": {
       "distFiles": 4955,
@@ -33850,6 +33850,11 @@
         "path": "src/__tests__/fixtures/hung-hooks/detached-stdout-orphan.cjs"
       },
       {
+        "id": "src/__tests__/fixtures/hung-hooks/epipe-exit-parent.cjs",
+        "kind": "src",
+        "path": "src/__tests__/fixtures/hung-hooks/epipe-exit-parent.cjs"
+      },
+      {
         "id": "src/__tests__/fixtures/hung-hooks/hung-grandchild.cjs",
         "kind": "src",
         "path": "src/__tests__/fixtures/hung-hooks/hung-grandchild.cjs"
@@ -43904,6 +43909,16 @@
       {
         "from": "src/__tests__/fixtures/hung-hooks/detached-stdout-orphan.cjs",
         "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/fixtures/hung-hooks/epipe-exit-parent.cjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/fixtures/hung-hooks/epipe-exit-parent.cjs",
+        "to": "external:node:path",
         "kind": "imports"
       },
       {
@@ -76663,12 +76678,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6843,
-      "edgeCount": 7233,
-      "importEdgeCount": 5943,
+      "nodeCount": 6844,
+      "edgeCount": 7235,
+      "importEdgeCount": 5945,
       "registerEdgeCount": 56
     }
   },
-  "inventorySha256": "b3d68b6eb375492031545ea45f5699047ae9e1115224086a7b99201a2bf55374",
-  "manifestSha256": "50ecc9da6a8f7c9cd427c499ca659c66f9fa1b1c1efe730816e5473abc4fd584"
+  "inventorySha256": "bacabd73c39af38db89572e46515777aa7e76feff7c30ba4604cc3de0f3dbfdd",
+  "manifestSha256": "0e420f068b932f7185e1e870bd3e55ba075f7609a1fb3c522868fea504dd8c3a"
 }

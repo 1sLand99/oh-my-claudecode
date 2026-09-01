@@ -304,18 +304,24 @@ function processIdentityMatches(pid, expectedIdentity) {
   return captureProcessStartIdentity(pid) === expectedIdentity;
 }
 
+function leaderPresence(pid, expectedIdentity) {
+  try {
+    process.kill(pid, 0);
+  } catch (error) {
+    return error && error.code === 'ESRCH' ? 'absent' : 'unknown';
+  }
+  if (!expectedIdentity) return 'alive';
+  return captureProcessStartIdentity(pid) === expectedIdentity ? 'alive' : 'mismatch';
+}
+
 function reapTree(child, childIdentity) {
-  // Identity-safe reap: verify the PID still belongs to the child we spawned
-  // before killing its process group. If the PID was reused by the OS after
-  // the child exited, processIdentityMatches returns false.
-  //
-  // If the leader is already gone (ESRCH) — e.g. it exited on EPIPE after we
-  // destroyed protocol pipes — still kill the original process group. A
-  // detached spawn uses pid as pgid; grandchildren in that group would
-  // otherwise survive (#3920 POSIX timeout ordering).
+  // Identity-safe reap: only signal a live PID we spawned, or a confirmed-dead
+  // detached leader's leftover process group. A live identity mismatch is PID
+  // reuse — fail closed. Unknown (EPERM/identity-read failure) also fail closed.
   if (!Number.isInteger(child.pid) || child.pid <= 0) return;
-  const leaderAlive = !childIdentity || processIdentityMatches(child.pid, childIdentity);
-  if (childIdentity && !leaderAlive) {
+  const presence = leaderPresence(child.pid, childIdentity);
+  if (presence === 'mismatch' || presence === 'unknown') return;
+  if (presence === 'absent') {
     if (process.platform === 'win32') return;
     try { process.kill(-child.pid, 'SIGKILL'); } catch { /* group already empty */ }
     return;
