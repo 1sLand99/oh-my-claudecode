@@ -6,6 +6,7 @@ import { execFileSync, spawnSync } from 'child_process';
 
 const RUN_CJS_PATH = join(__dirname, '..', '..', 'scripts', 'run.cjs');
 const NODE = process.execPath;
+const runCjsModule = require('../../scripts/run.cjs');
 
 /**
  * Regression tests for run.cjs graceful fallback when CLAUDE_PLUGIN_ROOT
@@ -309,7 +310,8 @@ describe('run.cjs — graceful fallback for stale plugin paths', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).not.toContain('slow-stop-done');
-    expect(result.stderr).toContain('[run.cjs] Hook slow-stop-hook.cjs timed out after 1500ms; exiting fail-open.');
+    const innerMs = runCjsModule.resolveGenericTimeoutMs({ timeoutMs: 2000, event: 'Stop' });
+    expect(result.stderr).toContain(`[run.cjs] Hook slow-stop-hook.cjs timed out after ${innerMs}ms; exiting fail-open.`);
     expect(result.stderr).not.toContain('timed out after 2000ms');
     expect(elapsedMs).toBeLessThan(2000);
   });
@@ -421,7 +423,8 @@ describe('run.cjs — graceful fallback for stale plugin paths', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).not.toContain('non-prompt-done');
-    expect(result.stderr).toContain('[run.cjs] Hook non-prompt-slow.cjs timed out after 1500ms; exiting fail-open.');
+    const innerMs = runCjsModule.resolveGenericTimeoutMs({ timeoutMs: 2000, event: 'Stop' });
+    expect(result.stderr).toContain(`[run.cjs] Hook non-prompt-slow.cjs timed out after ${innerMs}ms; exiting fail-open.`);
     expect(elapsedMs).toBeLessThan(2000);
   });
 
@@ -470,7 +473,8 @@ describe('run.cjs — graceful fallback for stale plugin paths', () => {
     expect(quietResult.stderr).toBe('');
     expect(debugResult.status).toBe(0);
     expect(debugResult.stdout).not.toContain('prompt-debug-done');
-    expect(debugResult.stderr).toContain('[run.cjs] Hook prompt-debug-slow.cjs timed out after 1ms; exiting fail-open.');
+    const innerMs = runCjsModule.resolveGenericTimeoutMs({ timeoutMs: 1000, event: 'UserPromptSubmit' });
+    expect(debugResult.stderr).toContain(`[run.cjs] Hook prompt-debug-slow.cjs timed out after ${innerMs}ms; exiting fail-open.`);
   });
 });
 
