@@ -250,11 +250,13 @@ function resolveTrustedSessionEndTarget(resolution, extraArgs) {
 }
 
 
-function writeTimeoutDiagnostic(targetPath, manifestHook, timeoutMs) {
+function writeTimeoutDiagnostic(targetPath, manifestHook, timeoutMs, sink) {
   const message = `[run.cjs] Hook ${basename(targetPath)} timed out after ${timeoutMs}ms; exiting fail-open.\n`;
   if (manifestHook?.event !== 'UserPromptSubmit' || isDebugHooksEnabled()) {
-    process.stderr.write(message);
+    if (sink) return sink.write(process.stderr, Buffer.from(message));
+    try { process.stderr.write(message); } catch { /* protocol dest may already be closed */ }
   }
+  return undefined;
 }
 
 function captureProcessStartIdentity(pid) {
@@ -363,30 +365,65 @@ function abandonProtocolSource(source, dest) {
   } catch { /* already flowing or destroyed */ }
 }
 
-function attachProtocolForwarders(child) {
-  attachProtocolForwarder(child.stdout, process.stdout);
-  attachProtocolForwarder(child.stderr, process.stderr);
-}
+function createProtocolSink() {
+  const discarded = { stdout: false, stderr: false };
+  const sources = { stdout: new Set(), stderr: new Set() };
+  let installed = false;
+  const onStdoutError = (error) => handleDestError('stdout', process.stdout, error);
+  const onStderrError = (error) => handleDestError('stderr', process.stderr, error);
 
-function attachProtocolForwarder(source, dest) {
-  if (!source || !dest) return;
-  source.pipe(dest, { end: false });
-  const onDestError = (error) => {
-    if (!isClosedDestinationError(error)) {
-      const other = dest === process.stdout ? process.stderr : process.stdout;
-      try {
-        if (other && other.writable && !other.destroyed) {
-          const detail = error && (error.code || error.message || String(error));
-          other.write(`[run.cjs] protocol stream error: ${detail}\n`);
-        }
-      } catch { /* both destinations may already be closed */ }
+  function handleDestError(name, dest, error) {
+    discarded[name] = true;
+    for (const source of sources[name]) abandonProtocolSource(source, dest);
+    sources[name].clear();
+    if (!isClosedDestinationError(error) && name === 'stdout') {
+      void write(process.stderr, Buffer.from(`[run.cjs] protocol stream error: ${error.code || error.message}\n`));
     }
-    abandonProtocolSource(source, dest);
-  };
-  dest.on('error', onDestError);
-  const cleanup = () => dest.removeListener('error', onDestError);
-  source.once('end', cleanup);
-  source.once('close', cleanup);
+  }
+
+  function install() {
+    if (installed) return;
+    installed = true;
+    process.stdout.on('error', onStdoutError);
+    process.stderr.on('error', onStderrError);
+  }
+
+  function uninstall() {
+    if (!installed) return;
+    installed = false;
+    process.stdout.removeListener('error', onStdoutError);
+    process.stderr.removeListener('error', onStderrError);
+  }
+
+  function write(dest, data) {
+    install();
+    const name = dest === process.stderr ? 'stderr' : 'stdout';
+    if (discarded[name] || !dest || dest.destroyed || !dest.writable) return Promise.resolve();
+    return new Promise((resolve) => {
+      try {
+        dest.write(data, () => resolve());
+      } catch (error) {
+        handleDestError(name, dest, error);
+        resolve();
+      }
+    });
+  }
+
+  function attachChild(child) {
+    install();
+    const bind = (source, dest, name) => {
+      if (!source) return;
+      sources[name].add(source);
+      source.pipe(dest, { end: false });
+      const drop = () => sources[name].delete(source);
+      source.once('end', drop);
+      source.once('close', drop);
+    };
+    bind(child.stdout, process.stdout, 'stdout');
+    bind(child.stderr, process.stderr, 'stderr');
+  }
+
+  return { install, uninstall, write, attachChild };
 }
 
 function detachProtocolStdio(child) {
@@ -479,9 +516,15 @@ function superviseGenericChild(targetPath, extraArgs) {
 }
 
 function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
+  const sink = createProtocolSink();
+  sink.install();
   return new Promise(resolve => {
     let terminal = false;
     let timer;
+    const finish = (status) => {
+      sink.uninstall();
+      resolve(status);
+    };
     const child = spawn(process.execPath, resolveGenericChildCommand(targetPath, extraArgs), {
       stdio: resolveGenericChildStdio(),
       env: {
@@ -491,7 +534,7 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
       windowsHide: true,
       detached: true,
     });
-    attachProtocolForwarders(child);
+    sink.attachChild(child);
     // Capture the durable start identity immediately so reapTree can reject
     // a PID that was reused after the child exited.
     const childIdentity = child.pid ? captureProcessStartIdentity(child.pid) : null;
@@ -510,6 +553,7 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
       terminal = true;
       detachHandlers();
       detachProtocolStdio(child);
+      sink.uninstall();
       reapTree(child, childIdentity);
       process.exit(0);
     }
@@ -528,8 +572,8 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
       // taskkill must not keep Claude Code blocked on EOF past the host fuse.
       detachProtocolStdio(child);
       releaseGenericChild(child);
-      writeTimeoutDiagnostic(targetPath, manifestHook, timeoutMs);
-      resolve(0);
+      writeTimeoutDiagnostic(targetPath, manifestHook, timeoutMs, sink);
+      finish(0);
       reapTree(child, childIdentity);
     }, timeoutMs);
 
@@ -543,7 +587,7 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
       // (#3920 success-path hang, outer harness timeout 124).
       void settleProtocolStdio(child).then(() => {
         releaseGenericChild(child);
-        resolve(typeof code === 'number' ? code : 0);
+        finish(typeof code === 'number' ? code : 0);
       });
     });
     child.once('error', () => {
@@ -551,7 +595,7 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
       terminal = true;
       detachHandlers();
       detachProtocolStdio(child);
-      resolve(0);
+      finish(0);
     });
 
     for (const signal of RUNNER_TERMINATION_SIGNALS) process.on(signal, onRunnerSignal);
@@ -566,6 +610,8 @@ async function runWorker(targetPath, manifestHook, timeoutMs) {
   let discardOutput = false;
   const stdout = [];
   const stderr = [];
+  const sink = createProtocolSink();
+  sink.install();
 
   const cleanupInput = () => {
     if (!worker) return;
@@ -575,15 +621,12 @@ async function runWorker(targetPath, manifestHook, timeoutMs) {
   const waitForOutputEnd = stream => stream.readableEnded
     ? Promise.resolve()
     : new Promise(resolve => stream.once('end', resolve));
-  const writeBuffer = (stream, buffer) => new Promise(resolve => {
-    stream.write(buffer, () => resolve());
-  });
   const forwardBuffers = async (workerError) => {
-    if (stdout.length) await writeBuffer(process.stdout, Buffer.concat(stdout));
-    if (stderr.length) await writeBuffer(process.stderr, Buffer.concat(stderr));
+    if (stdout.length) await sink.write(process.stdout, Buffer.concat(stdout));
+    if (stderr.length) await sink.write(process.stderr, Buffer.concat(stderr));
     if (workerError) {
       const diagnostic = workerError.stack || workerError.message || String(workerError);
-      await writeBuffer(process.stderr, Buffer.from(`${diagnostic}\n`));
+      await sink.write(process.stderr, Buffer.from(`${diagnostic}\n`));
     }
   };
   const waitForWorkerOutput = () => Promise.all([
@@ -600,6 +643,7 @@ async function runWorker(targetPath, manifestHook, timeoutMs) {
         cleanupInput();
         if (worker) await waitForWorkerOutput();
         await forwardBuffers(workerError);
+        sink.uninstall();
         resolve(status);
       };
 
@@ -613,7 +657,8 @@ async function runWorker(targetPath, manifestHook, timeoutMs) {
         } catch {
           // Termination is best-effort; the hook must still fail open.
         }
-        writeTimeoutDiagnostic(targetPath, manifestHook, timeoutMs);
+        await writeTimeoutDiagnostic(targetPath, manifestHook, timeoutMs, sink);
+        sink.uninstall();
         resolve(0);
       }, timeoutMs);
 

@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -107,6 +107,53 @@ describe('Windows-safe prompt hook runner paths', () => {
     expect(result.stdout).toBe('');
     const innerMs = runCjs.resolveGenericTimeoutMs({ timeoutMs: 1000, event: 'UserPromptSubmit' });
     expect(result.stderr).toContain(`Hook keyword-detector.mjs timed out after ${innerMs}ms; exiting fail-open.`);
+  });
+  it('fail-opens a trusted Worker when protocol stdout is closed', async () => {
+    const cacheBase = mkdtempSync(join(tmpdir(), 'omc worker closed stdout-'));
+    tempDirs.push(cacheBase);
+    const root = join(cacheBase, '4.8.0');
+    makePlugin(root, workerProbe);
+    const target = join(root, 'scripts', 'keyword-detector.mjs');
+    const runner = spawn(NODE, [RUN_CJS_PATH, target], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, CLAUDE_PLUGIN_ROOT: root },
+      windowsHide: true,
+    });
+    runner.stdin.write('{}');
+    runner.stdin.end();
+    runner.stdout.destroy();
+    const code = await new Promise<number | null>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('trusted Worker hung after stdout close')), 5000);
+      runner.once('exit', status => {
+        clearTimeout(timer);
+        resolve(status);
+      });
+    });
+    expect(code).toBe(0);
+  });
+
+  it('fail-opens a trusted Worker timeout diagnostic when protocol stderr is closed', async () => {
+    const cacheBase = mkdtempSync(join(tmpdir(), 'omc worker closed stderr-'));
+    tempDirs.push(cacheBase);
+    const root = join(cacheBase, '4.9.0');
+    const target = join(root, 'scripts', 'keyword-detector.mjs');
+    makePlugin(root, "setInterval(() => {}, 1000);", 1);
+    const runner = spawn(NODE, [RUN_CJS_PATH, target], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, CLAUDE_PLUGIN_ROOT: root, OMC_DEBUG_HOOKS: '1' },
+      windowsHide: true,
+    });
+    runner.stdin.write('{}');
+    runner.stdin.end();
+    runner.stderr.destroy();
+    const code = await new Promise<number | null>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('trusted Worker hung after stderr close')), 5000);
+      runner.once('exit', status => {
+        clearTimeout(timer);
+        resolve(status);
+      });
+    });
+    expect(code).toBe(0);
   });
 
   it('models an argv-delayed launch crossing 10s and failing open before the 30s host fuse', () => {
