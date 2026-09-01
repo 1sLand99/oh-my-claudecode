@@ -663,12 +663,8 @@ function superviseGenericChild(targetPath, extraArgs) {
   const finish = (status) => {
     if (terminal) return;
     terminal = true;
+    process.exitCode = status;
     if (process.connected) process.disconnect();
-    // The hook inherited this supervisor's protocol handles. On Windows a
-    // queued inherited write can keep exitCode-based shutdown alive forever
-    // after the hook leader has already exited; force the supervisor boundary
-    // closed so run.cjs can own the remaining buffered drain and deadline.
-    process.exit(status);
   };
 
   // The supervisor is a detached Windows child of run.cjs. Its IPC channel is

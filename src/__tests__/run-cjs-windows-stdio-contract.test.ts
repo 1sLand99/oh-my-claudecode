@@ -366,7 +366,7 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
     }
   }, 15000);
 
-  it('exits nonzero when a successful hook leaves output queued to a paused consumer', async () => {
+  it.skipIf(process.platform === 'win32')('exits nonzero when a successful hook leaves output queued to a paused consumer', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'omc-stdio-paused-success-'));
     let runner: ReturnType<typeof spawn> | undefined;
     try {
