@@ -47,7 +47,7 @@ describe('run.cjs generic hook timeout supervisor', () => {
     expect(runCjs.resolveGenericTimeoutMs(manifestHook, 'linux'))
       .toBe(runCjs.resolveInnerTimeoutMs(manifestHook, 'linux'));
     expect(runCjs.resolveGenericTimeoutMs(manifestHook, 'linux')).toBe(2500);
-    expect(runCjs.resolveGenericTimeoutMs(manifestHook, 'win32')).toBe(1500);
+    expect(runCjs.resolveGenericTimeoutMs(manifestHook, 'win32')).toBe(2500);
     const gitHook = { timeoutMs: 5000, event: 'PostToolUse' };
     const winGitInner = runCjs.resolveGenericTimeoutMs(gitHook, 'win32');
     expect(winGitInner).toBe(3500);
@@ -57,7 +57,7 @@ describe('run.cjs generic hook timeout supervisor', () => {
     expect(winGitInner).toBeGreaterThan(runCjs.NESTED_OPERATION_TIMEOUT_MS);
     expect(runCjs.resolveGenericTimeoutMs({ timeoutMs: 1000, event: 'PostToolUse' }, 'win32')).toBe(500);
     expect(runCjs.resolveGenericTimeoutMs({ timeoutMs: 1500, event: 'PostToolUse' }, 'win32')).toBe(1000);
-    expect(runCjs.resolveGenericTimeoutMs({ timeoutMs: 2000, event: 'PostToolUse' }, 'win32')).toBe(1167);
+    expect(runCjs.resolveGenericTimeoutMs({ timeoutMs: 2000, event: 'PostToolUse' }, 'win32')).toBe(1500);
     expect(runCjs.resolveGenericTimeoutMs({ timeoutMs: 1000, event: 'PostToolUse' }, 'win32'))
       .toBeGreaterThanOrEqual(runCjs.MIN_HOOK_INNER_MS);
   });
@@ -140,6 +140,21 @@ describe('run.cjs generic hook timeout supervisor', () => {
       expect(code).toBe(3);
     } finally {
       try { supervisor.kill('SIGKILL'); } catch { /* already gone */ }
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('preserves a shipped 2000ms nested operation inside a 3s Windows hook budget', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'omc-three-second-nested-'));
+    const marker = join(directory, 'nested-complete');
+    const fixture = join(directory, 'nested-operation.cjs');
+    writeFileSync(fixture, `setTimeout(() => { require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'done'); process.exit(0); }, 2000);`);
+    try {
+      const innerMs = runCjs.resolveGenericTimeoutMs({ timeoutMs: 3000, event: 'PostToolUse' }, 'win32');
+      expect(innerMs).toBe(2500);
+      await expect(withWatchdog(runCjs.runGenericChild(fixture, [], innerMs, null), 3000)).resolves.toBe(0);
+      expect(readFileSync(marker, 'utf8')).toBe('done');
+    } finally {
       rmSync(directory, { recursive: true, force: true });
     }
   });

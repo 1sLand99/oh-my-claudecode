@@ -144,8 +144,8 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
     const cases = [
       { timeoutMs: 1000, event: 'PostToolUse', win32: 500, linux: 500 },
       { timeoutMs: 1500, event: 'PostToolUse', win32: 1000, linux: 1000 },
-      { timeoutMs: 2000, event: 'PostToolUse', win32: 1167, linux: 1500 },
-      { timeoutMs: 3000, event: 'PostToolUse', win32: 1500, linux: 2500 },
+      { timeoutMs: 2000, event: 'PostToolUse', win32: 1500, linux: 1500 },
+      { timeoutMs: 3000, event: 'PostToolUse', win32: 2500, linux: 2500 },
       { timeoutMs: 5000, event: 'PostToolUse', win32: 3500, linux: 4500 },
       { timeoutMs: 10000, event: 'PostToolUse', win32: 8500, linux: 9500 },
       { timeoutMs: 60000, event: 'PostToolUse', win32: 58500, linux: 59500 },
@@ -163,10 +163,31 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
     expect(runCjs.NESTED_OPERATION_TIMEOUT_MS).toBe(2000);
     expect(gitInner).toBeGreaterThan(runCjs.NESTED_OPERATION_TIMEOUT_MS);
     expect(gitInner).toBeGreaterThanOrEqual(runCjs.NESTED_INNER_FLOOR_MS);
-    expect(3000 - runCjs.TIMEOUT_CUSHION_MS - runCjs.WINDOWS_GENERIC_STARTUP_MS)
-      .toBeLessThan(runCjs.NESTED_OPERATION_TIMEOUT_MS);
+    expect(runCjs.resolveGenericTimeoutMs({ timeoutMs: 3000, event: 'PostToolUse' }, 'win32'))
+      .toBeGreaterThan(runCjs.NESTED_OPERATION_TIMEOUT_MS);
     expect(runCjs.resolveGenericTimeoutMs(null, 'win32')).toBe(58500);
     expect(runCjs.resolveGenericTimeoutMs(null, 'linux')).toBe(59500);
+  });
+
+  it('keeps every shipped 3s hook visible to the short-budget contract', () => {
+    const manifest = JSON.parse(readFileSync(join(process.cwd(), 'hooks', 'hooks.json'), 'utf8')) as {
+      hooks: Record<string, Array<{ hooks?: Array<{ command?: string; timeout?: number }> }>>;
+    };
+    const commands = Object.values(manifest.hooks)
+      .flatMap(groups => groups)
+      .flatMap(group => group.hooks ?? [])
+      .filter(hook => hook.timeout === 3)
+      .map(hook => [...(hook.command ?? '').matchAll(/scripts[/\\]([^"\s]+)/g)].at(-1)?.[1])
+      .filter((name): name is string => Boolean(name))
+      .sort();
+    expect(commands).toEqual([
+      'post-tool-rules-injector.mjs',
+      'post-tool-use-failure.mjs',
+      'project-memory-posttool.mjs',
+      'subagent-tracker.mjs',
+      'wiki-pre-compact.mjs',
+      'workflow-drift-guard.mjs',
+    ]);
   });
   it('fail-opens inside a 1s declared budget without requiring cold-start completion', () => {
     const directory = mkdtempSync(join(tmpdir(), 'omc-stdio-one-second-'));

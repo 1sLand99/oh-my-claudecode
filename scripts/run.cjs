@@ -141,12 +141,11 @@ function desiredTimeoutCushionMs(manifestTimeoutMs, hookEvent, platform = proces
 function resolveTimeoutCushionMs(manifestTimeoutMs, hookEvent, platform = process.platform) {
   const desired = desiredTimeoutCushionMs(manifestTimeoutMs, hookEvent, platform);
   if (platform === 'win32' && hookEvent !== 'UserPromptSubmit' && manifestTimeoutMs <= 3000) {
-    // Keep the historical 500ms inner/outer separation through 1.5s hooks,
-    // then grow it linearly to the 1.5s Windows teardown allowance at 3s.
-    // This preserves the short-hook compatibility budget without letting a
-    // 3s hook claim enough time for the 2s nested Git operation plus startup.
-    if (manifestTimeoutMs <= 1500) return Math.min(500, Math.max(1, manifestTimeoutMs - 1));
-    return Math.min(1500, 500 + Math.floor((manifestTimeoutMs - 1500) * 2 / 3));
+    // Preserve the historical 500ms outer allowance for short hooks. It
+    // covers the 400ms Windows reap plus the 80ms protocol-idle close while
+    // leaving a 3s hook its prior 2500ms inner budget for shipped 2000ms Git
+    // and lock operations.
+    return Math.min(500, Math.max(1, manifestTimeoutMs - 1));
   }
   const fractionalInner = Math.max(MIN_HOOK_INNER_MS, Math.floor(manifestTimeoutMs * MIN_HOOK_INNER_FRACTION));
   const canFitNestedFloor = manifestTimeoutMs - POSIX_TIMEOUT_CUSHION_MS >= NESTED_INNER_FLOOR_MS;
