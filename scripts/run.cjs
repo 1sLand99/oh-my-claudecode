@@ -9,7 +9,7 @@
  */
 
 const { spawn, spawnSync } = require('child_process');
-const { existsSync, readFileSync, realpathSync } = require('fs');
+const { existsSync, readFileSync, realpathSync, writeSync } = require('fs');
 const path = require('path');
 const { join, basename, dirname } = path;
 const { pathToFileURL } = require('url');
@@ -372,6 +372,20 @@ function abandonProtocolSource(source, dest) {
   } catch { /* already flowing or destroyed */ }
 }
 
+let processDestGuardsInstalled = false;
+function ensureProcessDestGuards() {
+  if (processDestGuardsInstalled) return;
+  processDestGuardsInstalled = true;
+  const guard = (error) => {
+    if (isClosedDestinationError(error)) return;
+    try {
+      writeSync(2, `[run.cjs] protocol stream error: ${error.code || error.message}\n`);
+    } catch { /* both destinations dead */ }
+  };
+  process.stdout.on('error', guard);
+  process.stderr.on('error', guard);
+}
+
 function createProtocolSink() {
   const discarded = { stdout: false, stderr: false };
   const sources = { stdout: new Set(), stderr: new Set() };
@@ -380,6 +394,7 @@ function createProtocolSink() {
   const onStderrError = (error) => handleDestError('stderr', process.stderr, error);
 
   function handleDestError(name, dest, error) {
+    if (discarded[name]) return;
     discarded[name] = true;
     for (const source of sources[name]) abandonProtocolSource(source, dest);
     sources[name].clear();
@@ -389,6 +404,7 @@ function createProtocolSink() {
   }
 
   function install() {
+    ensureProcessDestGuards();
     if (installed) return;
     installed = true;
     process.stdout.on('error', onStdoutError);
@@ -400,12 +416,18 @@ function createProtocolSink() {
     installed = false;
     process.stdout.removeListener('error', onStdoutError);
     process.stderr.removeListener('error', onStderrError);
+    // Process-lifetime closed-dest guards remain so a late write callback
+    // EPIPE after finish() cannot crash the runner.
   }
 
   function write(dest, data) {
     install();
     const name = dest === process.stderr ? 'stderr' : 'stdout';
     if (discarded[name] || !dest || dest.destroyed || !dest.writable) return Promise.resolve();
+    if (dest.writableNeedDrain) {
+      discarded[name] = true;
+      return Promise.resolve();
+    }
     return new Promise((resolve) => {
       let settled = false;
       const done = () => {
@@ -452,7 +474,7 @@ function detachProtocolStdio(child) {
     try { stream.unpipe(dest); } catch { /* already detached */ }
     try {
       if (typeof stream.pause === 'function') stream.pause();
-      const destWritable = dest && !dest.destroyed && dest.writable;
+      const destWritable = dest && !dest.destroyed && dest.writable && !dest.writableNeedDrain;
       if (typeof stream.read === 'function' && destWritable) {
         let chunk;
         while ((chunk = stream.read()) !== null) dest.write(chunk);
@@ -712,6 +734,7 @@ async function runWorker(targetPath, manifestHook, timeoutMs) {
 }
 
 if (require.main === module) {
+  ensureProcessDestGuards();
   const target = process.argv[2];
   if (target === '--generic-child-supervisor') {
     const supervisedTarget = process.argv[3];
