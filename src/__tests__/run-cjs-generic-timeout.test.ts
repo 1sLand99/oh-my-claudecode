@@ -47,6 +47,10 @@ describe('run.cjs generic hook timeout supervisor', () => {
       .toBe(runCjs.resolveInnerTimeoutMs(manifestHook, 'linux'));
     expect(runCjs.resolveGenericTimeoutMs(manifestHook, 'linux')).toBe(2500);
     expect(runCjs.resolveGenericTimeoutMs(manifestHook, 'win32')).toBe(1500);
+    expect(runCjs.resolveGenericTimeoutMs({ timeoutMs: 1000, event: 'PostToolUse' }, 'win32')).toBe(500);
+    expect(runCjs.resolveGenericTimeoutMs({ timeoutMs: 1500, event: 'PostToolUse' }, 'win32')).toBe(750);
+    expect(runCjs.resolveGenericTimeoutMs({ timeoutMs: 1000, event: 'PostToolUse' }, 'win32'))
+      .toBeGreaterThanOrEqual(runCjs.MIN_HOOK_INNER_MS);
   });
 
   it('uses the source-owned supervisor only for Windows generic hooks', () => {

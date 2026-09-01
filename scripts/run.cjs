@@ -112,10 +112,13 @@ const WINDOWS_TIMEOUT_CUSHION_MS = 1500;
 const MAX_DECLARED_GENERIC_TIMEOUT_MS = 60000;
 const WINDOWS_REAP_TIMEOUT_MS = 400;
 const PROTOCOL_STDIO_SETTLE_MS = 150;
+const MIN_HOOK_INNER_FRACTION = 0.5;
+const MIN_HOOK_INNER_MS = 400;
 // POSIX default = max declared manifest budget (60000ms, setup-maintenance) minus
 // the 500ms cushion; applied ONLY when manifest resolution is null so long legit
-// hooks are not prematurely reaped. Windows uses a larger cushion so fail-open
-// plus tree reap still finish inside the declared hooks.json budget.
+// hooks are not prematurely reaped. Windows *desired* cushion is larger so
+// fail-open plus tree reap still finish inside the declared hooks.json budget,
+// but it is a cap — short hooks keep at least half / 400ms of inner runtime.
 const TIMEOUT_CUSHION_MS = POSIX_TIMEOUT_CUSHION_MS;
 const DEFAULT_GENERIC_TIMEOUT_MS = MAX_DECLARED_GENERIC_TIMEOUT_MS - POSIX_TIMEOUT_CUSHION_MS;
 
@@ -123,11 +126,21 @@ function platformTimeoutCushionMs(platform = process.platform) {
   return platform === 'win32' ? WINDOWS_TIMEOUT_CUSHION_MS : POSIX_TIMEOUT_CUSHION_MS;
 }
 
-function resolveTimeoutCushionMs(manifestTimeoutMs, hookEvent, platform = process.platform) {
+function desiredTimeoutCushionMs(manifestTimeoutMs, hookEvent, platform = process.platform) {
   const base = platformTimeoutCushionMs(platform);
   if (hookEvent !== 'UserPromptSubmit') return base;
   const promptCushion = Math.floor(manifestTimeoutMs * 0.2);
   return Math.min(3000, Math.max(base, 1000, promptCushion));
+}
+
+function resolveTimeoutCushionMs(manifestTimeoutMs, hookEvent, platform = process.platform) {
+  const desired = desiredTimeoutCushionMs(manifestTimeoutMs, hookEvent, platform);
+  const minInner = Math.min(
+    Math.max(1, manifestTimeoutMs - 1),
+    Math.max(MIN_HOOK_INNER_MS, Math.floor(manifestTimeoutMs * MIN_HOOK_INNER_FRACTION)),
+  );
+  const maxCushion = Math.max(1, manifestTimeoutMs - minInner);
+  return Math.min(desired, maxCushion);
 }
 
 function resolveInnerTimeoutMs(manifestHook, platform = process.platform) {
@@ -642,6 +655,7 @@ module.exports = {
   resolveHookTimeoutMs,
   resolveGenericTimeoutMs,
   resolveTimeoutCushionMs,
+  desiredTimeoutCushionMs,
   platformTimeoutCushionMs,
   runGenericChild,
   resolveGenericChildCommand,
@@ -651,6 +665,8 @@ module.exports = {
   TIMEOUT_CUSHION_MS,
   WINDOWS_TIMEOUT_CUSHION_MS,
   WINDOWS_REAP_TIMEOUT_MS,
+  MIN_HOOK_INNER_MS,
+  MIN_HOOK_INNER_FRACTION,
   MAX_DECLARED_GENERIC_TIMEOUT_MS,
   resolveTrustedSessionEndTarget,
 };

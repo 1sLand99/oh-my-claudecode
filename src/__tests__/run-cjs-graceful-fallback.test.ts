@@ -473,7 +473,8 @@ describe('run.cjs — graceful fallback for stale plugin paths', () => {
     expect(quietResult.stderr).toBe('');
     expect(debugResult.status).toBe(0);
     expect(debugResult.stdout).not.toContain('prompt-debug-done');
-    expect(debugResult.stderr).toContain('[run.cjs] Hook prompt-debug-slow.cjs timed out after 1ms; exiting fail-open.');
+    const innerMs = runCjsModule.resolveGenericTimeoutMs({ timeoutMs: 1000, event: 'UserPromptSubmit' });
+    expect(debugResult.stderr).toContain(`[run.cjs] Hook prompt-debug-slow.cjs timed out after ${innerMs}ms; exiting fail-open.`);
   });
 });
 

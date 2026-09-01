@@ -105,7 +105,8 @@ describe('Windows-safe prompt hook runner paths', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toContain('Hook keyword-detector.mjs timed out after 1ms; exiting fail-open.');
+    const innerMs = runCjs.resolveGenericTimeoutMs({ timeoutMs: 1000, event: 'UserPromptSubmit' });
+    expect(result.stderr).toContain(`Hook keyword-detector.mjs timed out after ${innerMs}ms; exiting fail-open.`);
   });
 
   it('models an argv-delayed launch crossing 10s and failing open before the 30s host fuse', () => {
