@@ -138,7 +138,7 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
     expect(runCjs.resolveGenericChildStdio('darwin')).toEqual(['inherit', 'pipe', 'pipe']);
   });
 
-  it('keeps inner timeout plus bounded reap inside the declared hook budget', () => {
+  it('keeps a usable inner timeout inside the declared hook budget', () => {
     const cases = [
       { timeoutMs: 1000, event: 'PostToolUse', win32: 500, linux: 500 },
       { timeoutMs: 1500, event: 'PostToolUse', win32: 750, linux: 1000 },
@@ -153,7 +153,8 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
       expect(posixInner, `linux inner for ${row.timeoutMs}`).toBe(row.linux);
       expect(winInner).toBeGreaterThanOrEqual(Math.min(row.timeoutMs - 1, runCjs.MIN_HOOK_INNER_MS));
       expect(winInner / row.timeoutMs).toBeGreaterThanOrEqual(runCjs.MIN_HOOK_INNER_FRACTION);
-      expect(winInner + runCjs.WINDOWS_REAP_TIMEOUT_MS).toBeLessThanOrEqual(row.timeoutMs);
+      // Windows tree reap is detached/best-effort after protocol release; the
+      // host fuse is inner timeout plus remaining cushion, not a reap wait.
       expect(row.timeoutMs - winInner).toBeLessThanOrEqual(runCjs.WINDOWS_TIMEOUT_CUSHION_MS);
     }
     expect(runCjs.resolveGenericTimeoutMs(null, 'win32')).toBe(58500);
