@@ -376,14 +376,6 @@ function isClosedDestinationError(error) {
   return code === 'EPIPE' || code === 'ERR_STREAM_DESTROYED' || code === 'ERR_STREAM_WRITE_AFTER_END';
 }
 
-function abandonProtocolSource(source, dest) {
-  if (!source) return;
-  try { source.unpipe(dest); } catch { /* already detached */ }
-  try {
-    if (typeof source.resume === 'function') source.resume();
-  } catch { /* already flowing or destroyed */ }
-  try { source.destroy(); } catch { /* already destroyed */ }
-}
 
 let processDestGuardsInstalled = false;
 function ensureProcessDestGuards() {
@@ -399,8 +391,9 @@ function ensureProcessDestGuards() {
   process.stderr.on('error', guard);
 }
 
-function createProtocolSink() {
+function createProtocolSink(hooks = {}) {
   const discarded = { stdout: false, stderr: false };
+  const closedDest = { stdout: false, stderr: false };
   const bindings = { stdout: [], stderr: [] };
   let installed = false;
   let pendingWrites = 0;
@@ -410,17 +403,22 @@ function createProtocolSink() {
 
   function teardownChannel(name) {
     discarded[name] = true;
-    for (const binding of bindings[name]) {
+    const snapshot = bindings[name];
+    bindings[name] = [];
+    for (const binding of snapshot) {
       try { binding.source.unpipe(binding.tap); } catch { /* already unpiped */ }
       try { binding.tap.unpipe(binding.dest); } catch { /* already unpiped */ }
       try { binding.tap.destroy(); } catch { /* already destroyed */ }
+    }
+    if (typeof hooks.beforeSourceDestroy === 'function') hooks.beforeSourceDestroy();
+    for (const binding of snapshot) {
       try { binding.source.destroy(); } catch { /* already destroyed */ }
     }
-    bindings[name] = [];
   }
 
   function handleDestError(name, dest, error) {
     if (discarded[name]) return;
+    if (isClosedDestinationError(error)) closedDest[name] = true;
     teardownChannel(name);
     if (!isClosedDestinationError(error) && name === 'stdout') {
       void write(process.stderr, Buffer.from(`[run.cjs] protocol stream error: ${error.code || error.message}\n`));
@@ -513,7 +511,7 @@ function createProtocolSink() {
     write,
     attachChild,
     abandonOutputs,
-    hasClosedDestination: () => discarded.stdout || discarded.stderr,
+    hasClosedDestination: () => closedDest.stdout || closedDest.stderr,
   };
 }
 
@@ -607,7 +605,13 @@ function superviseGenericChild(targetPath, extraArgs) {
 }
 
 function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
-  const sink = createProtocolSink();
+  let child;
+  let childIdentity = null;
+  const sink = createProtocolSink({
+    beforeSourceDestroy: () => {
+      if (child) reapTree(child, childIdentity);
+    },
+  });
   sink.install();
   return new Promise(resolve => {
     let terminal = false;
@@ -616,7 +620,7 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
       sink.uninstall();
       resolve(status);
     };
-    const child = spawn(process.execPath, resolveGenericChildCommand(targetPath, extraArgs), {
+    child = spawn(process.execPath, resolveGenericChildCommand(targetPath, extraArgs), {
       stdio: resolveGenericChildStdio(),
       env: {
         ...process.env,
@@ -626,9 +630,7 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
       detached: true,
     });
     sink.attachChild(child);
-    // Capture the durable start identity immediately so reapTree can reject
-    // a PID that was reused after the child exited.
-    const childIdentity = child.pid ? captureProcessStartIdentity(child.pid) : null;
+    childIdentity = child.pid ? captureProcessStartIdentity(child.pid) : null;
 
     // The generic child is detached into its own process group (POSIX). If the
     // runner is terminated or cancelled BEFORE the inner timer fires (outer

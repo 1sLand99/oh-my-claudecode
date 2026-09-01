@@ -361,12 +361,18 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
       const pluginRoot = join(directory, 'plugin');
       const target = writePluginHook(pluginRoot, 'drain-out.cjs', `
 process.stderr.write('ERR-KEEP\\n');
-process.stdout.on('error', () => process.exit(0));
+process.stdout.on('error', () => {
+  process.stderr.write('ERR-AFTER-EPIPE\\n');
+  process.exit(7);
+});
 const pump = () => {
   try {
     while (process.stdout.write('n'.repeat(1024))) {}
     process.stdout.once('drain', pump);
-  } catch { process.exit(0); }
+  } catch {
+    process.stderr.write('ERR-AFTER-EPIPE\\n');
+    process.exit(7);
+  }
 };
 pump();
 `, 5);
@@ -401,12 +407,18 @@ pump();
       const pluginRoot = join(directory, 'plugin');
       const target = writePluginHook(pluginRoot, 'drain-err.cjs', `
 process.stdout.write('OUT-KEEP\\n');
-process.stderr.on('error', () => process.exit(0));
+process.stderr.on('error', () => {
+  process.stdout.write('OUT-AFTER-EPIPE\\n');
+  process.exit(7);
+});
 const pump = () => {
   try {
     while (process.stderr.write('n'.repeat(1024))) {}
     process.stderr.once('drain', pump);
-  } catch { process.exit(0); }
+  } catch {
+    process.stdout.write('OUT-AFTER-EPIPE\\n');
+    process.exit(7);
+  }
 };
 pump();
 `, 5);
@@ -431,6 +443,35 @@ pump();
       expect(Date.now() - startedAt).toBeLessThan(1500);
       expect(stdout).toContain('OUT-KEEP');
     } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+  it('reaps grandchildren when stdout closes and the hook leader EPIPE-exits', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'omc-stdio-close-reap-'));
+    const pidfile = join(directory, 'grandchild.pid');
+    let grandchildPid: number | undefined;
+    const runner = spawn(process.execPath, [RUN_CJS_PATH, EPIPE_EXIT_PARENT], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, OMC_TEST_PIDFILE: pidfile },
+      windowsHide: true,
+    });
+    try {
+      await waitForFile(pidfile, 4000);
+      grandchildPid = Number(readFileSync(pidfile, 'utf8'));
+      expect(grandchildPid).toBeGreaterThan(0);
+      runner.stdout.destroy();
+      const code = await new Promise<number | null>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('runner hung after stdout close with grandchild')), 3000);
+        runner.once('exit', status => {
+          clearTimeout(timer);
+          resolve(status);
+        });
+      });
+      expect(code).toBe(0);
+      await waitForDeath(grandchildPid);
+    } finally {
+      killIfAlive(grandchildPid);
+      try { runner.kill('SIGKILL'); } catch { /* already gone */ }
       rmSync(directory, { recursive: true, force: true });
     }
   });
