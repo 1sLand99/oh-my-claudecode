@@ -607,10 +607,14 @@ function superviseGenericChild(targetPath, extraArgs) {
 function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
   let child;
   let childIdentity = null;
+  let reaped = false;
+  const reapOnce = () => {
+    if (reaped || !child) return;
+    reaped = true;
+    reapTree(child, childIdentity);
+  };
   const sink = createProtocolSink({
-    beforeSourceDestroy: () => {
-      if (child) reapTree(child, childIdentity);
-    },
+    beforeSourceDestroy: reapOnce,
   });
   sink.install();
   return new Promise(resolve => {
@@ -645,7 +649,7 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
       if (terminal) return;
       terminal = true;
       detachHandlers();
-      reapTree(child, childIdentity);
+      reapOnce();
       sink.abandonOutputs();
       detachProtocolStdio(child);
       sink.uninstall();
@@ -654,7 +658,7 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
     function onRunnerExit() {
       if (terminal) return;
       terminal = true;
-      reapTree(child, childIdentity);
+      reapOnce();
       sink.abandonOutputs();
       detachProtocolStdio(child);
     }
@@ -663,7 +667,7 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
       if (terminal) return;
       terminal = true;
       detachHandlers();
-      reapTree(child, childIdentity);
+      reapOnce();
       void writeTimeoutDiagnostic(targetPath, manifestHook, timeoutMs, sink).finally(() => {
         sink.abandonOutputs();
         detachProtocolStdio(child);
