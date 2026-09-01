@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Writable } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 
 const runCjs = require('../../scripts/run.cjs');
@@ -142,7 +143,8 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
   it('keeps a usable inner timeout inside the declared hook budget', () => {
     const cases = [
       { timeoutMs: 1000, event: 'PostToolUse', win32: 500, linux: 500 },
-      { timeoutMs: 1500, event: 'PostToolUse', win32: 750, linux: 1000 },
+      { timeoutMs: 1500, event: 'PostToolUse', win32: 1000, linux: 1000 },
+      { timeoutMs: 2000, event: 'PostToolUse', win32: 1167, linux: 1500 },
       { timeoutMs: 3000, event: 'PostToolUse', win32: 1500, linux: 2500 },
       { timeoutMs: 5000, event: 'PostToolUse', win32: 3500, linux: 4500 },
       { timeoutMs: 10000, event: 'PostToolUse', win32: 8500, linux: 9500 },
@@ -166,7 +168,28 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
     expect(runCjs.resolveGenericTimeoutMs(null, 'win32')).toBe(58500);
     expect(runCjs.resolveGenericTimeoutMs(null, 'linux')).toBe(59500);
   });
-  it.each([1.5, 3])('spawns a grandchild and exits inside a %ss declared outer budget', async (declaredSec) => {
+  it('fail-opens inside a 1s declared budget without requiring cold-start completion', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'omc-stdio-one-second-'));
+    try {
+      const pluginRoot = join(directory, 'plugin');
+      const target = writePluginHook(pluginRoot, 'hang-hook.cjs', 'setInterval(() => {}, 1e9);', 1);
+      const startedAt = Date.now();
+      const result = spawnSync(process.execPath, [RUN_CJS_PATH, target], {
+        encoding: 'utf8',
+        timeout: 1000,
+        env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot },
+        windowsHide: true,
+      });
+      expect(result.error, result.error?.message).toBeUndefined();
+      expect(result.status).toBe(0);
+      expect(Date.now() - startedAt).toBeLessThan(1000);
+      expect(result.stderr).toMatch(/timed out after 500ms; exiting fail-open/);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each([1.5, 2, 3, 5])('spawns a grandchild and exits inside a %ss declared outer budget', async (declaredSec) => {
     const declaredMs = Math.round(declaredSec * 1000);
     const result = await runDeclaredOrphan(declaredSec);
     expect(result.exitCode).toBe(0);
@@ -293,6 +316,55 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it('forwards all 512KiB from a successful hook to a 1KiB/10ms consumer', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'omc-stdio-slow-consumer-'));
+    const byteCount = 512 * 1024;
+    const expected = Buffer.allocUnsafe(byteCount);
+    for (let index = 0; index < expected.length; index += 1) expected[index] = index % 251;
+    let runner: ReturnType<typeof spawn> | undefined;
+    try {
+      const pluginRoot = join(directory, 'plugin');
+      const fixture = writePluginHook(
+        pluginRoot,
+        'large-output.cjs',
+        `const output = Buffer.allocUnsafe(${byteCount});\nfor (let index = 0; index < output.length; index += 1) output[index] = index % 251;\nprocess.stdout.write(output, () => process.exit(0));`,
+        10,
+      );
+      runner = spawn(process.execPath, [RUN_CJS_PATH, fixture], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot },
+        windowsHide: true,
+      });
+      const chunks: Buffer[] = [];
+      let stderr = '';
+      runner.stderr!.setEncoding('utf8');
+      runner.stderr!.on('data', chunk => { stderr += chunk; });
+      const slowConsumer = new Writable({
+        highWaterMark: 1024,
+        write(chunk, _encoding, callback) {
+          chunks.push(Buffer.from(chunk));
+          setTimeout(callback, Math.ceil(chunk.length / 1024) * 10);
+        },
+      });
+      runner.stdout!.pipe(slowConsumer);
+      const exitPromise = new Promise<number | null>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('slow protocol consumer exceeded hook budget')), 10000);
+        runner!.once('exit', code => {
+          clearTimeout(timer);
+          resolve(code);
+        });
+      });
+      const consumerFinish = new Promise<void>(resolve => slowConsumer.once('finish', resolve));
+      const [exitCode] = await Promise.all([exitPromise, consumerFinish]);
+      expect(exitCode).toBe(0);
+      expect(stderr).toBe('');
+      expect(Buffer.concat(chunks)).toEqual(expected);
+    } finally {
+      try { runner?.kill('SIGKILL'); } catch { /* already gone */ }
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 15000);
   it('classifies consumer-closed protocol destinations as fail-open errors', () => {
     expect(runCjs.isClosedDestinationError({ code: 'EPIPE' })).toBe(true);
     expect(runCjs.isClosedDestinationError({ code: 'ERR_STREAM_DESTROYED' })).toBe(true);

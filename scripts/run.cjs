@@ -9,7 +9,7 @@
  */
 
 const { spawn, spawnSync } = require('child_process');
-const { PassThrough } = require('stream');
+const { PassThrough, Writable } = require('stream');
 const { existsSync, readFileSync, realpathSync, writeSync } = require('fs');
 const path = require('path');
 const { join, basename, dirname } = path;
@@ -113,6 +113,9 @@ const WINDOWS_TIMEOUT_CUSHION_MS = 1500;
 const MAX_DECLARED_GENERIC_TIMEOUT_MS = 60000;
 const WINDOWS_REAP_TIMEOUT_MS = 400;
 const PROTOCOL_STDIO_SETTLE_MS = 150;
+// Empty source→tap→writer pipelines identify leaked descendant handles after
+// the leader exits. Legitimate buffered bytes are exempt from this idle bound.
+const PROTOCOL_SOURCE_IDLE_MS = 80;
 const MIN_HOOK_INNER_FRACTION = 0.5;
 const MIN_HOOK_INNER_MS = 400;
 // Observed Windows supervisor→hook→grandchild cold start in hosted CI (361–559ms).
@@ -137,6 +140,14 @@ function desiredTimeoutCushionMs(manifestTimeoutMs, hookEvent, platform = proces
 
 function resolveTimeoutCushionMs(manifestTimeoutMs, hookEvent, platform = process.platform) {
   const desired = desiredTimeoutCushionMs(manifestTimeoutMs, hookEvent, platform);
+  if (platform === 'win32' && hookEvent !== 'UserPromptSubmit' && manifestTimeoutMs <= 3000) {
+    // Keep the historical 500ms inner/outer separation through 1.5s hooks,
+    // then grow it linearly to the 1.5s Windows teardown allowance at 3s.
+    // This preserves the short-hook compatibility budget without letting a
+    // 3s hook claim enough time for the 2s nested Git operation plus startup.
+    if (manifestTimeoutMs <= 1500) return Math.min(500, Math.max(1, manifestTimeoutMs - 1));
+    return Math.min(1500, 500 + Math.floor((manifestTimeoutMs - 1500) * 2 / 3));
+  }
   const fractionalInner = Math.max(MIN_HOOK_INNER_MS, Math.floor(manifestTimeoutMs * MIN_HOOK_INNER_FRACTION));
   const canFitNestedFloor = manifestTimeoutMs - POSIX_TIMEOUT_CUSHION_MS >= NESTED_INNER_FLOOR_MS;
   const minInner = Math.min(
@@ -407,8 +418,9 @@ function createProtocolSink(hooks = {}) {
     bindings[name] = [];
     for (const binding of snapshot) {
       try { binding.source.unpipe(binding.tap); } catch { /* already unpiped */ }
-      try { binding.tap.unpipe(binding.dest); } catch { /* already unpiped */ }
+      try { binding.tap.unpipe(binding.writer); } catch { /* already unpiped */ }
       try { binding.tap.destroy(); } catch { /* already destroyed */ }
+      try { binding.writer.destroy(); } catch { /* already destroyed */ }
     }
     if (typeof hooks.beforeSourceDestroy === 'function') hooks.beforeSourceDestroy();
     for (const binding of snapshot) {
@@ -496,13 +508,100 @@ function createProtocolSink(hooks = {}) {
     const bind = (source, dest, name) => {
       if (!source) return;
       const tap = new PassThrough();
-      bindings[name].push({ source, tap, dest });
+      const binding = {
+        source,
+        tap,
+        dest,
+        writer: null,
+        completed: false,
+        lastProgressAt: Date.now(),
+      };
+      const writer = new Writable({
+        write(chunk, _encoding, callback) {
+          let offset = 0;
+          const writeNext = () => {
+            if (discarded[name] || !dest || dest.destroyed || !dest.writable) {
+              callback();
+              return;
+            }
+            if (offset >= chunk.length) {
+              callback();
+              return;
+            }
+            const end = Math.min(offset + 1024, chunk.length);
+            const slice = chunk.subarray(offset, end);
+            offset = end;
+            try {
+              dest.write(slice, (error) => {
+                if (error) {
+                  handleDestError(name, dest, error);
+                  callback();
+                  return;
+                }
+                binding.lastProgressAt = Date.now();
+                writeNext();
+              });
+            } catch (error) {
+              handleDestError(name, dest, error);
+              callback();
+            }
+          };
+          writeNext();
+        },
+      });
+      binding.writer = writer;
+      bindings[name].push(binding);
+      source.on('data', () => { binding.lastProgressAt = Date.now(); });
       source.pipe(tap);
-      tap.pipe(dest, { end: false });
+      tap.pipe(writer);
       tap.on('error', (error) => handleDestError(name, dest, error));
+      writer.on('finish', () => { binding.completed = true; });
+      writer.on('error', (error) => handleDestError(name, dest, error));
     };
     bind(child.stdout, process.stdout, 'stdout');
     bind(child.stderr, process.stderr, 'stderr');
+  }
+
+  function settleOutputs(timeoutMs, idleMs = PROTOCOL_SOURCE_IDLE_MS) {
+    const active = [...bindings.stdout, ...bindings.stderr];
+    if (active.length === 0) return Promise.resolve(true);
+    const deadline = Date.now() + Math.max(1, timeoutMs);
+    return new Promise(resolve => {
+      let settled = false;
+      const finish = (complete) => {
+        if (settled) return;
+        settled = true;
+        clearInterval(timer);
+        resolve(complete);
+      };
+      const inspect = () => {
+        if (Date.now() >= deadline) {
+          abandonOutputs();
+          finish(false);
+          return;
+        }
+        if (active.every(binding => binding.completed || binding.writer.destroyed)) {
+          finish(true);
+          return;
+        }
+        const now = Date.now();
+        for (const binding of active) {
+          if (binding.completed || binding.writer.destroyed) continue;
+          if (now - binding.lastProgressAt < idleMs) continue;
+          const sourceEnded = binding.source.readableEnded || binding.source.destroyed;
+          const bufferedBytes = binding.source.readableLength + binding.tap.readableLength +
+            binding.writer.writableLength + (binding.dest.writableLength || 0);
+          // An open source with an empty pipeline after the leader exited is a
+          // leaked descendant handle. Buffered bytes, by contrast, are valid
+          // protocol output and retain the remaining declared hook budget.
+          if (!sourceEnded && bufferedBytes === 0) {
+            teardownChannel(binding.dest === process.stderr ? 'stderr' : 'stdout');
+          }
+        }
+      };
+      const timer = setInterval(inspect, Math.max(5, Math.floor(idleMs / 4)));
+      inspect();
+    });
   }
 
   return {
@@ -510,6 +609,7 @@ function createProtocolSink(hooks = {}) {
     uninstall,
     write,
     attachChild,
+    settleOutputs,
     abandonOutputs,
     hasClosedDestination: () => closedDest.stdout || closedDest.stderr,
   };
@@ -530,36 +630,6 @@ function detachProtocolStdio(child) {
     } catch { /* remaining buffered bytes are best-effort */ }
     try { stream.destroy(); } catch { /* already destroyed */ }
   }
-}
-
-function settleProtocolStdio(child, timeoutMs = PROTOCOL_STDIO_SETTLE_MS) {
-  return new Promise(resolve => {
-    let pending = 0;
-    let settled = false;
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      resolve();
-    };
-    const timer = setTimeout(finish, timeoutMs);
-    const track = (stream) => {
-      if (!stream || stream.readableEnded || stream.destroyed) return;
-      pending += 1;
-      stream.once('end', () => {
-        pending -= 1;
-        if (pending === 0) {
-          clearTimeout(timer);
-          finish();
-        }
-      });
-    };
-    track(child.stdout);
-    track(child.stderr);
-    if (pending === 0) {
-      clearTimeout(timer);
-      finish();
-    }
-  });
 }
 
 function releaseGenericChild(child) {
@@ -618,7 +688,9 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
   });
   sink.install();
   return new Promise(resolve => {
+    const protocolDeadline = Date.now() + timeoutMs;
     let terminal = false;
+    let settling = false;
     let timer;
     const finish = (status) => {
       sink.uninstall();
@@ -646,8 +718,9 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
       process.off('exit', onRunnerExit);
     };
     function onRunnerSignal() {
-      if (terminal) return;
+      if (terminal && !settling) return;
       terminal = true;
+      settling = false;
       detachHandlers();
       reapOnce();
       sink.abandonOutputs();
@@ -656,8 +729,9 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
       process.exit(0);
     }
     function onRunnerExit() {
-      if (terminal) return;
+      if (terminal && !settling) return;
       terminal = true;
+      settling = false;
       reapOnce();
       sink.abandonOutputs();
       detachProtocolStdio(child);
@@ -683,14 +757,19 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
     child.once('exit', (code) => {
       if (terminal) return;
       terminal = true;
-      detachHandlers();
+      settling = true;
+      clearTimeout(timer);
       // Drain then close even on a clean hook exit. A detached descendant that
       // inherited the child's stdout/stderr keeps the pipe readableEnded=false;
       // leaving the forwarders attached would pin process.stdout and wedge EOF
       // (#3920 success-path hang, outer harness timeout 124).
-      void settleProtocolStdio(child).then(() => {
+      const remainingProtocolMs = Math.max(1, protocolDeadline - Date.now());
+      void sink.settleOutputs(remainingProtocolMs).then((complete) => {
+        settling = false;
+        detachHandlers();
         releaseGenericChild(child);
-        finish(sink.hasClosedDestination() ? 0 : (typeof code === 'number' ? code : 0));
+        const childStatus = typeof code === 'number' ? code : 0;
+        finish(complete ? (sink.hasClosedDestination() ? 0 : childStatus) : 1);
       });
     });
     child.once('error', () => {

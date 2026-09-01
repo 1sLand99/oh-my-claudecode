@@ -56,7 +56,8 @@ describe('run.cjs generic hook timeout supervisor', () => {
     );
     expect(winGitInner).toBeGreaterThan(runCjs.NESTED_OPERATION_TIMEOUT_MS);
     expect(runCjs.resolveGenericTimeoutMs({ timeoutMs: 1000, event: 'PostToolUse' }, 'win32')).toBe(500);
-    expect(runCjs.resolveGenericTimeoutMs({ timeoutMs: 1500, event: 'PostToolUse' }, 'win32')).toBe(750);
+    expect(runCjs.resolveGenericTimeoutMs({ timeoutMs: 1500, event: 'PostToolUse' }, 'win32')).toBe(1000);
+    expect(runCjs.resolveGenericTimeoutMs({ timeoutMs: 2000, event: 'PostToolUse' }, 'win32')).toBe(1167);
     expect(runCjs.resolveGenericTimeoutMs({ timeoutMs: 1000, event: 'PostToolUse' }, 'win32'))
       .toBeGreaterThanOrEqual(runCjs.MIN_HOOK_INNER_MS);
   });
@@ -243,6 +244,54 @@ describe('run.cjs generic hook timeout supervisor', () => {
       await waitForDeath(grandchildPid);
     } finally {
       killIfAlive(grandchildPid);
+      try { runner.kill('SIGKILL'); } catch { /* already gone */ }
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps cancellation reaping active while successful output is settling (POSIX)', async () => {
+    if (process.platform === 'win32') return;
+    const directory = mkdtempSync(join(tmpdir(), 'omc-runner-settle-cancel-'));
+    const pidfile = join(directory, 'orphan.pid');
+    const fixture = join(directory, 'success-parent.cjs');
+    writeFileSync(fixture, `
+const { spawn } = require('node:child_process');
+const { writeFileSync } = require('node:fs');
+const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1e9)'], {
+  stdio: ['ignore', 'inherit', 'inherit'],
+});
+writeFileSync(process.env.OMC_TEST_PIDFILE, String(child.pid));
+process.stdout.write('hook-ok\\n');
+process.exit(0);
+`);
+    let orphanPid: number | undefined;
+    const runner = spawn(process.execPath, [RUN_CJS_PATH, fixture], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, OMC_TEST_PIDFILE: pidfile },
+      windowsHide: true,
+    });
+    try {
+      let stdout = '';
+      runner.stdout!.setEncoding('utf8');
+      runner.stdout!.on('data', chunk => { stdout += chunk; });
+      const deadline = Date.now() + 4000;
+      while (Date.now() < deadline && (!existsSync(pidfile) || !stdout.includes('hook-ok'))) {
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      expect(existsSync(pidfile)).toBe(true);
+      expect(stdout).toContain('hook-ok');
+      orphanPid = Number(readFileSync(pidfile, 'utf8'));
+      expect(orphanPid).toBeGreaterThan(0);
+
+      const runnerExit = new Promise<void>(resolve => runner.once('exit', () => resolve()));
+      runner.kill('SIGTERM');
+      await Promise.race([
+        runnerExit,
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('settling runner ignored SIGTERM')), 3000)),
+      ]);
+      await waitForDeath(orphanPid);
+    } finally {
+      killIfAlive(orphanPid);
       try { runner.kill('SIGKILL'); } catch { /* already gone */ }
       rmSync(directory, { recursive: true, force: true });
     }
