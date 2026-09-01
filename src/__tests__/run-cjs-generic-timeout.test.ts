@@ -142,12 +142,14 @@ describe('run.cjs generic hook timeout supervisor', () => {
     let grandchildPid: number | undefined;
     process.env.OMC_TEST_PIDFILE = pidfile;
     try {
+      const innerMs = 1500;
+      const outerMs = 3000;
       const startedAt = Date.now();
-      const status = await withWatchdog(runCjs.runGenericChild(HUNG_PARENT, [], 250, null));
+      const status = await withWatchdog(runCjs.runGenericChild(HUNG_PARENT, [], innerMs, null), outerMs);
       const elapsed = Date.now() - startedAt;
       expect(status).toBe(0);
-      expect(elapsed).toBeGreaterThanOrEqual(200);
-      expect(elapsed).toBeLessThan(5000);
+      expect(elapsed).toBeGreaterThanOrEqual(innerMs - 400);
+      expect(elapsed).toBeLessThan(outerMs);
       grandchildPid = Number(readFileSync(pidfile, 'utf8'));
       expect(grandchildPid).toBeGreaterThan(0);
       await waitForDeath(grandchildPid);

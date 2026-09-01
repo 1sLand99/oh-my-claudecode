@@ -238,45 +238,27 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
     }
   });
 
-  it('closes protocol stdout after a successful hook exit even if a detached descendant still lives', async () => {
+  it('closes protocol stdout after a successful hook exit even if a detached descendant still lives', () => {
     const directory = mkdtempSync(join(tmpdir(), 'omc-stdio-success-eof-'));
     const pidfile = join(directory, 'orphan.pid');
+    const outerTimeoutMs = 2000;
     let orphanPid: number | undefined;
-    const startedAt = Date.now();
-    const runner = spawn(process.execPath, [RUN_CJS_PATH, SUCCESS_ORPHAN], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, OMC_TEST_PIDFILE: pidfile },
-      windowsHide: true,
-    });
     try {
-      let stdout = '';
-      let stderr = '';
-      let stdoutEnded = false;
-      runner.stdout.setEncoding('utf8');
-      runner.stderr.setEncoding('utf8');
-      runner.stdout.on('data', chunk => { stdout += chunk; });
-      runner.stderr.on('data', chunk => { stderr += chunk; });
-      runner.stdout.on('end', () => { stdoutEnded = true; });
-
-      const exitCode = await new Promise<number | null>((resolve, reject) => {
-        const timer = setTimeout(
-          () => reject(new Error('run.cjs hung after successful hook exit with a live detached descendant')),
-          2000,
-        );
-        runner.once('exit', code => {
-          clearTimeout(timer);
-          resolve(code);
-        });
+      const startedAt = Date.now();
+      const result = spawnSync(process.execPath, [RUN_CJS_PATH, SUCCESS_ORPHAN], {
+        encoding: 'utf8',
+        timeout: outerTimeoutMs,
+        env: { ...process.env, OMC_TEST_PIDFILE: pidfile },
+        windowsHide: true,
       });
-      expect(exitCode).toBe(0);
-      expect(Date.now() - startedAt).toBeLessThan(2000);
-      await new Promise(resolve => setTimeout(resolve, 50));
-      expect(stdoutEnded).toBe(true);
-      expect(stdout).toContain('hook-ok');
-      expect(stderr).toContain('hook-err');
-      expect(stderr).not.toMatch(/timed out after \d+ms/);
-
-      await waitForFile(pidfile, 2000);
+      const elapsed = Date.now() - startedAt;
+      expect(result.error, result.error?.message).toBeUndefined();
+      expect(result.status).toBe(0);
+      expect(elapsed).toBeLessThan(outerTimeoutMs);
+      expect(result.stdout).toContain('hook-ok');
+      expect(result.stderr).toContain('hook-err');
+      expect(result.stderr).not.toMatch(/timed out after \d+ms/);
+      expect(existsSync(pidfile)).toBe(true);
       orphanPid = Number(readFileSync(pidfile, 'utf8'));
       expect(orphanPid).toBeGreaterThan(0);
       try {
@@ -286,7 +268,6 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
       }
     } finally {
       killIfAlive(orphanPid);
-      try { runner.kill('SIGKILL'); } catch { /* already gone */ }
       rmSync(directory, { recursive: true, force: true });
     }
   });
@@ -315,9 +296,24 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
     const previousPidfile = process.env.OMC_TEST_PIDFILE;
     let grandchildPid: number | undefined;
     process.env.OMC_TEST_PIDFILE = pidfile;
+    // 250ms is below observed Windows supervisor→hook→grandchild cold start
+    // (361–559ms). Inner budget must cover that spawn chain; outer deadline
+    // is a separate assertion so a hung reap cannot hide behind a long inner.
+    const innerMs = 1500;
+    const outerMs = 3000;
     try {
-      const status = await runCjs.runGenericChild(HUNG_PARENT, [], 250, null);
+      const startedAt = Date.now();
+      const status = await Promise.race([
+        runCjs.runGenericChild(HUNG_PARENT, [], innerMs, null),
+        new Promise<never>((_, reject) => setTimeout(
+          () => reject(new Error(`runGenericChild exceeded ${outerMs}ms outer deadline`)),
+          outerMs,
+        )),
+      ]);
+      const elapsed = Date.now() - startedAt;
       expect(status).toBe(0);
+      expect(elapsed).toBeGreaterThanOrEqual(innerMs - 400);
+      expect(elapsed).toBeLessThan(outerMs);
       grandchildPid = Number(readFileSync(pidfile, 'utf8'));
       expect(grandchildPid).toBeGreaterThan(0);
       await waitForDeath(grandchildPid);
