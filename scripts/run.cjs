@@ -263,7 +263,7 @@ function writeTimeoutDiagnostic(targetPath, manifestHook, timeoutMs, sink) {
     if (sink) return sink.write(process.stderr, Buffer.from(message));
     try { process.stderr.write(message); } catch { /* protocol dest may already be closed */ }
   }
-  return undefined;
+  return Promise.resolve();
 }
 
 function captureProcessStartIdentity(pid) {
@@ -407,11 +407,23 @@ function createProtocolSink() {
     const name = dest === process.stderr ? 'stderr' : 'stdout';
     if (discarded[name] || !dest || dest.destroyed || !dest.writable) return Promise.resolve();
     return new Promise((resolve) => {
+      let settled = false;
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+      const timer = setTimeout(done, PROTOCOL_STDIO_SETTLE_MS);
       try {
-        dest.write(data, () => resolve());
+        dest.write(data, (error) => {
+          if (error) handleDestError(name, dest, error);
+          clearTimeout(timer);
+          done();
+        });
       } catch (error) {
         handleDestError(name, dest, error);
-        resolve();
+        clearTimeout(timer);
+        done();
       }
     });
   }
@@ -579,9 +591,13 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
       // taskkill must not keep Claude Code blocked on EOF past the host fuse.
       detachProtocolStdio(child);
       releaseGenericChild(child);
-      writeTimeoutDiagnostic(targetPath, manifestHook, timeoutMs, sink);
-      finish(0);
-      reapTree(child, childIdentity);
+      // Settle the diagnostic write while dest error handlers are still
+      // installed; EPIPE from a closed stderr consumer must not crash after
+      // uninstall. sink.write is itself bounded.
+      void writeTimeoutDiagnostic(targetPath, manifestHook, timeoutMs, sink).then(() => {
+        finish(0);
+        reapTree(child, childIdentity);
+      });
     }, timeoutMs);
 
     child.once('exit', (code) => {

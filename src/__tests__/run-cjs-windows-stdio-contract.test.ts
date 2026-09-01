@@ -353,6 +353,52 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+  it('writes a visible timeout diagnostic on fail-open', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'omc-stdio-timeout-diag-'));
+    try {
+      const pluginRoot = join(directory, 'plugin');
+      const target = writePluginHook(pluginRoot, 'hang-hook.cjs', 'setInterval(() => {}, 1e9);', 1);
+      const startedAt = Date.now();
+      const result = spawnSync(process.execPath, [RUN_CJS_PATH, target], {
+        encoding: 'utf8',
+        timeout: 2000,
+        env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot },
+        windowsHide: true,
+      });
+      expect(result.error, result.error?.message).toBeUndefined();
+      expect(result.status).toBe(0);
+      expect(Date.now() - startedAt).toBeLessThan(2000);
+      expect(result.stderr).toMatch(/timed out after \d+ms; exiting fail-open/);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('fail-opens a timed-out hook when the protocol stderr consumer is closed', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'omc-stdio-timeout-closed-err-'));
+    try {
+      const pluginRoot = join(directory, 'plugin');
+      const target = writePluginHook(pluginRoot, 'hang-hook.cjs', 'setInterval(() => {}, 1e9);', 1);
+      const startedAt = Date.now();
+      const runner = spawn(process.execPath, [RUN_CJS_PATH, target], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot },
+        windowsHide: true,
+      });
+      runner.stderr.destroy();
+      const code = await new Promise<number | null>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('timed-out runner crashed or hung after stderr close')), 2000);
+        runner.once('exit', status => {
+          clearTimeout(timer);
+          resolve(status);
+        });
+      });
+      expect(code).toBe(0);
+      expect(Date.now() - startedAt).toBeLessThan(2000);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 
   it('reaps timed-out generic descendants so no orphan survives', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'omc-stdio-reap-'));
