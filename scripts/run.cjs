@@ -302,17 +302,20 @@ function reapTree(child, childIdentity) {
   // kill entirely, relying on child.unref() for fail-open exit.
   if (childIdentity && !processIdentityMatches(child.pid, childIdentity)) return;
   if (process.platform === 'win32') {
-    // Synchronous and bounded: a leaked descendant holding protocol stdio is
-    // #3920. taskkill must not be fire-and-forget, but it also must not stall
-    // past the remaining hooks.json cushion. Protocol handles are already
-    // isolated in run.cjs, so a timed-out taskkill still fail-opens with EOF.
+    // Protocol stdout/stderr are owned by run.cjs pipes, so a descendant that
+    // outlives this process cannot retain Claude Code's handles (#3920).
+    // Do not spawnSync here: Node waits for the killer even after its timeout,
+    // which can hold the runner past the declared host fuse. Fire-and-forget
+    // taskkill with stdio ignored after protocol detach is the fail-open path.
     if (!Number.isInteger(child.pid) || child.pid <= 0) return;
     try {
-      spawnSync('taskkill', ['/T', '/F', '/PID', String(child.pid)], {
+      const killer = spawn('taskkill', ['/T', '/F', '/PID', String(child.pid)], {
         windowsHide: true,
-        timeout: WINDOWS_REAP_TIMEOUT_MS,
+        detached: true,
         stdio: 'ignore',
       });
+      killer.on('error', () => {});
+      killer.unref();
     } catch {
       // best-effort; child.unref() still guarantees the runner exits
     }
@@ -486,17 +489,13 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
       if (terminal) return;
       terminal = true;
       detachHandlers();
+      // Close protocol handles and fail-open before tree reap. A stalled
+      // taskkill must not keep Claude Code blocked on EOF past the host fuse.
       detachProtocolStdio(child);
-      reapTree(child, childIdentity);
-      // The runner MUST exit fail-open even if the tree reap did not (or could
-      // not) complete — the core #3493 symptom is run.cjs parents living for
-      // tens of minutes. Closing the Windows IPC channel also tells the
-      // supervisor to reap the hook tree if taskkill did not complete.
-      // Destroying the piped stdio handles first guarantees protocol EOF when
-      // this process exits, even if a descendant survives (#3920).
       releaseGenericChild(child);
       writeTimeoutDiagnostic(targetPath, manifestHook, timeoutMs);
       resolve(0);
+      reapTree(child, childIdentity);
     }, timeoutMs);
 
     child.once('exit', (code) => {

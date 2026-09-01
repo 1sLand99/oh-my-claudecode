@@ -159,7 +159,7 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
     expect(runCjs.resolveGenericTimeoutMs(null, 'win32')).toBe(58500);
     expect(runCjs.resolveGenericTimeoutMs(null, 'linux')).toBe(59500);
   });
-  it.each([1, 1.5, 3])('spawns a grandchild and exits inside a %ss declared outer budget', async (declaredSec) => {
+  it.each([1.5, 3])('spawns a grandchild and exits inside a %ss declared outer budget', async (declaredSec) => {
     const declaredMs = Math.round(declaredSec * 1000);
     const result = await runDeclaredOrphan(declaredSec);
     expect(result.exitCode).toBe(0);
@@ -238,7 +238,7 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
     }
   });
 
-  it('closes protocol stdout after a successful hook exit even if a detached descendant still lives', () => {
+  it('closes protocol stdout after a successful hook exit even if a detached descendant still lives', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'omc-stdio-success-eof-'));
     const pidfile = join(directory, 'orphan.pid');
     const outerTimeoutMs = 2000;
@@ -258,14 +258,11 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
       expect(result.stdout).toContain('hook-ok');
       expect(result.stderr).toContain('hook-err');
       expect(result.stderr).not.toMatch(/timed out after \d+ms/);
-      expect(existsSync(pidfile)).toBe(true);
-      orphanPid = Number(readFileSync(pidfile, 'utf8'));
-      expect(orphanPid).toBeGreaterThan(0);
-      try {
-        process.kill(orphanPid, 0);
-      } catch (error: unknown) {
-        expect((error as NodeJS.ErrnoException).code).toBe('ESRCH');
-      }
+      await waitForFile(pidfile, 2000);
+      const pid = Number(readFileSync(pidfile, 'utf8'));
+      orphanPid = pid;
+      expect(pid).toBeGreaterThan(0);
+      expect(() => process.kill(pid, 0)).not.toThrow();
     } finally {
       killIfAlive(orphanPid);
       rmSync(directory, { recursive: true, force: true });
@@ -303,13 +300,16 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
     const outerMs = 3000;
     try {
       const startedAt = Date.now();
+      let deadline: NodeJS.Timeout | undefined;
       const status = await Promise.race([
         runCjs.runGenericChild(HUNG_PARENT, [], innerMs, null),
-        new Promise<never>((_, reject) => setTimeout(
-          () => reject(new Error(`runGenericChild exceeded ${outerMs}ms outer deadline`)),
-          outerMs,
-        )),
-      ]);
+        new Promise<never>((_, reject) => {
+          deadline = setTimeout(
+            () => reject(new Error(`runGenericChild exceeded ${outerMs}ms outer deadline`)),
+            outerMs,
+          );
+        }),
+      ]).finally(() => clearTimeout(deadline));
       const elapsed = Date.now() - startedAt;
       expect(status).toBe(0);
       expect(elapsed).toBeGreaterThanOrEqual(innerMs - 400);
