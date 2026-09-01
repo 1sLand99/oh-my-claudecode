@@ -365,6 +365,53 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
       rmSync(directory, { recursive: true, force: true });
     }
   }, 15000);
+
+  it('exits nonzero when a successful hook leaves output queued to a paused consumer', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'omc-stdio-paused-success-'));
+    let runner: ReturnType<typeof spawn> | undefined;
+    try {
+      const pluginRoot = join(directory, 'plugin');
+      const fixture = writePluginHook(
+        pluginRoot,
+        'paused-success.cjs',
+        `process.stdout.write(Buffer.alloc(1024 * 1024, 120));\nprocess.stderr.write('PAUSE-MARKER\\n');\nprocess.exit(0);`,
+        2,
+      );
+      const startedAt = Date.now();
+      runner = spawn(process.execPath, [RUN_CJS_PATH, fixture], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot },
+        windowsHide: true,
+      });
+      let stderr = '';
+      let maxQueuedBytes = 0;
+      runner.stderr!.setEncoding('utf8');
+      runner.stderr!.on('data', chunk => { stderr += chunk; });
+      runner.stdout!.pause();
+      runner.stdout!.on('readable', () => {
+        maxQueuedBytes = Math.max(maxQueuedBytes, runner!.stdout!.readableLength);
+      });
+      const exitPromise = new Promise<number | null>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('queued protocol destination pinned run.cjs')), 5000);
+        runner!.once('exit', code => {
+          clearTimeout(timer);
+          resolve(code);
+        });
+      });
+      const stderrEnd = new Promise<void>(resolve => runner!.stderr!.once('end', resolve));
+      const [exitCode] = await Promise.all([exitPromise, stderrEnd]);
+      const innerMs = runCjs.resolveGenericTimeoutMs({ timeoutMs: 2000, event: 'PostToolUse' });
+      expect(exitCode).toBe(1);
+      expect(Date.now() - startedAt).toBeGreaterThanOrEqual(innerMs - 300);
+      expect(Date.now() - startedAt).toBeLessThan(5000);
+      expect(maxQueuedBytes).toBeGreaterThan(0);
+      expect(stderr).toContain('PAUSE-MARKER');
+    } finally {
+      try { runner?.stdout?.destroy(); } catch { /* already closed */ }
+      try { runner?.kill('SIGKILL'); } catch { /* already gone */ }
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 7000);
   it('classifies consumer-closed protocol destinations as fail-open errors', () => {
     expect(runCjs.isClosedDestinationError({ code: 'EPIPE' })).toBe(true);
     expect(runCjs.isClosedDestinationError({ code: 'ERR_STREAM_DESTROYED' })).toBe(true);

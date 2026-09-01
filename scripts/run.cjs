@@ -464,6 +464,11 @@ function createProtocolSink(hooks = {}) {
     teardownChannel('stderr');
   }
 
+  function closeDestinations() {
+    try { process.stdout.destroy(); } catch { /* already closed */ }
+    try { process.stderr.destroy(); } catch { /* already closed */ }
+  }
+
   function write(dest, data) {
     install();
     const name = dest === process.stderr ? 'stderr' : 'stdout';
@@ -611,6 +616,7 @@ function createProtocolSink(hooks = {}) {
     attachChild,
     settleOutputs,
     abandonOutputs,
+    closeDestinations,
     hasClosedDestination: () => closedDest.stdout || closedDest.stderr,
   };
 }
@@ -747,8 +753,7 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
         detachProtocolStdio(child);
         releaseGenericChild(child);
         if (require.main === module) {
-          try { process.stdout.destroy(); } catch { /* already closed */ }
-          try { process.stderr.destroy(); } catch { /* already closed */ }
+          sink.closeDestinations();
         }
         finish(0);
       });
@@ -767,6 +772,11 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
       void sink.settleOutputs(remainingProtocolMs).then((complete) => {
         settling = false;
         detachHandlers();
+        if (!complete && require.main === module) {
+          sink.closeDestinations();
+          releaseGenericChild(child);
+          return process.exit(1);
+        }
         releaseGenericChild(child);
         const childStatus = typeof code === 'number' ? code : 0;
         finish(complete ? (sink.hasClosedDestination() ? 0 : childStatus) : 1);
