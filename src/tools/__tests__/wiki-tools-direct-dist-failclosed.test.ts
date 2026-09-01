@@ -100,6 +100,16 @@ describe('tracked dist wiki runtime fail-closed (#3858 remaining P1)', () => {
     process.chdir(originalCwd);
     process.env.PATH = originalPath;
     clearWorktreeCache();
+    for (let attempt = 0; attempt < 8; attempt++) {
+      try {
+        rmSync(tempDir, { recursive: true, force: true });
+        return;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== 'ENOTEMPTY' && code !== 'EBUSY' && code !== 'EPERM') throw error;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25 * (attempt + 1));
+      }
+    }
     rmSync(tempDir, { recursive: true, force: true });
   });
 
