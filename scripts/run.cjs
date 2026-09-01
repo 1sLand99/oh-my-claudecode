@@ -107,20 +107,32 @@ function isDebugHooksEnabled() {
     process.env.OMC_DEBUG === 'true';
 }
 
-function resolveTimeoutCushionMs(manifestTimeoutMs, hookEvent) {
-  if (hookEvent !== 'UserPromptSubmit') return TIMEOUT_CUSHION_MS;
-  const promptCushion = Math.floor(manifestTimeoutMs * 0.2);
-  return Math.min(3000, Math.max(1000, promptCushion));
+const POSIX_TIMEOUT_CUSHION_MS = 500;
+const WINDOWS_TIMEOUT_CUSHION_MS = 1500;
+const MAX_DECLARED_GENERIC_TIMEOUT_MS = 60000;
+const WINDOWS_REAP_TIMEOUT_MS = 400;
+const PROTOCOL_STDIO_SETTLE_MS = 150;
+// POSIX default = max declared manifest budget (60000ms, setup-maintenance) minus
+// the 500ms cushion; applied ONLY when manifest resolution is null so long legit
+// hooks are not prematurely reaped. Windows uses a larger cushion so fail-open
+// plus tree reap still finish inside the declared hooks.json budget.
+const TIMEOUT_CUSHION_MS = POSIX_TIMEOUT_CUSHION_MS;
+const DEFAULT_GENERIC_TIMEOUT_MS = MAX_DECLARED_GENERIC_TIMEOUT_MS - POSIX_TIMEOUT_CUSHION_MS;
+
+function platformTimeoutCushionMs(platform = process.platform) {
+  return platform === 'win32' ? WINDOWS_TIMEOUT_CUSHION_MS : POSIX_TIMEOUT_CUSHION_MS;
 }
 
-const TIMEOUT_CUSHION_MS = 500;
-// = max declared manifest budget (60000ms, setup-maintenance) minus the 500ms cushion; applied ONLY when manifest resolution is null so long legit hooks are not prematurely reaped.
-const DEFAULT_GENERIC_TIMEOUT_MS = 59500;
+function resolveTimeoutCushionMs(manifestTimeoutMs, hookEvent, platform = process.platform) {
+  const base = platformTimeoutCushionMs(platform);
+  if (hookEvent !== 'UserPromptSubmit') return base;
+  const promptCushion = Math.floor(manifestTimeoutMs * 0.2);
+  return Math.min(3000, Math.max(base, 1000, promptCushion));
+}
 
-
-function resolveInnerTimeoutMs(manifestHook) {
+function resolveInnerTimeoutMs(manifestHook, platform = process.platform) {
   if (!manifestHook) return null;
-  return Math.max(1, manifestHook.timeoutMs - resolveTimeoutCushionMs(manifestHook.timeoutMs, manifestHook.event));
+  return Math.max(1, manifestHook.timeoutMs - resolveTimeoutCushionMs(manifestHook.timeoutMs, manifestHook.event, platform));
 }
 
 // Call only after resolveWorkerTarget has verified an exact canonical trusted prompt target.
@@ -135,8 +147,10 @@ function resolveTrustedPromptWorkerTimeoutMs(targetPath, manifestHook, trustedPl
   return capMs ? Math.min(calculatedTimeoutMs, capMs) : calculatedTimeoutMs;
 }
 
-function resolveGenericTimeoutMs(manifestHook) {
-  return manifestHook ? resolveInnerTimeoutMs(manifestHook) : DEFAULT_GENERIC_TIMEOUT_MS;
+function resolveGenericTimeoutMs(manifestHook, platform = process.platform) {
+  return manifestHook
+    ? resolveInnerTimeoutMs(manifestHook, platform)
+    : MAX_DECLARED_GENERIC_TIMEOUT_MS - platformTimeoutCushionMs(platform);
 }
 
 function resolveHookTimeoutMsFromRoot(pluginRoot, targetPath, extraArgs) {
@@ -275,17 +289,17 @@ function reapTree(child, childIdentity) {
   // kill entirely, relying on child.unref() for fail-open exit.
   if (childIdentity && !processIdentityMatches(child.pid, childIdentity)) return;
   if (process.platform === 'win32') {
-    // Fire-and-forget: a slow, denied, or missing taskkill must not block the
-    // runner past the outer hooks.json budget. The runner still exits fail-open
-    // via child.unref() on the timeout path; taskkill reaps the tree best-effort.
+    // Synchronous and bounded: a leaked descendant holding protocol stdio is
+    // #3920. taskkill must not be fire-and-forget, but it also must not stall
+    // past the remaining hooks.json cushion. Protocol handles are already
+    // isolated in run.cjs, so a timed-out taskkill still fail-opens with EOF.
+    if (!Number.isInteger(child.pid) || child.pid <= 0) return;
     try {
-      const killer = spawn('taskkill', ['/T', '/F', '/PID', String(child.pid)], {
+      spawnSync('taskkill', ['/T', '/F', '/PID', String(child.pid)], {
         windowsHide: true,
-        detached: true,
+        timeout: WINDOWS_REAP_TIMEOUT_MS,
         stdio: 'ignore',
       });
-      killer.on('error', () => {});
-      killer.unref();
     } catch {
       // best-effort; child.unref() still guarantees the runner exits
     }
@@ -310,7 +324,62 @@ function resolveGenericChildCommand(targetPath, extraArgs, platform = process.pl
     : [targetPath, ...extraArgs];
 }
 
+function resolveGenericChildStdio(platform = process.platform) {
+  // stdin inherit: hook JSON payload from Claude Code.
+  // stdout/stderr pipe: run.cjs owns the protocol handles so a descendant that
+  // outlives the runner cannot keep Claude Code blocked on EOF (#3920).
+  // ipc: Windows supervisor parent-death reap.
+  return platform === 'win32'
+    ? ['inherit', 'pipe', 'pipe', 'ipc']
+    : ['inherit', 'pipe', 'pipe'];
+}
+
+function attachProtocolForwarders(child) {
+  if (child.stdout) child.stdout.pipe(process.stdout, { end: false });
+  if (child.stderr) child.stderr.pipe(process.stderr, { end: false });
+}
+
+function detachProtocolStdio(child) {
+  if (!child) return;
+  for (const [stream, dest] of [[child.stdout, process.stdout], [child.stderr, process.stderr]]) {
+    if (!stream) continue;
+    try { stream.unpipe(dest); } catch { /* already detached */ }
+    try { stream.destroy(); } catch { /* already destroyed */ }
+  }
+}
+
+function settleProtocolStdio(child, timeoutMs = PROTOCOL_STDIO_SETTLE_MS) {
+  return new Promise(resolve => {
+    let pending = 0;
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+    const timer = setTimeout(finish, timeoutMs);
+    const track = (stream) => {
+      if (!stream || stream.readableEnded || stream.destroyed) return;
+      pending += 1;
+      stream.once('end', () => {
+        pending -= 1;
+        if (pending === 0) {
+          clearTimeout(timer);
+          finish();
+        }
+      });
+    };
+    track(child.stdout);
+    track(child.stderr);
+    if (pending === 0) {
+      clearTimeout(timer);
+      finish();
+    }
+  });
+}
+
 function releaseGenericChild(child) {
+  detachProtocolStdio(child);
   try {
     if (child.connected) child.disconnect();
   } catch {
@@ -351,13 +420,12 @@ function superviseGenericChild(targetPath, extraArgs) {
   child.once('error', () => finish(0));
 }
 
-
 function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
   return new Promise(resolve => {
     let terminal = false;
     let timer;
     const child = spawn(process.execPath, resolveGenericChildCommand(targetPath, extraArgs), {
-      stdio: process.platform === 'win32' ? ['inherit', 'inherit', 'inherit', 'ipc'] : 'inherit',
+      stdio: resolveGenericChildStdio(),
       env: {
         ...process.env,
         OMC_SESSION_OWNER_PID: process.env.OMC_SESSION_OWNER_PID || String(process.ppid),
@@ -365,6 +433,7 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
       windowsHide: true,
       detached: true,
     });
+    attachProtocolForwarders(child);
     // Capture the durable start identity immediately so reapTree can reject
     // a PID that was reused after the child exited.
     const childIdentity = child.pid ? captureProcessStartIdentity(child.pid) : null;
@@ -382,12 +451,14 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
       if (terminal) return;
       terminal = true;
       detachHandlers();
+      detachProtocolStdio(child);
       reapTree(child, childIdentity);
       process.exit(0);
     }
     function onRunnerExit() {
       if (terminal) return;
       terminal = true;
+      detachProtocolStdio(child);
       reapTree(child, childIdentity);
     }
 
@@ -395,11 +466,14 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
       if (terminal) return;
       terminal = true;
       detachHandlers();
+      detachProtocolStdio(child);
       reapTree(child, childIdentity);
       // The runner MUST exit fail-open even if the tree reap did not (or could
       // not) complete — the core #3493 symptom is run.cjs parents living for
       // tens of minutes. Closing the Windows IPC channel also tells the
       // supervisor to reap the hook tree if taskkill did not complete.
+      // Destroying the piped stdio handles first guarantees protocol EOF when
+      // this process exits, even if a descendant survives (#3920).
       releaseGenericChild(child);
       writeTimeoutDiagnostic(targetPath, manifestHook, timeoutMs);
       resolve(0);
@@ -409,12 +483,15 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
       if (terminal) return;
       terminal = true;
       detachHandlers();
-      resolve(typeof code === 'number' ? code : 0);
+      void settleProtocolStdio(child).then(() => {
+        resolve(typeof code === 'number' ? code : 0);
+      });
     });
     child.once('error', () => {
       if (terminal) return;
       terminal = true;
       detachHandlers();
+      detachProtocolStdio(child);
       resolve(0);
     });
 
@@ -552,9 +629,16 @@ module.exports = {
   resolveWorkerTarget,
   resolveHookTimeoutMs,
   resolveGenericTimeoutMs,
+  resolveTimeoutCushionMs,
+  platformTimeoutCushionMs,
   runGenericChild,
   resolveGenericChildCommand,
+  resolveGenericChildStdio,
   releaseGenericChild,
   DEFAULT_GENERIC_TIMEOUT_MS,
+  TIMEOUT_CUSHION_MS,
+  WINDOWS_TIMEOUT_CUSHION_MS,
+  WINDOWS_REAP_TIMEOUT_MS,
+  MAX_DECLARED_GENERIC_TIMEOUT_MS,
   resolveTrustedSessionEndTarget,
 };

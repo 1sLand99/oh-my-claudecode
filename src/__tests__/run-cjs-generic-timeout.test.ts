@@ -40,11 +40,13 @@ async function waitForDeath(pid: number, timeoutMs = 2000): Promise<void> {
 describe('run.cjs generic hook timeout supervisor', () => {
   it('exports generic timeout resolution without dispatching when required', () => {
     expect(runCjs.DEFAULT_GENERIC_TIMEOUT_MS).toBe(59500);
-    expect(runCjs.resolveGenericTimeoutMs(null)).toBe(59500);
+    expect(runCjs.resolveGenericTimeoutMs(null, 'linux')).toBe(59500);
+    expect(runCjs.resolveGenericTimeoutMs(null, 'win32')).toBe(58500);
     const manifestHook = { timeoutMs: 3000, event: 'PostToolUse' };
-    expect(runCjs.resolveGenericTimeoutMs(manifestHook))
-      .toBe(runCjs.resolveInnerTimeoutMs(manifestHook));
-    expect(runCjs.resolveGenericTimeoutMs(manifestHook)).toBe(2500);
+    expect(runCjs.resolveGenericTimeoutMs(manifestHook, 'linux'))
+      .toBe(runCjs.resolveInnerTimeoutMs(manifestHook, 'linux'));
+    expect(runCjs.resolveGenericTimeoutMs(manifestHook, 'linux')).toBe(2500);
+    expect(runCjs.resolveGenericTimeoutMs(manifestHook, 'win32')).toBe(1500);
   });
 
   it('uses the source-owned supervisor only for Windows generic hooks', () => {
@@ -58,18 +60,26 @@ describe('run.cjs generic hook timeout supervisor', () => {
       HUNG_PARENT,
       'argument',
     ]);
+    expect(runCjs.resolveGenericChildStdio('win32')).toEqual(['inherit', 'pipe', 'pipe', 'ipc']);
+    expect(runCjs.resolveGenericChildStdio('linux')).toEqual(['inherit', 'pipe', 'pipe']);
   });
 
-  it('releases the Windows supervisor IPC channel after an inner timeout', () => {
+  it('releases the Windows supervisor IPC channel and protocol stdio after an inner timeout', () => {
     let disconnected = 0;
     let unreferenced = 0;
+    let stdoutDestroyed = 0;
+    let stderrDestroyed = 0;
     runCjs.releaseGenericChild({
       connected: true,
       disconnect: () => { disconnected += 1; },
       unref: () => { unreferenced += 1; },
+      stdout: { unpipe: () => {}, destroy: () => { stdoutDestroyed += 1; } },
+      stderr: { unpipe: () => {}, destroy: () => { stderrDestroyed += 1; } },
     });
     expect(disconnected).toBe(1);
     expect(unreferenced).toBe(1);
+    expect(stdoutDestroyed).toBe(1);
+    expect(stderrDestroyed).toBe(1);
   });
 
   it('reaps the supervised hook tree when its IPC parent disappears', async () => {
@@ -136,7 +146,7 @@ describe('run.cjs generic hook timeout supervisor', () => {
       expect(elapsed).toBeLessThan(5000);
       grandchildPid = Number(readFileSync(pidfile, 'utf8'));
       expect(grandchildPid).toBeGreaterThan(0);
-      if (process.platform !== 'win32') await waitForDeath(grandchildPid);
+      await waitForDeath(grandchildPid);
     } finally {
       if (previousPidfile === undefined) delete process.env.OMC_TEST_PIDFILE;
       else process.env.OMC_TEST_PIDFILE = previousPidfile;
