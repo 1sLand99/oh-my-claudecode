@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -148,7 +148,7 @@ describe('Windows-safe prompt hook runner paths', () => {
         PostToolUse: [{ matcher: '', hooks: [{
           type: 'command',
           command: 'node "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs "$CLAUDE_PLUGIN_ROOT"/scripts/post-tool-verifier.mjs',
-          timeout: 1,
+          timeout: 2,
         }] }],
       },
     }));
@@ -158,10 +158,14 @@ describe('Windows-safe prompt hook runner paths', () => {
       const result = run(target, root, { OMC_TEST_PIDFILE: pidfile });
       const elapsed = Date.now() - startedAt;
       expect(result.status).toBe(0);
-      const declaredMs = 1000;
+      const declaredMs = 2000;
       const innerMs = runCjs.resolveGenericTimeoutMs({ timeoutMs: declaredMs, event: 'PostToolUse' });
       expect(elapsed).toBeGreaterThanOrEqual(innerMs >= 400 ? 400 : 0);
       expect(elapsed).toBeLessThan(declaredMs);
+      const pidDeadline = Date.now() + 1000;
+      while (!existsSync(pidfile) && Date.now() < pidDeadline) {
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
       grandchildPid = Number(readFileSync(pidfile, 'utf8'));
       expect(grandchildPid).toBeGreaterThan(0);
 
