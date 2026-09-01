@@ -114,11 +114,16 @@ const WINDOWS_REAP_TIMEOUT_MS = 400;
 const PROTOCOL_STDIO_SETTLE_MS = 150;
 const MIN_HOOK_INNER_FRACTION = 0.5;
 const MIN_HOOK_INNER_MS = 400;
+// Must match scripts/lib/bounded-git-timeout.mjs. Inner runner budget must stay
+// strictly above this nested git ceiling for shipped 3s generic hooks.
+const NESTED_OPERATION_TIMEOUT_MS = 2000;
+const NESTED_OPERATION_MARGIN_MS = 500;
+const NESTED_INNER_FLOOR_MS = NESTED_OPERATION_TIMEOUT_MS + NESTED_OPERATION_MARGIN_MS;
 // POSIX default = max declared manifest budget (60000ms, setup-maintenance) minus
 // the 500ms cushion; applied ONLY when manifest resolution is null so long legit
-// hooks are not prematurely reaped. Windows *desired* cushion is larger so
-// fail-open plus tree reap still finish inside the declared hooks.json budget,
-// but it is a cap — short hooks keep at least half / 400ms of inner runtime.
+// hooks are not prematurely reaped. Windows desired cushion is a cap on long
+// hooks; 3s shipped hooks keep NESTED_INNER_FLOOR_MS (2500ms) of inner runtime
+// so nested git (2000ms) can fail-open before run.cjs reaps them.
 const TIMEOUT_CUSHION_MS = POSIX_TIMEOUT_CUSHION_MS;
 const DEFAULT_GENERIC_TIMEOUT_MS = MAX_DECLARED_GENERIC_TIMEOUT_MS - POSIX_TIMEOUT_CUSHION_MS;
 
@@ -135,9 +140,11 @@ function desiredTimeoutCushionMs(manifestTimeoutMs, hookEvent, platform = proces
 
 function resolveTimeoutCushionMs(manifestTimeoutMs, hookEvent, platform = process.platform) {
   const desired = desiredTimeoutCushionMs(manifestTimeoutMs, hookEvent, platform);
+  const fractionalInner = Math.max(MIN_HOOK_INNER_MS, Math.floor(manifestTimeoutMs * MIN_HOOK_INNER_FRACTION));
+  const canFitNestedFloor = manifestTimeoutMs - POSIX_TIMEOUT_CUSHION_MS >= NESTED_INNER_FLOOR_MS;
   const minInner = Math.min(
     Math.max(1, manifestTimeoutMs - 1),
-    Math.max(MIN_HOOK_INNER_MS, Math.floor(manifestTimeoutMs * MIN_HOOK_INNER_FRACTION)),
+    canFitNestedFloor ? Math.max(fractionalInner, NESTED_INNER_FLOOR_MS) : fractionalInner,
   );
   const maxCushion = Math.max(1, manifestTimeoutMs - minInner);
   return Math.min(desired, maxCushion);
@@ -747,6 +754,9 @@ module.exports = {
   WINDOWS_REAP_TIMEOUT_MS,
   MIN_HOOK_INNER_MS,
   MIN_HOOK_INNER_FRACTION,
+  NESTED_OPERATION_TIMEOUT_MS,
+  NESTED_OPERATION_MARGIN_MS,
+  NESTED_INNER_FLOOR_MS,
   MAX_DECLARED_GENERIC_TIMEOUT_MS,
   resolveTrustedSessionEndTarget,
 };

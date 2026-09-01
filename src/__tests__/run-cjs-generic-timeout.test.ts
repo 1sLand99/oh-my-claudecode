@@ -46,7 +46,9 @@ describe('run.cjs generic hook timeout supervisor', () => {
     expect(runCjs.resolveGenericTimeoutMs(manifestHook, 'linux'))
       .toBe(runCjs.resolveInnerTimeoutMs(manifestHook, 'linux'));
     expect(runCjs.resolveGenericTimeoutMs(manifestHook, 'linux')).toBe(2500);
-    expect(runCjs.resolveGenericTimeoutMs(manifestHook, 'win32')).toBe(1500);
+    expect(runCjs.resolveGenericTimeoutMs(manifestHook, 'win32')).toBe(2500);
+    expect(runCjs.resolveGenericTimeoutMs(manifestHook, 'win32'))
+      .toBeGreaterThan(runCjs.NESTED_OPERATION_TIMEOUT_MS);
     expect(runCjs.resolveGenericTimeoutMs({ timeoutMs: 1000, event: 'PostToolUse' }, 'win32')).toBe(500);
     expect(runCjs.resolveGenericTimeoutMs({ timeoutMs: 1500, event: 'PostToolUse' }, 'win32')).toBe(750);
     expect(runCjs.resolveGenericTimeoutMs({ timeoutMs: 1000, event: 'PostToolUse' }, 'win32'))

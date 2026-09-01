@@ -142,7 +142,7 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
     const cases = [
       { timeoutMs: 1000, event: 'PostToolUse', win32: 500, linux: 500 },
       { timeoutMs: 1500, event: 'PostToolUse', win32: 750, linux: 1000 },
-      { timeoutMs: 3000, event: 'PostToolUse', win32: 1500, linux: 2500 },
+      { timeoutMs: 3000, event: 'PostToolUse', win32: 2500, linux: 2500 },
       { timeoutMs: 10000, event: 'PostToolUse', win32: 8500, linux: 9500 },
       { timeoutMs: 60000, event: 'PostToolUse', win32: 58500, linux: 59500 },
     ] as const;
@@ -157,6 +157,10 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
       // host fuse is inner timeout plus remaining cushion, not a reap wait.
       expect(row.timeoutMs - winInner).toBeLessThanOrEqual(runCjs.WINDOWS_TIMEOUT_CUSHION_MS);
     }
+    const shipped = runCjs.resolveGenericTimeoutMs({ timeoutMs: 3000, event: 'PostToolUse' }, 'win32');
+    expect(runCjs.NESTED_OPERATION_TIMEOUT_MS).toBe(2000);
+    expect(shipped).toBeGreaterThan(runCjs.NESTED_OPERATION_TIMEOUT_MS);
+    expect(shipped).toBe(runCjs.NESTED_INNER_FLOOR_MS);
     expect(runCjs.resolveGenericTimeoutMs(null, 'win32')).toBe(58500);
     expect(runCjs.resolveGenericTimeoutMs(null, 'linux')).toBe(59500);
   });
