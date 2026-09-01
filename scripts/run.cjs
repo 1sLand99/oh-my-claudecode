@@ -382,6 +382,7 @@ function abandonProtocolSource(source, dest) {
   try {
     if (typeof source.resume === 'function') source.resume();
   } catch { /* already flowing or destroyed */ }
+  try { source.destroy(); } catch { /* already destroyed */ }
 }
 
 let processDestGuardsInstalled = false;
@@ -400,24 +401,27 @@ function ensureProcessDestGuards() {
 
 function createProtocolSink() {
   const discarded = { stdout: false, stderr: false };
-  const sources = { stdout: new Set(), stderr: new Set() };
-  const taps = { stdout: new Set(), stderr: new Set() };
+  const bindings = { stdout: [], stderr: [] };
   let installed = false;
   let pendingWrites = 0;
   let uninstallRequested = false;
   const onStdoutError = (error) => handleDestError('stdout', process.stdout, error);
   const onStderrError = (error) => handleDestError('stderr', process.stderr, error);
 
+  function teardownChannel(name) {
+    discarded[name] = true;
+    for (const binding of bindings[name]) {
+      try { binding.source.unpipe(binding.tap); } catch { /* already unpiped */ }
+      try { binding.tap.unpipe(binding.dest); } catch { /* already unpiped */ }
+      try { binding.tap.destroy(); } catch { /* already destroyed */ }
+      try { binding.source.destroy(); } catch { /* already destroyed */ }
+    }
+    bindings[name] = [];
+  }
+
   function handleDestError(name, dest, error) {
     if (discarded[name]) return;
-    discarded[name] = true;
-    for (const tap of taps[name]) {
-      try { tap.unpipe(); } catch { /* already unpiped */ }
-      try { tap.destroy(); } catch { /* already destroyed */ }
-    }
-    taps[name].clear();
-    for (const source of sources[name]) abandonProtocolSource(source);
-    sources[name].clear();
+    teardownChannel(name);
     if (!isClosedDestinationError(error) && name === 'stdout') {
       void write(process.stderr, Buffer.from(`[run.cjs] protocol stream error: ${error.code || error.message}\n`));
     }
@@ -446,17 +450,8 @@ function createProtocolSink() {
   }
 
   function abandonOutputs() {
-    discarded.stdout = true;
-    discarded.stderr = true;
-    for (const name of ['stdout', 'stderr']) {
-      for (const tap of taps[name]) {
-        try { tap.unpipe(); } catch { /* already unpiped */ }
-        try { tap.destroy(); } catch { /* already destroyed */ }
-      }
-      taps[name].clear();
-      for (const source of sources[name]) abandonProtocolSource(source);
-      sources[name].clear();
-    }
+    teardownChannel('stdout');
+    teardownChannel('stderr');
   }
 
   function write(dest, data) {
@@ -503,22 +498,23 @@ function createProtocolSink() {
     const bind = (source, dest, name) => {
       if (!source) return;
       const tap = new PassThrough();
-      sources[name].add(source);
-      taps[name].add(tap);
+      bindings[name].push({ source, tap, dest });
       source.pipe(tap);
       tap.pipe(dest, { end: false });
-      const drop = () => {
-        sources[name].delete(source);
-        taps[name].delete(tap);
-      };
-      source.once('end', drop);
-      source.once('close', drop);
+      tap.on('error', (error) => handleDestError(name, dest, error));
     };
     bind(child.stdout, process.stdout, 'stdout');
     bind(child.stderr, process.stderr, 'stderr');
   }
 
-  return { install, uninstall, write, attachChild, abandonOutputs };
+  return {
+    install,
+    uninstall,
+    write,
+    attachChild,
+    abandonOutputs,
+    hasClosedDestination: () => discarded.stdout || discarded.stderr,
+  };
 }
 
 function detachProtocolStdio(child) {
@@ -688,7 +684,7 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
       // (#3920 success-path hang, outer harness timeout 124).
       void settleProtocolStdio(child).then(() => {
         releaseGenericChild(child);
-        finish(typeof code === 'number' ? code : 0);
+        finish(sink.hasClosedDestination() ? 0 : (typeof code === 'number' ? code : 0));
       });
     });
     child.once('error', () => {

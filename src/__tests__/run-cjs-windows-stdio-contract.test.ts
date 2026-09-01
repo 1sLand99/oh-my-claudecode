@@ -355,6 +355,85 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+  it('fail-opens a drain-aware noisy stdout hook when the consumer closes early', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'omc-stdio-drain-out-'));
+    try {
+      const pluginRoot = join(directory, 'plugin');
+      const target = writePluginHook(pluginRoot, 'drain-out.cjs', `
+process.stderr.write('ERR-KEEP\\n');
+process.stdout.on('error', () => process.exit(0));
+const pump = () => {
+  try {
+    while (process.stdout.write('n'.repeat(1024))) {}
+    process.stdout.once('drain', pump);
+  } catch { process.exit(0); }
+};
+pump();
+`, 5);
+      const startedAt = Date.now();
+      const runner = spawn(process.execPath, [RUN_CJS_PATH, target], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot },
+        windowsHide: true,
+      });
+      let stderr = '';
+      runner.stderr.setEncoding('utf8');
+      runner.stderr.on('data', chunk => { stderr += chunk; });
+      runner.stdout.destroy();
+      const code = await new Promise<number | null>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('drain-aware stdout hook waited for inner timeout')), 1500);
+        runner.once('exit', status => {
+          clearTimeout(timer);
+          resolve(status);
+        });
+      });
+      expect(code).toBe(0);
+      expect(Date.now() - startedAt).toBeLessThan(1500);
+      expect(stderr).toContain('ERR-KEEP');
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('fail-opens a drain-aware noisy stderr hook when the consumer closes early', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'omc-stdio-drain-err-'));
+    try {
+      const pluginRoot = join(directory, 'plugin');
+      const target = writePluginHook(pluginRoot, 'drain-err.cjs', `
+process.stdout.write('OUT-KEEP\\n');
+process.stderr.on('error', () => process.exit(0));
+const pump = () => {
+  try {
+    while (process.stderr.write('n'.repeat(1024))) {}
+    process.stderr.once('drain', pump);
+  } catch { process.exit(0); }
+};
+pump();
+`, 5);
+      const startedAt = Date.now();
+      const runner = spawn(process.execPath, [RUN_CJS_PATH, target], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot },
+        windowsHide: true,
+      });
+      let stdout = '';
+      runner.stdout.setEncoding('utf8');
+      runner.stdout.on('data', chunk => { stdout += chunk; });
+      runner.stderr.destroy();
+      const code = await new Promise<number | null>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('drain-aware stderr hook waited for inner timeout')), 1500);
+        runner.once('exit', status => {
+          clearTimeout(timer);
+          resolve(status);
+        });
+      });
+      expect(code).toBe(0);
+      expect(Date.now() - startedAt).toBeLessThan(1500);
+      expect(stdout).toContain('OUT-KEEP');
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
   it('writes a visible timeout diagnostic on fail-open', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'omc-stdio-timeout-diag-'));
     try {
