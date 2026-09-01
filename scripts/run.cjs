@@ -350,9 +350,43 @@ function resolveGenericChildStdio(platform = process.platform) {
     : ['inherit', 'pipe', 'pipe'];
 }
 
+function isClosedDestinationError(error) {
+  const code = error && error.code;
+  return code === 'EPIPE' || code === 'ERR_STREAM_DESTROYED' || code === 'ERR_STREAM_WRITE_AFTER_END';
+}
+
+function abandonProtocolSource(source, dest) {
+  if (!source) return;
+  try { source.unpipe(dest); } catch { /* already detached */ }
+  try {
+    if (typeof source.resume === 'function') source.resume();
+  } catch { /* already flowing or destroyed */ }
+}
+
 function attachProtocolForwarders(child) {
-  if (child.stdout) child.stdout.pipe(process.stdout, { end: false });
-  if (child.stderr) child.stderr.pipe(process.stderr, { end: false });
+  attachProtocolForwarder(child.stdout, process.stdout);
+  attachProtocolForwarder(child.stderr, process.stderr);
+}
+
+function attachProtocolForwarder(source, dest) {
+  if (!source || !dest) return;
+  source.pipe(dest, { end: false });
+  const onDestError = (error) => {
+    if (!isClosedDestinationError(error)) {
+      const other = dest === process.stdout ? process.stderr : process.stdout;
+      try {
+        if (other && other.writable && !other.destroyed) {
+          const detail = error && (error.code || error.message || String(error));
+          other.write(`[run.cjs] protocol stream error: ${detail}\n`);
+        }
+      } catch { /* both destinations may already be closed */ }
+    }
+    abandonProtocolSource(source, dest);
+  };
+  dest.on('error', onDestError);
+  const cleanup = () => dest.removeListener('error', onDestError);
+  source.once('end', cleanup);
+  source.once('close', cleanup);
 }
 
 function detachProtocolStdio(child) {
@@ -362,7 +396,8 @@ function detachProtocolStdio(child) {
     try { stream.unpipe(dest); } catch { /* already detached */ }
     try {
       if (typeof stream.pause === 'function') stream.pause();
-      if (typeof stream.read === 'function' && dest && !dest.destroyed) {
+      const destWritable = dest && !dest.destroyed && dest.writable;
+      if (typeof stream.read === 'function' && destWritable) {
         let chunk;
         while ((chunk = stream.read()) !== null) dest.write(chunk);
       }
@@ -660,6 +695,7 @@ module.exports = {
   resolveGenericChildCommand,
   resolveGenericChildStdio,
   releaseGenericChild,
+  isClosedDestinationError,
   DEFAULT_GENERIC_TIMEOUT_MS,
   TIMEOUT_CUSHION_MS,
   WINDOWS_TIMEOUT_CUSHION_MS,

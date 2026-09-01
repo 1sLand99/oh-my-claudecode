@@ -287,6 +287,68 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+  it('classifies consumer-closed protocol destinations as fail-open errors', () => {
+    expect(runCjs.isClosedDestinationError({ code: 'EPIPE' })).toBe(true);
+    expect(runCjs.isClosedDestinationError({ code: 'ERR_STREAM_DESTROYED' })).toBe(true);
+    expect(runCjs.isClosedDestinationError({ code: 'ERR_STREAM_WRITE_AFTER_END' })).toBe(true);
+    expect(runCjs.isClosedDestinationError({ code: 'EIO' })).toBe(false);
+  });
+
+  it('fail-opens when the protocol stdout consumer closes early', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'omc-stdio-closed-out-'));
+    try {
+      const fixture = join(directory, 'write-hook.cjs');
+      writeFileSync(fixture, 'process.stdout.write("OUT-BYTES"); process.stderr.write("ERR-BYTES");');
+      const runner = spawn(process.execPath, [RUN_CJS_PATH, fixture], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      });
+      let stderr = '';
+      runner.stderr.setEncoding('utf8');
+      runner.stderr.on('data', chunk => { stderr += chunk; });
+      runner.stdout.destroy();
+      const code = await new Promise<number | null>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('runner hung after stdout consumer close')), 5000);
+        runner.once('exit', status => {
+          clearTimeout(timer);
+          resolve(status);
+        });
+      });
+      expect(code).toBe(0);
+      expect(stderr).toContain('ERR-BYTES');
+      expect(stderr).not.toMatch(/EPIPE/);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('fail-opens when the protocol stderr consumer closes early', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'omc-stdio-closed-err-'));
+    try {
+      const fixture = join(directory, 'write-hook.cjs');
+      writeFileSync(fixture, 'process.stdout.write("OUT-BYTES"); process.stderr.write("ERR-BYTES");');
+      const runner = spawn(process.execPath, [RUN_CJS_PATH, fixture], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      });
+      let stdout = '';
+      runner.stdout.setEncoding('utf8');
+      runner.stdout.on('data', chunk => { stdout += chunk; });
+      runner.stderr.destroy();
+      const code = await new Promise<number | null>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('runner hung after stderr consumer close')), 5000);
+        runner.once('exit', status => {
+          clearTimeout(timer);
+          resolve(status);
+        });
+      });
+      expect(code).toBe(0);
+      expect(stdout).toContain('OUT-BYTES');
+      expect(stdout).not.toMatch(/EPIPE/);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 
   it('reaps timed-out generic descendants so no orphan survives', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'omc-stdio-reap-'));
