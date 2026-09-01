@@ -1,5 +1,5 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 const runCjs = require('../../scripts/run.cjs');
 const RUN_CJS_PATH = join(process.cwd(), 'scripts', 'run.cjs');
 const HUNG_PARENT = join(process.cwd(), 'src', '__tests__', 'fixtures', 'hung-hooks', 'hung-parent.cjs');
+const EPIPE_EXIT_PARENT = join(process.cwd(), 'src', '__tests__', 'fixtures', 'hung-hooks', 'epipe-exit-parent.cjs');
 
 function withWatchdog<T>(promise: Promise<T>, timeoutMs = 5000): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
@@ -46,9 +47,14 @@ describe('run.cjs generic hook timeout supervisor', () => {
     expect(runCjs.resolveGenericTimeoutMs(manifestHook, 'linux'))
       .toBe(runCjs.resolveInnerTimeoutMs(manifestHook, 'linux'));
     expect(runCjs.resolveGenericTimeoutMs(manifestHook, 'linux')).toBe(2500);
-    expect(runCjs.resolveGenericTimeoutMs(manifestHook, 'win32')).toBe(2500);
-    expect(runCjs.resolveGenericTimeoutMs(manifestHook, 'win32'))
-      .toBeGreaterThan(runCjs.NESTED_OPERATION_TIMEOUT_MS);
+    expect(runCjs.resolveGenericTimeoutMs(manifestHook, 'win32')).toBe(1500);
+    const gitHook = { timeoutMs: 5000, event: 'PostToolUse' };
+    const winGitInner = runCjs.resolveGenericTimeoutMs(gitHook, 'win32');
+    expect(winGitInner).toBe(3500);
+    expect(winGitInner).toBeGreaterThanOrEqual(
+      runCjs.WINDOWS_GENERIC_STARTUP_MS + runCjs.NESTED_OPERATION_TIMEOUT_MS + runCjs.NESTED_OPERATION_MARGIN_MS,
+    );
+    expect(winGitInner).toBeGreaterThan(runCjs.NESTED_OPERATION_TIMEOUT_MS);
     expect(runCjs.resolveGenericTimeoutMs({ timeoutMs: 1000, event: 'PostToolUse' }, 'win32')).toBe(500);
     expect(runCjs.resolveGenericTimeoutMs({ timeoutMs: 1500, event: 'PostToolUse' }, 'win32')).toBe(750);
     expect(runCjs.resolveGenericTimeoutMs({ timeoutMs: 1000, event: 'PostToolUse' }, 'win32'))
@@ -233,6 +239,41 @@ describe('run.cjs generic hook timeout supervisor', () => {
       await Promise.race([
         runnerExit,
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('runner did not exit after SIGTERM')), 5000)),
+      ]);
+      await waitForDeath(grandchildPid);
+    } finally {
+      killIfAlive(grandchildPid);
+      try { runner.kill('SIGKILL'); } catch { /* already gone */ }
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+  it('reaps grandchildren when the runner is cancelled while the hook is an active writer', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'omc-runner-cancel-epipe-'));
+    const pidfile = join(directory, 'grandchild.pid');
+    let grandchildPid: number | undefined;
+    const runner = spawn(process.execPath, [RUN_CJS_PATH, EPIPE_EXIT_PARENT], {
+      stdio: 'ignore',
+      env: { ...process.env, OMC_TEST_PIDFILE: pidfile },
+      windowsHide: true,
+    });
+    try {
+      const deadline = Date.now() + 4000;
+      while (Date.now() < deadline && !existsSync(pidfile)) {
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      expect(existsSync(pidfile)).toBe(true);
+      grandchildPid = Number(readFileSync(pidfile, 'utf8'));
+      expect(grandchildPid).toBeGreaterThan(0);
+
+      const runnerExit = new Promise<void>(resolve => runner.once('exit', () => resolve()));
+      if (process.platform === 'win32') {
+        spawnSync('taskkill', ['/F', '/PID', String(runner.pid)], { windowsHide: true, stdio: 'ignore', timeout: 2000 });
+      } else {
+        runner.kill('SIGTERM');
+      }
+      await Promise.race([
+        runnerExit,
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('runner did not exit after cancel')), 5000)),
       ]);
       await waitForDeath(grandchildPid);
     } finally {

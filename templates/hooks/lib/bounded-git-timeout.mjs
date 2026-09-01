@@ -1,5 +1,5 @@
 // Budget-coherent PER-CALL ceiling for nested git calls in generic hooks.
-// 2000ms is below the 3s shipped-hook inner runner budget (2500ms after the
-// 500ms host-fuse cushion), so an inner git timeout fires before run.cjs reaps
-// the hook. Non-proportional by design (see #3493, #3920).
+// Git-bearing hooks declare 5s so Windows inner runtime (3500ms) covers
+// supervisor startup (≤600ms) + 2000ms git + margin. Non-proportional
+// by design (see #3493, #3920).
 export const BOUNDED_GIT_TIMEOUT_MS = 2000;

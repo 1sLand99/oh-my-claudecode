@@ -9,6 +9,7 @@
  */
 
 const { spawn, spawnSync } = require('child_process');
+const { PassThrough } = require('stream');
 const { existsSync, readFileSync, realpathSync, writeSync } = require('fs');
 const path = require('path');
 const { join, basename, dirname } = path;
@@ -114,16 +115,12 @@ const WINDOWS_REAP_TIMEOUT_MS = 400;
 const PROTOCOL_STDIO_SETTLE_MS = 150;
 const MIN_HOOK_INNER_FRACTION = 0.5;
 const MIN_HOOK_INNER_MS = 400;
-// Must match scripts/lib/bounded-git-timeout.mjs. Inner runner budget must stay
-// strictly above this nested git ceiling for shipped 3s generic hooks.
+// Observed Windows supervisor→hook→grandchild cold start in hosted CI (361–559ms).
+const WINDOWS_GENERIC_STARTUP_MS = 600;
+// Must match scripts/lib/bounded-git-timeout.mjs.
 const NESTED_OPERATION_TIMEOUT_MS = 2000;
-const NESTED_OPERATION_MARGIN_MS = 500;
-const NESTED_INNER_FLOOR_MS = NESTED_OPERATION_TIMEOUT_MS + NESTED_OPERATION_MARGIN_MS;
-// POSIX default = max declared manifest budget (60000ms, setup-maintenance) minus
-// the 500ms cushion; applied ONLY when manifest resolution is null so long legit
-// hooks are not prematurely reaped. Windows desired cushion is a cap on long
-// hooks; 3s shipped hooks keep NESTED_INNER_FLOOR_MS (2500ms) of inner runtime
-// so nested git (2000ms) can fail-open before run.cjs reaps them.
+const NESTED_OPERATION_MARGIN_MS = 200;
+const NESTED_INNER_FLOOR_MS = NESTED_OPERATION_TIMEOUT_MS + NESTED_OPERATION_MARGIN_MS + WINDOWS_GENERIC_STARTUP_MS;
 const TIMEOUT_CUSHION_MS = POSIX_TIMEOUT_CUSHION_MS;
 const DEFAULT_GENERIC_TIMEOUT_MS = MAX_DECLARED_GENERIC_TIMEOUT_MS - POSIX_TIMEOUT_CUSHION_MS;
 
@@ -404,6 +401,7 @@ function ensureProcessDestGuards() {
 function createProtocolSink() {
   const discarded = { stdout: false, stderr: false };
   const sources = { stdout: new Set(), stderr: new Set() };
+  const taps = { stdout: new Set(), stderr: new Set() };
   let installed = false;
   let pendingWrites = 0;
   let uninstallRequested = false;
@@ -442,6 +440,20 @@ function createProtocolSink() {
     flushUninstall();
   }
 
+  function abandonOutputs() {
+    discarded.stdout = true;
+    discarded.stderr = true;
+    for (const name of ['stdout', 'stderr']) {
+      for (const tap of taps[name]) {
+        try { tap.unpipe(); } catch { /* already unpiped */ }
+        try { tap.destroy(); } catch { /* already destroyed */ }
+      }
+      taps[name].clear();
+      for (const source of sources[name]) abandonProtocolSource(source);
+      sources[name].clear();
+    }
+  }
+
   function write(dest, data) {
     install();
     const name = dest === process.stderr ? 'stderr' : 'stdout';
@@ -459,15 +471,22 @@ function createProtocolSink() {
         resolve();
       };
       const completeWrite = (error) => {
+        if (writeCompleted) {
+          if (error) handleDestError(name, dest, error);
+          return;
+        }
+        writeCompleted = true;
         pendingWrites = Math.max(0, pendingWrites - 1);
         if (error) handleDestError(name, dest, error);
         clearTimeout(timer);
         done();
         flushUninstall();
       };
+      let writeCompleted = false;
       const timer = setTimeout(done, PROTOCOL_STDIO_SETTLE_MS);
       try {
-        dest.write(data, (error) => completeWrite(error));
+        const ok = dest.write(data, (error) => completeWrite(error));
+        if (!ok) completeWrite();
       } catch (error) {
         completeWrite(error);
       }
@@ -478,9 +497,15 @@ function createProtocolSink() {
     install();
     const bind = (source, dest, name) => {
       if (!source) return;
+      const tap = new PassThrough();
       sources[name].add(source);
-      source.pipe(dest, { end: false });
-      const drop = () => sources[name].delete(source);
+      taps[name].add(tap);
+      source.pipe(tap);
+      tap.pipe(dest, { end: false });
+      const drop = () => {
+        sources[name].delete(source);
+        taps[name].delete(tap);
+      };
       source.once('end', drop);
       source.once('close', drop);
     };
@@ -488,7 +513,7 @@ function createProtocolSink() {
     bind(child.stderr, process.stderr, 'stderr');
   }
 
-  return { install, uninstall, write, attachChild };
+  return { install, uninstall, write, attachChild, abandonOutputs };
 }
 
 function detachProtocolStdio(child) {
@@ -617,29 +642,33 @@ function runGenericChild(targetPath, extraArgs, timeoutMs, manifestHook) {
       if (terminal) return;
       terminal = true;
       detachHandlers();
+      reapTree(child, childIdentity);
+      sink.abandonOutputs();
       detachProtocolStdio(child);
       sink.uninstall();
-      reapTree(child, childIdentity);
       process.exit(0);
     }
     function onRunnerExit() {
       if (terminal) return;
       terminal = true;
-      detachProtocolStdio(child);
       reapTree(child, childIdentity);
+      sink.abandonOutputs();
+      detachProtocolStdio(child);
     }
 
     timer = setTimeout(() => {
       if (terminal) return;
       terminal = true;
       detachHandlers();
-      // Reap the tree first while the group leader is still alive. Destroying
-      // protocol pipes can EPIPE-exit the leader; awaiting diagnostics before
-      // reap then fails the identity check and orphans grandchildren.
       reapTree(child, childIdentity);
-      detachProtocolStdio(child);
-      releaseGenericChild(child);
-      void writeTimeoutDiagnostic(targetPath, manifestHook, timeoutMs, sink).then(() => {
+      void writeTimeoutDiagnostic(targetPath, manifestHook, timeoutMs, sink).finally(() => {
+        sink.abandonOutputs();
+        detachProtocolStdio(child);
+        releaseGenericChild(child);
+        if (require.main === module) {
+          try { process.stdout.destroy(); } catch { /* already closed */ }
+          try { process.stderr.destroy(); } catch { /* already closed */ }
+        }
         finish(0);
       });
     }, timeoutMs);
@@ -815,6 +844,7 @@ module.exports = {
   WINDOWS_REAP_TIMEOUT_MS,
   MIN_HOOK_INNER_MS,
   MIN_HOOK_INNER_FRACTION,
+  WINDOWS_GENERIC_STARTUP_MS,
   NESTED_OPERATION_TIMEOUT_MS,
   NESTED_OPERATION_MARGIN_MS,
   NESTED_INNER_FLOOR_MS,

@@ -143,7 +143,8 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
     const cases = [
       { timeoutMs: 1000, event: 'PostToolUse', win32: 500, linux: 500 },
       { timeoutMs: 1500, event: 'PostToolUse', win32: 750, linux: 1000 },
-      { timeoutMs: 3000, event: 'PostToolUse', win32: 2500, linux: 2500 },
+      { timeoutMs: 3000, event: 'PostToolUse', win32: 1500, linux: 2500 },
+      { timeoutMs: 5000, event: 'PostToolUse', win32: 3500, linux: 4500 },
       { timeoutMs: 10000, event: 'PostToolUse', win32: 8500, linux: 9500 },
       { timeoutMs: 60000, event: 'PostToolUse', win32: 58500, linux: 59500 },
     ] as const;
@@ -154,14 +155,14 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
       expect(posixInner, `linux inner for ${row.timeoutMs}`).toBe(row.linux);
       expect(winInner).toBeGreaterThanOrEqual(Math.min(row.timeoutMs - 1, runCjs.MIN_HOOK_INNER_MS));
       expect(winInner / row.timeoutMs).toBeGreaterThanOrEqual(runCjs.MIN_HOOK_INNER_FRACTION);
-      // Windows tree reap is detached/best-effort after protocol release; the
-      // host fuse is inner timeout plus remaining cushion, not a reap wait.
       expect(row.timeoutMs - winInner).toBeLessThanOrEqual(runCjs.WINDOWS_TIMEOUT_CUSHION_MS);
     }
-    const shipped = runCjs.resolveGenericTimeoutMs({ timeoutMs: 3000, event: 'PostToolUse' }, 'win32');
+    const gitInner = runCjs.resolveGenericTimeoutMs({ timeoutMs: 5000, event: 'PostToolUse' }, 'win32');
     expect(runCjs.NESTED_OPERATION_TIMEOUT_MS).toBe(2000);
-    expect(shipped).toBeGreaterThan(runCjs.NESTED_OPERATION_TIMEOUT_MS);
-    expect(shipped).toBe(runCjs.NESTED_INNER_FLOOR_MS);
+    expect(gitInner).toBeGreaterThan(runCjs.NESTED_OPERATION_TIMEOUT_MS);
+    expect(gitInner).toBeGreaterThanOrEqual(runCjs.NESTED_INNER_FLOOR_MS);
+    expect(3000 - runCjs.TIMEOUT_CUSHION_MS - runCjs.WINDOWS_GENERIC_STARTUP_MS)
+      .toBeLessThan(runCjs.NESTED_OPERATION_TIMEOUT_MS);
     expect(runCjs.resolveGenericTimeoutMs(null, 'win32')).toBe(58500);
     expect(runCjs.resolveGenericTimeoutMs(null, 'linux')).toBe(59500);
   });
@@ -426,6 +427,38 @@ describe('run.cjs Windows/protocol stdio contract (#3920)', () => {
       expect(code).toBe(0);
       expect(Date.now() - startedAt).toBeLessThan(2000);
     } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+  it('exits on timeout when a noisy hook has a non-draining protocol consumer', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'omc-stdio-noisy-'));
+    let runner: ReturnType<typeof spawn> | undefined;
+    try {
+      const pluginRoot = join(directory, 'plugin');
+      const target = writePluginHook(
+        pluginRoot,
+        'noisy-hook.cjs',
+        'process.stderr.write("n".repeat(8192)); setInterval(() => { process.stderr.write("n".repeat(256)); }, 20);',
+        1,
+      );
+      const startedAt = Date.now();
+      runner = spawn(process.execPath, [RUN_CJS_PATH, target], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot },
+        windowsHide: true,
+      });
+      runner.stderr!.pause();
+      const code = await new Promise<number | null>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('noisy hook kept runner alive past outer deadline')), 2000);
+        runner!.once('exit', status => {
+          clearTimeout(timer);
+          resolve(status);
+        });
+      });
+      expect(code).toBe(0);
+      expect(Date.now() - startedAt).toBeLessThan(2000);
+    } finally {
+      try { runner?.kill('SIGKILL'); } catch { /* already gone */ }
       rmSync(directory, { recursive: true, force: true });
     }
   });
