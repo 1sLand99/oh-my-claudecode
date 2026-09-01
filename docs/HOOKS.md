@@ -124,7 +124,7 @@ Fires immediately before Claude uses a tool.
 
 | Script | Role | Timeout |
 |--------|------|---------|
-| `pre-tool-enforcer.mjs` | Validates rules before tool use | 3s |
+| `pre-tool-enforcer.mjs` | Validates rules before tool use | 5s |
 
 Runs on all tool calls (`matcher: "*"`). Enforces agent permission restrictions (e.g., blocking Write/Edit for read-only agents).
 Denies Task/Agent calls whose `subagent_type` names a bundled skill (issue #3667): instead of Claude Code's generic native "Agent type not found", the hook returns a precise error naming the Skill tool and the correct identifier, and forbids closest-match agent substitution.
@@ -145,7 +145,7 @@ Fires after a tool use completes.
 
 | Script | Role | Timeout |
 |--------|------|---------|
-| `post-tool-verifier.mjs` | Verifies tool results and injects additional context | 3s |
+| `post-tool-verifier.mjs` | Verifies tool results and injects additional context | 5s |
 | `project-memory-posttool.mjs` | Updates project memory | 3s |
 
 Injects additional guidance based on Read, Write, Edit, and Bash results. For example, after reading a file it may hint "consider using parallel reads."

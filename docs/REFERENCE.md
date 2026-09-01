@@ -981,9 +981,9 @@ OMC registers 21 hook scripts across 11 Claude Code lifecycle events. For detail
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
 | **UserPromptSubmit**   | `keyword-detector.mjs`, `skill-injector.mjs`                                                                      | 30s outer fuse per command; 8s, 12s trusted Worker limits |
 | **SessionStart**       | `session-start.mjs`, `project-memory-session.mjs`, `setup-init.mjs` (init), `setup-maintenance.mjs` (maintenance) | 5s, 5s, 30s, 60s |
-| **PreToolUse**         | `pre-tool-enforcer.mjs`                                                                                           | 3s               |
+| **PreToolUse**         | `pre-tool-enforcer.mjs`                                                                                           | 5s               |
 | **PermissionRequest**  | `permission-handler.mjs` (Bash only)                                                                              | 5s               |
-| **PostToolUse**        | `post-tool-verifier.mjs`, `project-memory-posttool.mjs`                                                           | 3s, 3s           |
+| **PostToolUse**        | `post-tool-verifier.mjs`, `project-memory-posttool.mjs`                                                           | 5s, 3s           |
 | **PostToolUseFailure** | `post-tool-use-failure.mjs`                                                                                       | 3s               |
 | **SubagentStart**      | `subagent-tracker.mjs start`                                                                                      | 3s               |
 | **SubagentStop**       | `subagent-tracker.mjs stop`, `verify-deliverables.mjs`                                                            | 5s, 5s           |

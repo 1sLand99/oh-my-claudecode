@@ -411,7 +411,12 @@ function createProtocolSink() {
   function handleDestError(name, dest, error) {
     if (discarded[name]) return;
     discarded[name] = true;
-    for (const source of sources[name]) abandonProtocolSource(source, dest);
+    for (const tap of taps[name]) {
+      try { tap.unpipe(); } catch { /* already unpiped */ }
+      try { tap.destroy(); } catch { /* already destroyed */ }
+    }
+    taps[name].clear();
+    for (const source of sources[name]) abandonProtocolSource(source);
     sources[name].clear();
     if (!isClosedDestinationError(error) && name === 'stdout') {
       void write(process.stderr, Buffer.from(`[run.cjs] protocol stream error: ${error.code || error.message}\n`));
