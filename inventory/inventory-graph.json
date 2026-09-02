@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "afcdba5fc99a2f4fc77180a092a5419ab1b0b61a",
-    "sourceSha256": "fd659aab9e05e4aaae57e487905d9008193c362c3d7f8d840791815d43642637",
+    "head": "369caf12f29ce9f15a5fcb77d32a8cdfa53f980d",
+    "sourceSha256": "3cc0255d4da27ec6e3c84e8af7ee732ec5ba66ac97fda0c258b9b79071df396e",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "afcdba5fc99a2f4fc77180a092a5419ab1b0b61a",
-  "sourceSha256": "fd659aab9e05e4aaae57e487905d9008193c362c3d7f8d840791815d43642637",
+  "head": "369caf12f29ce9f15a5fcb77d32a8cdfa53f980d",
+  "sourceSha256": "3cc0255d4da27ec6e3c84e8af7ee732ec5ba66ac97fda0c258b9b79071df396e",
   "counts": {
     "public": {
       "skills": 35,
@@ -24,7 +24,7 @@
     },
     "internal": {
       "hookFiles": 295,
-      "featureFiles": 68,
+      "featureFiles": 69,
       "toolFiles": 60,
       "libFiles": 37,
       "templateHooks": 21,
@@ -486,6 +486,7 @@
       "src/features/model-routing/scorer.ts",
       "src/features/model-routing/signals.ts",
       "src/features/model-routing/types.ts",
+      "src/features/notepad-wisdom/__tests__/extractor.test.ts",
       "src/features/notepad-wisdom/extractor.ts",
       "src/features/notepad-wisdom/index.ts",
       "src/features/notepad-wisdom/types.ts",
@@ -6192,6 +6193,7 @@
       "src/features/model-routing/scorer.ts",
       "src/features/model-routing/signals.ts",
       "src/features/model-routing/types.ts",
+      "src/features/notepad-wisdom/__tests__/extractor.test.ts",
       "src/features/notepad-wisdom/extractor.ts",
       "src/features/notepad-wisdom/index.ts",
       "src/features/notepad-wisdom/types.ts",
@@ -34505,11 +34507,6 @@
         "path": "src/__tests__/project-memory-merge.test.ts"
       },
       {
-        "id": "src/__tests__/project-memory-posttool.test.ts",
-        "kind": "src",
-        "path": "src/__tests__/project-memory-posttool.test.ts"
-      },
-      {
         "id": "src/__tests__/project-session-manager-review-worktree.test.ts",
         "kind": "src",
         "path": "src/__tests__/project-session-manager-review-worktree.test.ts"
@@ -35833,6 +35830,11 @@
         "id": "src/features/model-routing/types.ts",
         "kind": "feature",
         "path": "src/features/model-routing/types.ts"
+      },
+      {
+        "id": "src/features/notepad-wisdom/__tests__/extractor.test.ts",
+        "kind": "feature",
+        "path": "src/features/notepad-wisdom/__tests__/extractor.test.ts"
       },
       {
         "id": "src/features/notepad-wisdom/extractor.ts",
@@ -46757,31 +46759,6 @@
         "kind": "imports"
       },
       {
-        "from": "src/__tests__/project-memory-posttool.test.ts",
-        "to": "external:node:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/project-memory-posttool.test.ts",
-        "to": "external:node:fs",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/project-memory-posttool.test.ts",
-        "to": "external:node:os",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/project-memory-posttool.test.ts",
-        "to": "external:node:path",
-        "kind": "imports"
-      },
-      {
-        "from": "src/__tests__/project-memory-posttool.test.ts",
-        "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
         "from": "src/__tests__/project-session-manager-review-worktree.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -52835,6 +52812,16 @@
         "from": "src/features/model-routing/types.ts",
         "to": "src/shared/types.ts",
         "kind": "type-imports"
+      },
+      {
+        "from": "src/features/notepad-wisdom/__tests__/extractor.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/notepad-wisdom/__tests__/extractor.test.ts",
+        "to": "src/features/notepad-wisdom/extractor.ts",
+        "kind": "imports"
       },
       {
         "from": "src/features/notepad-wisdom/extractor.ts",
@@ -76724,11 +76711,11 @@
     ],
     "stats": {
       "nodeCount": 6846,
-      "edgeCount": 7242,
-      "importEdgeCount": 5952,
+      "edgeCount": 7239,
+      "importEdgeCount": 5949,
       "registerEdgeCount": 56
     }
   },
-  "inventorySha256": "5d85688387023c6ef6a52352cc780af75dd1f53e9549472fba7a37a6cd8ceb42",
-  "manifestSha256": "921150bb7421644ebea00f30cc561cfdcc86ffd2fcb3285a6745dbed36f75fab"
+  "inventorySha256": "8918d7975f1f220b0423a1191a32350db3a1f8565c3edf57c9d16bcbf438faca",
+  "manifestSha256": "11ee547966b94e3ba99cb517d869547e561371a1dc7e3d11192242dc55981bd2"
 }
