@@ -516,11 +516,11 @@ describe('run.cjs trusted hook Worker selection', () => {
     }));
   }
 
-  function run(target: string, env: Record<string, string> = {}, args: string[] = []) {
+  function run(target: string, env: Record<string, string> = {}, args: string[] = [], input = '{}') {
     const result = spawnSync(NODE, [RUN_CJS_PATH, target, ...args], {
       encoding: 'utf-8',
       env: { ...process.env, ...env },
-      input: '{}',
+      input,
       timeout: 30000,
       maxBuffer: 10 * 1024 * 1024,
     });
@@ -550,6 +550,38 @@ describe('run.cjs trusted hook Worker selection', () => {
     createTrustedPlugin(root, { [script]: workerProbe }, event);
 
     expect(run(target, { CLAUDE_PLUGIN_ROOT: root })).toMatchObject({ status: 0, stdout: 'worker' });
+  });
+
+  it('executes the real post-tool verifier entrypoint inside its trusted Worker', () => {
+    const root = join(__dirname, '..', '..');
+    const target = join(root, 'scripts', 'post-tool-verifier.mjs');
+    const home = join(tmpDir, 'real-verifier-home');
+    const configDir = join(home, '.claude');
+    const input = JSON.stringify({
+      session_id: 'real-worker-session',
+      cwd: root,
+      tool_name: 'Read',
+      tool_input: { file_path: join(root, 'package.json') },
+      tool_response: 'ok',
+    });
+
+    const result = run(target, {
+      CLAUDE_PLUGIN_ROOT: root,
+      CLAUDE_CONFIG_DIR: configDir,
+      HOME: home,
+      USERPROFILE: home,
+      OMC_QUIET: '1',
+      DISABLE_OMC: '',
+      OMC_SKIP_HOOKS: '',
+    }, [], input);
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toMatchObject({ continue: true });
+    const stats = JSON.parse(readFileSync(join(configDir, '.session-stats.json'), 'utf8'));
+    expect(stats.sessions['real-worker-session']).toMatchObject({
+      tool_counts: { Read: 1 },
+      total_calls: 1,
+    });
   });
 
   it('rejects a trusted per-tool pathname registered under the wrong event', () => {

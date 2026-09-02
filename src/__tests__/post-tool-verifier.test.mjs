@@ -220,6 +220,18 @@ describe('session statistics retention', () => {
       expect(readFileSync(statePath, 'utf8')).toBe(original);
     });
   });
+
+  it('does not initialize the state directory when disabled', () => {
+    withTempDir((tempDir) => {
+      const configDir = join(tempDir, 'missing-config');
+
+      expect(runPostToolVerifier(
+        { session_id: 'disabled-session', cwd: tempDir, tool_name: 'Read' },
+        { CLAUDE_CONFIG_DIR: configDir, DISABLE_OMC: 'true' },
+      )).toEqual({ continue: true });
+      expect(existsSync(configDir)).toBe(false);
+    });
+  });
 });
 
 describe('detectBashFailure', () => {
