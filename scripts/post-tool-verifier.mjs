@@ -132,6 +132,7 @@ const debugLog = (...args) => {
 // State file for session tracking
 const cfgDir = getClaudeConfigDir();
 const STATE_FILE = join(cfgDir, '.session-stats.json');
+const MAX_SESSION_STATS = 100;
 
 // Ensure state directory exists
 try {
@@ -183,6 +184,17 @@ function updateStats(toolName, sessionId) {
   session.last_tool = toolName;
   session.total_calls = (session.total_calls || 0) + 1;
   session.updated_at = Math.floor(Date.now() / 1000);
+
+  const sessionEntries = Object.entries(stats.sessions);
+  if (sessionEntries.length > MAX_SESSION_STATS) {
+    sessionEntries
+      .filter(([id]) => id !== sessionId)
+      .sort(([, left], [, right]) =>
+        (right.updated_at || right.started_at || 0) - (left.updated_at || left.started_at || 0)
+      )
+      .slice(MAX_SESSION_STATS - 1)
+      .forEach(([id]) => delete stats.sessions[id]);
+  }
 
   saveStats(stats);
   return session.tool_counts[toolName];
@@ -1014,7 +1026,11 @@ function combineMessages(...messages) {
 async function main() {
   // Skip guard: check OMC_SKIP_HOOKS env var (see issue #838)
   const _skipHooks = (process.env.OMC_SKIP_HOOKS || '').split(',').map(s => s.trim());
-  if (process.env.DISABLE_OMC === '1' || _skipHooks.includes('post-tool-use')) {
+  if (
+    process.env.DISABLE_OMC === '1' ||
+    process.env.DISABLE_OMC === 'true' ||
+    _skipHooks.includes('post-tool-use')
+  ) {
     console.log(JSON.stringify({ continue: true }));
     return;
   }
