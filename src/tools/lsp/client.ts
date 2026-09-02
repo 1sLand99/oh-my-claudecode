@@ -50,6 +50,14 @@ function fileUri(filePath: string): string {
   return pathToFileURL(resolve(filePath)).href;
 }
 
+function createCancellationSignal(): { promise: Promise<void>; cancel: () => void } {
+  let cancel!: () => void;
+  const promise = new Promise<void>((resolveCancellation) => {
+    cancel = resolveCancellation;
+  });
+  return { promise, cancel };
+}
+
 // LSP Protocol Types
 export interface Position {
   line: number;
@@ -176,6 +184,7 @@ export class LspClient {
   private persistentDocuments = new Set<string>();
   private documentOpenPromises = new Map<string, Promise<void>>();
   private documentOperationTails = new Map<string, Promise<void>>();
+  private documentQueueCancellation = createCancellationSignal();
   private diagnostics = new Map<string, Diagnostic[]>();
   private diagnosticWaiters = new Map<string, Array<(error?: Error) => void>>();
   private workspaceRoot: string;
@@ -204,6 +213,8 @@ export class LspClient {
     this.disconnected = false;
     this.terminalError = null;
     const connectionGeneration = ++this.connectionGeneration;
+    this.documentQueueCancellation.cancel();
+    this.documentQueueCancellation = createCancellationSignal();
     this.buffer = Buffer.alloc(0);
     this.openDocuments.clear();
     this.persistentDocuments.clear();
@@ -312,6 +323,7 @@ export class LspClient {
   forceKill(): void {
     const error = new Error('LSP client force-killed');
     this.connectionGeneration++;
+    this.documentQueueCancellation.cancel();
     this.terminalError = error;
     this.cancelPendingNotificationWrites(error);
     this.rejectPendingRequests(error);
@@ -365,6 +377,7 @@ export class LspClient {
       } else {
         const error = new Error('LSP client disconnected');
         this.connectionGeneration++;
+        this.documentQueueCancellation.cancel();
         this.terminalError = error;
         this.cancelPendingNotificationWrites(error);
         this.disconnected = true;
@@ -401,6 +414,7 @@ export class LspClient {
   private handleTransportFailure(error: Error): void {
     if (this.disconnected) return;
     this.connectionGeneration++;
+    this.documentQueueCancellation.cancel();
     this.disconnected = true;
     this.terminalError = error;
     this.cancelPendingNotificationWrites(error);
@@ -858,6 +872,7 @@ export class LspClient {
 
   private async queueDocumentOperation<T>(hostUri: string, operation: () => Promise<T>): Promise<T> {
     const connectionGeneration = this.connectionGeneration;
+    const cancellation = this.documentQueueCancellation.promise;
     const previous = this.documentOperationTails.get(hostUri) ?? Promise.resolve();
     let release!: () => void;
     const current = new Promise<void>((resolveCurrent) => {
@@ -866,10 +881,13 @@ export class LspClient {
     const tail = previous.catch(() => undefined).then(() => current);
     this.documentOperationTails.set(hostUri, tail);
 
-    await previous.catch(() => undefined);
+    const predecessorCompleted = await Promise.race([
+      previous.then(() => true, () => true),
+      cancellation.then(() => false)
+    ]);
 
     try {
-      if (this.connectionGeneration !== connectionGeneration) {
+      if (!predecessorCompleted || this.connectionGeneration !== connectionGeneration) {
         throw this.terminalError ?? new Error('LSP connection was replaced');
       }
       this.throwIfTerminal();

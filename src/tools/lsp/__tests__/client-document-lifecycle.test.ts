@@ -510,12 +510,12 @@ describe('LspClient.withOpenDocument', () => {
     state.terminalError = null;
     state.openDocuments.add('file:///tmp/a.ts');
     state.persistentDocuments.add('file:///tmp/a.ts');
-    operationGate.resolve();
 
-    await active;
     await staleRejection;
     expect(state.openDocuments.has('file:///tmp/a.ts')).toBe(true);
     expect(state.persistentDocuments.has('file:///tmp/a.ts')).toBe(true);
+    operationGate.resolve();
+    await active;
   });
 });
 
