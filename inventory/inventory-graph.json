@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "e836deb017c20ad94134bdcdc1bc953b873ca39a",
-    "sourceSha256": "98ff4f88215fda9ee3001d79453043907ef04620b50dc804189eb2264a7940ca",
+    "head": "7a16db651f5f1d1e2e8d6cb298b079a917d807a4",
+    "sourceSha256": "265cce00d1dc89466fcf5ae8d2cc857b8532a324ab00767e3e8a5f2ee98f0dc1",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "e836deb017c20ad94134bdcdc1bc953b873ca39a",
-  "sourceSha256": "98ff4f88215fda9ee3001d79453043907ef04620b50dc804189eb2264a7940ca",
+  "head": "7a16db651f5f1d1e2e8d6cb298b079a917d807a4",
+  "sourceSha256": "265cce00d1dc89466fcf5ae8d2cc857b8532a324ab00767e3e8a5f2ee98f0dc1",
   "counts": {
     "public": {
       "skills": 35,
@@ -25,11 +25,11 @@
     "internal": {
       "hookFiles": 295,
       "featureFiles": 69,
-      "toolFiles": 60,
+      "toolFiles": 61,
       "libFiles": 37,
       "templateHooks": 21,
-      "srcFiles": 1318,
-      "total": 1339
+      "srcFiles": 1319,
+      "total": 1340
     },
     "generated": {
       "distFiles": 4955,
@@ -532,6 +532,7 @@
       "src/tools/lsp-tools.ts",
       "src/tools/lsp/AGENTS.md",
       "src/tools/lsp/__tests__/client-devcontainer.test.ts",
+      "src/tools/lsp/__tests__/client-document-lifecycle.test.ts",
       "src/tools/lsp/__tests__/client-eviction.test.ts",
       "src/tools/lsp/__tests__/client-handle-data.test.ts",
       "src/tools/lsp/__tests__/client-python-boundary.test.ts",
@@ -6239,6 +6240,7 @@
       "src/tools/lsp-tools.ts",
       "src/tools/lsp/AGENTS.md",
       "src/tools/lsp/__tests__/client-devcontainer.test.ts",
+      "src/tools/lsp/__tests__/client-document-lifecycle.test.ts",
       "src/tools/lsp/__tests__/client-eviction.test.ts",
       "src/tools/lsp/__tests__/client-handle-data.test.ts",
       "src/tools/lsp/__tests__/client-python-boundary.test.ts",
@@ -39850,6 +39852,11 @@
         "id": "src/tools/lsp/__tests__/client-devcontainer.test.ts",
         "kind": "tool",
         "path": "src/tools/lsp/__tests__/client-devcontainer.test.ts"
+      },
+      {
+        "id": "src/tools/lsp/__tests__/client-document-lifecycle.test.ts",
+        "kind": "tool",
+        "path": "src/tools/lsp/__tests__/client-document-lifecycle.test.ts"
       },
       {
         "id": "src/tools/lsp/__tests__/client-eviction.test.ts",
@@ -74284,6 +74291,36 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/tools/lsp/__tests__/client-document-lifecycle.test.ts",
+        "to": "external:node:events",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/lsp/__tests__/client-document-lifecycle.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/lsp/__tests__/client-document-lifecycle.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/lsp/__tests__/client-document-lifecycle.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/lsp/__tests__/client-document-lifecycle.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/lsp/__tests__/client-document-lifecycle.test.ts",
+        "to": "src/tools/lsp/client.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/tools/lsp/__tests__/client-eviction.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -76780,12 +76817,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6848,
-      "edgeCount": 7251,
-      "importEdgeCount": 5960,
+      "nodeCount": 6849,
+      "edgeCount": 7257,
+      "importEdgeCount": 5966,
       "registerEdgeCount": 56
     }
   },
-  "inventorySha256": "c1d8aa2e942388c4a0bf6b0db08b31577d36245fcfe3368dc8ab48695904619f",
-  "manifestSha256": "29d700a8f40d3bf501e731b66ce2a77f7a95165f9989dfcbb5c571156c23951c"
+  "inventorySha256": "09828ef29aafe8920279970c90a291d2281be31074ba85d6224727ec4c0f6cc5",
+  "manifestSha256": "b008d2f6de9a0dd50df38b1955a930069b934147ca2a67aec2603f6d1c708388"
 }
