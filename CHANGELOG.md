@@ -1,40 +1,74 @@
-# oh-my-claudecode v5.1.0: Governed Delivery and Reliable Model Routing
+# oh-my-claudecode v5.2.0: close the loop, show Claude Code, bound retained matches
 
 ## Release Notes
 
-v5.1.0 is the minor release from the published v5.0.2 baseline through the current `dev` release candidate. It adds opt-in governed-delivery workflows, strengthens configured model preservation during team scale-up, and closes delegation-notice shell parsing false positives.
+Release with **4 new features**, **36 bug fixes**, **9 other changes** across **23 merged PRs**.
 
 ### Highlights
 
-- Adds the opt-in `minimal-code-discipline` skill for existence-first, reuse-first implementation discipline. (#3899)
-- Adds the opt-in `drydock` repository harness and `launch` governed delivery pipeline, plus a source-exact Shipyard methodology map. (#3907, #3908)
-- Adds document-language selection and bilingual seed support to `drydock`. (#3909)
-- Preserves Cursor and configured provider model defaults across direct launches and team scale-up. (#3900, #3904, #3905)
-- Eliminates delegation-notice false positives for scratchpad writes, log redirects, shell control flow, directory-copy destinations, and named coprocess commands. (#3911 and exact-dev follow-up commits)
+- **feat(shipyard): close the loop — yard gate + C5 sediment pass** (#3943)
+- **feat(hud): show Claude Code update and paste-ready update hints; run update check outside workspaces**
+- **perf(session-search): bound retained matches**
+- **perf(hooks): bound per-tool state and worker spawns**
 
 ### New Features
 
-- **Minimal code discipline:** ships `minimal-code-discipline` as an explicit, opt-in built-in skill. (#3899)
-- **Governed delivery:** ships the `drydock` four-pillar harness scaffold and the `launch` staged delivery pipeline. (#3907)
-- **Localized scaffolding:** lets `drydock` choose the document language and seed bilingual project guidance. (#3909)
+- **feat(shipyard): close the loop — yard gate + C5 sediment pass** (#3943)
+- **feat(hud): show Claude Code update and paste-ready update hints; run update check outside workspaces**
+- **perf(session-search): bound retained matches**
+- **perf(hooks): bound per-tool state and worker spawns**
 
-### Reliability Fixes
+### Bug Fixes
 
-- **Model routing:** gives Cursor a default-model hook and preserves effective configured defaults when team capacity scales up. (#3900, #3904, #3905)
-- **Delegation enforcement:** accepts safe scratchpad writes and shell log redirects without false delegation notices. (#3911)
-- **Shell parser follow-ups:** recognizes control-flow reserved words, copy destinations, coprocess source mutations, and named coprocess commands on the exact release-candidate lineage. (`da23d1a21`, `a02c57610`, `5bacbf808`)
+- **fix(hooks): make SessionEnd foreground ceilings and worker timeouts runner-aware (#3945)** (#3945)
+- **fix(hud): bound git calls in worktree-paths (#3946)** (#3946)
+- **fix(hud): bound the three unbounded git calls in worktree-paths (#3946)** (#3946)
+- **fix(inventory): rebaseline inventory-graph provenance.head onto dev** (#3944)
+- **fix(hooks): serialize detached update cache refreshes**
+- **fix(hooks): keep no-workspace SessionStart response immediate; refresh update cache in a detached child**
+- **fix(dev): regenerate inventory graph with provenance anchored to dev head** (#3941)
+- **fix(state): symmetric dual-dir warning on legacy branch via settings.json discovery (#3937)** (#3937)
+- **fix(hud): reclaim stale non-empty stdin tmp orphans and bounded per-session caches (#3938)** (#3938)
+- **fix: sync Git cache fix with final dev**
+- **fix(lsp): cancel retired document queues**
+- **fix(lsp): bound directory diagnostics lifecycle**
+- **fix(hud): pid-aware lock recovery and bounded .err reclamation (fix #3933)** (#3935)
+- **fix(team): platform-aware worker launch wrapper for POSIX hosts (issue #3931)**
+- **fix(hooks): preserve verifier semantics in Worker path**
+- **fix: preserve notepad wisdom regex escapes**
+- **fix: preserve three-second Windows hook budgets**
+- **fix: close completed hook supervisor handles**
+- **fix: terminate stalled successful hook output**
+- **fix: preserve successful hook output through slow drains**
+- **fix(hooks): reap a generic child at most once on Windows**
+- **fix(hooks): reap the tree before destroying sources on dest EPIPE**
+- **fix(hooks): unpipe source from matching PassThrough on dest EPIPE**
+- **fix(hooks): tear down PassThrough taps on destination EPIPE**
+- **fix(hooks): fit Windows git hooks, drop queued stdio, reap on cancel**
+- **fix(hooks): only group-kill a confirmed-dead POSIX leader**
+- **fix(hooks): reap POSIX process group before timeout diagnostic yield**
+- **fix(hooks): keep closed-dest guards after timeout diagnostic writes**
+- **fix(hooks): await timeout diagnostics before dropping sink guards**
+- **fix(hooks): keep 3s Windows inner timeout above nested git ceiling**
+- **fix(hooks): guard all run.cjs protocol writes against closed consumers**
+- **fix(hooks): fail-open when the protocol consumer closes stdout/stderr**
+- **fix(hooks): fail-open before Windows tree reap and harden stdio tests**
+- **fix(hooks): keep a usable inner timeout on short Windows hook budgets**
+- **fix(hooks): close protocol stdio after successful generic hook exits**
+- **fix(hooks): isolate run.cjs protocol stdio from leaked Windows supervisors**
 
-### Documentation
+### Other Changes
 
-- Documents the Shipyard vision, boundary, pillars, surfaces, and feedback loop with source-exact references. (#3908)
+- **chore: refresh inventory graph for dev post-merge**
+- **chore: refresh inventory graph**
+- **chore: refresh queue cancellation inventory**
+- **chore: refresh inventory graph**
+- **chore(inventory): refresh after dev sync**
+- **chore(inventory): record verifier Worker proof**
+- **chore(inventory): record hook runner test update**
+- **chore(inventory): refresh hook performance graph**
+- **chore: refresh issue 3920 inventory provenance**
 
-### Release Range
+### Stats
 
-- Published baseline: `v5.0.2` (`adf4bf3280c8a8d7b932d5c11aef84ba22d6a11d`)
-- Development merge base: `9d4d6c834fdd78febdb177eba70dc264efafad93`
-- Release-candidate source: `5bacbf808698ab299a7136fad342b3a9eb95a096`
-- Included work: 8 merged pull requests plus 3 exact-dev shell-parser follow-up commits.
-
-### Validation
-
-The release candidate must pass exact-head version consistency, metadata/projection/inventory verification, focused changed-feature tests, lint, typecheck, the full test suite, build, plugin shipping verification, package pack/install/CLI version smoke, upgrade validation, and protected GitHub checks. A failing or unavailable gate is not represented as passing evidence.
+- **23 PRs merged** | **4 new features** | **36 bug fixes** | **0 security/hardening improvements** | **9 other changes**
