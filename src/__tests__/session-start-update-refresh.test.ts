@@ -192,5 +192,18 @@ describe('session-start.mjs detached update-cache refresh', () => {
       expect(cached.latestVersion).toBe('1.0.0');
       expect(cached.claudeCodeLatestVersion).toBeUndefined();
     });
+
+    it('serializes concurrent refreshes and leaves a complete cache document', async () => {
+      const registryBase = await startFakeRegistry('9.9.9');
+      const statuses = await Promise.all(
+        Array.from({ length: 8 }, () => runScriptAsync(['--refresh-update-cache'], registryBase)),
+      );
+
+      expect(statuses).toEqual(Array(8).fill(0));
+      const cached = JSON.parse(readFileSync(cachePath, 'utf-8')) as Record<string, unknown>;
+      expect(cached.latestVersion).toBe('1.0.0');
+      expect(cached.claudeCodeLatestVersion).toBe('9.9.9');
+      expect(cached.claudeCodeCheckedAt).toBeTypeOf('number');
+    });
   });
 });
