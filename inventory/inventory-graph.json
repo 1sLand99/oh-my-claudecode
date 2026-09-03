@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "44cd2a35e79e6ad004a1127315857eafe6620704",
-    "sourceSha256": "8537b1ec820ad61629cf083d6a29c66ca5b124436938ca0495b48bc9d83e2b3e",
+    "head": "602b283d937f9f5b946849cd6c17c92f223c7d81",
+    "sourceSha256": "fc281637d7fef0741f98c7cc405685443fb5cfc0fc491d71d7c873032fad2532",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "44cd2a35e79e6ad004a1127315857eafe6620704",
-  "sourceSha256": "8537b1ec820ad61629cf083d6a29c66ca5b124436938ca0495b48bc9d83e2b3e",
+  "head": "602b283d937f9f5b946849cd6c17c92f223c7d81",
+  "sourceSha256": "fc281637d7fef0741f98c7cc405685443fb5cfc0fc491d71d7c873032fad2532",
   "counts": {
     "public": {
       "skills": 35,
@@ -24,17 +24,17 @@
     },
     "internal": {
       "hookFiles": 295,
-      "featureFiles": 68,
-      "toolFiles": 60,
-      "libFiles": 37,
+      "featureFiles": 69,
+      "toolFiles": 61,
+      "libFiles": 40,
       "templateHooks": 21,
-      "srcFiles": 1311,
-      "total": 1332
+      "srcFiles": 1326,
+      "total": 1347
     },
     "generated": {
-      "distFiles": 4981,
+      "distFiles": 4955,
       "bridgeFiles": 9,
-      "total": 4990
+      "total": 4964
     },
     "prompt": {
       "promptLikeFiles": 62
@@ -486,6 +486,7 @@
       "src/features/model-routing/scorer.ts",
       "src/features/model-routing/signals.ts",
       "src/features/model-routing/types.ts",
+      "src/features/notepad-wisdom/__tests__/extractor.test.ts",
       "src/features/notepad-wisdom/extractor.ts",
       "src/features/notepad-wisdom/index.ts",
       "src/features/notepad-wisdom/types.ts",
@@ -531,6 +532,7 @@
       "src/tools/lsp-tools.ts",
       "src/tools/lsp/AGENTS.md",
       "src/tools/lsp/__tests__/client-devcontainer.test.ts",
+      "src/tools/lsp/__tests__/client-document-lifecycle.test.ts",
       "src/tools/lsp/__tests__/client-eviction.test.ts",
       "src/tools/lsp/__tests__/client-handle-data.test.ts",
       "src/tools/lsp/__tests__/client-python-boundary.test.ts",
@@ -583,8 +585,11 @@
       "src/lib/__tests__/worktree-cleanup-safety.test.ts",
       "src/lib/__tests__/worktree-paths-foreign-root.test.ts",
       "src/lib/__tests__/worktree-paths-git-probe-failclosed.test.ts",
+      "src/lib/__tests__/worktree-paths-git-timeout.test.ts",
       "src/lib/__tests__/worktree-paths-nongit-anchor.test.ts",
+      "src/lib/__tests__/worktree-paths-split-warning.test.ts",
       "src/lib/__tests__/worktree-paths-superproject-cache.test.ts",
+      "src/lib/__tests__/worktree-paths-toplevel-cache.test.ts",
       "src/lib/__tests__/worktree-paths.test.ts",
       "src/lib/atomic-write.ts",
       "src/lib/env-vars.ts",
@@ -2212,8 +2217,6 @@
       "dist/cli/commands/wait.d.ts.map",
       "dist/cli/commands/wait.js",
       "dist/cli/commands/wait.js.map",
-      "dist/cli/graph.d.ts",
-      "dist/cli/graph.js",
       "dist/cli/hud-watch.d.ts",
       "dist/cli/hud-watch.d.ts.map",
       "dist/cli/hud-watch.js",
@@ -2579,30 +2582,6 @@
       "dist/graph/index.d.ts.map",
       "dist/graph/index.js",
       "dist/graph/index.js.map",
-      "dist/graph/runtime/approval.d.ts",
-      "dist/graph/runtime/approval.js",
-      "dist/graph/runtime/executors/agent.d.ts",
-      "dist/graph/runtime/executors/agent.js",
-      "dist/graph/runtime/executors/authority.d.ts",
-      "dist/graph/runtime/executors/authority.js",
-      "dist/graph/runtime/executors/command.d.ts",
-      "dist/graph/runtime/executors/command.js",
-      "dist/graph/runtime/fence.d.ts",
-      "dist/graph/runtime/fence.js",
-      "dist/graph/runtime/journal.d.ts",
-      "dist/graph/runtime/journal.js",
-      "dist/graph/runtime/progress.d.ts",
-      "dist/graph/runtime/progress.js",
-      "dist/graph/runtime/run-dir.d.ts",
-      "dist/graph/runtime/run-dir.js",
-      "dist/graph/runtime/runner.d.ts",
-      "dist/graph/runtime/runner.js",
-      "dist/graph/runtime/safe-fs.d.ts",
-      "dist/graph/runtime/safe-fs.js",
-      "dist/graph/runtime/store.d.ts",
-      "dist/graph/runtime/store.js",
-      "dist/graph/runtime/types.d.ts",
-      "dist/graph/runtime/types.js",
       "dist/graph/scheduler.d.ts",
       "dist/graph/scheduler.d.ts.map",
       "dist/graph/scheduler.js",
@@ -6218,6 +6197,7 @@
       "src/features/model-routing/scorer.ts",
       "src/features/model-routing/signals.ts",
       "src/features/model-routing/types.ts",
+      "src/features/notepad-wisdom/__tests__/extractor.test.ts",
       "src/features/notepad-wisdom/extractor.ts",
       "src/features/notepad-wisdom/index.ts",
       "src/features/notepad-wisdom/types.ts",
@@ -6263,6 +6243,7 @@
       "src/tools/lsp-tools.ts",
       "src/tools/lsp/AGENTS.md",
       "src/tools/lsp/__tests__/client-devcontainer.test.ts",
+      "src/tools/lsp/__tests__/client-document-lifecycle.test.ts",
       "src/tools/lsp/__tests__/client-eviction.test.ts",
       "src/tools/lsp/__tests__/client-handle-data.test.ts",
       "src/tools/lsp/__tests__/client-python-boundary.test.ts",
@@ -14226,16 +14207,6 @@
         "path": "dist/cli/commands/wait.js.map"
       },
       {
-        "id": "dist/cli/graph.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/cli/graph.d.ts"
-      },
-      {
-        "id": "dist/cli/graph.js",
-        "kind": "generated-dist",
-        "path": "dist/cli/graph.js"
-      },
-      {
         "id": "dist/cli/hud-watch.d.ts",
         "kind": "generated-dist",
         "path": "dist/cli/hud-watch.d.ts"
@@ -16059,126 +16030,6 @@
         "id": "dist/graph/index.js.map",
         "kind": "generated-dist",
         "path": "dist/graph/index.js.map"
-      },
-      {
-        "id": "dist/graph/runtime/approval.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/approval.d.ts"
-      },
-      {
-        "id": "dist/graph/runtime/approval.js",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/approval.js"
-      },
-      {
-        "id": "dist/graph/runtime/executors/agent.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/executors/agent.d.ts"
-      },
-      {
-        "id": "dist/graph/runtime/executors/agent.js",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/executors/agent.js"
-      },
-      {
-        "id": "dist/graph/runtime/executors/authority.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/executors/authority.d.ts"
-      },
-      {
-        "id": "dist/graph/runtime/executors/authority.js",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/executors/authority.js"
-      },
-      {
-        "id": "dist/graph/runtime/executors/command.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/executors/command.d.ts"
-      },
-      {
-        "id": "dist/graph/runtime/executors/command.js",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/executors/command.js"
-      },
-      {
-        "id": "dist/graph/runtime/fence.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/fence.d.ts"
-      },
-      {
-        "id": "dist/graph/runtime/fence.js",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/fence.js"
-      },
-      {
-        "id": "dist/graph/runtime/journal.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/journal.d.ts"
-      },
-      {
-        "id": "dist/graph/runtime/journal.js",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/journal.js"
-      },
-      {
-        "id": "dist/graph/runtime/progress.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/progress.d.ts"
-      },
-      {
-        "id": "dist/graph/runtime/progress.js",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/progress.js"
-      },
-      {
-        "id": "dist/graph/runtime/run-dir.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/run-dir.d.ts"
-      },
-      {
-        "id": "dist/graph/runtime/run-dir.js",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/run-dir.js"
-      },
-      {
-        "id": "dist/graph/runtime/runner.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/runner.d.ts"
-      },
-      {
-        "id": "dist/graph/runtime/runner.js",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/runner.js"
-      },
-      {
-        "id": "dist/graph/runtime/safe-fs.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/safe-fs.d.ts"
-      },
-      {
-        "id": "dist/graph/runtime/safe-fs.js",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/safe-fs.js"
-      },
-      {
-        "id": "dist/graph/runtime/store.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/store.d.ts"
-      },
-      {
-        "id": "dist/graph/runtime/store.js",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/store.js"
-      },
-      {
-        "id": "dist/graph/runtime/types.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/types.d.ts"
-      },
-      {
-        "id": "dist/graph/runtime/types.js",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/types.js"
       },
       {
         "id": "dist/graph/scheduler.d.ts",
@@ -32516,6 +32367,11 @@
         "path": "node:module"
       },
       {
+        "id": "external:node:net",
+        "kind": "external",
+        "path": "node:net"
+      },
+      {
         "id": "external:node:os",
         "kind": "external",
         "path": "node:os"
@@ -32534,6 +32390,11 @@
         "id": "external:node:process",
         "kind": "external",
         "path": "node:process"
+      },
+      {
+        "id": "external:node:stream",
+        "kind": "external",
+        "path": "node:stream"
       },
       {
         "id": "external:node:url",
@@ -34001,6 +33862,16 @@
         "path": "src/__tests__/file-lock.test.ts"
       },
       {
+        "id": "src/__tests__/fixtures/hung-hooks/detached-stdout-orphan.cjs",
+        "kind": "src",
+        "path": "src/__tests__/fixtures/hung-hooks/detached-stdout-orphan.cjs"
+      },
+      {
+        "id": "src/__tests__/fixtures/hung-hooks/epipe-exit-parent.cjs",
+        "kind": "src",
+        "path": "src/__tests__/fixtures/hung-hooks/epipe-exit-parent.cjs"
+      },
+      {
         "id": "src/__tests__/fixtures/hung-hooks/hung-grandchild.cjs",
         "kind": "src",
         "path": "src/__tests__/fixtures/hung-hooks/hung-grandchild.cjs"
@@ -34009,6 +33880,11 @@
         "id": "src/__tests__/fixtures/hung-hooks/hung-parent.cjs",
         "kind": "src",
         "path": "src/__tests__/fixtures/hung-hooks/hung-parent.cjs"
+      },
+      {
+        "id": "src/__tests__/fixtures/hung-hooks/success-parent-stdout-orphan.cjs",
+        "kind": "src",
+        "path": "src/__tests__/fixtures/hung-hooks/success-parent-stdout-orphan.cjs"
       },
       {
         "id": "src/__tests__/fixtures/sample-transcript.jsonl",
@@ -34284,6 +34160,11 @@
         "id": "src/__tests__/hud/transcript-agent-lifecycle.test.ts",
         "kind": "src",
         "path": "src/__tests__/hud/transcript-agent-lifecycle.test.ts"
+      },
+      {
+        "id": "src/__tests__/hud/update-hint.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/hud/update-hint.test.ts"
       },
       {
         "id": "src/__tests__/hud/usage-api-lock.test.ts",
@@ -34641,6 +34522,11 @@
         "path": "src/__tests__/project-memory-merge.test.ts"
       },
       {
+        "id": "src/__tests__/project-memory-posttool.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/project-memory-posttool.test.ts"
+      },
+      {
         "id": "src/__tests__/project-session-manager-review-worktree.test.ts",
         "kind": "src",
         "path": "src/__tests__/project-session-manager-review-worktree.test.ts"
@@ -34831,6 +34717,11 @@
         "path": "src/__tests__/run-cjs-graceful-fallback.test.ts"
       },
       {
+        "id": "src/__tests__/run-cjs-windows-stdio-contract.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/run-cjs-windows-stdio-contract.test.ts"
+      },
+      {
         "id": "src/__tests__/runtime-guidance-plan-ralph.test.ts",
         "kind": "src",
         "path": "src/__tests__/runtime-guidance-plan-ralph.test.ts"
@@ -34889,6 +34780,16 @@
         "id": "src/__tests__/session-start-timeout-cleanup.test.ts",
         "kind": "src",
         "path": "src/__tests__/session-start-timeout-cleanup.test.ts"
+      },
+      {
+        "id": "src/__tests__/session-start-update-check.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/session-start-update-check.test.ts"
+      },
+      {
+        "id": "src/__tests__/session-start-update-refresh.test.ts",
+        "kind": "src",
+        "path": "src/__tests__/session-start-update-refresh.test.ts"
       },
       {
         "id": "src/__tests__/session-summary-pid-tracking.test.ts",
@@ -35959,6 +35860,11 @@
         "id": "src/features/model-routing/types.ts",
         "kind": "feature",
         "path": "src/features/model-routing/types.ts"
+      },
+      {
+        "id": "src/features/notepad-wisdom/__tests__/extractor.test.ts",
+        "kind": "feature",
+        "path": "src/features/notepad-wisdom/__tests__/extractor.test.ts"
       },
       {
         "id": "src/features/notepad-wisdom/extractor.ts",
@@ -37926,6 +37832,11 @@
         "path": "src/hud/elements/token-usage.ts"
       },
       {
+        "id": "src/hud/elements/update-hint.ts",
+        "kind": "src",
+        "path": "src/hud/elements/update-hint.ts"
+      },
+      {
         "id": "src/hud/index.ts",
         "kind": "src",
         "path": "src/hud/index.ts"
@@ -38246,14 +38157,29 @@
         "path": "src/lib/__tests__/worktree-paths-git-probe-failclosed.test.ts"
       },
       {
+        "id": "src/lib/__tests__/worktree-paths-git-timeout.test.ts",
+        "kind": "lib",
+        "path": "src/lib/__tests__/worktree-paths-git-timeout.test.ts"
+      },
+      {
         "id": "src/lib/__tests__/worktree-paths-nongit-anchor.test.ts",
         "kind": "lib",
         "path": "src/lib/__tests__/worktree-paths-nongit-anchor.test.ts"
       },
       {
+        "id": "src/lib/__tests__/worktree-paths-split-warning.test.ts",
+        "kind": "lib",
+        "path": "src/lib/__tests__/worktree-paths-split-warning.test.ts"
+      },
+      {
         "id": "src/lib/__tests__/worktree-paths-superproject-cache.test.ts",
         "kind": "lib",
         "path": "src/lib/__tests__/worktree-paths-superproject-cache.test.ts"
+      },
+      {
+        "id": "src/lib/__tests__/worktree-paths-toplevel-cache.test.ts",
+        "kind": "lib",
+        "path": "src/lib/__tests__/worktree-paths-toplevel-cache.test.ts"
       },
       {
         "id": "src/lib/__tests__/worktree-paths.test.ts",
@@ -39471,6 +39397,11 @@
         "path": "src/team/__tests__/worker-launch-posix-transport.test.ts"
       },
       {
+        "id": "src/team/__tests__/worker-launch-wrapper-posix.test.ts",
+        "kind": "src",
+        "path": "src/team/__tests__/worker-launch-wrapper-posix.test.ts"
+      },
+      {
         "id": "src/team/__tests__/worker-restart.test.ts",
         "kind": "src",
         "path": "src/team/__tests__/worker-restart.test.ts"
@@ -39964,6 +39895,11 @@
         "id": "src/tools/lsp/__tests__/client-devcontainer.test.ts",
         "kind": "tool",
         "path": "src/tools/lsp/__tests__/client-devcontainer.test.ts"
+      },
+      {
+        "id": "src/tools/lsp/__tests__/client-document-lifecycle.test.ts",
+        "kind": "tool",
+        "path": "src/tools/lsp/__tests__/client-document-lifecycle.test.ts"
       },
       {
         "id": "src/tools/lsp/__tests__/client-eviction.test.ts",
@@ -42419,6 +42355,11 @@
       },
       {
         "from": "scripts/run.cjs",
+        "to": "external:stream",
+        "kind": "imports"
+      },
+      {
+        "from": "scripts/run.cjs",
         "to": "external:url",
         "kind": "imports"
       },
@@ -43408,6 +43349,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/bounded-git-timeout-parity.test.ts",
+        "to": "scripts/run.cjs",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/bridge-help-question-regex.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -43783,11 +43729,6 @@
         "kind": "type-imports"
       },
       {
-        "from": "src/__tests__/context-usage.test.ts",
-        "to": "src/lib/worktree-paths.ts",
-        "kind": "imports"
-      },
-      {
         "from": "src/__tests__/daemon-module-path.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -44043,6 +43984,21 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/fixtures/hung-hooks/detached-stdout-orphan.cjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/fixtures/hung-hooks/epipe-exit-parent.cjs",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/fixtures/hung-hooks/epipe-exit-parent.cjs",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/fixtures/hung-hooks/hung-grandchild.cjs",
         "to": "external:node:fs",
         "kind": "imports"
@@ -44055,6 +44011,11 @@
       {
         "from": "src/__tests__/fixtures/hung-hooks/hung-parent.cjs",
         "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/fixtures/hung-hooks/success-parent-stdout-orphan.cjs",
+        "to": "external:node:child_process",
         "kind": "imports"
       },
       {
@@ -45256,6 +45217,31 @@
         "from": "src/__tests__/hud/transcript-agent-lifecycle.test.ts",
         "to": "src/hud/transcript.ts",
         "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/update-hint.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/update-hint.test.ts",
+        "to": "src/hud/elements/update-hint.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/update-hint.test.ts",
+        "to": "src/hud/render.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/update-hint.test.ts",
+        "to": "src/hud/types.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/hud/update-hint.test.ts",
+        "to": "src/hud/types.ts",
+        "kind": "type-imports"
       },
       {
         "from": "src/__tests__/hud/usage-api-lock.test.ts",
@@ -46858,6 +46844,31 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/project-memory-posttool.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/project-memory-posttool.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/project-memory-posttool.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/project-memory-posttool.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/project-memory-posttool.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/project-session-manager-review-worktree.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -47808,6 +47819,46 @@
         "kind": "imports"
       },
       {
+        "from": "src/__tests__/run-cjs-graceful-fallback.test.ts",
+        "to": "scripts/run.cjs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-windows-stdio-contract.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-windows-stdio-contract.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-windows-stdio-contract.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-windows-stdio-contract.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-windows-stdio-contract.test.ts",
+        "to": "external:node:stream",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-windows-stdio-contract.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/run-cjs-windows-stdio-contract.test.ts",
+        "to": "scripts/run.cjs",
+        "kind": "imports"
+      },
+      {
         "from": "src/__tests__/runtime-guidance-plan-ralph.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -48099,6 +48150,76 @@
       },
       {
         "from": "src/__tests__/session-start-timeout-cleanup.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-check.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-check.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-check.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-check.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-check.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-refresh.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-refresh.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-refresh.test.ts",
+        "to": "external:node:http",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-refresh.test.ts",
+        "to": "external:node:http",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-refresh.test.ts",
+        "to": "external:node:net",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-refresh.test.ts",
+        "to": "external:node:net",
+        "kind": "type-imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-refresh.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-refresh.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/session-start-update-refresh.test.ts",
         "to": "external:vitest",
         "kind": "imports"
       },
@@ -49255,6 +49376,11 @@
       {
         "from": "src/__tests__/windows-prompt-hook-runner.test.ts",
         "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/__tests__/windows-prompt-hook-runner.test.ts",
+        "to": "scripts/run.cjs",
         "kind": "imports"
       },
       {
@@ -52868,6 +52994,16 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/features/notepad-wisdom/__tests__/extractor.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/features/notepad-wisdom/__tests__/extractor.test.ts",
+        "to": "src/features/notepad-wisdom/extractor.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/features/notepad-wisdom/extractor.ts",
         "to": "src/features/notepad-wisdom/types.ts",
         "kind": "type-imports"
@@ -53559,11 +53695,6 @@
       },
       {
         "from": "src/graph/__tests__/runtime/journal.test.ts",
-        "to": "src/graph/runtime/fence.ts",
-        "kind": "imports"
-      },
-      {
-        "from": "src/graph/__tests__/runtime/journal.test.ts",
         "to": "src/graph/runtime/journal.ts",
         "kind": "imports"
       },
@@ -53774,11 +53905,6 @@
       },
       {
         "from": "src/graph/__tests__/runtime/safe-fs.test.ts",
-        "to": "external:child_process",
-        "kind": "imports"
-      },
-      {
-        "from": "src/graph/__tests__/runtime/safe-fs.test.ts",
         "to": "external:fs",
         "kind": "imports"
       },
@@ -53825,11 +53951,6 @@
       {
         "from": "src/graph/__tests__/runtime/store.test.ts",
         "to": "external:vitest",
-        "kind": "imports"
-      },
-      {
-        "from": "src/graph/__tests__/runtime/store.test.ts",
-        "to": "src/graph/runtime/fence.ts",
         "kind": "imports"
       },
       {
@@ -54098,6 +54219,11 @@
         "kind": "imports"
       },
       {
+        "from": "src/graph/runtime/run-dir.ts",
+        "to": "src/lib/atomic-write.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/graph/runtime/runner.ts",
         "to": "external:path",
         "kind": "imports"
@@ -54206,11 +54332,6 @@
         "from": "src/graph/runtime/store.ts",
         "to": "src/lib/atomic-write.ts",
         "kind": "imports"
-      },
-      {
-        "from": "src/graph/runtime/store.ts",
-        "to": "src/lib/atomic-write.ts",
-        "kind": "type-imports"
       },
       {
         "from": "src/graph/runtime/types.ts",
@@ -62628,6 +62749,11 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/hud/elements/update-hint.ts",
+        "to": "src/hud/colors.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/hud/index.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -62940,6 +63066,11 @@
       {
         "from": "src/hud/render.ts",
         "to": "src/hud/elements/token-usage.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/hud/render.ts",
+        "to": "src/hud/elements/update-hint.ts",
         "kind": "imports"
       },
       {
@@ -64518,6 +64649,36 @@
         "kind": "imports"
       },
       {
+        "from": "src/lib/__tests__/worktree-paths-git-timeout.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-git-timeout.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-git-timeout.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-git-timeout.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-git-timeout.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-git-timeout.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/lib/__tests__/worktree-paths-nongit-anchor.test.ts",
         "to": "external:node:child_process",
         "kind": "imports"
@@ -64543,6 +64704,36 @@
         "kind": "imports"
       },
       {
+        "from": "src/lib/__tests__/worktree-paths-split-warning.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-split-warning.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-split-warning.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-split-warning.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-split-warning.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-split-warning.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/lib/__tests__/worktree-paths-superproject-cache.test.ts",
         "to": "external:child_process",
         "kind": "imports"
@@ -64564,6 +64755,41 @@
       },
       {
         "from": "src/lib/__tests__/worktree-paths-superproject-cache.test.ts",
+        "to": "src/lib/worktree-paths.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-toplevel-cache.test.ts",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-toplevel-cache.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-toplevel-cache.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-toplevel-cache.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-toplevel-cache.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-toplevel-cache.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/__tests__/worktree-paths-toplevel-cache.test.ts",
         "to": "src/lib/worktree-paths.ts",
         "kind": "imports"
       },
@@ -70663,6 +70889,41 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/team/__tests__/worker-launch-wrapper-posix.test.ts",
+        "to": "external:node:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/worker-launch-wrapper-posix.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/worker-launch-wrapper-posix.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/worker-launch-wrapper-posix.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/worker-launch-wrapper-posix.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/worker-launch-wrapper-posix.test.ts",
+        "to": "src/team/worker-launch-ack.ts",
+        "kind": "imports"
+      },
+      {
+        "from": "src/team/__tests__/worker-launch-wrapper-posix.test.ts",
+        "to": "src/team/worker-launch-ack.ts",
+        "kind": "type-imports"
+      },
+      {
         "from": "src/team/__tests__/worker-restart.test.ts",
         "to": "external:fs",
         "kind": "imports"
@@ -74273,6 +74534,36 @@
         "kind": "type-imports"
       },
       {
+        "from": "src/tools/lsp/__tests__/client-document-lifecycle.test.ts",
+        "to": "external:node:events",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/lsp/__tests__/client-document-lifecycle.test.ts",
+        "to": "external:node:fs",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/lsp/__tests__/client-document-lifecycle.test.ts",
+        "to": "external:node:os",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/lsp/__tests__/client-document-lifecycle.test.ts",
+        "to": "external:node:path",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/lsp/__tests__/client-document-lifecycle.test.ts",
+        "to": "external:vitest",
+        "kind": "imports"
+      },
+      {
+        "from": "src/tools/lsp/__tests__/client-document-lifecycle.test.ts",
+        "to": "src/tools/lsp/client.ts",
+        "kind": "imports"
+      },
+      {
         "from": "src/tools/lsp/__tests__/client-eviction.test.ts",
         "to": "external:vitest",
         "kind": "imports"
@@ -76179,6 +76470,11 @@
       },
       {
         "from": "templates/hooks/session-start.mjs",
+        "to": "external:child_process",
+        "kind": "imports"
+      },
+      {
+        "from": "templates/hooks/session-start.mjs",
         "to": "external:fs",
         "kind": "imports"
       },
@@ -76769,12 +77065,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6866,
-      "edgeCount": 7226,
-      "importEdgeCount": 5935,
+      "nodeCount": 6857,
+      "edgeCount": 7298,
+      "importEdgeCount": 6004,
       "registerEdgeCount": 56
     }
   },
-  "inventorySha256": "f5ea9ebf29ba491f17b39431660e07f71eb3d78399d481c1c2b00fc34cf2ab50",
-  "manifestSha256": "1cc6d05a3c05a7f5e43e9080ba42677913d2afd0c4703650b9a3385c3c2b0e39"
+  "inventorySha256": "59ad647e8e80a683726c3483953a07d3d29eb4e85818137f15e518ce8d2985d0",
+  "manifestSha256": "19b0d0d401f7370bdbbccada2990156225f73810bc385397f8fc84b038149a43"
 }
