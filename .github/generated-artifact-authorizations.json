@@ -13746,6 +13746,3476 @@
           "previousFilename": null
         }
       ]
+    },
+    {
+      "pullNumber": 3951,
+      "targetRef": "main",
+      "mergeBaseSha": "e9e8fa3847ce0b3529b84d895e841988c7308f3d",
+      "headSha": "7a7eaad2f1ac18fb8c8ddf13ecede2ad9cd3e162",
+      "owner": "Yeachan-Heo",
+      "expiresAt": "2026-10-31T00:00:00.000Z",
+      "generatedDelta": {
+        "count": 576,
+        "sha256": "872b47c04f1041acbdd1a8771c31cecf8dccd3e555909967dac6f0bc6cc0f3d4"
+      },
+      "generatedFiles": [
+        {
+          "status": "modified",
+          "filename": "bridge/claude-md-coordinator.cjs",
+          "sha": "a1e6198a21d8c706fdc14eb63d73b9880e986ad9",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "bridge/cli.cjs",
+          "sha": "e004caf280dd2e010188aeb2435afeebd492e39f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "bridge/mcp-server.cjs",
+          "sha": "ba2358f3946d3c8fbbcfc22fadf04ed090268c18",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "bridge/runtime-cli.cjs",
+          "sha": "48241cbfa18ad6e2f7a0928eda5b30815500500b",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "bridge/team-bridge.cjs",
+          "sha": "e57d58256e0ae0b94405ee2657af9534b57a375d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "bridge/team-mcp.cjs",
+          "sha": "7971714cbb73b64a5b91740ebbbf5207bec8c484",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "bridge/team.js",
+          "sha": "7140f87d3986a82e697e2a9e5636e11a63f11e06",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/bounded-git-timeout-parity.test.js",
+          "sha": "ff85cc40dbbbc132f34c1c1d16300f409a40eda6",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/bounded-git-timeout-parity.test.js.map",
+          "sha": "0d481bcca941478964febee6be4dfdd8a00a183f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/config-dir.test.js",
+          "sha": "b7bda347633a2b40f83447db900adecbd189a9d7",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/config-dir.test.js.map",
+          "sha": "f690d6546cad09b135a3f762267b848df648ff14",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/context-guard-stop.test.js",
+          "sha": "88015dfe89e7b3bbae066e2a80b1649ecd717d55",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/context-guard-stop.test.js.map",
+          "sha": "0eebaabc8bb7bd3c38eb2bc5aff7e8f22bb74c6b",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/context-usage.test.js",
+          "sha": "1baac3d036341d4e28a5d7929a0f4d419da6faca",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/context-usage.test.js.map",
+          "sha": "16e1ebb63a19a7731a598ace1f9a66d9c876da7f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/delegation-enforcement-levels.test.js",
+          "sha": "cb995dcc6b11fb8083dadd3a249a1f5f938831e2",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/delegation-enforcement-levels.test.js.map",
+          "sha": "cd5178421ba4b6a74e356b77759c10ab1da25e58",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/doctor-conflicts.test.js",
+          "sha": "a2c97a093fcaa64402942c4f62f99bdf008e042c",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/doctor-conflicts.test.js.map",
+          "sha": "f7a73ce1aec523a11635b4a77bb919ba807b1d7c",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/hooks.test.js",
+          "sha": "7145fb594a39b0fabcdde99f1e38a40bb5f4c1f2",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/hooks.test.js.map",
+          "sha": "ea979375e35cb9adda8483f4a82062cef2726e63",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/hooks/learner/bridge.test.js",
+          "sha": "99b1accab18d3fb3932b23916a4b03855bb3a55c",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/hooks/learner/bridge.test.js.map",
+          "sha": "a323f54cb4faf1d37d42b7b1007caf86ac899769",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/hooks/session-end-cleanup.test.js",
+          "sha": "c6830345a505da2f63975c77badec0e30518f975",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/hooks/session-end-cleanup.test.js.map",
+          "sha": "5151b99e9873c65fbae5be406a96443b424739bb",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/hud-cache-wrapper.test.js",
+          "sha": "ade01088bc58f1b7910e6437189d0aa505b1426f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/hud-cache-wrapper.test.js.map",
+          "sha": "f1bc9d4bc934d20cdde6a58a93f7fe4bc9c8e87b",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/hud/mission-board-state.test.js",
+          "sha": "f6d9cf3fd35f6e615780dbd367c37848aa4b1ca6",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/hud/mission-board-state.test.js.map",
+          "sha": "c9d46dc3a7fbc3214580e31d1b02f51d146d77f6",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/hud/omc-state.test.js",
+          "sha": "9f220b49a71a50a894dc6bca2ab70b41e3cc5698",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/hud/omc-state.test.js.map",
+          "sha": "2a76283eb4d64ce8531837b78d1b893e4de1ce24",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/hud/stdin.test.js",
+          "sha": "b42bc7ed7f5716cf9b18c16bb02ab9c25b6c93ce",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/hud/stdin.test.js.map",
+          "sha": "1b03d673a675b89eb308f903e1e24affcb5729f5",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/hud/watch-mode-init.test.js",
+          "sha": "c23d010a5bcffdd094e70f3344c71df41dc4ca8c",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/hud/watch-mode-init.test.js.map",
+          "sha": "efa7a63d479a97b126ac337faad205822c61a5cd",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/issue-2652-runtime-wiring-and-output-contract.test.js",
+          "sha": "a47b8b7a33af23370ffbd183a60f38efd0e690a6",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/issue-2652-runtime-wiring-and-output-contract.test.js.map",
+          "sha": "6cd271c31c42efc9080e7a64294a5dc9224dde73",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/keyword-detector-echo-guard.test.js",
+          "sha": "b1b5ff0a83fd91396f72efc0768b1ef236ee455a",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/keyword-detector-echo-guard.test.js.map",
+          "sha": "6663509816bd5747b4a6f3371ff87b45b6cbffdd",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/keyword-detector-script.test.js",
+          "sha": "6e7857d73d4097907b673838079fbfe8d952ad85",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/keyword-detector-script.test.js.map",
+          "sha": "4347e4192d1b914a20b72a23d3d4f3ab538805df",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/live-data.test.js",
+          "sha": "4df0adcae813a1b688f71c63c5d7ae1c1a044e2d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/live-data.test.js.map",
+          "sha": "c5f775d554290bb256c073382f273fdc635df369",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/notepad.test.js",
+          "sha": "fb6b2713b693f67752f47d3595483f47817ee4e2",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/notepad.test.js.map",
+          "sha": "93ed00962b1191ea254c2838e03329c11116d71c",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/npm-package-bin-surface.test.js",
+          "sha": "def6622b8a16e664e529abeb99a19ba30006e0aa",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/npm-package-bin-surface.test.js.map",
+          "sha": "c1d917405eb8f84ae7ab566f3408ef10304891de",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/omc-tools-server.test.js",
+          "sha": "8b5ea9fa3e084fd23f1859a18391277e1aded04c",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/pipeline-orchestrator.test.js",
+          "sha": "f213aff7211ab51dd910fb3a8f0cae72a1af838a",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/pipeline-orchestrator.test.js.map",
+          "sha": "713621ae98bccdf2d690fe1dc741c0cd50da5865",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/pre-tool-enforcer.test.js",
+          "sha": "d9d0a09a975540e9dc0b0fefa90b4344dafabbd0",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/pre-tool-enforcer.test.js.map",
+          "sha": "e248f585d4ab1834bb63e859b7cc4d1dc7b40f9d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/preemptive-compaction-hook.test.js",
+          "sha": "8ea7bb36e872235b7e06c0a0b72ce8689eb710f5",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/preemptive-compaction-hook.test.js.map",
+          "sha": "370766482a4b6cf3ded8851d5060f600a64e7427",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/ralph-prd-amendment.test.js",
+          "sha": "558c3d29a8608afd3112a551e14d1226cde9a29b",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/ralph-prd-amendment.test.js.map",
+          "sha": "df912129f6e789a0a4aef115a5ea2ceba60d6771",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/ralph-prd-mandatory.test.js",
+          "sha": "12ceddb7b88f7f399779e44a180ca5307feda9da",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/ralph-prd-mandatory.test.js.map",
+          "sha": "c8d51468c364b186a74b4b2d9b45df9e9511c331",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/ralph-prd-stale.test.js",
+          "sha": "1d790e06259dee69981e8acfbdcccd5d56fc57d5",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/ralph-prd-stale.test.js.map",
+          "sha": "09f46a19074039144001451e81e0db90ace4b7a5",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/ralph-prd.test.js",
+          "sha": "f05faca5c6274895fb9dd1944e0bf8ee7bc54ae0",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/ralph-prd.test.js.map",
+          "sha": "27dd2b793c0a7bb7765b7e6dd098885fcb67b049",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/ralph-progress.test.js",
+          "sha": "7008dc7c7fbbfccffbb47d1782e34fc677482a53",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/ralph-progress.test.js.map",
+          "sha": "8a4889d178e821cc2995937cc4b139d7dc7e33b5",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/rate-limit-wait/daemon-bootstrap.test.js",
+          "sha": "30aa2770893a9b4d939f73df70dd7ac26b25cfb4",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/rate-limit-wait/daemon-bootstrap.test.js.map",
+          "sha": "54e05e1dfeabe1122e2685de8cea90de8d156908",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/rate-limit-wait/rate-limit-monitor.test.js",
+          "sha": "4ea9ed4ef600130149bcaa17f2d9bacdbcc24fad",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/rate-limit-wait/rate-limit-monitor.test.js.map",
+          "sha": "f353b7d66f977f4a62f4073cb804d94f2227572b",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/release-boundary.test.js",
+          "sha": "14cd5a08031cdd20c2ca692a2749123ce88ca11e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/release-boundary.test.js.map",
+          "sha": "f42dcdec76aa6431a3a71d8e746472183d3a8d32",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/release-generation.test.js",
+          "sha": "b742c13e88de2bb2dde71bc58ec26dd8e12e362f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/release-generation.test.js.map",
+          "sha": "8df10e3c1cfb944bdc548942224bfcc4f6ed08b2",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/run-cjs-generic-timeout.test.js",
+          "sha": "41e8efb616cda57771225a6b6cf930b8e495daa3",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/run-cjs-generic-timeout.test.js.map",
+          "sha": "25714b689ce544da9d0ad0524e65cf877339a81e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/run-cjs-graceful-fallback.test.js",
+          "sha": "56982e8e6c090fd00057db18798edbcc2b9ebd85",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/run-cjs-graceful-fallback.test.js.map",
+          "sha": "08452b9d48286b70047e0544b511754363af811f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/session-end-process-exit.test.js",
+          "sha": "853da49570d7f22774120c96c8decab057b2da6a",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/session-end-process-exit.test.js.map",
+          "sha": "63453b838aec4dd846928b5c2c718962f6149c02",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/session-history-search.test.js",
+          "sha": "74f63d0a925af2f2aa236e0de99bfef38881efc2",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/session-history-search.test.js.map",
+          "sha": "bee462371a2596824be3930022750a49197a4408",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/session-start-precompact-restore.test.js",
+          "sha": "0a0b984e4f813750c6019f7779471e6613c54a58",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/session-start-precompact-restore.test.js.map",
+          "sha": "2541992e9ab094b563a1638697f8d30e3de0c2f9",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/session-start-script-context.test.js",
+          "sha": "1a0cf3afbe6e35bc906f867a5d8c11f1fba5ebf1",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/session-start-script-context.test.js.map",
+          "sha": "127818463449e108c092a6bc58b497bff9bdbff9",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/session-start-timeout-cleanup.test.js",
+          "sha": "acccc18c97a53ddb354502bc0ef6b8419fd3890d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/session-start-timeout-cleanup.test.js.map",
+          "sha": "37cf3081f28a1788fd28b76b18ceb3109aacc663",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/shared-memory-concurrency.test.js",
+          "sha": "9cfc5efae2740655b881908a3aaf58bc2406669a",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/shared-memory-concurrency.test.js.map",
+          "sha": "29f18ef8bcbfd435489d919f65d91d5a3d655ec8",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/skills.test.js",
+          "sha": "f0aeb69e0e1d160e5fe70dac01294b74fdab8896",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/skills.test.js.map",
+          "sha": "0f4daf9852318aa0738ecd11acc0d336cdae9523",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/smoke-pipeline-edge.test.js",
+          "sha": "078474a015af41d49f9df29caf8a30ec546d0226",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/smoke-pipeline-edge.test.js.map",
+          "sha": "262e33e9dec5fa50fcdbf3829b128c69e8300c13",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/smoke-slack-and-state.test.js",
+          "sha": "64f4c095cac9a467244f3de8b1842f93d6c420ab",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/smoke-slack-and-state.test.js.map",
+          "sha": "3853a2262362aea39964e2e5a1cb213f06fc8b8b",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/state-root-resolution.test.js",
+          "sha": "aabfc4c1f740ffb49ebcac65efe7bce5ca18760f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/state-root-resolution.test.js.map",
+          "sha": "c405ee212d92de9116979e9c5552b7e8be1e5050",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/team-ops-task-locking.test.js",
+          "sha": "3eb88f38f924fb668938c11e1fdd27e9224e4ad6",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/team-ops-task-locking.test.js.map",
+          "sha": "cb8231a826fbc6f802abbed2b765710ba057ecdc",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/team-update-task-locking.test.js",
+          "sha": "5ad5a0a8d3b06fd231eb76427aa81acebe78c376",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/team-update-task-locking.test.js.map",
+          "sha": "c138fd75c3a3af3791f161cd8bcbe626fa38b3b9",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/tier0-contracts.test.js",
+          "sha": "1dd1c31b2d3e6cc2d34b48dfc1cfc5601a9b7767",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/tier0-contracts.test.js.map",
+          "sha": "0f3a0dfe7253580ebc1454f43c6fece23dba0f13",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/wiki-hook-output-format.test.js",
+          "sha": "e6ecaaa84f1ea499dcb950f8297bf0d9ec96b17e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/wiki-hook-output-format.test.js.map",
+          "sha": "c694c83f73b75e28a56eb07c1478e50b042cb2fc",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/windows-prompt-hook-runner.test.js",
+          "sha": "e610b05108b707dc3308c79002bd9b04a7e3eebf",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/windows-prompt-hook-runner.test.js.map",
+          "sha": "a31b4a7782be066febf59bd312e1e65df9ef7efd",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/workflow-profile-activation-script.test.js",
+          "sha": "9b5659af059f6f4838bbe994e6e0049f5ca28afb",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/__tests__/workflow-profile-activation-script.test.js.map",
+          "sha": "59b29539b68d40d9d9168dfbbdf38c51bc4e1330",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/alias-retirement/__tests__/registry.test.js",
+          "sha": "a077a460171ec56453d14bb9673a8dd049479888",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/alias-retirement/__tests__/registry.test.js.map",
+          "sha": "be88e771e3eb2b7a4d6a8bc4730050c15e1a350f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/autoresearch/runtime.js.map",
+          "sha": "b535676e81b67ec34478cb4842783a8329935939",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/cli/__tests__/autoresearch-guided.test.js",
+          "sha": "9b185b4e955702621b4f7028e3e380f71f19fe2b",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/cli/__tests__/autoresearch-guided.test.js.map",
+          "sha": "89695d28826c49f80a8611b02161deace14a2acb",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/cli/__tests__/self-improve-paths.test.js",
+          "sha": "34f1d005ad3558e65d3068af089645a9351bcc38",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/cli/__tests__/self-improve-paths.test.js.map",
+          "sha": "399ce26ea1323e7d723f3b062df01ec19142072a",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/cli/__tests__/team.test.js",
+          "sha": "b25d19cdf7d57d95e642deea5e163ad8dda4e3c1",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/cli/__tests__/team.test.js.map",
+          "sha": "1981f459c6d0e1426307a5c7dee2fa5a722c5560",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/cli/commands/__tests__/team.test.js",
+          "sha": "5324b1158870b52788ac35eb11331c1dd0e9e768",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/cli/commands/__tests__/team.test.js.map",
+          "sha": "814bd3261911da25ac4201871f670b0220931907",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/cli/commands/__tests__/ultragoal.test.js",
+          "sha": "eb1fb2ad6e04bd98f432ad466f00e5da4c8572f1",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/cli/commands/__tests__/ultragoal.test.js.map",
+          "sha": "f2a0abe9642bce04a1274ac6ab7115df4dbd9236",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/cli/commands/doctor-conflicts.d.ts.map",
+          "sha": "18653e6b496d9f8b0df7f9c820995cdaf137a211",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/cli/commands/doctor-conflicts.js.map",
+          "sha": "f3d74878d4cd502e28e5aefc2def1632b860c267",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/cli/commands/team.d.ts.map",
+          "sha": "3649cfded0fbfd2a72d1d8aed5ed5ea9665a7da3",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/cli/commands/team.js.map",
+          "sha": "a2ebc58f3baa614199c0d9aa836f89aa6ab93e52",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/cli/index.d.ts.map",
+          "sha": "1c6e937dd9247a36dd691c07b25e3341957cb4a1",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/cli/index.js.map",
+          "sha": "0ab2534d911072923b72c3ef07f4557517cb40e9",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/config/__tests__/loader.test.js",
+          "sha": "d068a4889e1473123788f516c25b291e6dccf9c2",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/config/__tests__/loader.test.js.map",
+          "sha": "d47e09126280cdb063e87a76a5d31bdc31145143",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/config/loader.d.ts.map",
+          "sha": "4c8ef75a85705b44c4f597f708c1b3ffe32bdbb5",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/config/loader.js.map",
+          "sha": "3ded984e9200ba8966922dd6f72b75d2519599b2",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/features/__tests__/magic-keywords.test.js",
+          "sha": "a63700b68399c22e9572d137e28045c075bd5e36",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/features/__tests__/magic-keywords.test.js.map",
+          "sha": "fd8028855c58a9f3fb39370865b6972a747686db",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/features/magic-keywords.d.ts.map",
+          "sha": "2d2354dc51b7234e909ec1a5d2b425be3e6f61a9",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/features/magic-keywords.js.map",
+          "sha": "32fd44d0a44a4550aac2032c6c2af2a511e5a214",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/features/notepad-wisdom/extractor.js",
+          "sha": "8408aabd503ab650e76adc5715c72b3ad105817b",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/features/notepad-wisdom/extractor.js.map",
+          "sha": "40b10e8f72c83d27dee04fed908aae8fb8e225f9",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/features/rate-limit-wait/daemon.d.ts.map",
+          "sha": "c44bb8556a587ec6821ba9e54a819e03257a615d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/features/rate-limit-wait/daemon.js.map",
+          "sha": "5333cc64d4c43abf8d17d19b60c5d18ee869bc16",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/features/rate-limit-wait/rate-limit-monitor.d.ts.map",
+          "sha": "c8f12fefcb06f11d0df461b3c8800eb05cb77143",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/features/rate-limit-wait/rate-limit-monitor.js.map",
+          "sha": "7b16cf5c1108d1524bfd320b482a9a009d319ebc",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/features/session-history-search/index.d.ts",
+          "sha": "98a3ae8358183e69f8354c205d1f3c6f34838560",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/features/session-history-search/index.d.ts.map",
+          "sha": "ab0d2314b4c6ae40b37ba28eae3d4ae35722fbf1",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/features/session-history-search/index.js",
+          "sha": "ecd1d54d5e806dc7a43f9ff26b026bdff46ee781",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/features/session-history-search/index.js.map",
+          "sha": "86815602ea030171b7622eccd273e826f59e5430",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/__tests__/bridge-routing.test.js",
+          "sha": "3bcc4675c342bf3fb92ec0545aee921f0a0625e9",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/__tests__/bridge-routing.test.js.map",
+          "sha": "b673b4d93934209b4a6610c77f660a09453f171d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/__tests__/bridge-security.test.js",
+          "sha": "770982aba1fe860ec4bbca1261246b56e977d0cd",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/__tests__/bridge-security.test.js.map",
+          "sha": "c4a87be10e15263b1873b45d8bb30b21c48c2f51",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/__tests__/pre-tool-use-template-source-ext.test.js",
+          "sha": "c875d6860cff2da90a4a53490f7e3eb774232bbc",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/__tests__/pre-tool-use-template-source-ext.test.js.map",
+          "sha": "c4fd2617c6889501c8e627a2756e8e71e4230c63",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/__tests__/precompact-restore.test.js",
+          "sha": "7df2fa20f0a0018aab058b7ea9ecfad56ed0417f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/__tests__/precompact-restore.test.js.map",
+          "sha": "806a7f9ff8517b0d3d21d6c998ecda3ddfad0234",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/__tests__/team-dispatch-prompt-readiness.test.js",
+          "sha": "04c41c7d2a8386844cfc0c567042708d356abb71",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/__tests__/team-dispatch-prompt-readiness.test.js.map",
+          "sha": "69c22532e89668efa5624153328045bc840091fc",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/__tests__/cancel.test.js",
+          "sha": "01f6a017b3afa8dcc889025f09d31bd3a82e9180",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/__tests__/cancel.test.js.map",
+          "sha": "fa3e49c03a90390fd3236d788f41b6e5eb48a757",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/__tests__/pipeline.test.js",
+          "sha": "d05d18e93247136a3fc86fede783706a6e417d87",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/__tests__/pipeline.test.js.map",
+          "sha": "788efaf9fbe3c0b7e43a054b4cec6f619e5bdcd6",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/__tests__/prompts.test.js",
+          "sha": "77cc4f6f617143393f7db6741349952597811f1c",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/__tests__/prompts.test.js.map",
+          "sha": "a2c5cdf456d47d7b49e48a8caa1e334393139b72",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/__tests__/state.test.js",
+          "sha": "4f3e8a7ddab091140241953284a2af82a5266607",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/__tests__/state.test.js.map",
+          "sha": "f1a9e20207a45e9bd3c2b0d48908d364936de749",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/__tests__/summary.test.js",
+          "sha": "66258202e5e56355f24f5b7008c69e2209fd31fc",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/__tests__/summary.test.js.map",
+          "sha": "463c66d344011633380af266adc6d1619d2452de",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/__tests__/transition.test.js",
+          "sha": "99b1e379f28f28f7302bb5df1a9fb2d4f6521c0b",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/__tests__/transition.test.js.map",
+          "sha": "fadd9c4641fda5822e47eed6625a91e4f793b99f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/__tests__/transitions.test.js",
+          "sha": "ea119609e785505eb3898c0f6d7ba3f05d0a51be",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/__tests__/transitions.test.js.map",
+          "sha": "a26515e96404b5228ae7a820427785ee3bdf49f8",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/__tests__/validation.test.js",
+          "sha": "2c3fc113e0242ee8df176e7ce2f3bf471d2617e5",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/__tests__/validation.test.js.map",
+          "sha": "858e39d19d4932dbbb49728bee415f75d6b8bc70",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/__tests__/workflow-integrity.test.js",
+          "sha": "592c3ddf5d77740ddbf8ca66bd0351f51bea0500",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/__tests__/workflow-integrity.test.js.map",
+          "sha": "28e4232e05078778d8b1bfd7a0ae1964a9fa3b84",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/adapters/execution-adapter.js.map",
+          "sha": "987f9645b811ce397e73be794a706533ac95070c",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/cancel.d.ts.map",
+          "sha": "da46d0fd0d0f15fd22d3c7e059da661e72a0dbe4",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/cancel.js.map",
+          "sha": "d04af2b64e3dcca7013a17d5059168d7a62368ca",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/pipeline-types.d.ts.map",
+          "sha": "c3277f3cc138ed6ddb2377f7ae061464ad62ec35",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/pipeline-types.js.map",
+          "sha": "8f619a58183bd79ea54c80699062b02092082f90",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/runtime-insight.d.ts.map",
+          "sha": "7c6035fbd9f97746900719b8bf5ffc6d5a869861",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/runtime-insight.js.map",
+          "sha": "825f5a7c367f3ac695330944b3728e63d423aa99",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/state.d.ts.map",
+          "sha": "faa40899a258478dc325e4ec402598e4ee6e2062",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/state.js.map",
+          "sha": "37116f2c48ff1ba9f599d08ab53057c309dc23d4",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/types.d.ts.map",
+          "sha": "307c5a1c6730da484cf18a6782929e2dca1d2003",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/autopilot/types.js.map",
+          "sha": "1d8d525f553643e3975bb6574ed0dd11dbe354ed",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/bridge.d.ts.map",
+          "sha": "f9c7d11fdb00ad04dac0ca40342c9bb06f56290e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/bridge.js.map",
+          "sha": "624a7e0a4a3bec712445861a177738ff4851c53f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/index.d.ts.map",
+          "sha": "049881e39ac7ae3211864ddde797d90f96c7698d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/index.js.map",
+          "sha": "3fff6845f7d7d70923100265be63948f9fa9ed97",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/keyword-detector/__tests__/index.test.js",
+          "sha": "f737d7813a62422f14165da74c02a5329ebee770",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/keyword-detector/__tests__/index.test.js.map",
+          "sha": "54b478cd738085ced21164002d2ca1b362c1ab03",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/keyword-detector/index.d.ts.map",
+          "sha": "7e873c60271a275c79ebbf8d107199bcf5aea3d9",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/keyword-detector/index.js.map",
+          "sha": "618b91a9ba1ac2b554751d194b9dc9bb46edac90",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/merge-readiness/runtime.d.ts.map",
+          "sha": "e6b8fbe84f660068e85a1fbfd911be9229b23e50",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/merge-readiness/runtime.js.map",
+          "sha": "138d7fd1b12b8ac2c389306474ebb05f629485fb",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/mode-registry/__tests__/session-isolation.test.js",
+          "sha": "b1aed0985d38b97404b8cc278405fbb52a023086",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/mode-registry/__tests__/session-isolation.test.js.map",
+          "sha": "6458e5894c9cc4dc31ead8a578adfeeafabfe913",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/mode-registry/index.d.ts.map",
+          "sha": "4e5a4eed9eb393eaa17e27edc00603b48bdccca2",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/mode-registry/index.js.map",
+          "sha": "44fad9e3b3bbc2cbcd19cc04ab8fc86c5f1c0dd8",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/mode-registry/types.d.ts.map",
+          "sha": "adb76bdf8c8dfb81943ff6768bb42e89d892b1b9",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/omc-orchestrator/index.d.ts.map",
+          "sha": "a617f3fdf1f3a32ed170b93181883482d3f5c258",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/omc-orchestrator/index.js.map",
+          "sha": "a5139aaa989450d50e1cf2013c3446047ea49704",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/permission-handler/__tests__/index.test.js",
+          "sha": "12b98736237015c0f610629655c577e13d05dce4",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/permission-handler/__tests__/index.test.js.map",
+          "sha": "f97d308da205eb71cdb3e47a8d43bf0e8baf7569",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/permission-handler/index.d.ts.map",
+          "sha": "79c4888957f20f4c8652fa4ec9bf154e943f118d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/permission-handler/index.js",
+          "sha": "db283daf57c22e1d483a850cabae21d3d60ff5ff",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/permission-handler/index.js.map",
+          "sha": "f2ade91f11f438a7dacb656f8092ed2e27882dfb",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/persistent-mode/__tests__/ralph-session-mismatch.test.js",
+          "sha": "e139b3531dec2b2c031a13b1d911f183dd2b1bdf",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/persistent-mode/__tests__/ralph-session-mismatch.test.js.map",
+          "sha": "f7dda138a27326a24e8829a939782bc002518661",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/persistent-mode/__tests__/ralph-verification-flow.test.js",
+          "sha": "df4b6ed4fc1ff6bd761ce0fa81cda0e37c65189f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/persistent-mode/__tests__/ralph-verification-flow.test.js.map",
+          "sha": "a40f6ebc97dcf68f5b1102fc90b4e3fa724049be",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/persistent-mode/__tests__/tool-error.test.js",
+          "sha": "3ceedfc2850421834a0995b94dab023f4fcd990d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/persistent-mode/__tests__/tool-error.test.js.map",
+          "sha": "1ca8de959b7193e624704fa238732b5135ba5366",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/persistent-mode/__tests__/ultragoal-persistence.test.js",
+          "sha": "22b4b92584a66bbccc2d163de0a7961385ad16f0",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/persistent-mode/__tests__/ultragoal-persistence.test.js.map",
+          "sha": "3478d69ff403b5ef65d347bcd12aef1b1013218c",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/persistent-mode/index.d.ts.map",
+          "sha": "9409fce921448ccf2ca0b76b7201684ee16aac9c",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/persistent-mode/index.js.map",
+          "sha": "267be474d6c75d5032e476e8012c2bbde302c07d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/persistent-mode/session-isolation.test.js",
+          "sha": "fce841b84ffef8b6b77d8e11b335f34c9e422831",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/persistent-mode/session-isolation.test.js.map",
+          "sha": "e75cc1f7a922261520b7350bc93b573fdfdf2291",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/persistent-mode/stop-hook-blocking.test.js",
+          "sha": "de569f92c7e50dc4bbaea1b8df15b1ad7954ab45",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/persistent-mode/stop-hook-blocking.test.js.map",
+          "sha": "cba679bb08767c0d13e5d8de8dbea72c949610cb",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/pre-compact/index.d.ts.map",
+          "sha": "494a0d97e9afdcc5bfed6de3729c65fff06062c5",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/pre-compact/index.js.map",
+          "sha": "ae986504c51a9f9d7234b242355efeda73b9da31",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/pre-compact/restore.d.ts.map",
+          "sha": "6c14f56e54e43027c4808708ab39a84464b0b056",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/pre-compact/restore.js.map",
+          "sha": "7eea57622aff378331ac2fd072a6a62cfac75f35",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/project-memory/__tests__/integration.test.js",
+          "sha": "4d0cbaff168e3ba630448332b2208480e770d145",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/project-memory/__tests__/integration.test.js.map",
+          "sha": "c7c44244e469c0ce5d193e784e329b9d36ceec65",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/project-memory/__tests__/pre-compact-storage.test.js",
+          "sha": "65c1f390b4eb0d5bebdbad540035b849152eaa23",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/project-memory/__tests__/pre-compact-storage.test.js.map",
+          "sha": "325371b90d95cd4a26bf7079c1eef01125bbcf64",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/project-memory/__tests__/storage.test.js",
+          "sha": "8009a6b07ab06ea935c4613864fde4678d17e561",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/project-memory/__tests__/storage.test.js.map",
+          "sha": "a922eb585277991c328d97b0511ca80a780ac090",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/index.d.ts.map",
+          "sha": "11c3a8b19e19a07d4dbc7da457cbbd731cdbdaff",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/index.js.map",
+          "sha": "da2c6b2988fc307c97e2f5ea17fe66f875e0d6ef",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/loop.d.ts.map",
+          "sha": "03f5724933e58ff86181f6243906d5e6e4610ed9",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/loop.js.map",
+          "sha": "0ae8c68303575d2f77e982326c0d39f4096c756e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/prd.d.ts.map",
+          "sha": "b796eaba9664360b807bdcc4a3df1d8c90eff0f2",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/prd.js.map",
+          "sha": "7464c7eccc36ec6785b17c924c0d5bd93dffb2e6",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/stale-prd.d.ts.map",
+          "sha": "c0e8d4a1ce1c71caea56760bb592fbe06e3825d9",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/stale-prd.js.map",
+          "sha": "071d414edb4216c11ac8a7063d3fca4752e7b1e0",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/verifier.d.ts.map",
+          "sha": "2305419061a5cfdbdca1af51fcfcf6961908f107",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/ralph/verifier.js.map",
+          "sha": "5a888dff34311517b05f8e0c374d8d9746ccb57b",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/self-improve/__tests__/session-isolation.test.js",
+          "sha": "81e2da6e4ba16b1fdaf17d2dbe81266f1865656d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/self-improve/__tests__/session-isolation.test.js.map",
+          "sha": "f323f1898111dc3a4e838b68b8f4c402bcf1d03c",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/session-end/__tests__/mode-state-cleanup.test.js",
+          "sha": "d00c11c33dff31680ac65151b8b4d6ce2eac3600",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/session-end/__tests__/mode-state-cleanup.test.js.map",
+          "sha": "705cc7df9e54a233fc8ee12d9cf5188071a6dad9",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/session-end/__tests__/session-duration.test.js",
+          "sha": "b46758aed91668b30c67b2b5ad30d6f14831eb71",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/session-end/__tests__/session-duration.test.js.map",
+          "sha": "b5b6407f0c29353603cd12393cd6ddf85cdfb5db",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/session-end/__tests__/subdirectory-cwd.test.js",
+          "sha": "8d373891cf4a1576bf100abac4c4856a1e503914",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/session-end/__tests__/subdirectory-cwd.test.js.map",
+          "sha": "28c2a333ea6c8c4a48711a97ebfd66614b56067b",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/session-end/__tests__/team-cleanup.test.js",
+          "sha": "36a0d1b2c8eb97630e00f7025b2176fabd496ab2",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/session-end/__tests__/team-cleanup.test.js.map",
+          "sha": "439a3fe06312a8ca83af9718b51f8151e6b6cff4",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/session-end/__tests__/worker.test.js",
+          "sha": "a06a396857b0f805cea5546680221f6a176f481c",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/session-end/__tests__/worker.test.js.map",
+          "sha": "dd97747b63ac2460e87bb0edd435205c3a0751fc",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/session-end/index.d.ts.map",
+          "sha": "4474ad05eaa19c8ecd160aa56f3eb69e83a8219f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/session-end/index.js.map",
+          "sha": "ec8c1c0d4c3b0603fc1feab5e25cfd8c13e49c60",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/setup/__tests__/prune.test.js",
+          "sha": "a5bc8b2780eba7da2e3e90d390b0da98c6a857f9",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/setup/__tests__/prune.test.js.map",
+          "sha": "8cc7b6dd8486d5cdec52b22b798265475fa8346b",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/skill-bridge.cjs",
+          "sha": "4f9e287d2c928c8ce394352d095565f273c73926",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/skill-state/index.d.ts.map",
+          "sha": "9f7cad039b57bf015727916a63a7245430ca9c96",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/skill-state/index.js.map",
+          "sha": "ace474e85a9e60f2ee2d130508f791e858d88b87",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/subagent-tracker/__tests__/flush-race.test.js",
+          "sha": "a792daf81dc9655f319b83918c14e29dea79b359",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/subagent-tracker/__tests__/flush-race.test.js.map",
+          "sha": "d16153a9637ce8deeb9d0c9760968f64a97df9f2",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/subagent-tracker/__tests__/index.test.js",
+          "sha": "4ca01c814e2f795d747286baa072dd1ad44ec0b3",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/subagent-tracker/__tests__/index.test.js.map",
+          "sha": "ddcb29d42caf175f4bfbd8e62ccba08bb97c22e5",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/task-size-detector/__tests__/index.test.js",
+          "sha": "043afd301ab169b5d88234acd8c96db7ee4e042e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/task-size-detector/__tests__/index.test.js.map",
+          "sha": "a145d865947001b33ec7cd10e489f2a9e83f17e7",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/task-size-detector/index.d.ts.map",
+          "sha": "e9579cdd11f357103ae3a81e5a421d13aa72c6a2",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/task-size-detector/index.js.map",
+          "sha": "04f2aff4f683ec8d4d0ae6ae2ff7d23602578fdf",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/team-dispatch-hook.d.ts.map",
+          "sha": "7a9036f4c7253d4bc3e04e7b964155fc64581522",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/team-dispatch-hook.js.map",
+          "sha": "0ae8e28b65421a6cfd2d30ee01520d00cb1dc452",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/team-pipeline/state.d.ts.map",
+          "sha": "033869992ae1854c1b55a7b4bc93333049997127",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/team-pipeline/state.js.map",
+          "sha": "34e6177c40ff55c3e2e5ebc1a6905b189f3b7795",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/wiki/__tests__/cjk-tokenize.test.js",
+          "sha": "e4ca084116281f8b4d21aba61fcd84fa65f0335e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/wiki/__tests__/cjk-tokenize.test.js.map",
+          "sha": "f26e45eaf64ef49b47113b9ee06f33a3926a16c2",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/wiki/__tests__/ingest.test.js",
+          "sha": "6afa02f2afe7910f1ec1e674b677f881b5bb16f6",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/wiki/__tests__/ingest.test.js.map",
+          "sha": "ee51a721c368fcc601f4e8632403924112a417ab",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/wiki/__tests__/lint.test.js",
+          "sha": "9eb8ef6327701fa407a1c0bf3a506c5e64afc897",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/wiki/__tests__/lint.test.js.map",
+          "sha": "42860bd00d8a23a62b70f0b5047d4df60f48687b",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/wiki/__tests__/query.test.js",
+          "sha": "4c5e29792a48800bb5701eb7a7c195027e46fcce",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/wiki/__tests__/query.test.js.map",
+          "sha": "c1543c9b252e98c7066fa87f7062cbc9c81e7e38",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/wiki/__tests__/reserved-file-guard.test.js",
+          "sha": "d60977c9c13271a4511eca40486f8202f6a22b37",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/wiki/__tests__/reserved-file-guard.test.js.map",
+          "sha": "7010e597ef6fb95aead9ba04a14e4c4d5e7d10ac",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/wiki/__tests__/session-hooks.test.js",
+          "sha": "c201069e1305ed4d1a234bc4d69c3125bd5c55bc",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/wiki/__tests__/session-hooks.test.js.map",
+          "sha": "d34ec61d343063c1b91452841c52e55d2748d529",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/wiki/__tests__/storage.test.js",
+          "sha": "8f69bd897be7d483ffd0a5a31ae3eaf97a9238b7",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/wiki/__tests__/storage.test.js.map",
+          "sha": "aaf1d4dd4a10d44e51e7d89ce73627c4c100220c",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hud/__tests__/autopilot-profile.test.js",
+          "sha": "3592e0a282d1c3718a033c452cfc1991b75c4417",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hud/__tests__/autopilot-profile.test.js.map",
+          "sha": "1f3bd1697d0e0d6c9c17dddfb38ca2296bf410b0",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/hud/elements/update-hint.d.ts",
+          "sha": "0001028613d0520f3e743ce92463aeec4d354b67",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/hud/elements/update-hint.js",
+          "sha": "63638668fa7af1ee72291488aefb7cbe812961d7",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hud/index.d.ts.map",
+          "sha": "ed3082ab3fe255a42a88ef932e16a5a9828f6d14",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hud/index.js",
+          "sha": "8d457040713e3321a1dba5258146dd7c6f3932ea",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hud/index.js.map",
+          "sha": "32445e9ceb77e710035376e8308bd1d5997f9380",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hud/omc-state.d.ts.map",
+          "sha": "9e6b76e01516bd64cd091ff4cdbd6fa689aada1a",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hud/omc-state.js.map",
+          "sha": "3c7669bdce7c42797f81dc4af7b25e6e9d72213e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hud/render.d.ts.map",
+          "sha": "a09877dafdae4562b419a5a88c5d57bea9a00738",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hud/render.js",
+          "sha": "58257a80426fa46f6d6b5ef298ef8d0f5097dcb1",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hud/render.js.map",
+          "sha": "b0f99860548fc4818cff8bf259ca799ee8ad9682",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hud/stdin.d.ts.map",
+          "sha": "97fc4ef50f4c873f82eb9aff735b75caec0f911a",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hud/stdin.js.map",
+          "sha": "06d2ad46b98ede93e014bee6fed16754e4c72a34",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hud/types.d.ts",
+          "sha": "e13e39ade35db91c2d1d87bd9de927c96c37a772",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hud/types.d.ts.map",
+          "sha": "cc8584ca314eef603b67ca6db06006d3af0f4946",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hud/types.js",
+          "sha": "e0554b07e78e7ea207dc9e933055ddcb01681ddc",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hud/types.js.map",
+          "sha": "15633c1c116f9b663d55b220d4496a84616f411d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hud/usage-api.d.ts.map",
+          "sha": "11a4159c6f1bfaeb88643c788c1befa21a4bac8f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hud/usage-api.js.map",
+          "sha": "d940e1c02ee9b6de9ad05e4488a953f4439fb8d7",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/installer/__tests__/hook-templates.test.js",
+          "sha": "0aa520211e315e9a3870899f00de9e623c74190f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/installer/__tests__/hook-templates.test.js.map",
+          "sha": "07e7ff255190c4c7f325897c72005b4aa3a8e3d5",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/installer/__tests__/session-start-template.test.js",
+          "sha": "1985e5f14aff54cc10dd037a183435335268b8a9",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/installer/__tests__/session-start-template.test.js.map",
+          "sha": "7be7bf5798c62c79316f924d1b3c2ee10261d73e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/installer/hooks.d.ts.map",
+          "sha": "7b11a4cd3d10538ef5c9490eeb89eddcec571099",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/installer/hooks.js.map",
+          "sha": "228e5a91cf8ec085e399599aea63b10fc9c01530",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/interop/__tests__/shared-state-artifacts.test.js",
+          "sha": "3aaf372c96ea187c6b28642cd5eb36a57f252135",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/interop/__tests__/shared-state-artifacts.test.js.map",
+          "sha": "daa3fee4118e83c0feac4af311c01b10f6ee5e15",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/interop/__tests__/shared-state-workspace.test.js",
+          "sha": "07d1e4320ab18760d36f0e89a420eb262cd96feb",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/interop/__tests__/shared-state-workspace.test.js.map",
+          "sha": "8cdc29c24f374526591c960fc2d2d9874dca6097",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/__tests__/atomic-write.test.js",
+          "sha": "1199d7427e3b778a66700f2ce181f6b31c051718",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/__tests__/atomic-write.test.js.map",
+          "sha": "6d7f8e6bdc4ba0658487a8d58b10127d8205f5d1",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/__tests__/mode-state-io.test.js",
+          "sha": "edb379cdec26a0afb3f661f9843d8f94cd636892",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/__tests__/mode-state-io.test.js.map",
+          "sha": "816e5f0bb9207a21873f879599bf2a96ee7b7723",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/__tests__/worktree-paths-superproject-cache.test.js",
+          "sha": "e81cbebaef5371ffe153cd89f3f12d068f027328",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/__tests__/worktree-paths-superproject-cache.test.js.map",
+          "sha": "0aa69c91f653e990a1c23bcf5db4db53643d3df5",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/__tests__/worktree-paths.test.js",
+          "sha": "9fb73b5934a0b1ce36665278e8e32047b9f3d2e5",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/__tests__/worktree-paths.test.js.map",
+          "sha": "71805626d206c72922c1c04a8fbf9f967b99650f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/atomic-write.d.ts.map",
+          "sha": "d7e6ebd99dcbeedab275de62a0a59775af78113e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/atomic-write.js.map",
+          "sha": "72d9ed99681229429bdb9f74c2c3126c93a7252f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/mode-names.d.ts.map",
+          "sha": "85c4e7ca8452251c38a20ea891f0f3c9f393fc66",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/mode-names.js.map",
+          "sha": "b2a9d347d938bd9ad0d1eed44f60f05b3ab2a71f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/mode-state-io.d.ts.map",
+          "sha": "684442fe7bc72407da4faf1e1af7245ec5a0eda0",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/mode-state-io.js.map",
+          "sha": "7d9ec7bbdb3deecd45fd71adce65804e4a56b566",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/release-generation.js.map",
+          "sha": "6c6ea5b80bbd31e499253a40198ad68e3d0f05d1",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/worktree-paths.d.ts",
+          "sha": "8ed61d1ab71dd46ee9f893dbd9120264e4e2b84e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/worktree-paths.d.ts.map",
+          "sha": "73fca4ae3d907b86e199cb9b722ebd4f60168d82",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/worktree-paths.js",
+          "sha": "5da960f28636e883b27c8354f81bf2b3dc596ee3",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/worktree-paths.js.map",
+          "sha": "c7f602195535f173d7695e64c5c07ad079fbdfc5",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/mcp/__tests__/team-cleanup.test.js",
+          "sha": "1dc97e178f00bc0c2904b98608b23f459b7bcab2",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/mcp/__tests__/team-cleanup.test.js.map",
+          "sha": "d6636ec4fcc1644d3072cc7f1f0b517dd7fd8c3b",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/mcp/__tests__/team-server-artifact-convergence.test.js",
+          "sha": "a38e480bf3e063bfa3b3fb99fd5be2954450eea6",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/mcp/__tests__/team-server-artifact-convergence.test.js.map",
+          "sha": "522a84c082a6d32a999961de406d15135d54aca2",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/notifications/__tests__/notify-registry-integration.test.js",
+          "sha": "29b60d8736578787878a99242757cd6eae50c811",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/notifications/__tests__/notify-registry-integration.test.js.map",
+          "sha": "7fc890f4769643b915cf3d4d65f1ab1098b5843d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/openclaw/__tests__/dead-pane-guard.test.js",
+          "sha": "0e7dfdd3b64582faa1cf9389f5793dd8b5e4625b",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/openclaw/__tests__/dead-pane-guard.test.js.map",
+          "sha": "8ae47229d3ebac24bf870c0ad99d81c45926bfd9",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/openclaw/__tests__/index.test.js",
+          "sha": "ee409558773ad0aa8b611f691b07a6c2c46160b4",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/openclaw/__tests__/index.test.js.map",
+          "sha": "67784d88af423ae5cc24e0d1507cdf67339a2a4a",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/planning/__tests__/artifacts.test.js",
+          "sha": "aff98537abf4e7dc71ba39790d6c398d32153363",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/planning/__tests__/artifacts.test.js.map",
+          "sha": "acbeae16460ef5655c2ca453927a4f6a845b3fc0",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/ralphthon/__tests__/prd.test.js",
+          "sha": "bb5a418c854717a0e438f02cf93870818e6adc2d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/ralphthon/__tests__/prd.test.js.map",
+          "sha": "975b2fac8a0dab5e727ddee5634d693c2bb19a4e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/shared/types.d.ts.map",
+          "sha": "38cb5b300713247e9cb7332b5f16321cb7b4f706",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/shared/types.js.map",
+          "sha": "52d5f3b566223ec069e5e0671985f64597e154fd",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/activity-log.test.js",
+          "sha": "3d83c72a999b8054513d128963f9f00e953d464d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/activity-log.test.js.map",
+          "sha": "aa21abffa6790b9f7bff8431c6159251ff4b5bf3",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/api-interop.cleanup.test.js",
+          "sha": "d5b9e12d767ecaecb3ef41683a6a237d83673357",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/api-interop.cleanup.test.js.map",
+          "sha": "4d7790097bbf9b5c5b7a86e7eaf75b8b27fdd8ea",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/api-interop.compatibility.test.js",
+          "sha": "9ae0c995ddfe853e23f8055c7070e5a2ea43d8b3",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/api-interop.compatibility.test.js.map",
+          "sha": "57b40c0565c7a8777d58e0242887784a6312d9e7",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/api-interop.cwd-resolution.test.js",
+          "sha": "b1fd1c968eead8905c7d410e1faafe55a0973953",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/api-interop.cwd-resolution.test.js.map",
+          "sha": "4437e6db661786b71cf6828df2191d6f767a3c37",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/api-interop.dispatch.test.js",
+          "sha": "87e3d08d5808e87ee0d91e3a6d4af1f855c3668e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/api-interop.dispatch.test.js.map",
+          "sha": "08f3f858d3fabbaa987585b1abe4b8682db1dca0",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/audit-log.test.js",
+          "sha": "b5a18aa631efe47cde062d89b47bdebc00fad254",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/audit-log.test.js.map",
+          "sha": "07c487354aeb2aef561d4502e9cd5b83fb341b44",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/bridge-entry.guardrails.test.js",
+          "sha": "92a9084de304e0113875eb64be93ce4636916b23",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/bridge-entry.guardrails.test.js.map",
+          "sha": "4162df153db5adf72117b4660a269113a01b9e76",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/bridge-entry.test.js",
+          "sha": "22f6f2f5167ff2451a1588324173f18670c2f719",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/bridge-entry.test.js.map",
+          "sha": "f28bdb5c22182f925706efa549852129416913fe",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/bridge-integration.test.js",
+          "sha": "3e9fc99793efdc5e7734c3706dbb9af235880051",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/bridge-integration.test.js.map",
+          "sha": "784a755469639bf13693ba44550f43b78cceb6b6",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/cli-detection.windows.integration.test.js",
+          "sha": "bf8e9e1a7205fee32b2e4d7bcf3efd5570418993",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/cli-detection.windows.integration.test.js.map",
+          "sha": "3bf67fe3ba8fbeea4bfad3e5170eb7e8aaf64b8f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/cli-worker-contract.test.js",
+          "sha": "2b117cdfc014bd13fcf7f0c78cfbcce56f637d9a",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/cli-worker-contract.test.js.map",
+          "sha": "6a678e1ea7c3f22e208eb645ea6ac267579af015",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/conflict-mailbox.test.js",
+          "sha": "e4cb822dc00d45233959e14c2b71d33a3ac910ed",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/conflict-mailbox.test.js.map",
+          "sha": "56a0bc78d45de786f6530382c4a7a2edcd4b10c3",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/critic-cli-worker.integration.test.js",
+          "sha": "a44356df6c2d086f0c0f0fe57755dad257d3e98a",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/critic-cli-worker.integration.test.js.map",
+          "sha": "d48b10651fbd93b6fab21c4a48a7a88d1a516ab1",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/dispatch-queue.strict-read.test.js",
+          "sha": "b5c8cd69567287603dfba1387be574193600a80a",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/dispatch-queue.strict-read.test.js.map",
+          "sha": "f980d17099eadf85eb9efa2b5903b7e5512697ef",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/edge-cases.test.js",
+          "sha": "4ccd8b8600a2f5330e81deb6fc81ece6c5a72fcd",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/edge-cases.test.js.map",
+          "sha": "df660a06db074d19712730bf457d09de44b01fd2",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/events.outstanding.test.js",
+          "sha": "302d4610a8a40188b445bc038049c70ae119ccaa",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/events.outstanding.test.js.map",
+          "sha": "5fce900cc5a977bac19834f5fdb86e8828ecd7df",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/followup-planner.test.js",
+          "sha": "ce8912567601213430fe7f2e9dd19f5089005642",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/followup-planner.test.js.map",
+          "sha": "c81fe2a4a939961f2e7e7c9f81e61b5be34bbbc7",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/governance-enforcement.test.js",
+          "sha": "fa38abf2c5e5ccf18d38e73587ef74d37506080c",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/governance-enforcement.test.js.map",
+          "sha": "08331866575d3277a3e103e70a9d765f9f222f77",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/heartbeat.test.js",
+          "sha": "421fc1ea9d4db7bbd4925b3c34f44aec3073eb8a",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/heartbeat.test.js.map",
+          "sha": "eaa7d949f9053fa6a1ff7f8a839ed17cc9daf1ca",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/leader-inbox.test.js",
+          "sha": "e5c2f6acde020db87ad8745de74a707b559d589c",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/leader-inbox.test.js.map",
+          "sha": "a58f2bde12f146764588104f0f6226ab3735e2ba",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/mailbox-notification-guard.test.js",
+          "sha": "bdd3e767c2ce15cc7390cdbaac1e29d2e997071c",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/mailbox-notification-guard.test.js.map",
+          "sha": "73a41b6acb5af40f990d02c60554774bf0673584",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/mcp-comm.mailbox-notification.test.js",
+          "sha": "b52d78b24f894ff98bc0606ae33ad31968fd3e73",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/mcp-comm.mailbox-notification.test.js.map",
+          "sha": "af85030b5bfcd7982538b4478b5e9435858fb525",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/mcp-team-bridge.usage.test.js",
+          "sha": "7daf61ffe21a42f136c082f783e427ebab8a1912",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/mcp-team-bridge.usage.test.js.map",
+          "sha": "b841ea2a16f6068f9c51be7c7b2432ffda7f7a93",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/merge-orchestrator.test.js",
+          "sha": "0b021accad930e217ed7aa0ad98d428f300a5e4d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/merge-orchestrator.test.js.map",
+          "sha": "2f3f1346b10e2f85973496b78dc77674939a7e2a",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/message-router.test.js",
+          "sha": "dd6b12daf9698e34219606b0abe61e0b3e821fc9",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/message-router.test.js.map",
+          "sha": "76637f313aae9a85fcabd8e71712eb9a53bef23b",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/model-contract.test.js",
+          "sha": "905ecaa8110649036fc096c88434ca22acc5a7e4",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/model-contract.test.js.map",
+          "sha": "f94fd9c97bd0f0d36aa51a2cdcd53fdee628af44",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/multirepo-workspace-team.test.js",
+          "sha": "6d110eef6220907bf12bdbccb2ed534469fe671f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/multirepo-workspace-team.test.js.map",
+          "sha": "435c5a9fa52e64b20dac5a534a95c10d933b8f6a",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/phase1-foundation.test.js",
+          "sha": "cd4e41262ea951b74bbb670a4a68cd53857674fc",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/phase1-foundation.test.js.map",
+          "sha": "f68926fc5c83b666c3576d1d146218d9bdcafb93",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/recovery-pane-rollback.test.js",
+          "sha": "9fcdd15e6fe3a09e2896f4a463b4ed8ca9696c3b",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/recovery-pane-rollback.test.js.map",
+          "sha": "c6388dec133c70d32634219f0af1000e1b558778",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/recovery-public-api.test.js",
+          "sha": "5a27feb66796f517d8ed431c68902494bc600653",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/recovery-public-api.test.js.map",
+          "sha": "1f85855497e106d40f83cdba2202a3f89854bc40",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/recovery-request-store.test.js",
+          "sha": "b107527e6d6850fbfae1f704cb31064f86b0b2d3",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/recovery-request-store.test.js.map",
+          "sha": "49ce2826623d40a2e2c409ad243023ab8374ecf3",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/recovery-reservation-claim.test.js",
+          "sha": "6c41cceaa0fa684bce09af5b235a9676fdbe7162",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/recovery-reservation-claim.test.js.map",
+          "sha": "5d59a96f1315f4832b009203e495532f490dd464",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/recovery-saga.test.js",
+          "sha": "dc0a368de3dd625d0a7de15a2dca12f38af7be64",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/recovery-saga.test.js.map",
+          "sha": "90600231e497b88cf6fac063c0736afb2ec9ab82",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime-assign.test.js",
+          "sha": "7db8b55cadcece12a3b66190535ec6b142efed3d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime-assign.test.js.map",
+          "sha": "d4064117b48df0fb78d3ffc6c253b789f9960d6d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime-cli.test.js",
+          "sha": "a0f6456ecd2eae39744b3d1ce5622ff1f17b19a9",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime-cli.test.js.map",
+          "sha": "b5065b19194b0354510ad7c48d472a7b5c3c7d8b",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime-done-recovery.test.js",
+          "sha": "63361c862ddeff2deb77cb21823184d1e6207fbe",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime-done-recovery.test.js.map",
+          "sha": "c25e3085f8b64c229bd21612ce6b9a5f4ebe9648",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime-owner-busy.test.js",
+          "sha": "1e1a32dc057deb6e5965b1eee4b765d018acb1e1",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime-owner-busy.test.js.map",
+          "sha": "0841b699112bff847fb759afe81623ba88989be0",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime-owner-client.test.js",
+          "sha": "34334464796331b335eb9bae246b265506e563d6",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime-owner-client.test.js.map",
+          "sha": "e716f4635ddcbcfd9eb83f169c80a4685c069586",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime-prompt-mode.test.js",
+          "sha": "51b8a6ea568af3a4486319019eaaed4edbf14ba1",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime-prompt-mode.test.js.map",
+          "sha": "c9d22441ef77ab2f1901d732bc2665eb066053dc",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime-v2-role-routing.test.js",
+          "sha": "aae865cdc534d496dbc662160e8211acf72fa9f4",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime-v2-role-routing.test.js.map",
+          "sha": "cb507919a71ecf3683ac36e5538d9b8f251d3574",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime-v2.cursor-routing.test.js",
+          "sha": "3cee6694f63740ef744a28636adc20a475116f55",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime-v2.cursor-routing.test.js.map",
+          "sha": "5a6514f64414bb344ca16468cd1ab46b6b28239f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime-v2.dispatch.test.js",
+          "sha": "e2e34eaef625ac0d178254b4b917f205e5ff2ffd",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime-v2.dispatch.test.js.map",
+          "sha": "b607b3a065de9a66d14de0e52fe1053942fd173c",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime-v2.gemini-preflight.test.js",
+          "sha": "3ef134ee96f3e62f8be90e1bd536f787bfc44184",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime-v2.gemini-preflight.test.js.map",
+          "sha": "bf22c8546cc1fdf27bf1de1dbfd5b1da3cbd6be1",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime-v2.monitor.test.js",
+          "sha": "e0c4e994fbd21d529f877dd34c443c9751689775",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime-v2.monitor.test.js.map",
+          "sha": "ebaf332026a4a8e99248d715ab899194daf20a20",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime-v2.shutdown-pane-cleanup.test.js",
+          "sha": "a18d3b988c307c891593ca32eb403137069eb71e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime-v2.shutdown-pane-cleanup.test.js.map",
+          "sha": "a7717788733d2b8b05a7374ab2ad93e9dec4cdc0",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime-watchdog-retry.test.js",
+          "sha": "fcf5fadbfb5a6f8153e4e5dfa14b0646d77ada69",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime-watchdog-retry.test.js.map",
+          "sha": "809dc6076130e3a6e60d0bb1eeabf8648c4caa1e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime.test.js",
+          "sha": "e9df530ce9b98729cdf49d5f96fc219d4fc11340",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/runtime.test.js.map",
+          "sha": "2c89acdfb6abf8b7a8273db2e252bd1c7ccd7756",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/scaling-launch-config.test.js",
+          "sha": "a75a802cbfc3346b7fdab409f4c853c03a8d42c1",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/scaling-launch-config.test.js.map",
+          "sha": "585fb4784bdf7cdeb1fa9d26d54c7c5a24e0fef1",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/scaling.test.js",
+          "sha": "9268cae6505f2fb2b548615c38515a72aee64bd7",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/scaling.test.js.map",
+          "sha": "1cca9983caaef861b96d383b18abaff2936a4ee3",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/stage-router.test.js",
+          "sha": "52d22649f8495df1eab6bd97a58d8e53460fa702",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/stage-router.test.js.map",
+          "sha": "3d3c10e1d1bc39558e10aa3776628f212924e0a3",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/summary-report.test.js",
+          "sha": "65f6948fc55f0fbfb9da66a6ac96322dd89f740e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/summary-report.test.js.map",
+          "sha": "137d9b732d6a3e0c2a12413bda14a71ece09aecb",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/task-file-ops.test.js",
+          "sha": "96d17e4768f0470e1c3389a1cdf8990bb5962861",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/task-file-ops.test.js.map",
+          "sha": "ccdae541a2cde33d65546b930e3dc46c5553f78f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/task-recovery-checkpoint.test.js",
+          "sha": "073f047d7122da644ad928ca7f2c9cc0fae8553d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/task-recovery-checkpoint.test.js.map",
+          "sha": "2f99ec08a3decdf88d9b9faf703a21f65b481c15",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/task-router.test.js",
+          "sha": "f5462b32f4bd54a137e9450b1c424fa912592203",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/task-router.test.js.map",
+          "sha": "d711154b753b104b5b0fd7c27386f5529c6574e5",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/team-config-revision-lock.test.js",
+          "sha": "1243269fe841a412fd90c4e0168a70f148fb2ad6",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/team-config-revision-lock.test.js.map",
+          "sha": "1c44a7d9ed5378d7175caf58492df21d63033e87",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/team-leader-nudge-hook.test.js",
+          "sha": "e462488d15dfc2c002145bd0100d7332c8eb31aa",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/team-leader-nudge-hook.test.js.map",
+          "sha": "700f3da3b7c8dcb1b3781e2207b790976dd8f3d0",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/team-owner-epoch.test.js",
+          "sha": "7dabb1f1c2196393c0807270236a56caf644793e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/team-owner-epoch.test.js.map",
+          "sha": "83141900a514f018eb7528e19d38d53f924f8282",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/team-registration.test.js",
+          "sha": "b2cd746da99cb0d578e98c5509f4e3e4c49247ca",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/team-registration.test.js.map",
+          "sha": "b437f366f6583a878ccda7f7761ab9b81b551fb1",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/team-state-reader.test.js",
+          "sha": "ce43835926d1bffb4b027cd13b8e6562baf4ebad",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/team-state-reader.test.js.map",
+          "sha": "89a04f45f2f0e553e68e2875f6e9e4d3014d8dd8",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/team-status.test.js",
+          "sha": "cd6007e819e653f4a8ee412af1c6bcb117f2a17c",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/team-status.test.js.map",
+          "sha": "3602280cecc73d525cec26f1f026774c20b32f4f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/team-summary-worktree.test.js",
+          "sha": "468316db06cde9b9461d998a6df965da4e75a7e3",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/team-summary-worktree.test.js.map",
+          "sha": "fb5a9105b2936f7e1ddb99307634efcf85878760",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/tmux-comm.test.js",
+          "sha": "2542a5422aa86bcbc55fd188d6d0d602ebdacf49",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/tmux-comm.test.js.map",
+          "sha": "e069e070744e6b80c5549300ddb6620deb035318",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/tmux-session.startup.test.js",
+          "sha": "2ac898cba4aff3ad9fb5a33bbbcea1759059ab09",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/tmux-session.startup.test.js.map",
+          "sha": "6854dc03cd62c43c22997e4c18c5c7ca28b64242",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/tmux-session.test.js",
+          "sha": "1104d44a43fb5f7a1c92c5a8c83d249165bdcf24",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/tmux-session.test.js.map",
+          "sha": "d19229d24129c8e3ee0b794b1af9795f43a60fbe",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/unified-team.test.js",
+          "sha": "73c64788dfd88bbb07c7912d45da35a73a5c2291",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/unified-team.test.js.map",
+          "sha": "815154fa00c29b27c3f23d1f89a92a039ea97b4f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/usage-tracker.test.js",
+          "sha": "5c9a5f28c6e321dcf28d0c78472473852f663ec2",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/usage-tracker.test.js.map",
+          "sha": "0bbdc004a8b671bf53ea066b6f95a54f1fefa7c4",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/worker-bootstrap.test.js",
+          "sha": "e1515cd1a666fa5a067ec0e83c93575992729784",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/worker-bootstrap.test.js.map",
+          "sha": "08419d37c7bdc003ebf530eec2a4d41ac8c49162",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/worker-health.test.js",
+          "sha": "0d3b05e444937b4d8908a7aeb0effe8bba3bce60",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/worker-health.test.js.map",
+          "sha": "9db58310bcc04d2cee25baec1ab4f11c4844cea8",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/worker-launch-ack.test.js",
+          "sha": "39271f7494b2dca301461228cb5b1455e77686d6",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/worker-launch-ack.test.js.map",
+          "sha": "b27636640eb208bfff1d674caca8a2f3d2fd1cb3",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/worker-launch-posix-transport.test.js",
+          "sha": "6e021dcfd39fff6f8d742bc96b255c49dd86748d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/worker-launch-posix-transport.test.js.map",
+          "sha": "c8f3edbf087921edf1a2c555fba0734c3f621359",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/worker-restart.test.js",
+          "sha": "29cff5d284b89ccdd972226e233ef84ed68b5d13",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/worker-restart.test.js.map",
+          "sha": "e5159901122423b85c9689fc801902ae51012065",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/worktree-contract-fields.test.js",
+          "sha": "4bb5169b99362e39309dfbaf8ea41604e3d3d11d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/__tests__/worktree-contract-fields.test.js.map",
+          "sha": "5dec273c80efd80a07994bce5e1a92af825e7b47",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/api-interop.d.ts.map",
+          "sha": "389ae13984aebe0b05442aaf707bc9e40b0374a8",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/api-interop.js.map",
+          "sha": "5ba5830133740947634302b94074cbd6127ddbd9",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/bridge-entry.js",
+          "sha": "52f7b26b6ab980a75a1386c92e6e05f1643095db",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/bridge-entry.js.map",
+          "sha": "e3005037c3639ea98f043b38c2b472587602a738",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/cli-worker-contract.d.ts.map",
+          "sha": "813885a9d32879e9b15716e47d2a24f7505d7340",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/cli-worker-contract.js.map",
+          "sha": "70498c55f7e49b479bd2472f5ea81180ba1db203",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/leader-inbox.d.ts.map",
+          "sha": "4b9a3ae3c36edcb3e78204f9e637b1c9cac51843",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/leader-inbox.js.map",
+          "sha": "85523e9f68d43d0bbf358a9c38206cdba5a69beb",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/model-contract.d.ts.map",
+          "sha": "16ba3f37cabf781b002ba0fe03afd4c398d8dc17",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/model-contract.js.map",
+          "sha": "7dd0d613f818a0285f2e70f433c6e30338339402",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/monitor.d.ts.map",
+          "sha": "44eb71869cc25d6d5a4ac2924ff23074d595facf",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/monitor.js.map",
+          "sha": "72f8e796672f679bde0fb958feeedacb0b1ae9d9",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/runtime-cli.js.map",
+          "sha": "057cb46a869313f83218a84c281c4605ca8d6a3a",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/runtime-v2.d.ts.map",
+          "sha": "a9835332eddba9256f6d9583b93a81e83f16258b",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/runtime-v2.js.map",
+          "sha": "926dee41eb1b4b7f142a901ca99a6fff4b3c5d27",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/runtime.d.ts.map",
+          "sha": "922b02652197e9e265dea970bb4294646cd4911b",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/runtime.js.map",
+          "sha": "e580f528d27c37bd058125ebe42b983b9625c6b4",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/scaling.d.ts.map",
+          "sha": "052d1d7beb3b4488c97700761b42c7d23cbb8d7a",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/scaling.js.map",
+          "sha": "6f350bc41c2d001998be005a0a6a857a46041c53",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/stage-router.d.ts.map",
+          "sha": "217358b5f1f0649d8119b3a64f5e70c72dfdd03f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/stage-router.js.map",
+          "sha": "31956f9b28c357682f7ae1bc51118eb0703ba0cc",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/state-paths.d.ts.map",
+          "sha": "f488b4d6d3a1a961f731064ac733233ee8c52eb1",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/state-paths.js.map",
+          "sha": "28bd1bbc65d63a1a04f6e92bba0246e227a3f826",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/state/tasks.d.ts.map",
+          "sha": "a3e22f4d2791ad0e640fdd78ffa11978dd049954",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/state/tasks.js.map",
+          "sha": "0f384d7152e878b0ea2888c6f638a48dfd66ba6e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/task-file-ops.d.ts.map",
+          "sha": "724509111ba6e0cd20d41a3e4f5acb1a0d5c5899",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/task-file-ops.js.map",
+          "sha": "0cfc37433a2ef6b631b2ebaf961f7b35d5e31036",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/team-ops.d.ts.map",
+          "sha": "c7410777002ad201ff3b1b4e9acd226507796f23",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/team-ops.js.map",
+          "sha": "1ded63b632a9ae67b67c32e438ec83da9afb70a7",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/team-state-reader.d.ts.map",
+          "sha": "31272506b0debde74c0e946879985b084d808fc1",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/team-state-reader.js.map",
+          "sha": "f2a48ff7ae1f809ce4b146d54cb304a0fbaa1ecb",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/tmux-comm.js.map",
+          "sha": "ebac78d1448e83344572ac5e41461b62220abd7e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/tmux-session.d.ts.map",
+          "sha": "ecee379bfefc808b6addaf4520b201f65a05e75b",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/tmux-session.js.map",
+          "sha": "9c2d0fa37577771004bb0601f3b4fe73c3d4b352",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/types.d.ts.map",
+          "sha": "cc6529c4cc791a3d0deddffc4d50eb7d1d419d89",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/types.js.map",
+          "sha": "0c6f2ad02636ef3704d328bd0e72c1b6640a29bf",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/worker-bootstrap.d.ts.map",
+          "sha": "0ee8a7d6880d2f4f8d3b146c68e886db3376b36a",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/worker-bootstrap.js.map",
+          "sha": "1b9349a7970474ac38eb778dd593065f7da4630c",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/worker-launch-ack.d.ts",
+          "sha": "45fc9e0b29fe1db0246b5eb1bd24f9991655130b",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/worker-launch-ack.d.ts.map",
+          "sha": "1a20621e235605d7d73c0d6f6faf24a66be8dad1",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/worker-launch-ack.js",
+          "sha": "bd9700552bd07cab9a1181bb219ecfd9482aca2d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/team/worker-launch-ack.js.map",
+          "sha": "843f9c64e271203cabd82c4ab43c9263d8484fb3",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/__tests__/cancel-integration.test.js",
+          "sha": "0bf5f5048afff8e2dea8effa9f56d480f23abd39",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/__tests__/cancel-integration.test.js.map",
+          "sha": "0ee7c3f04a33c3e3daf8f2fc1278da5d6c87f277",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/__tests__/deepinit-manifest.test.js",
+          "sha": "7bfdb975666546c020e9a7a412a2530f6ebef070",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/__tests__/deepinit-manifest.test.js.map",
+          "sha": "19284521374ed7bd9dbb8e782b9d394bbc4dd6b1",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/__tests__/memory-tools.test.js",
+          "sha": "0e7c43d753f4bf6bfcce8952e5972fee4bff471f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/__tests__/memory-tools.test.js.map",
+          "sha": "75190516a8168c7aeca6694bb6606d46f708587e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/__tests__/state-tools.test.js",
+          "sha": "e465a04f24c5d925d29bc2f95f892775cf196448",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/__tests__/state-tools.test.js.map",
+          "sha": "d607cce42aa683c6b06c508f1d0f6601c5154339",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/ast-tools.d.ts.map",
+          "sha": "4a452e9193f81a9b60d5d885826d0da00b0766c1",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/ast-tools.js",
+          "sha": "c4ba846528c3b723e3824092f482ba3305a0876f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/ast-tools.js.map",
+          "sha": "8daef7b31ca7be7db1a67a08d9ae13580e591f3f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/diagnostics/__tests__/lsp-aggregator.test.js",
+          "sha": "293485d7a3d92b57d2181f200d5ad7167c339f57",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/diagnostics/__tests__/lsp-aggregator.test.js.map",
+          "sha": "723ab806fdf8f61e3adf2bd450a110af6cd7e654",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/diagnostics/lsp-aggregator.d.ts",
+          "sha": "b4ec3acd0c42c31acac809f9420bba894ed80ced",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/diagnostics/lsp-aggregator.d.ts.map",
+          "sha": "ea0ad8194cd23b5cd23b29598172a27a57ec7e9a",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/diagnostics/lsp-aggregator.js",
+          "sha": "5ae0678959458694811846a21dd093ca7d7377da",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/diagnostics/lsp-aggregator.js.map",
+          "sha": "b10e86582bd4005e1c67121b3a852fe02ec708ef",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/lsp/__tests__/client-handle-data.test.js",
+          "sha": "1e20c5922312ea1b1509551494517d62bdc62aac",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/lsp/__tests__/client-handle-data.test.js.map",
+          "sha": "3df9b07d79cbd4c5c652d7e1dd4f877e0bdcccf8",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/lsp/client.d.ts",
+          "sha": "e35663b72c3cb4ee3d5901e4df1810373024d648",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/lsp/client.d.ts.map",
+          "sha": "337225bca32933915f70c292fab93ade05afd887",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/lsp/client.js",
+          "sha": "90f0582f38f3d4dc6111c95b2046d98e11fbca64",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/lsp/client.js.map",
+          "sha": "3c1de54d1c7a6eaecf19ad819f46bf7cdea1a464",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/state-tools.d.ts.map",
+          "sha": "72d2447d5aa605e31fd5de75b1266c0879269572",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/state-tools.js",
+          "sha": "455f0f1ff24f357d0e2f22619e244f2f7b3b5618",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/state-tools.js.map",
+          "sha": "485451942f07777014ddfff5e567d400b72fd017",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/wiki-tools.d.ts.map",
+          "sha": "a17a167b3490c3e157f2950a3fe1a367a54fc82e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/tools/wiki-tools.js.map",
+          "sha": "3e089d2a21e1cfe1070bb76a7becd82cd98db318",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/ultragoal/__tests__/artifacts.multirepo.test.js",
+          "sha": "cab315cb4442f4dc9fc481e3b20dcc417fadedea",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/ultragoal/__tests__/artifacts.multirepo.test.js.map",
+          "sha": "ef53264f439aa0b77c31dbe35127721c62d19dfa",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/ultragoal/__tests__/artifacts.test.js",
+          "sha": "dbbdf804b0ba98c994642af83ee13399ba1920d6",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/ultragoal/__tests__/artifacts.test.js.map",
+          "sha": "8c222d15c3d8605e5fec14208da3a37880c1accc",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/utils/skill-resources.d.ts.map",
+          "sha": "6a088fbab5813d81e6df0c9f3ae6ce70d420de5c",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/utils/skill-resources.js.map",
+          "sha": "0dc870ab26751d4491f634811a04cefb83fde347",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/workflow/__tests__/projections.test.js",
+          "sha": "3fea63a50a9ee004d1a17f6eb48f52518124b21d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/workflow/__tests__/projections.test.js.map",
+          "sha": "4db4cfe173254915d2379bcdbcfd01178bc792c8",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/workflow/__tests__/registry.test.js",
+          "sha": "b06382dcd4dec74e3f0714eaed44bf81a4116396",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/workflow/__tests__/registry.test.js.map",
+          "sha": "7b0c6f8c76e90d5697d03f0f592b318e06b78d73",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/workflow/registry.d.ts.map",
+          "sha": "10719c8aa10ca09a634b1f813717693f5bdf9658",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/workflow/registry.js.map",
+          "sha": "3dac2cb12fbedff29957a45fd1789561d4c4c6eb",
+          "previousFilename": null
+        }
+      ]
     }
   ]
 }
