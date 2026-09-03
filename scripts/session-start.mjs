@@ -15,6 +15,10 @@ import { getClaudeConfigDir, getUpdateCheckCachePath } from './lib/config-dir.mj
 import { resolveOmcStateRoot } from './lib/state-root.mjs';
 import { pathIdentity, publishCacheOccupancy, readOccupiedPluginRoots } from './lib/cache-occupancy.mjs';
 
+// Detached update-cache refresh: argv flag and the child's overall deadline.
+const REFRESH_UPDATE_CACHE_FLAG = '--refresh-update-cache';
+const REFRESH_UPDATE_CACHE_DEADLINE_MS = 3000;
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -770,6 +774,14 @@ function shouldNotifyDrift(driftInfo) {
 // Plugin marketplace installs update from the marketplace clone (usually origin/main),
 // not from the npm package. Keep those channels separate so HUD/session notices do
 // not advertise npm-only releases that `/plugin marketplace update` cannot install.
+// Registry base override. Only honoured when set; tests point it at a closed
+// port to exercise the offline/timeout paths without touching the network.
+function registryLatestUrl(packageName) {
+  const base = process.env.OMC_UPDATE_REGISTRY_BASE;
+  const root = base ? base.replace(/\/+$/, '') : 'https://registry.npmjs.org';
+  return `${root}/${packageName}/latest`;
+}
+
 async function checkNpmUpdate(currentVersion) {
   const marketplaceChannel = getPluginUpdateChannelVersion();
   if (marketplaceChannel.managed) {
@@ -803,7 +815,7 @@ async function checkNpmUpdate(currentVersion) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 2000);
   try {
-    const response = await fetch('https://registry.npmjs.org/oh-my-claude-sisyphus/latest', {
+    const response = await fetch(registryLatestUrl('oh-my-claude-sisyphus'), {
       signal: controller.signal
     });
     if (!response.ok) return null;
@@ -829,7 +841,7 @@ async function checkClaudeCodeUpdate() {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 2000);
   try {
-    const response = await fetch('https://registry.npmjs.org/@anthropic-ai/claude-code/latest', {
+    const response = await fetch(registryLatestUrl('@anthropic-ai/claude-code'), {
       signal: controller.signal
     });
     if (!response.ok) return;
@@ -859,6 +871,36 @@ async function runUpdateChecks() {
     checkClaudeCodeUpdate().catch(() => {}),
   ]);
   return notice;
+}
+
+// Refresh the update caches in a detached child so a slow or unreachable
+// registry cannot delay the SessionStart response (the hook budget is 5s).
+function refreshUpdateCacheInBackground() {
+  if (process.env.OMC_HOOK_BACKGROUND_CHILD === '1') return;
+  try {
+    const child = spawn(process.execPath, [__filename, REFRESH_UPDATE_CACHE_FLAG], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+      env: { ...process.env, OMC_HOOK_BACKGROUND_CHILD: '1' },
+    });
+    // spawn reports most failures (EMFILE, EPERM, ENOMEM) via an async 'error'
+    // event, not a throw; swallow it so the hook never exits non-zero after answering.
+    child.on('error', () => {});
+    child.unref();
+  } catch {
+    // Cache refresh is best-effort and must never affect hook output.
+  }
+}
+
+// Detached child entrypoint: refresh the caches, then exit. The deadline keeps
+// the child from lingering if a fetch never settles.
+async function refreshUpdateCacheAndExit() {
+  const deadline = setTimeout(() => process.exit(0), REFRESH_UPDATE_CACHE_DEADLINE_MS);
+  deadline.unref();
+  try { await runUpdateChecks(); } catch {}
+  clearTimeout(deadline);
+  process.exit(0);
 }
 
 // Check if HUD is properly installed (with retry for race conditions)
@@ -955,11 +997,12 @@ async function main() {
     const rawDirectory = data.cwd || data.directory || process.cwd();
     const directory = validateCwd(rawDirectory);
     if (directory === null) {
-      // No workspace here, but the registry update checks do not need one:
-      // run them so the HUD update cache still refreshes for users who launch
-      // Claude Code outside a repo.
-      const notice = await runUpdateChecks();
-      console.log(JSON.stringify(notice ? { continue: true, systemMessage: notice } : { continue: true }));
+      // No workspace here, but the registry update checks do not need one, so
+      // the HUD update cache still refreshes for users who launch Claude Code
+      // outside a repo. It runs detached: this path must answer immediately and
+      // must not touch any workspace or session state.
+      refreshUpdateCacheInBackground();
+      console.log(JSON.stringify({ continue: true }));
       return;
     }
     const sessionId = data.session_id || data.sessionId || '';
@@ -1372,4 +1415,8 @@ ${cleanContent}
   }
 }
 
-main();
+if (process.argv.includes(REFRESH_UPDATE_CACHE_FLAG)) {
+  refreshUpdateCacheAndExit();
+} else {
+  main();
+}

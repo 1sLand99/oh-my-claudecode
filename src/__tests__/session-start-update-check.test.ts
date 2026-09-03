@@ -8,8 +8,9 @@ const SCRIPT_PATH = join(__dirname, '..', '..', 'scripts', 'session-start.mjs');
 const NODE = process.execPath;
 
 /**
- * The update check does not depend on a workspace, so it must also run when
- * validateCwd() rejects the cwd (no .git / .omc-workspace). Everything here is
+ * The update check does not depend on a workspace. The hook answers immediately
+ * and hands the refresh to a detached child, so these tests drive that child
+ * directly (--refresh-update-cache) for a deterministic result. Everything is
  * driven from a marketplace clone plus a fresh cache, so no network is used.
  */
 describe('session-start.mjs update check', () => {
@@ -47,9 +48,8 @@ describe('session-start.mjs update check', () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  function runSessionStart(cwd: string): string {
-    return execFileSync(NODE, [SCRIPT_PATH], {
-      input: JSON.stringify({ hook_event_name: 'SessionStart', session_id: 'update-check', cwd }),
+  function runRefreshChild(): void {
+    execFileSync(NODE, [SCRIPT_PATH, '--refresh-update-cache'], {
       encoding: 'utf-8',
       env: {
         ...process.env,
@@ -59,36 +59,28 @@ describe('session-start.mjs update check', () => {
         // test would write to the developer's real config directory.
         CLAUDE_CONFIG_DIR: join(fakeHome, '.claude'),
         CLAUDE_PLUGIN_ROOT: pluginRoot,
+        // Never reach the real registry: the marketplace channel is resolved
+        // from local files and the Claude Code entry is already fresh.
+        OMC_UPDATE_REGISTRY_BASE: 'http://127.0.0.1:9',
       },
       timeout: 15000,
-    }).trim();
+    });
   }
 
-  it('checks for updates even when the cwd is not a workspace', () => {
-    const nonWorkspace = join(tempDir, 'not-a-workspace');
-    mkdirSync(nonWorkspace, { recursive: true });
-
-    const output = JSON.parse(runSessionStart(nonWorkspace)) as {
-      continue?: boolean;
-      systemMessage?: string;
-    };
-
-    expect(output.continue).toBe(true);
-    expect(output.systemMessage).toContain('[OMC UPDATE AVAILABLE]');
-    expect(output.systemMessage).toContain('9.9.9');
+  it('records an available update from the marketplace channel', () => {
+    runRefreshChild();
 
     const cached = JSON.parse(readFileSync(cachePath, 'utf-8')) as Record<string, unknown>;
     expect(cached.latestVersion).toBe('9.9.9');
     expect(cached.updateAvailable).toBe(true);
+    expect(cached.source).toBe('marketplace');
   });
 
   it('preserves the cached Claude Code version across an OMC-only refresh', () => {
-    const nonWorkspace = join(tempDir, 'not-a-workspace-2');
-    mkdirSync(nonWorkspace, { recursive: true });
-
-    runSessionStart(nonWorkspace);
+    runRefreshChild();
 
     const cached = JSON.parse(readFileSync(cachePath, 'utf-8')) as Record<string, unknown>;
     expect(cached.claudeCodeLatestVersion).toBe('2.1.240');
+    expect(cached.claudeCodeCheckedAt).toBeTypeOf('number');
   });
 });

@@ -7,6 +7,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join, dirname, normalize, resolve } from 'path';
 import { homedir } from 'os';
 import { fileURLToPath, pathToFileURL } from 'url';
+import { spawn } from 'child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -14,6 +15,10 @@ const { getClaudeConfigDir, getUpdateCheckCachePath } = await import(pathToFileU
 const configDir = getClaudeConfigDir();
 const { resolveSessionStatePathsForHook, resolveOmcStateRoot } = await import(pathToFileURL(join(__dirname, 'lib', 'state-root.mjs')).href);
 const { publishCacheOccupancy } = await import(pathToFileURL(join(__dirname, 'lib', 'cache-occupancy.mjs')).href);
+
+// Detached update-cache refresh: argv flag and the child's overall deadline.
+const REFRESH_UPDATE_CACHE_FLAG = '--refresh-update-cache';
+const REFRESH_UPDATE_CACHE_DEADLINE_MS = 3000;
 
 // Import timeout-protected stdin reader (prevents hangs on Linux/Windows, see issue #240, #524)
 let readStdin;
@@ -80,6 +85,26 @@ async function shouldRestoreModeState(directory, mode, state, sessionId) {
   return true;
 }
 
+// Read version from OMC's own package.json, not the project's (fixes #516)
+function resolveOmcVersion() {
+  for (let i = 1; i <= 4; i++) {
+    const candidate = join(__dirname, ...Array(i).fill('..'), 'package.json');
+    const pkg = readJsonFile(candidate);
+    if ((pkg?.name === 'oh-my-claude-sisyphus' || pkg?.name === 'oh-my-claudecode') && pkg?.version) {
+      return pkg.version;
+    }
+  }
+  return null;
+}
+
+// Registry base override. Only honoured when set; tests point it at a closed
+// port to exercise the offline/timeout paths without touching the network.
+function registryLatestUrl(packageName) {
+  const base = process.env.OMC_UPDATE_REGISTRY_BASE;
+  const root = base ? base.replace(/\/+$/, '') : 'https://registry.npmjs.org';
+  return `${root}/${packageName}/latest`;
+}
+
 function readUpdateCheckCache() {
   const cached = readJsonFile(getUpdateCheckCachePath());
   return cached && typeof cached === 'object' && !Array.isArray(cached) ? cached : {};
@@ -102,7 +127,7 @@ async function checkClaudeCodeUpdate() {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 2000);
   try {
-    const response = await fetch('https://registry.npmjs.org/@anthropic-ai/claude-code/latest', {
+    const response = await fetch(registryLatestUrl('@anthropic-ai/claude-code'), {
       signal: controller.signal
     });
     if (!response.ok) return;
@@ -130,7 +155,7 @@ async function checkForUpdates(currentVersion) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 2000);
   try {
-    const response = await fetch('https://registry.npmjs.org/oh-my-claude-sisyphus/latest', {
+    const response = await fetch(registryLatestUrl('oh-my-claude-sisyphus'), {
       signal: controller.signal
     });
 
@@ -160,6 +185,47 @@ async function checkForUpdates(currentVersion) {
     // Silent fail - network unavailable or timeout
     return null;
   } finally { clearTimeout(timeoutId); }
+}
+
+// Concurrent: each fetch aborts after 2s, and SessionStart hooks have a 5s
+// budget, so running them in sequence would risk a cold-cache timeout.
+async function runUpdateChecks() {
+  const currentVersion = resolveOmcVersion();
+  const [updateInfo] = await Promise.all([
+    currentVersion ? checkForUpdates(currentVersion).catch(() => null) : null,
+    checkClaudeCodeUpdate().catch(() => {}),
+  ]);
+  return updateInfo;
+}
+
+// Refresh the update caches in a detached child so a slow or unreachable
+// registry cannot delay the SessionStart response (the hook budget is 5s).
+function refreshUpdateCacheInBackground() {
+  if (process.env.OMC_HOOK_BACKGROUND_CHILD === '1') return;
+  try {
+    const child = spawn(process.execPath, [__filename, REFRESH_UPDATE_CACHE_FLAG], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+      env: { ...process.env, OMC_HOOK_BACKGROUND_CHILD: '1' },
+    });
+    // spawn reports most failures (EMFILE, EPERM, ENOMEM) via an async 'error'
+    // event, not a throw; swallow it so the hook never exits non-zero after answering.
+    child.on('error', () => {});
+    child.unref();
+  } catch {
+    // Cache refresh is best-effort and must never affect hook output.
+  }
+}
+
+// Detached child entrypoint: refresh the caches, then exit. The deadline keeps
+// the child from lingering if a fetch never settles.
+async function refreshUpdateCacheAndExit() {
+  const deadline = setTimeout(() => process.exit(0), REFRESH_UPDATE_CACHE_DEADLINE_MS);
+  deadline.unref();
+  try { await runUpdateChecks(); } catch {}
+  clearTimeout(deadline);
+  process.exit(0);
 }
 
 function compareVersions(v1, v2) {
@@ -474,6 +540,11 @@ async function main() {
     const rawDirectory = data.cwd || data.directory || process.cwd();
     const directory = validateCwd(rawDirectory);
     if (directory === null) {
+      // No workspace here, but the registry update checks do not need one, so
+      // the HUD update cache still refreshes for users who launch Claude Code
+      // outside a repo. It runs detached: this path must answer immediately and
+      // must not touch any workspace or session state.
+      refreshUpdateCacheInBackground();
       console.log(JSON.stringify({ continue: true }));
       return;
     }
@@ -507,16 +578,7 @@ async function main() {
     }
 
     // Check for updates (non-blocking)
-    // Read version from OMC's own package.json, not the project's (fixes #516)
-    let currentVersion = null;
-    for (let i = 1; i <= 4; i++) {
-      const candidate = join(__dirname, ...Array(i).fill('..'), 'package.json');
-      const pkg = readJsonFile(candidate);
-      if ((pkg?.name === 'oh-my-claude-sisyphus' || pkg?.name === 'oh-my-claudecode') && pkg?.version) {
-        currentVersion = pkg.version;
-        break;
-      }
-    }
+    const currentVersion = resolveOmcVersion();
 
     // Template-version drift check: warn once per session if installed templates differ from plugin
     if (currentVersion) {
@@ -537,12 +599,7 @@ async function main() {
       } catch { /* non-fatal */ }
     }
 
-    // Concurrent: each fetch aborts after 2s, and SessionStart hooks have a 5s
-    // budget, so running them in sequence would risk a cold-cache timeout.
-    const [updateInfo] = await Promise.all([
-      currentVersion ? checkForUpdates(currentVersion).catch(() => null) : null,
-      checkClaudeCodeUpdate().catch(() => {}),
-    ]);
+    const updateInfo = await runUpdateChecks();
     if (updateInfo) {
       const configPath = join(getClaudeConfigDir(), '.omc-config.json');
       const omcConfig = readJsonFile(configPath) || {};
@@ -709,4 +766,8 @@ ${agentsContent}
   }
 }
 
-main();
+if (process.argv.includes(REFRESH_UPDATE_CACHE_FLAG)) {
+  refreshUpdateCacheAndExit();
+} else {
+  main();
+}
