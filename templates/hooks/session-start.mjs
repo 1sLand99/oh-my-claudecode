@@ -80,6 +80,41 @@ async function shouldRestoreModeState(directory, mode, state, sessionId) {
   return true;
 }
 
+function readUpdateCheckCache() {
+  const cached = readJsonFile(getUpdateCheckCachePath());
+  return cached && typeof cached === 'object' && !Array.isArray(cached) ? cached : {};
+}
+
+// Merge into the existing cache so unrelated fields (e.g. the Claude Code
+// version tracked below) survive an OMC-only refresh.
+function mergeUpdateCheckCache(fields) {
+  writeJsonFile(getUpdateCheckCachePath(), { ...readUpdateCheckCache(), ...fields });
+}
+
+// Refresh the cached latest Claude Code version (same 24h window and 2s timeout
+// as the OMC check) so the HUD can show a Claude Code update hint. The field is
+// simply absent on caches written before this check existed.
+async function checkClaudeCodeUpdate() {
+  const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+  const cached = readUpdateCheckCache();
+  if (cached.claudeCodeCheckedAt && (Date.now() - cached.claudeCodeCheckedAt) < CACHE_DURATION) return;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 2000);
+  try {
+    const response = await fetch('https://registry.npmjs.org/@anthropic-ai/claude-code/latest', {
+      signal: controller.signal
+    });
+    if (!response.ok) return;
+
+    const data = await response.json();
+    if (!data?.version) return;
+    mergeUpdateCheckCache({ claudeCodeLatestVersion: data.version, claudeCodeCheckedAt: Date.now() });
+  } catch {
+    // Silent fail - network unavailable or timeout
+  } finally { clearTimeout(timeoutId); }
+}
+
 async function checkForUpdates(currentVersion) {
   const cacheFile = getUpdateCheckCachePath();
   const now = Date.now();
@@ -112,10 +147,13 @@ async function checkForUpdates(currentVersion) {
       timestamp: now,
       latestVersion,
       currentVersion,
-      updateAvailable
+      updateAvailable,
+      // This hook only queries npm; pin the source so the merge does not
+      // preserve a stale marketplace value from an earlier plugin install.
+      source: 'npm'
     };
 
-    writeJsonFile(cacheFile, cacheData);
+    mergeUpdateCheckCache(cacheData);
 
     return updateAvailable ? cacheData : null;
   } catch (error) {
@@ -499,7 +537,12 @@ async function main() {
       } catch { /* non-fatal */ }
     }
 
-    const updateInfo = currentVersion ? await checkForUpdates(currentVersion) : null;
+    // Concurrent: each fetch aborts after 2s, and SessionStart hooks have a 5s
+    // budget, so running them in sequence would risk a cold-cache timeout.
+    const [updateInfo] = await Promise.all([
+      currentVersion ? checkForUpdates(currentVersion).catch(() => null) : null,
+      checkClaudeCodeUpdate().catch(() => {}),
+    ]);
     if (updateInfo) {
       const configPath = join(getClaudeConfigDir(), '.omc-config.json');
       const omcConfig = readJsonFile(configPath) || {};
