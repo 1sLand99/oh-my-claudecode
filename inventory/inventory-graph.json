@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "e3f200d8f6e1d4cefbc5fecf3dee02b3a1f28837",
-    "sourceSha256": "40af9be9d4dae728c2b3e06caf729259bdfbb08bb1397907a1f59d9452a7cff1",
+    "head": "ec4b5790cc9d72841bd59c507a21f69226b0d024",
+    "sourceSha256": "00a5796b53cc050b0843a44c6d673151f3c2d3da17d04cdb9fa362e4edd0da56",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "e3f200d8f6e1d4cefbc5fecf3dee02b3a1f28837",
-  "sourceSha256": "40af9be9d4dae728c2b3e06caf729259bdfbb08bb1397907a1f59d9452a7cff1",
+  "head": "ec4b5790cc9d72841bd59c507a21f69226b0d024",
+  "sourceSha256": "00a5796b53cc050b0843a44c6d673151f3c2d3da17d04cdb9fa362e4edd0da56",
   "counts": {
     "public": {
       "skills": 35,
@@ -32334,6 +32334,11 @@
         "id": "external:net",
         "kind": "external",
         "path": "net"
+      },
+      {
+        "id": "external:node:async_hooks",
+        "kind": "external",
+        "path": "node:async_hooks"
       },
       {
         "id": "external:node:child_process",
@@ -65259,6 +65264,11 @@
       },
       {
         "from": "src/lib/worktree-paths.ts",
+        "to": "external:node:async_hooks",
+        "kind": "imports"
+      },
+      {
+        "from": "src/lib/worktree-paths.ts",
         "to": "external:os",
         "kind": "imports"
       },
@@ -77289,12 +77299,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6863,
-      "edgeCount": 7336,
-      "importEdgeCount": 6039,
+      "nodeCount": 6864,
+      "edgeCount": 7337,
+      "importEdgeCount": 6040,
       "registerEdgeCount": 56
     }
   },
   "inventorySha256": "48902e0c27f95a38180e82912e230183cb1cacfa1231dbdd635f91b772bafea2",
-  "manifestSha256": "8dd6d0062a5e44b4cdafab228ec4f9dce012e6cd63f03aa6f1b53ce2f9ce647e"
+  "manifestSha256": "8f006d1bcf77821df98a0a15d169a2c8ac5f3fda9061c448786195e00aa931d5"
 }
