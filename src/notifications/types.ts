@@ -16,7 +16,8 @@ export type NotificationEvent =
   | "session-end"
   | "session-idle"
   | "ask-user-question"
-  | "agent-call";
+  | "agent-call"
+  | "approval-request";
 
 /** Supported notification platforms */
 export type NotificationPlatform =
@@ -163,6 +164,7 @@ export interface NotificationConfig {
     "session-idle"?: EventNotificationConfig;
     "ask-user-question"?: EventNotificationConfig;
     "agent-call"?: EventNotificationConfig;
+    "approval-request"?: EventNotificationConfig;
   };
 }
 

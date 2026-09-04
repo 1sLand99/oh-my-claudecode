@@ -24,6 +24,11 @@ import type { RunOptions, RunResult } from '../graph/runtime/types.js';
 import { AgentNodeExecutor } from '../graph/runtime/executors/agent.js';
 import { CommandNodeExecutor } from '../graph/runtime/executors/command.js';
 import { createStdinApprovalGate } from '../graph/runtime/approval.js';
+import {
+  createRemoteApprovalGate,
+  listPendingApprovals,
+  writeApprovalDecision,
+} from '../graph/runtime/remote-approval.js';
 import { createAsciiProgressReporter } from '../graph/runtime/progress.js';
 import { resolveRunDirHandle } from '../graph/runtime/run-dir.js';
 import type { RunDirHandle } from '../graph/runtime/run-dir.js';
@@ -111,7 +116,15 @@ async function loadSealedDescriptor(
   return stored;
 }
 
-async function runAction(descriptorPath: string, runsRoot: string): Promise<void> {
+async function runAction(
+  descriptorPath: string,
+  runsRoot: string,
+  approvalOptions: {
+    approvalMode: string;
+    approvalTimeout?: number;
+    approvalTimeoutPolicy: string;
+  } = { approvalMode: 'stdin', approvalTimeoutPolicy: 'deny' },
+): Promise<void> {
   try {
     // Reject unsupported POSIX before descriptor/run-directory resolution so
     // the fail-closed contract cannot create persistence state as a side
@@ -128,10 +141,42 @@ async function runAction(descriptorPath: string, runsRoot: string): Promise<void
   // runtime, and so this adapter stays decoupled from runtime module order.
   const [{ runGraph }] = await Promise.all([import('../graph/runtime/runner.js')]);
 
+  const approvalMode = approvalOptions.approvalMode ?? 'stdin';
+  const timeoutPolicy = approvalOptions.approvalTimeoutPolicy ?? 'deny';
+
+  let prompter;
+  if (approvalMode === 'remote') {
+    prompter = createRemoteApprovalGate({
+      runsRoot,
+      runId: sealed.run_id,
+      ...(approvalOptions.approvalTimeout !== undefined
+        ? { timeoutMs: approvalOptions.approvalTimeout * 1000 }
+        : {}),
+      timeoutPolicy: timeoutPolicy === 'approve' ? 'approved' : 'denied',
+      notifier: async (request, record) => {
+        // Lazy import keeps `omc graph --help` free of the notifications stack.
+        const { notify } = await import('../notifications/index.js');
+        await notify('approval-request', {
+          sessionId: record.run_id,
+          question: request.prompt_text,
+          message:
+            `🔔 Approval required for graph run \`${record.run_id}\` ` +
+            `(node \`${record.node_id}\`, activation \`${record.activation_id}\`).\n\n` +
+            `${request.prompt_text}\n\n` +
+            `Decide with: omc graph approvals decide ${record.run_id} ${record.activation_id} <approved|denied>`,
+          projectPath: process.cwd(),
+          reason: `graph approval gate: ${record.node_id}`,
+        });
+      },
+    });
+  } else {
+    prompter = createStdinApprovalGate();
+  }
+
   const options: RunOptions = {
     runsRoot,
     executors: [new CommandNodeExecutor(), new AgentNodeExecutor()],
-    prompter: createStdinApprovalGate(),
+    prompter,
     reporter: createAsciiProgressReporter(),
   };
 
@@ -165,12 +210,28 @@ export function graphCommand(): Command {
     .command('run <descriptorPath>')
     .description('Run a graph descriptor with kill/resume support')
     .option('--runs-root <dir>', 'Directory holding per-run state', '.omc/graph-runs')
+    .option(
+      '--approval-mode <mode>',
+      'Approval gate style: stdin (interactive y/n) or remote (file-backed + notification)',
+      'stdin',
+    )
+    .option(
+      '--approval-timeout <seconds>',
+      'Remote approvals: max seconds to wait for a decision (default: wait forever)',
+      (value: string) => Number(value),
+    )
+    .option(
+      '--approval-timeout-policy <policy>',
+      'Remote approvals: resolution for an expired request: deny (default, fail-closed) or approve',
+      'deny',
+    )
     .addHelpText(
       'after',
       `
 Examples:
   $ omc graph run ./my-graph.json
   $ omc graph run ./my-graph.json --runs-root .omc/graph-runs
+  $ omc graph run ./my-graph.json --approval-mode remote --approval-timeout 3600
 
 Exit codes:
   0   run succeeded
@@ -180,9 +241,85 @@ Exit codes:
   21  descriptor mismatch on resume
   70  runtime crash (unmapped error)`,
     )
-    .action(async (descriptorPath: string, options: { runsRoot: string }) => {
-      await runAction(descriptorPath, options.runsRoot);
+    .action(
+      async (
+        descriptorPath: string,
+        options: {
+          runsRoot: string;
+          approvalMode: string;
+          approvalTimeout?: number;
+          approvalTimeoutPolicy: string;
+        },
+      ) => {
+        if (!['stdin', 'remote'].includes(options.approvalMode)) {
+          fail(`invalid --approval-mode "${options.approvalMode}" (expected stdin or remote)`, 1);
+          return;
+        }
+        if (!['deny', 'approve'].includes(options.approvalTimeoutPolicy)) {
+          fail(`invalid --approval-timeout-policy "${options.approvalTimeoutPolicy}" (expected deny or approve)`, 1);
+          return;
+        }
+        await runAction(descriptorPath, options.runsRoot, options);
+      },
+    );
+
+  const approvals = command
+    .command('approvals')
+    .description('List and decide pending human-approval gates for graph runs');
+
+  approvals
+    .command('list')
+    .description('List pending approval requests across all runs')
+    .option('--runs-root <dir>', 'Directory holding per-run state', '.omc/graph-runs')
+    .action(async (options: { runsRoot: string }) => {
+      const entries = listPendingApprovals(options.runsRoot);
+      if (entries.length === 0) {
+        console.log('No pending approvals.');
+        return;
+      }
+      for (const entry of entries) {
+        console.log(
+          `${chalk.bold(entry.run_id)}  ${chalk.cyan(entry.activation_id)}  node=${entry.node_id}  created=${entry.created_at}`,
+        );
+        console.log(`  ${entry.prompt_text.replace(/\n/g, '\n  ')}`);
+        console.log(
+          `  decide: omc graph approvals decide ${entry.run_id} ${entry.activation_id} <approved|denied>`,
+        );
+      }
     });
+
+  approvals
+    .command('decide <runId> <activationId> <decision>')
+    .description('Write an approval decision for one pending gate (approved|denied)')
+    .option('--runs-root <dir>', 'Directory holding per-run state', '.omc/graph-runs')
+    .option('--by <who>', 'Record who made the decision')
+    .action(
+      async (
+        runId: string,
+        activationId: string,
+        decision: string,
+        options: { runsRoot: string; by?: string },
+      ) => {
+        if (decision !== 'approved' && decision !== 'denied') {
+          fail(`invalid decision "${decision}" (expected approved or denied)`, 1);
+          return;
+        }
+        try {
+          const record = writeApprovalDecision(
+            options.runsRoot,
+            runId,
+            activationId,
+            decision,
+            options.by,
+          );
+          console.log(
+            `Recorded ${chalk.bold(record.decision)} for ${chalk.cyan(activationId)} (run ${runId}).`,
+          );
+        } catch (error) {
+          fail(`cannot record decision: ${errorMessage(error)}`, 1);
+        }
+      },
+    );
 
   return command;
 }
