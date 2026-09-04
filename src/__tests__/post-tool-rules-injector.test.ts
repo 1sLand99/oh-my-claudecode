@@ -1,4 +1,6 @@
 import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -21,7 +23,6 @@ function runHook(input: Record<string, unknown>, extraEnv?: Record<string, strin
 
   return JSON.parse(raw) as {
     continue: boolean;
-    suppressOutput?: boolean;
     hookSpecificOutput?: { hookEventName?: string; additionalContext?: string };
   };
 }
@@ -57,21 +58,56 @@ describe('post-tool-rules-injector.mjs skip guards (DISABLE_OMC / OMC_SKIP_HOOKS
     expectSkipped({ DISABLE_OMC: '', OMC_SKIP_HOOKS: ' keyword-detector , post-tool-use ' });
   });
 
-  it('does not short-circuit when skip vars are empty', () => {
-    // Not skipped: the hook runs its processing path, which always adds
-    // suppressOutput (or injected context) rather than a bare continue.
-    expect(runHook(INPUT, { DISABLE_OMC: '', OMC_SKIP_HOOKS: '' })).not.toEqual({ continue: true });
+  it('returns a Codex-compatible no-op response when processing is enabled', () => {
+    expect(runHook(INPUT, { DISABLE_OMC: '', OMC_SKIP_HOOKS: '' })).toEqual({ continue: true });
   });
 
-  it('does not short-circuit for an unrelated OMC_SKIP_HOOKS token', () => {
-    expect(runHook(INPUT, { DISABLE_OMC: '', OMC_SKIP_HOOKS: 'keyword-detector' })).not.toEqual({
+  it('returns a Codex-compatible no-op response for unrelated skip tokens', () => {
+    expect(runHook(INPUT, { DISABLE_OMC: '', OMC_SKIP_HOOKS: 'keyword-detector' })).toEqual({
       continue: true,
     });
   });
 
-  it('processes normally when DISABLE_OMC=false', () => {
-    expect(runHook(INPUT, { DISABLE_OMC: 'false', OMC_SKIP_HOOKS: '' })).not.toEqual({
+  it('returns a Codex-compatible no-op response when DISABLE_OMC=false', () => {
+    expect(runHook(INPUT, { DISABLE_OMC: 'false', OMC_SKIP_HOOKS: '' })).toEqual({
       continue: true,
     });
+  });
+
+  it('preserves additionalContext without unsupported response fields', () => {
+    const root = mkdtempSync(join(tmpdir(), 'post-tool-rules-injector-'));
+    const home = join(root, 'home');
+    const filePath = join(root, 'README.md');
+    mkdirSync(join(root, '.claude', 'rules'), { recursive: true });
+    mkdirSync(home, { recursive: true });
+    writeFileSync(join(root, '.git'), 'gitdir: placeholder');
+    writeFileSync(join(root, '.claude', 'rules', 'style.md'), '---\nalwaysApply: true\n---\nUse this rule.');
+    writeFileSync(filePath, '# fixture');
+
+    try {
+      const output = runHook(
+        {
+          cwd: root,
+          tool_name: 'Read',
+          tool_input: { file_path: filePath },
+          session_id: `issue-3956-${Date.now()}`,
+        },
+        {
+          HOME: home,
+          USERPROFILE: home,
+          CLAUDE_CONFIG_DIR: join(root, 'config'),
+        },
+      );
+
+      expect(output).toEqual({
+        continue: true,
+        hookSpecificOutput: {
+          hookEventName: 'PostToolUse',
+          additionalContext: expect.stringContaining('Use this rule.'),
+        },
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
