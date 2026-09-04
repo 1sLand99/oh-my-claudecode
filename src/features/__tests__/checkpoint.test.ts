@@ -73,6 +73,11 @@ describe("createCheckpoint", () => {
     tempDirs.push(outside);
     expect(() => createCheckpoint(outside, "x")).toThrow(CheckpointError);
   });
+
+  it("rejects empty labels", () => {
+    const dir = makeRepo();
+    expect(() => createCheckpoint(dir, "   ")).toThrow(CheckpointError);
+  });
 });
 
 describe("rollbackToCheckpoint", () => {

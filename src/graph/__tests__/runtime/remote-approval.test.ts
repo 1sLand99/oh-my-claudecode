@@ -250,3 +250,22 @@ describe("writeApprovalDecision fail-closed", () => {
     expect(existsSync(join(runsRoot, "typo-run"))).toBe(false);
   });
 });
+
+describe("createRemoteApprovalGate abort", () => {
+  it("resolves denied when the signal is already aborted", async () => {
+    const runsRoot = makeRunsRoot();
+    const controller = new AbortController();
+    controller.abort();
+    const gate = createRemoteApprovalGate({
+      runsRoot,
+      runId: "run-1",
+      signal: controller.signal,
+      sleep: async () => {},
+    });
+
+    expect(await gate.prompt(REQUEST)).toBe("denied");
+    expect(
+      existsSync(join(runsRoot, "run-1", "approvals", "pending", "act-1.json")),
+    ).toBe(false);
+  });
+});

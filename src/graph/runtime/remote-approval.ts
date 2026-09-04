@@ -71,6 +71,8 @@ export interface RemoteApprovalGateOptions {
   readonly timeoutMs?: number;
   /** Resolution for an expired request (default "denied" — fail closed). */
   readonly timeoutPolicy?: Decision;
+  /** AbortSignal observed between polls; an aborted wait resolves denied. */
+  readonly signal?: AbortSignal;
   /** Best-effort delivery hook (notification channels). Errors are swallowed. */
   readonly notifier?: (
     request: ApprovalRequest,
@@ -210,6 +212,16 @@ export function createRemoteApprovalGate(
             // affects `approvals list` freshness, never run correctness.
           }
           return decision.decision;
+        }
+        // An aborted/killed run must not hang in the poll loop: resolve
+        // denied (fail closed) and let the runner's fence settle ownership.
+        if (options.signal?.aborted === true) {
+          try {
+            unlinkSync(join(pendingDir, artifactFileName(request.activation_id)));
+          } catch {
+            // Same best-effort retirement as above.
+          }
+          return "denied";
         }
         if (
           options.timeoutMs !== undefined &&

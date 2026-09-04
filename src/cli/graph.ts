@@ -287,6 +287,13 @@ Exit codes:
           fail(`invalid --approval-timeout-policy "${options.approvalTimeoutPolicy}" (expected deny or approve)`, 1);
           return;
         }
+        if (
+          options.approvalTimeout !== undefined &&
+          (!Number.isFinite(options.approvalTimeout) || options.approvalTimeout <= 0)
+        ) {
+          fail(`invalid --approval-timeout "${options.approvalTimeout}" (expected a positive number of seconds)`, 1);
+          return;
+        }
         await runAction(descriptorPath, options.runsRoot, options);
       },
     );
@@ -323,7 +330,7 @@ Exit codes:
     .option('--by <who>', 'Record who made the decision')
     .option(
       '--rollback <checkpointId>',
-      'After recording the decision, roll the working tree back to a checkpoint (omc checkpoint create/list)',
+      'After recording a denial, roll the working tree back to a checkpoint (omc checkpoint create/list)',
     )
     .option(
       '--force',
@@ -357,6 +364,10 @@ Exit codes:
           return;
         }
         if (options.rollback !== undefined) {
+          if (decision === 'approved') {
+            fail('--rollback applies to denied runs only; refusing to discard work on approval', 1);
+            return;
+          }
           try {
             const { rollbackToCheckpoint } = await import('../features/checkpoint/index.js');
             rollbackToCheckpoint(process.cwd(), options.rollback, options.force);

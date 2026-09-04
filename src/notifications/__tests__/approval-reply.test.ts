@@ -30,7 +30,6 @@ describe("parseApprovalReply", () => {
     expect(parseApprovalReply("approved")).toBe("approved");
     expect(parseApprovalReply("  Approve ")).toBe("approved");
     expect(parseApprovalReply("YES ship it")).toBe("approved");
-    expect(parseApprovalReply("LGTM 🚀")).toBe("approved");
     expect(parseApprovalReply("批准")).toBe("approved");
   });
 
@@ -78,5 +77,22 @@ describe("handleApprovalReply", () => {
     expect(
       existsSync(join(runsRoot, "run-1", "approvals", "decisions", "act-1.json")),
     ).toBe(false);
+  });
+
+  it("returns null instead of throwing for a stale approval ref", () => {
+    const runsRoot = makeRunsRoot();
+    // No run directory: the run ended or the ref is cross-session garbage.
+    expect(
+      handleApprovalReply(
+        { runsRoot, runId: "gone-run", activationId: "act-1" },
+        "approved",
+        "telegram",
+      ),
+    ).toBeNull();
+  });
+
+  it("does not treat casual chat as a decision", () => {
+    expect(parseApprovalReply("lgtm")).toBeNull();
+    expect(parseApprovalReply("looks good")).toBeNull();
   });
 });

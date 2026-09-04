@@ -75,8 +75,10 @@ function repoToplevel(cwd: string): string {
  * Returns the 12-char checkpoint id (abbreviated commit sha).
  */
 export function createCheckpoint(cwd: string, label: string): string {
+  if (typeof label !== "string" || label.trim().length === 0) {
+    throw new CheckpointError("checkpoint label must not be empty");
+  }
   const toplevel = repoToplevel(cwd);
-
   // Build a tree from the live worktree using a temporary index so the
   // user's real index and HEAD are never touched.
   const tmpIndexDir = mkdtempSync(join(tmpdir(), "omc-checkpoint-"));
@@ -177,6 +179,13 @@ export function rollbackToCheckpoint(cwd: string, checkpointId: string, force = 
     throw new CheckpointError(`ambiguous checkpoint id "${checkpointId}"; use more characters`);
   }
   const full = candidates[0];
+
+  // The resolved sha must be a commit (a shadow checkpoint), never a blob or
+  // tree an attacker planted at a colliding ref path. Fail closed otherwise.
+  const objectType = git(["cat-file", "-t", full], { cwd: toplevel });
+  if (objectType !== "commit") {
+    throw new CheckpointError(`checkpoint "${checkpointId}" is not a valid snapshot`);
+  }
 
   if (!force && isWorktreeDirty(toplevel)) {
     throw new CheckpointError(

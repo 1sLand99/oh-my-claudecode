@@ -355,7 +355,7 @@ export function sanitizeReplyInput(text: string): string {
 
 /** Keywords that resolve an approval gate (first word of the reply, case-insensitive). */
 const APPROVAL_APPROVE_WORDS = new Set([
-  'approve', 'approved', 'yes', 'y', 'lgtm',
+  'approve', 'approved', 'yes', 'y',
   '批准', '同意',
 ]);
 const APPROVAL_DENY_WORDS = new Set([
@@ -387,13 +387,20 @@ export function handleApprovalReply(
 ): 'approved' | 'denied' | null {
   const decision = parseApprovalReply(text);
   if (decision === null) return null;
-  writeApprovalDecision(
-    approvalRef.runsRoot,
-    approvalRef.runId,
-    approvalRef.activationId,
-    decision,
-    `reply:${platform}`,
-  );
+  try {
+    writeApprovalDecision(
+      approvalRef.runsRoot,
+      approvalRef.runId,
+      approvalRef.activationId,
+      decision,
+      `reply:${platform}`,
+    );
+  } catch (error) {
+    // A stale or cross-session approvalRef must never throw out of the
+    // poll loop: stale entries are pruned by their 24h TTL; log and skip.
+    log(`Approval reply ignored for stale ref ${approvalRef.runId}/${approvalRef.activationId}: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
   log(`Approval ${decision} recorded for run ${approvalRef.runId} activation ${approvalRef.activationId} via ${platform} reply`);
   return decision;
 }

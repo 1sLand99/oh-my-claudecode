@@ -433,6 +433,11 @@ export function formatApprovalRequest(payload: NotificationPayload): string {
     lines.push("");
   }
 
+  if (payload.approval) {
+    lines.push(`Run: \`${payload.approval.runId}\` | Activation: \`${payload.approval.activationId}\``);
+    lines.push("");
+  }
+
   lines.push(`Reply or run \`omc graph approvals decide\` to approve/deny.`);
   lines.push("");
   lines.push(buildFooter(payload, true));
