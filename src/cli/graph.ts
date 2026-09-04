@@ -156,6 +156,7 @@ async function runAction(
       notifier: async (request, record) => {
         // Lazy import keeps `omc graph --help` free of the notifications stack.
         const { notify } = await import('../notifications/index.js');
+        const { resolve: resolvePath } = await import('node:path');
         await notify('approval-request', {
           sessionId: record.run_id,
           question: request.prompt_text,
@@ -163,9 +164,15 @@ async function runAction(
             `🔔 Approval required for graph run \`${record.run_id}\` ` +
             `(node \`${record.node_id}\`, activation \`${record.activation_id}\`).\n\n` +
             `${request.prompt_text}\n\n` +
-            `Decide with: omc graph approvals decide ${record.run_id} ${record.activation_id} <approved|denied>`,
+            `Reply "approved" or "denied" to decide, or run: ` +
+            `omc graph approvals decide ${record.run_id} ${record.activation_id} <approved|denied>`,
           projectPath: process.cwd(),
           reason: `graph approval gate: ${record.node_id}`,
+          approval: {
+            runsRoot: resolvePath(runsRoot),
+            runId: record.run_id,
+            activationId: record.activation_id,
+          },
         });
       },
     });

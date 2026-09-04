@@ -202,6 +202,15 @@ export interface NotificationPayload {
   iteration?: number;
   /** Max iterations (for stop events) */
   maxIterations?: number;
+  /** Approval-gate correlation for approval-request events */
+  approval?: {
+    /** Absolute runs root holding the run directory */
+    runsRoot: string;
+    /** Graph run id */
+    runId: string;
+    /** Activation id of the pending approval */
+    activationId: string;
+  };
   /** Question text (for ask-user-question events) */
   question?: string;
   /** Structured AskUserQuestion prompts/options preserved from tool input */
