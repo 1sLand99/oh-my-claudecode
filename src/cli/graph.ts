@@ -123,7 +123,8 @@ async function runAction(
     approvalMode: string;
     approvalTimeout?: number;
     approvalTimeoutPolicy: string;
-  } = { approvalMode: 'stdin', approvalTimeoutPolicy: 'deny' },
+    checkpoint: boolean;
+  } = { approvalMode: 'stdin', approvalTimeoutPolicy: 'deny', checkpoint: false },
 ): Promise<void> {
   try {
     // Reject unsupported POSIX before descriptor/run-directory resolution so
@@ -136,6 +137,20 @@ async function runAction(
   }
   const sealed = await loadSealedDescriptor(descriptorPath, runsRoot);
   if (sealed === null) return;
+
+  // Optional pre-run safety net: snapshot the working tree so a denied or
+  // failed run can be rolled back. Best-effort — a checkpoint failure must
+  // not block the run unless the user asked for one explicitly.
+  if (approvalOptions.checkpoint) {
+    try {
+      const { createCheckpoint } = await import('../features/checkpoint/index.js');
+      const id = createCheckpoint(process.cwd(), `before graph run ${sealed.run_id}`);
+      console.log(`Checkpoint ${id} created (restore: omc checkpoint rollback ${id}).`);
+    } catch (error) {
+      fail(`--checkpoint requested but unavailable: ${errorMessage(error)}`, 1);
+      return;
+    }
+  }
 
   // runGraph is imported lazily so `omc graph --help` does not load the whole
   // runtime, and so this adapter stays decoupled from runtime module order.
@@ -232,6 +247,11 @@ export function graphCommand(): Command {
       'Remote approvals: resolution for an expired request: deny (default, fail-closed) or approve',
       'deny',
     )
+    .option(
+      '--checkpoint',
+      'Snapshot the working tree before the run (restore with omc checkpoint rollback)',
+      false,
+    )
     .addHelpText(
       'after',
       `
@@ -256,6 +276,7 @@ Exit codes:
           approvalMode: string;
           approvalTimeout?: number;
           approvalTimeoutPolicy: string;
+          checkpoint: boolean;
         },
       ) => {
         if (!['stdin', 'remote'].includes(options.approvalMode)) {
@@ -300,12 +321,21 @@ Exit codes:
     .description('Write an approval decision for one pending gate (approved|denied)')
     .option('--runs-root <dir>', 'Directory holding per-run state', '.omc/graph-runs')
     .option('--by <who>', 'Record who made the decision')
+    .option(
+      '--rollback <checkpointId>',
+      'After recording the decision, roll the working tree back to a checkpoint (omc checkpoint create/list)',
+    )
+    .option(
+      '--force',
+      'With --rollback: discard uncommitted changes made after the checkpoint',
+      false,
+    )
     .action(
       async (
         runId: string,
         activationId: string,
         decision: string,
-        options: { runsRoot: string; by?: string },
+        options: { runsRoot: string; by?: string; rollback?: string; force: boolean },
       ) => {
         if (decision !== 'approved' && decision !== 'denied') {
           fail(`invalid decision "${decision}" (expected approved or denied)`, 1);
@@ -324,6 +354,16 @@ Exit codes:
           );
         } catch (error) {
           fail(`cannot record decision: ${errorMessage(error)}`, 1);
+          return;
+        }
+        if (options.rollback !== undefined) {
+          try {
+            const { rollbackToCheckpoint } = await import('../features/checkpoint/index.js');
+            rollbackToCheckpoint(process.cwd(), options.rollback, options.force);
+            console.log(`Rolled back working tree to ${chalk.bold(options.rollback)}.`);
+          } catch (error) {
+            fail(`decision recorded, but rollback failed: ${errorMessage(error)}`, 1);
+          }
         }
       },
     );
