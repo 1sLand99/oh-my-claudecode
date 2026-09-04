@@ -610,6 +610,37 @@ omc session friction report --project all --json
 - Highlights context-bloat and operator-friction indicators such as high estimated context usage, large JSONL entries, tool error rates, long idle gaps, failed agents, and hook noise
 - Supports `--limit`, `--session`, `--since`, `--project`, and `--json`
 
+### `omc checkpoint`
+
+Workspace snapshot/rollback for autonomous runs, built on git "shadow commits": the full working tree (tracked, modified, and untracked non-ignored files) is captured into `refs/omc/checkpoints/` without touching HEAD, the index, or the worktree.
+
+```bash
+omc checkpoint create --label "before ralph run"
+omc checkpoint list
+omc checkpoint rollback <id> --force
+```
+
+- `create` never touches HEAD or the working tree; restore points appear only under `refs/omc/checkpoints/`
+- `rollback` restores the worktree and index and removes files created after the snapshot (`git clean -fd` keeps ignored paths such as `node_modules`)
+- `rollback` refuses to discard uncommitted changes unless `--force` is passed
+- Requires a git repository; no external storage is involved
+
+### Graph approval gates (remote approvals)
+
+Graph runtime `human-approval` nodes support two gate styles via `omc graph run`:
+
+```bash
+omc graph run ./my-graph.json --approval-mode stdin    # default: interactive y/n
+omc graph run ./my-graph.json --approval-mode remote --checkpoint
+```
+
+- `--approval-mode remote` persists each pending gate under `.omc/graph-runs/<run_id>/approvals/` and dispatches an `approval-request` notification (Telegram/Discord/Slack/webhook, following your notification config)
+- Reply `approved`/`denied` (or `y`/`n`, `批准`/`拒绝`) to the notification message to decide from your phone; the reply-listener daemon writes the decision artifact
+- Decide from any shell on the machine: `omc graph approvals list`, then `omc graph approvals decide <runId> <activationId> approved|denied`
+- `--approval-timeout <seconds>` bounds the wait; an expired gate resolves to `--approval-timeout-policy deny` (default, fail-closed) or `approve`
+- `--checkpoint` snapshots the working tree before the run; after a denial you can restore it: `omc graph approvals decide <runId> <activationId> denied --rollback <checkpointId>`
+- Malformed decision artifacts are ignored, never trusted; the runner journal remains the record of outcomes
+
 ### Non-interactive automation and CI/CD
 
 Use OMC's terminal and library surfaces in non-interactive environments:
