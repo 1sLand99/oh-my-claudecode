@@ -5,22 +5,22 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "4133dc57a3e15fa60c8d7852ff7b210e2a7d30d5",
-    "sourceSha256": "37d26bfd306962f267053d0ddca74eb9912bf0e132a9217dcff1bc182d72676a",
+    "head": "4e8d9ccd027718bb87b021f232930c09dc07d86f",
+    "sourceSha256": "6047b5d6d4fc95bf3324ed9d37f6c41811ea59a0861ce319aacf56c881efd4bc",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "4133dc57a3e15fa60c8d7852ff7b210e2a7d30d5",
-  "sourceSha256": "37d26bfd306962f267053d0ddca74eb9912bf0e132a9217dcff1bc182d72676a",
+  "head": "4e8d9ccd027718bb87b021f232930c09dc07d86f",
+  "sourceSha256": "6047b5d6d4fc95bf3324ed9d37f6c41811ea59a0861ce319aacf56c881efd4bc",
   "counts": {
     "public": {
-      "skills": 36,
+      "skills": 37,
       "commands": 21,
       "workflows": 8,
       "agents": 20,
-      "total": 85
+      "total": 86
     },
     "internal": {
       "hookFiles": 295,
@@ -39,7 +39,7 @@
     "prompt": {
       "promptLikeFiles": 62
     },
-    "skills": 36,
+    "skills": 37,
     "commands": 21,
     "hookFiles": 295,
     "workflows": 8,
@@ -64,6 +64,7 @@
       "graph",
       "hud",
       "launch",
+      "loft",
       "minimal-code-discipline",
       "omc-doctor",
       "omc-setup",
@@ -33372,6 +33373,11 @@
         "path": "skills/launch/SKILL.md"
       },
       {
+        "id": "skills/loft/SKILL.md",
+        "kind": "skill",
+        "path": "skills/loft/SKILL.md"
+      },
+      {
         "id": "skills/minimal-code-discipline/SKILL.md",
         "kind": "skill",
         "path": "skills/minimal-code-discipline/SKILL.md"
@@ -42910,6 +42916,11 @@
       },
       {
         "from": "skills/launch/SKILL.md",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "registers"
+      },
+      {
+        "from": "skills/loft/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
       },
@@ -77310,12 +77321,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6865,
-      "edgeCount": 7338,
+      "nodeCount": 6866,
+      "edgeCount": 7339,
       "importEdgeCount": 6040,
-      "registerEdgeCount": 57
+      "registerEdgeCount": 58
     }
   },
-  "inventorySha256": "26b760d7a326707bbe98818438219e3bfb9e7f93cf587e20066b6adeb0a5d937",
-  "manifestSha256": "2290bdc4cff4b84b83e3a841effe6b96b86a91092514c391159c8a32f4323667"
+  "inventorySha256": "d4529469934f2cbf2fa4897aea788da0e912fad10235f00a88b9afff515417b5",
+  "manifestSha256": "1c994e38c4e90009ed891709b2303f729e3f7384f9d88c98b2528c19a87564a5"
 }
