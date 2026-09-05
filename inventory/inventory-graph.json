@@ -5,22 +5,22 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "7644c857048327f8d370aaa97caddf586ea13dbe",
-    "sourceSha256": "dc0a267711786dbce71fcbba68d4b598f1d45f8e8d6657d886fab11a136a1be1",
+    "head": "4133dc57a3e15fa60c8d7852ff7b210e2a7d30d5",
+    "sourceSha256": "37d26bfd306962f267053d0ddca74eb9912bf0e132a9217dcff1bc182d72676a",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "7644c857048327f8d370aaa97caddf586ea13dbe",
-  "sourceSha256": "dc0a267711786dbce71fcbba68d4b598f1d45f8e8d6657d886fab11a136a1be1",
+  "head": "4133dc57a3e15fa60c8d7852ff7b210e2a7d30d5",
+  "sourceSha256": "37d26bfd306962f267053d0ddca74eb9912bf0e132a9217dcff1bc182d72676a",
   "counts": {
     "public": {
-      "skills": 35,
+      "skills": 36,
       "commands": 21,
       "workflows": 8,
       "agents": 20,
-      "total": 84
+      "total": 85
     },
     "internal": {
       "hookFiles": 295,
@@ -39,7 +39,7 @@
     "prompt": {
       "promptLikeFiles": 62
     },
-    "skills": 35,
+    "skills": 36,
     "commands": 21,
     "hookFiles": 295,
     "workflows": 8,
@@ -50,6 +50,7 @@
     "skills": [
       "ai-slop-cleaner",
       "ask",
+      "ask-navigator",
       "autopilot",
       "autoresearch",
       "cancel",
@@ -33296,6 +33297,11 @@
         "path": "skills/ai-slop-cleaner/SKILL.md"
       },
       {
+        "id": "skills/ask-navigator/SKILL.md",
+        "kind": "skill",
+        "path": "skills/ask-navigator/SKILL.md"
+      },
+      {
         "id": "skills/ask/SKILL.md",
         "kind": "skill",
         "path": "skills/ask/SKILL.md"
@@ -42829,6 +42835,11 @@
       },
       {
         "from": "skills/ai-slop-cleaner/SKILL.md",
+        "to": "src/features/builtin-skills/skills.ts",
+        "kind": "registers"
+      },
+      {
+        "from": "skills/ask-navigator/SKILL.md",
         "to": "src/features/builtin-skills/skills.ts",
         "kind": "registers"
       },
@@ -77299,12 +77310,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6864,
-      "edgeCount": 7337,
+      "nodeCount": 6865,
+      "edgeCount": 7338,
       "importEdgeCount": 6040,
-      "registerEdgeCount": 56
+      "registerEdgeCount": 57
     }
   },
-  "inventorySha256": "48902e0c27f95a38180e82912e230183cb1cacfa1231dbdd635f91b772bafea2",
-  "manifestSha256": "67608092a6e6843ffab24a72aa3b69071d78f1a41da68d9f1fe42e5b09e6ecfb"
+  "inventorySha256": "26b760d7a326707bbe98818438219e3bfb9e7f93cf587e20066b6adeb0a5d937",
+  "manifestSha256": "2290bdc4cff4b84b83e3a841effe6b96b86a91092514c391159c8a32f4323667"
 }
