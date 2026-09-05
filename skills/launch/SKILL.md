@@ -69,6 +69,8 @@ Paper trail, written the moment each item settles:
 
 Non-convergence here is normal work, not a failure: if the frontier will not empty, present the residual questions ranked — this is C2's input, not an error. If the residual questions themselves cannot be stated precisely (fog test Q2 fails), the destination itself is unsettled and that is beyond C2's authority: stop, note what already settled (vocabulary in `CONTEXT.md`, answered questions), recommend `/oh-my-claudecode:ask-navigator`, and exit — the pipeline never invents a destination.
 
+**Loft detour.** A residual question that is precise but cannot settle in prose — it needs to be seen or clicked, not described (how the UI should look, whether a state model feels right) — is answered with an artifact, not more questions: call the Skill tool with "loft", let the captain react, and fold that reaction back into the interview. The lofted artifact is C2's input; the captain signs what they saw, not what they were told.
+
 ## Phase 2 — Spec synthesis (agent drafts → C2 approves)
 
 Synthesize `.omc/specs/<feature-slug>/spec.md`:
@@ -85,7 +87,7 @@ Synthesize `.omc/specs/<feature-slug>/spec.md`:
 
 Draft all of it, then stop at **C2**: present the acceptance criteria and the test seam list for human approval. Seams are selected by repo evidence and the deep-module discipline (public interfaces, existing test seams, depth analysis); the human confirms or corrects the list — a seam the human has not approved gets no tests.
 
-Durability gate (agent-enforced, no approval needed): spec and tickets carry contracts, never coordinates — no file paths, no line numbers. Fragments encoding a decision better than prose (state machines, reducers, schemas) are the exception and state their origin.
+Durability gate (agent-enforced, no approval needed): spec and tickets carry contracts, never coordinates — no file paths, no line numbers. Fragments encoding a decision better than prose (state machines, reducers, schemas) are the exception and state their origin (usually a loft).
 
 ## Phase 3 — Ticket decomposition (agent drafts → C3 approves)
 
@@ -103,7 +105,7 @@ Integration-wiring rule: every vertical slice includes its own wiring and a smok
 
 The frontier is every ticket whose blockers are all complete.
 
-**Parallel (default, 2+ tickets).** Hand tickets to team: each ticket becomes a team task, `blockedBy` edges carry over — team's claim mechanics pick only frontier tasks. Spawn N workers. Each worker implements with the tdd discipline at the seams approved in C2; a ticket closes only after code-review passes on the diff, declared by the reviewer — the implementer never self-approves.
+**Parallel (default, 2+ tickets).** Hand tickets to team: each ticket becomes a team task, `blockedBy` edges carry over — team's claim mechanics pick only frontier tasks. Spawn N workers. Each worker implements with the tdd discipline at the seams approved in C2, applying `/oh-my-claudecode:minimal-code-discipline` as the writing-time discipline (it stays opt-in); a ticket closes only after code-review passes on the diff, declared by the reviewer — the implementer never self-approves.
 
 **Serial (single ticket, or `--serial`).** Delegate one ticket at a time to an executor subagent; same review gate.
 
@@ -120,7 +122,7 @@ On a later explicit Launch invocation, first require the owning Team lifecycle t
 - all tickets terminal with evidence → run verify across the whole change
 - reconcile the paper trail: CONTEXT.md accurate, ADRs complete, spec updated where implementation taught it something
 - yard re-check: re-run the drydock `--check` audit; any new findings since entry are reported as **yard drift**, with a pointer to `/oh-my-claudecode:drydock`
-- **sediment pass — answer: what did this ship teach the yard?** Sweep the source checklist first (three-strike failure root causes, C4 answers, review rejections, verify findings), then answer. Propose every lesson as `lesson → slot → intended change` against the slot table below, or decline it explicitly with a reason; a ship with nothing to teach must say so verbatim as "no new lessons". This requirement blocks non-answers, never empty answers — inventing lessons to have one is the same violation as skipping the question. The lesson list rides in the completion report next to the Open Assumptions, each line individually vetoable; approved lessons are written to their slots only after acceptance, and the report records each landing's file location.
+- **sediment pass — answer: what did this ship teach the yard?** Sweep the source checklist first (three-strike failure root causes, C4 answers, review rejections, verify findings, and any map resolutions or deferred-sediment lines from a source map this run followed), then answer. Propose every lesson as `lesson → slot → intended change` against the slot table below, or decline it explicitly with a reason; a ship with nothing to teach must say so verbatim as "no new lessons". This requirement blocks non-answers, never empty answers — inventing lessons to have one is the same violation as skipping the question. The lesson list rides in the completion report next to the Open Assumptions, each line individually vetoable; approved lessons are written to their slots only after acceptance, and the report records each landing's file location.
 
   | Lesson kind | Slot |
   |---|---|

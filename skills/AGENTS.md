@@ -3,7 +3,7 @@
 
 # skills
 
-36 skill directories for workflow automation and specialized behaviors.
+37 skill directories for workflow automation and specialized behaviors.
 
 ## Purpose
 
@@ -52,6 +52,7 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-claudecod
 |-----------|-------|---------|
 | `ai-slop-cleaner/SKILL.md` | ai-slop-cleaner | Regression-safe cleanup workflow for AI-generated code slop |
 | `drydock/SKILL.md` | drydock | Shipyard harness scaffold: 4-pillar shared environment across 5 surfaces, with --check drift audit |
+| `loft/SKILL.md` | loft | Shipyard shape-before-steel discipline: throwaway artifacts answer design questions prose cannot settle |
 | `minimal-code-discipline/SKILL.md` | minimal-code-discipline | YAGNI-ladder writing-time discipline: existence-first, reuse before writing, shortest correct diff |
 | `skillify/SKILL.md` | skillify | Extract reusable skill from session |
 | `learner/SKILL.md` | learner | Deprecated compatibility alias/internal implementation history for skillify |
