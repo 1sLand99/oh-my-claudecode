@@ -4,13 +4,13 @@ Shipyard is the delivery methodology behind four opt-in skills: `drydock`, `ask-
 
 > **Everyone ships, and nobody ships randomly** — agents continuously run everything repeatable and acceptable-by-evidence; humans decide what cannot be judged by the system or what fails expensively.
 
-This page is the map of the methodology: the boundary principle, the roles, the four pillars, the surface layout, the working metaphor, and how the four skills compose. The skills themselves (`/oh-my-claudecode:drydock`, `/oh-my-claudecode:ask-navigator`, `/oh-my-claudecode:launch`, `/oh-my-claudecode:minimal-code-discipline`) are the executable form. For the visual quick-start with emoji and mermaid diagrams, see [shipyard-guide.md](./shipyard-guide.md).
+This page is the map of the methodology: the boundary principle, the roles, the four pillars, the surface layout, the working metaphor, and how the five skills compose. The skills themselves (`/oh-my-claudecode:drydock`, `/oh-my-claudecode:ask-navigator`, `/oh-my-claudecode:loft`, `/oh-my-claudecode:launch`, `/oh-my-claudecode:minimal-code-discipline`) are the executable form.
 
 ## The verifiability boundary
 
 Every step in a launch run answers one test question: *if this is done wrong, can the system detect it? Can it redo or roll back automatically?*
 
-- **Both yes → agents run it continuously** (the repeatable ~80%): fact-finding, spec/ticket drafting, tdd implementation, builds, tests, code-review, verify, scheduling.
+- **Both yes → agents run it continuously** (the repeatable ~80%): fact-finding, spec/ticket drafting, lofting design questions, tdd implementation, builds, tests, code-review, verify, scheduling.
 - **Either no → the human decides it** (the critical ~20%): acceptance criteria, seam selection, ticket granularity, irreversible architecture decisions, final acceptance.
 
 It is not "let agents do as much as possible" — it is "delegate exactly what can be accepted, nothing more."
@@ -50,15 +50,17 @@ A repo that humans and agents both build on carries four pillars across five con
 | The keel | Shared context + rules surfaces | Lay the skeleton first; the hull grows upward |
 | The fog | An effort whose destination isn't stateable yet | Nobody ships randomly — and nobody ships into fog without a chart |
 | The navigator | `/oh-my-claudecode:ask-navigator` | Charts the fog as a map of decision tickets; hands off, never builds |
+| The loft | `/oh-my-claudecode:loft` | Cut no steel until the shape is fair: a throwaway artifact answers a design question before real work begins |
 | The classification society | `docs/standards/` + `design-system/` | A ship must pass class to sail = changes must pass standards to merge |
 | The charts | specs + tickets | Launch's output; build from the chart |
 | The logbook | `docs/adr/` | Decisions, auditable after the fact |
 | The launch | `/oh-my-claudecode:launch` | Everyone may launch — and not one class check may be skipped |
 
-## The four skills compose
+## The five skills compose
 
 - **`drydock`** lays the keel once per repo (surfaces + seeds + `--check` drift audit). The `--check` report states per-finding confidence and whether the finding is actionable after excluding a user-declared scratch/throwaway scope; today it has no executable or machine-readable severity contract (planned follow-up).
 - **`ask-navigator`** charts foggy efforts (destination unclear → a map of decision tickets on the tracker, worked one ticket per session) and hands the collapsed decisions to launch as a mission brief. Resolutions sediment into the same paper-trail slots launch's Phase 1 uses. It produces decisions, never deliverables.
+- **`loft`** answers a design question that prose cannot settle with a throwaway artifact — a pure logic module in a clickable shell, or structurally different UI variants behind one route. The captain reacts; the answer lands in the decision; the artifact never docks. Called by launch's Phase 1 detour and the navigator's `loft` tickets.
 - **`launch`** runs delivery per feature (fog gate → yard gate → C1 brief → C2 spec+seams → C3 tickets → frontier execution with C4 decision stops → C5 closeout with a `--check` re-audit), with the human at exactly the checkpoints that fail expensively. The fog gate routes an effort whose destination cannot be stated to the navigator before the run starts. The yard gate blocks on high-confidence actionable drydock findings (listing them verbatim and producing no artifacts) and admits only a clean audit or a narrowly, explicitly overridden low-confidence / false-positive / scratch-scope finding — no general bypass.
 - **`minimal-code-discipline`** is an opt-in discipline for code written inside tickets (YAGNI ladder, smallest correct diff).
 

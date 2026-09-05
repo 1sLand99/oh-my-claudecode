@@ -30,7 +30,7 @@ The map is an **index, not a store**: a decision lives in exactly one place — 
 
 ## Document language
 
-Map and ticket prose follow the same document-language contract as `/oh-my-claudecode:drydock`: read `documentLanguage` from `CONTEXT.md` frontmatter when present; if the yard is not laid, ask the language question once during charting (W2) and record the resolved tag in the map's Notes so the later launch run inherits it. Paths, labels, slash commands, the `navigator:map` label, ticket-type names (`research`, `prototype`, `grilling`, `task`), `HITL`/`AFK`, and `blockedBy` are stable tokens and stay byte-for-byte stable in every language.
+Map and ticket prose follow the same document-language contract as `/oh-my-claudecode:drydock`: read `documentLanguage` from `CONTEXT.md` frontmatter when present; if the yard is not laid, ask the language question once during charting (W2) and record the resolved tag in the map's Notes so the later launch run inherits it. Paths, labels, slash commands, the `navigator:map` label, ticket-type names (`research`, `loft`, `grilling`, `task`), `HITL`/`AFK`, and `blockedBy` are stable tokens and stay byte-for-byte stable in every language.
 
 ## Chart the map
 
@@ -63,7 +63,7 @@ Every ticket is **HITL** (worked with the captain, who speaks for themselves) or
 | Type | Mode | Resolved by | Use when |
 |---|---|---|---|
 | `research` | AFK | Background subagent: investigate against primary sources (official docs, source code, specs), leave a cited Markdown file at `docs/research/<ticket-slug>.md` (or the repo's existing notes convention when one exists), link it from the ticket | A decision waits on knowledge outside the current working directory |
-| `prototype` | HITL | Throwaway code on a `prototype/<name>` branch: a single shareable HTML file for state/logic questions, or radically different UI variants on one route; the captain reacts to the artifact | "How should it look / behave" is the key question and prose cannot settle it |
+| `loft` | HITL | Call the Skill tool with "loft": a throwaway artifact answers the ticket's question — a pure logic module in a clickable shell, or structurally different UI variants behind one route; the captain reacts, the answer folds into the resolution, the artifact stays on a `loft/<name>` branch | The question is precise but prose cannot settle it — it needs to be seen or clicked, not described |
 | `grilling` | HITL | Call the Skill tool with "deep-interview"; the captain decides each round | Conversation is the resolution — the default case |
 | `task` | HITL or AFK | The navigator drives it alone where it can; otherwise hands the captain a precise checklist | Manual work that unblocks a decision (sign up for a service, provision access, move data so its shape can be seen) — it earns its place by unblocking a decision, not by delivering the destination |
 
