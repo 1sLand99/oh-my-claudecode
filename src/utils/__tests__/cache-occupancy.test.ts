@@ -59,7 +59,7 @@ describe('cache occupancy registry', () => {
       Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
       expect(processStartIdentities([41], exec)).toEqual(new Map([[41, 'ticks:638933184000000001']]));
 
-      const rounded = vi.fn(() => JSON.stringify({ Id: 41, StartTicks: 638933184000000001 })) as unknown as Parameters<typeof processStartIdentities>[1];
+      const rounded = vi.fn(() => JSON.stringify({ Id: 41, StartTicks: Number('638933184000000001') })) as unknown as Parameters<typeof processStartIdentities>[1];
       expect(processStartIdentities([41], rounded)).toEqual(new Map());
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });

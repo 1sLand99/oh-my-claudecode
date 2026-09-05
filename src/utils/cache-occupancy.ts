@@ -49,8 +49,9 @@ export function processStartIdentities(pids: number[], exec: typeof execFileSync
     const items = Array.isArray(parsed) ? parsed : parsed ? [parsed] : [];
     return new Map(items
       .map((item) => [Number((item as { Id?: unknown })?.Id), (item as { StartTicks?: unknown })?.StartTicks] as const)
-      .filter(([pid, ticks]): ticks is string => validPids.includes(pid) && typeof ticks === 'string' && /^\d+$/.test(ticks))
-      .map(([pid, ticks]) => [pid, `ticks:${ticks}`] as const));
+      .flatMap(([pid, ticks]) => validPids.includes(pid) && typeof ticks === 'string' && /^\d+$/.test(ticks)
+        ? [[pid, `ticks:${ticks}`] as const]
+        : []));
   } catch {
     return new Map();
   }
