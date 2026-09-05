@@ -18,6 +18,7 @@
   "skills": [
     "./skills/ai-slop-cleaner/",
     "./skills/ask/",
+    "./skills/ask-navigator/",
     "./skills/autopilot/",
     "./skills/autoresearch/",
     "./skills/cancel/",

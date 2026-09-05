@@ -1,9 +1,9 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-01-28 | Updated: 2026-08-29 -->
+<!-- Generated: 2026-01-28 | Updated: 2026-09-05 -->
 
 # skills
 
-35 skill directories for workflow automation and specialized behaviors.
+36 skill directories for workflow automation and specialized behaviors.
 
 ## Purpose
 
@@ -30,6 +30,7 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-claudecod
 | `plan/SKILL.md` | omc-plan | Strategic planning with interview workflow |
 | `ralplan/SKILL.md` | ralplan | Iterative planning (Planner+Architect+Critic) with RALPLAN-DR structured deliberation (`--deliberate` for high-risk) |
 | `deep-interview/SKILL.md` | deep-interview | Socratic deep interview with mathematical ambiguity gating (Ouroboros-inspired) |
+| `ask-navigator/SKILL.md` | ask-navigator | Shipyard navigator: chart foggy efforts into decision-ticket maps, one ticket per session, then hand a mission brief to launch |
 | `ralph-init/SKILL.md` | ralph-init | Initialize PRD for structured ralph |
 
 ### Exploration Skills
