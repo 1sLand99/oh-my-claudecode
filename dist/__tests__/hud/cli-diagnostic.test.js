@@ -79,7 +79,6 @@ describe('HUD CLI diagnostic (no stdin, no watch mode)', () => {
             resolveToWorktreeRoot: vi.fn((cwd) => cwd ?? '/tmp'),
             resolveTranscriptPath: vi.fn((tp) => tp),
             getOmcRoot: vi.fn(() => '/tmp/.omc'),
-            withWorktreePathRenderScope: vi.fn((callback) => callback()),
         }));
         vi.doMock('../../utils/config-dir.js', () => ({
             getClaudeConfigDir: vi.fn(() => overrides.configDir ?? tempConfigDir),
