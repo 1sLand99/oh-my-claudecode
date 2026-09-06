@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "65cf2c93cde7b2d851c75cd233cb7add190e1293",
-    "sourceSha256": "7b6bfb0ce903dc48dd90c134bf6077ff0109ceaa42461b591b3ec26f866a8a6b",
+    "head": "729ede5f45bb80be688977870d11d9f0867f0df4",
+    "sourceSha256": "dc1624dad8c7c0dcfe5149c6cdddb9d5c8ea5cc7dbc324cd95873242321bd405",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "65cf2c93cde7b2d851c75cd233cb7add190e1293",
-  "sourceSha256": "7b6bfb0ce903dc48dd90c134bf6077ff0109ceaa42461b591b3ec26f866a8a6b",
+  "head": "729ede5f45bb80be688977870d11d9f0867f0df4",
+  "sourceSha256": "dc1624dad8c7c0dcfe5149c6cdddb9d5c8ea5cc7dbc324cd95873242321bd405",
   "counts": {
     "public": {
       "skills": 37,
@@ -32,9 +32,9 @@
       "total": 1353
     },
     "generated": {
-      "distFiles": 4989,
+      "distFiles": 4986,
       "bridgeFiles": 9,
-      "total": 4998
+      "total": 4995
     },
     "prompt": {
       "promptLikeFiles": 62
@@ -2149,7 +2149,6 @@
       "dist/cli/autoresearch.d.ts.map",
       "dist/cli/autoresearch.js",
       "dist/cli/autoresearch.js.map",
-      "dist/cli/checkpoint.d.ts",
       "dist/cli/checkpoint.js",
       "dist/cli/claude-md-coordinator.d.ts",
       "dist/cli/claude-md-coordinator.d.ts.map",
@@ -2374,7 +2373,6 @@
       "dist/features/builtin-skills/types.d.ts.map",
       "dist/features/builtin-skills/types.js",
       "dist/features/builtin-skills/types.js.map",
-      "dist/features/checkpoint/index.d.ts",
       "dist/features/checkpoint/index.js",
       "dist/features/context-injector/collector.d.ts",
       "dist/features/context-injector/collector.d.ts.map",
@@ -2606,7 +2604,6 @@
       "dist/graph/runtime/journal.js",
       "dist/graph/runtime/progress.d.ts",
       "dist/graph/runtime/progress.js",
-      "dist/graph/runtime/remote-approval.d.ts",
       "dist/graph/runtime/remote-approval.js",
       "dist/graph/runtime/run-dir.d.ts",
       "dist/graph/runtime/run-dir.js",
@@ -13887,11 +13884,6 @@
         "path": "dist/cli/autoresearch.js.map"
       },
       {
-        "id": "dist/cli/checkpoint.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/cli/checkpoint.d.ts"
-      },
-      {
         "id": "dist/cli/checkpoint.js",
         "kind": "generated-dist",
         "path": "dist/cli/checkpoint.js"
@@ -15010,11 +15002,6 @@
         "id": "dist/features/builtin-skills/types.js.map",
         "kind": "generated-dist",
         "path": "dist/features/builtin-skills/types.js.map"
-      },
-      {
-        "id": "dist/features/checkpoint/index.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/features/checkpoint/index.d.ts"
       },
       {
         "id": "dist/features/checkpoint/index.js",
@@ -16170,11 +16157,6 @@
         "id": "dist/graph/runtime/progress.js",
         "kind": "generated-dist",
         "path": "dist/graph/runtime/progress.js"
-      },
-      {
-        "id": "dist/graph/runtime/remote-approval.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/graph/runtime/remote-approval.d.ts"
       },
       {
         "id": "dist/graph/runtime/remote-approval.js",
@@ -77545,12 +77527,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 6900,
+      "nodeCount": 6897,
       "edgeCount": 7343,
       "importEdgeCount": 6043,
       "registerEdgeCount": 58
     }
   },
   "inventorySha256": "d4529469934f2cbf2fa4897aea788da0e912fad10235f00a88b9afff515417b5",
-  "manifestSha256": "9484ae1e2d74693eb001c353364b1778ca2ed21517318edbeb205e98e8e5bd3b"
+  "manifestSha256": "2c711b3b46916d3cbe0090151f940c5fa5b65348cd8cffdfb51db04aca799b93"
 }
