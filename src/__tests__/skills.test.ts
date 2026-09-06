@@ -71,8 +71,8 @@ describe('Builtin Skills', () => {
   describe('createBuiltinSkills()', () => {
     it('should return correct number of skills (33 canonical + 2 aliases)', () => {
       const skills = createBuiltinSkills();
-      // 37 entries: 35 canonical skills + 2 aliases (cancel-ralph, psm)
-      expect(skills).toHaveLength(37);
+      // 39 entries: 37 canonical skills + 2 aliases (cancel-ralph, psm)
+      expect(skills).toHaveLength(39);
     });
 
     it('should return an array of BuiltinSkill objects', () => {
@@ -126,6 +126,7 @@ describe('Builtin Skills', () => {
       const expectedSkills = [
         'ai-slop-cleaner',
         'ask',
+        'ask-navigator',
         'autopilot',
         'autoresearch',
         'cancel',
@@ -140,6 +141,7 @@ describe('Builtin Skills', () => {
         'hud',
         'minimal-code-discipline',
         'launch',
+        'loft',
         'drydock',
         'omc-doctor',
         'omc-plan',
@@ -662,12 +664,14 @@ describe('Builtin Skills', () => {
     it('should return canonical skill names by default', () => {
       const names = listBuiltinSkillNames();
 
-      expect(names).toHaveLength(35);
+      expect(names).toHaveLength(37);
       expect(names).toContain('ai-slop-cleaner');
       expect(names).toContain('minimal-code-discipline');
       expect(names).toContain('launch');
+      expect(names).toContain('loft');
       expect(names).toContain('drydock');
       expect(names).toContain('ask');
+      expect(names).toContain('ask-navigator');
       expect(names).toContain('autopilot');
       expect(names).toContain('autoresearch');
       expect(names).toContain('cancel');
@@ -699,7 +703,7 @@ describe('Builtin Skills', () => {
       const names = listBuiltinSkillNames({ includeAliases: true });
 
       // swarm alias removed in #1131; learner retired in 5.0.0; cancel-ralph and psm remain
-      expect(names).toHaveLength(37);
+      expect(names).toHaveLength(39);
       expect(names).toContain('ai-slop-cleaner');
       expect(names).toContain('autoresearch');
       expect(names).toContain('self-improve');
