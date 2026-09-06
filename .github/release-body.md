@@ -48,6 +48,8 @@ npm install -g oh-my-claude-sisyphus@5.3.0
 
 **Full Changelog**: https://github.com/Yeachan-Heo/oh-my-claudecode/compare/v5.2.0...v5.3.0
 
+**Release tracking:** #3975
+
 ## Contributors
 
 Thank you to all contributors who made this release possible!
