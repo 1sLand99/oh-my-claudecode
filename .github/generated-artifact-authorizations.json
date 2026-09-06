@@ -17216,6 +17216,206 @@
           "previousFilename": null
         }
       ]
+    },
+    {
+      "pullNumber": 3977,
+      "targetRef": "main",
+      "mergeBaseSha": "aaf38829060979006d37018c1648fe17b7b9918e",
+      "headSha": "b6f04e8ebff7f0c3dc8513749c8242dea483c9f1",
+      "owner": "Yeachan-Heo",
+      "expiresAt": "2026-10-31T00:00:00.000Z",
+      "generatedDelta": {
+        "count": 31,
+        "sha256": "00c7e9262eb8b95c1689eef2acaa24e43b452fc9316b1103661fb9b1423cf50b"
+      },
+      "generatedFiles": [
+        {
+          "status": "modified",
+          "filename": "bridge/claude-md-coordinator.cjs",
+          "sha": "5b7e32ba61fd77dca50f7778f7e235a405060717",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "bridge/cli.cjs",
+          "sha": "3d9149d8ff233e76a37925fab39ad7ea35fba3df",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "bridge/mcp-server.cjs",
+          "sha": "0becb4c4b5f2f2ca7da973f0335e44185f2f29fd",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "bridge/runtime-cli.cjs",
+          "sha": "ac3ff68d6331bce451a5fbdec81ad492384cf348",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "bridge/team-bridge.cjs",
+          "sha": "8d9b92d011a29b5b67f32f6376fdfb2bdcfc0f7e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "bridge/team-mcp.cjs",
+          "sha": "eee4809954eec22c8916b82b348b1c22b286525f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "bridge/team.js",
+          "sha": "d94bd6ce9185ebc3d19da809dd8727e6968d44d7",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/cli/checkpoint.js",
+          "sha": "31c37cd3e21410c8aae16124d81a1915eb90da0e",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/cli/graph.js",
+          "sha": "18f25c7d520429dfac907f588ceb8b692f22a15d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/cli/index.js",
+          "sha": "f268c07e7376e0dfd6e835b9e0d099cda2eecc3a",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/features/checkpoint/index.js",
+          "sha": "cd0102dd4f6c4019678fe50e3f5cfb7af3a562b3",
+          "previousFilename": null
+        },
+        {
+          "status": "added",
+          "filename": "dist/graph/runtime/remote-approval.js",
+          "sha": "ad112137eb1cbdee8226256d4adb2c18c7acb1c9",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/graph/schema.d.ts",
+          "sha": "c8ad3d3fe81c6fb6376bb4740f1d9cd87b900837",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hooks/skill-bridge.cjs",
+          "sha": "6a4fb81fdd26e779f7284c9a00a268a036664657",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hud/index.d.ts",
+          "sha": "7fcd48dbc478e15dc1125ebbb21233e4d777b199",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/hud/index.js",
+          "sha": "beaf98818ecf8c06613d18c29012f77d56885432",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/worktree-paths.d.ts",
+          "sha": "8c3a3016cbd8b86e6500f9257bdb58f330baeea3",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/lib/worktree-paths.js",
+          "sha": "3ad54f240f7f75f92df5bf25a46c12dfdda9c3dc",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/notifications/config.js",
+          "sha": "63224425a7a3285d3563b6c0a2a4e69cd15cd9c0",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/notifications/formatter.d.ts",
+          "sha": "04b4f96bd41cc74634fe96848b07949f5ba1261f",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/notifications/formatter.js",
+          "sha": "b4e1dbb40a996e3bde68d7a0b692bf6c897b2d2d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/notifications/hook-config-types.d.ts",
+          "sha": "5baf21777e9bf83b1fb20ff2e553c1f2475a9a86",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/notifications/index.js",
+          "sha": "94b8fd0c3a0dbbd33aed3c88c30de16bc4bff07d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/notifications/reply-listener.d.ts",
+          "sha": "f4e584b75e155f988d202d6615433a95ddc59b68",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/notifications/reply-listener.js",
+          "sha": "d459758e2e2f77e9948bad3b18582aa3b141a2e5",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/notifications/session-registry.d.ts",
+          "sha": "23ae8a02e6f5a5ba3cc035cb4365406e80761d9d",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/notifications/template-engine.js",
+          "sha": "361235fac93ed9c15d7c6f6e4b4e4536e10dbd39",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/notifications/types.d.ts",
+          "sha": "b86ec4b3e491a090cb7ce899351af286fe7bc584",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/utils/cache-occupancy.d.ts",
+          "sha": "8ffdf3594c97af477c32b3b1f5de39f4d6f376be",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/utils/cache-occupancy.js",
+          "sha": "dbf575527009a61a2e766381d1f9f3d37d00a6f5",
+          "previousFilename": null
+        },
+        {
+          "status": "modified",
+          "filename": "dist/workflow/registry.js",
+          "sha": "f201eb815995b6411e5d9b3c0f469b0c6bfe55cf",
+          "previousFilename": null
+        }
+      ]
     }
   ]
 }
