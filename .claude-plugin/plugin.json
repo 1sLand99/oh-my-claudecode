@@ -18,6 +18,7 @@
   "skills": [
     "./skills/ai-slop-cleaner/",
     "./skills/ask/",
+    "./skills/ask-navigator/",
     "./skills/autopilot/",
     "./skills/autoresearch/",
     "./skills/cancel/",
@@ -31,6 +32,7 @@
     "./skills/graph/",
     "./skills/hud/",
     "./skills/launch/",
+    "./skills/loft/",
     "./skills/minimal-code-discipline/",
     "./skills/omc-doctor/",
     "./skills/omc-setup/",
